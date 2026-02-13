@@ -120,6 +120,24 @@ describe("runInstall", () => {
     expect(result.installed).toHaveLength(0);
   });
 
+  it("writes MCP configs even with no skills", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\nagents = ["claude"]\n\n[[mcp]]\nname = "github"\ncommand = "npx"\nargs = ["-y", "@mcp/server-github"]\n`,
+    );
+
+    await runInstall({ projectRoot });
+
+    const { readFile: rf } = await import("node:fs/promises");
+    const mcp = JSON.parse(await rf(join(projectRoot, ".mcp.json"), "utf-8"));
+    expect(mcp.mcpServers.github).toBeDefined();
+
+    // Agent symlinks should also be created
+    const { lstat: ls } = await import("node:fs/promises");
+    const stat = await ls(join(projectRoot, ".claude", "skills"));
+    expect(stat.isSymbolicLink()).toBe(true);
+  });
+
   it("fails with --frozen when no lockfile exists", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

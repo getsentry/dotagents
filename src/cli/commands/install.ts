@@ -14,8 +14,7 @@ import { copyDir } from "../../utils/fs.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
-import { writeMcpConfigs } from "../../agents/mcp-writer.js";
-import type { McpDeclaration } from "../../agents/types.js";
+import { writeMcpConfigs, toMcpDeclarations } from "../../agents/mcp-writer.js";
 
 export class InstallError extends Error {
   constructor(message: string) {
@@ -45,109 +44,98 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   // 1. Read config
   const config = await loadConfig(configPath);
   const skillNames = config.skills.map((s) => s.name);
-
-  if (skillNames.length === 0) {
-    console.log(chalk.dim("No skills declared in agents.toml."));
-    return { installed: [], skipped: [] };
-  }
-
-  // 2. Read lockfile
-  const lockfile = await loadLockfile(lockPath);
-
-  if (frozen && !lockfile) {
-    throw new InstallError("--frozen requires agents.lock to exist.");
-  }
-
-  if (frozen) {
-    // Verify all skills are in lockfile
-    for (const name of skillNames) {
-      if (!lockfile!.skills[name]) {
-        throw new InstallError(
-          `--frozen: skill "${name}" is in agents.toml but missing from agents.lock.`,
-        );
-      }
-    }
-  }
-
-  // 3. Ensure directories exist
-  await mkdir(skillsDir, { recursive: true });
-
-  // 4. Resolve and install each skill
-  const newLock: Lockfile = { version: 1, skills: {} };
   const installed: string[] = [];
   const skipped: string[] = [];
 
-  for (const name of skillNames) {
-    const dep = config.skills.find((s) => s.name === name)!;
-    const locked = lockfile?.skills[name];
+  // Ensure .agents/skills/ exists (needed for symlinks even without skills)
+  await mkdir(skillsDir, { recursive: true });
 
-    // If locked and not forced, use the locked commit
-    const lockedCommit =
-      !force && locked && isGitLocked(locked) ? locked.commit : undefined;
+  // 2. Resolve and install skills (if any declared)
+  if (skillNames.length > 0) {
+    const lockfile = await loadLockfile(lockPath);
 
-    let resolved: ResolvedSkill;
-    try {
-      resolved = await resolveSkill(name, dep, {
-        projectRoot,
-        lockedCommit,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new InstallError(`Failed to resolve skill "${name}": ${msg}`);
+    if (frozen && !lockfile) {
+      throw new InstallError("--frozen requires agents.lock to exist.");
     }
 
-    // Copy skill into .agents/skills/<name>/
-    const destDir = join(skillsDir, name);
-    await copyDir(resolved.skillDir, destDir);
-
-    // Compute integrity hash
-    const integrity = await hashDirectory(destDir);
-
-    // Frozen mode: verify integrity matches lockfile
-    if (frozen && locked) {
-      if (locked.integrity !== integrity) {
-        throw new InstallError(
-          `--frozen: integrity mismatch for "${name}". ` +
-            `Expected ${locked.integrity}, got ${integrity}.`,
-        );
+    if (frozen) {
+      for (const name of skillNames) {
+        if (!lockfile!.skills[name]) {
+          throw new InstallError(
+            `--frozen: skill "${name}" is in agents.toml but missing from agents.lock.`,
+          );
+        }
       }
     }
 
-    // Build lock entry
-    const lockEntry: LockedSkill =
-      resolved.type === "git"
-        ? {
-            source: dep.source,
-            resolved_url: resolved.resolvedUrl,
-            resolved_path: resolved.resolvedPath,
-            ...(resolved.resolvedRef ? { resolved_ref: resolved.resolvedRef } : {}),
-            commit: resolved.commit,
-            integrity,
-          }
-        : {
-            source: dep.source,
-            integrity,
-          };
+    const newLock: Lockfile = { version: 1, skills: {} };
 
-    newLock.skills[name] = lockEntry;
-    installed.push(name);
+    for (const name of skillNames) {
+      const dep = config.skills.find((s) => s.name === name)!;
+      const locked = lockfile?.skills[name];
+
+      const lockedCommit =
+        !force && locked && isGitLocked(locked) ? locked.commit : undefined;
+
+      let resolved: ResolvedSkill;
+      try {
+        resolved = await resolveSkill(name, dep, {
+          projectRoot,
+          lockedCommit,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new InstallError(`Failed to resolve skill "${name}": ${msg}`);
+      }
+
+      const destDir = join(skillsDir, name);
+      await copyDir(resolved.skillDir, destDir);
+
+      const integrity = await hashDirectory(destDir);
+
+      if (frozen && locked) {
+        if (locked.integrity !== integrity) {
+          throw new InstallError(
+            `--frozen: integrity mismatch for "${name}". ` +
+              `Expected ${locked.integrity}, got ${integrity}.`,
+          );
+        }
+      }
+
+      const lockEntry: LockedSkill =
+        resolved.type === "git"
+          ? {
+              source: dep.source,
+              resolved_url: resolved.resolvedUrl,
+              resolved_path: resolved.resolvedPath,
+              ...(resolved.resolvedRef ? { resolved_ref: resolved.resolvedRef } : {}),
+              commit: resolved.commit,
+              integrity,
+            }
+          : {
+              source: dep.source,
+              integrity,
+            };
+
+      newLock.skills[name] = lockEntry;
+      installed.push(name);
+    }
+
+    if (!frozen) {
+      await writeLockfile(lockPath, newLock);
+    }
   }
 
-  // 5. Write lockfile (unless frozen)
-  if (!frozen) {
-    await writeLockfile(lockPath, newLock);
-  }
-
-  // 6. Regenerate .agents/.gitignore
+  // 3. Regenerate .agents/.gitignore
   await updateAgentsGitignore(agentsDir, config.gitignore, skillNames);
 
-  // 7. Create/verify symlinks (legacy [symlinks] config)
+  // 4. Create/verify symlinks (legacy [symlinks] config)
   const targets = config.symlinks?.targets ?? [];
   for (const target of targets) {
     await ensureSkillsSymlink(agentsDir, join(projectRoot, target));
   }
 
-  // 8. Create agent-specific symlinks (dedup with legacy targets)
+  // 5. Create agent-specific symlinks (dedup with legacy targets)
   const legacyTargetSet = new Set(targets);
   for (const agentId of config.agents) {
     const agent = getAgent(agentId);
@@ -156,16 +144,8 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     await ensureSkillsSymlink(agentsDir, join(projectRoot, agent.skillsParentDir));
   }
 
-  // 9. Write MCP config files
-  const mcpServers: McpDeclaration[] = config.mcp.map((m) => ({
-    name: m.name,
-    ...(m.command && { command: m.command }),
-    ...(m.args && { args: m.args }),
-    ...(m.url && { url: m.url }),
-    ...(m.headers && { headers: m.headers }),
-    ...(m.env.length > 0 && { env: m.env }),
-  }));
-  await writeMcpConfigs(projectRoot, config.agents, mcpServers);
+  // 6. Write MCP config files
+  await writeMcpConfigs(projectRoot, config.agents, toMcpDeclarations(config.mcp));
 
   return { installed, skipped };
 }

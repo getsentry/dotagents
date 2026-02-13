@@ -4,6 +4,21 @@ import { existsSync } from "node:fs";
 import { stringify as tomlStringify, parse as parseTOML } from "smol-toml";
 import { getAgent } from "./registry.js";
 import type { McpDeclaration, McpConfigSpec } from "./types.js";
+import type { McpConfig } from "../config/schema.js";
+
+/**
+ * Convert McpConfig entries (from agents.toml) to universal McpDeclarations.
+ */
+export function toMcpDeclarations(configs: McpConfig[]): McpDeclaration[] {
+  return configs.map((m) => ({
+    name: m.name,
+    ...(m.command && { command: m.command }),
+    ...(m.args && { args: m.args }),
+    ...(m.url && { url: m.url }),
+    ...(m.headers && { headers: m.headers }),
+    ...(m.env.length > 0 && { env: m.env }),
+  }));
+}
 
 /**
  * Write MCP config files for each agent.

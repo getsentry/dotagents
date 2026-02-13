@@ -8,8 +8,7 @@ import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
 import { hashDirectory } from "../../utils/hash.js";
 import { getAgent } from "../../agents/registry.js";
-import { verifyMcpConfigs, writeMcpConfigs } from "../../agents/mcp-writer.js";
-import type { McpDeclaration } from "../../agents/types.js";
+import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations } from "../../agents/mcp-writer.js";
 
 export interface SyncIssue {
   type: "orphan" | "modified" | "symlink" | "missing" | "mcp";
@@ -119,14 +118,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 
   // 7. Verify and repair MCP configs
   let mcpRepaired = 0;
-  const mcpServers: McpDeclaration[] = config.mcp.map((m) => ({
-    name: m.name,
-    ...(m.command && { command: m.command }),
-    ...(m.args && { args: m.args }),
-    ...(m.url && { url: m.url }),
-    ...(m.headers && { headers: m.headers }),
-    ...(m.env.length > 0 && { env: m.env }),
-  }));
+  const mcpServers = toMcpDeclarations(config.mcp);
 
   const mcpIssues = await verifyMcpConfigs(projectRoot, config.agents, mcpServers);
   if (mcpIssues.length > 0) {

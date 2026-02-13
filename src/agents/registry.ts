@@ -29,22 +29,8 @@ const serializeClaude: McpSerializer = (s: McpDeclaration) => {
 
 const serializeCursor: McpSerializer = serializeClaude;
 
-/**
- * Codex: same shape as Claude but TOML format, under mcp_servers key.
- */
-const serializeCodex: McpSerializer = (s: McpDeclaration) => {
-  if (s.url) {
-    return [s.name, { url: s.url, ...(s.headers && { headers: s.headers }) }];
-  }
-  return [
-    s.name,
-    {
-      command: s.command,
-      args: s.args ?? [],
-      ...(envRecord(s.env, (k) => `\${${k}}`) && { env: envRecord(s.env, (k) => `\${${k}}`) }),
-    },
-  ];
-};
+/** Codex: same shape as Claude, only differs in config format (TOML) and root key. */
+const serializeCodex: McpSerializer = serializeClaude;
 
 /**
  * VS Code Copilot:
