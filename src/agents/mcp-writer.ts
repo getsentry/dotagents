@@ -108,7 +108,8 @@ async function mergeWrite(
   servers: Record<string, unknown>,
 ): Promise<void> {
   const existing = existsSync(filePath) ? await readExisting(filePath, spec) : {};
-  existing[spec.rootKey] = servers;
+  const prev = (existing[spec.rootKey] ?? {}) as Record<string, unknown>;
+  existing[spec.rootKey] = { ...prev, ...servers };
   await writeFile(filePath, serialize(existing, spec.format), "utf-8");
 }
 

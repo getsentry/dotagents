@@ -116,6 +116,23 @@ describe("writeMcpConfigs", () => {
     expect(raw).toContain("mcp_servers");
   });
 
+  it("preserves user-configured servers in shared config files", async () => {
+    // OpenCode is shared — pre-populate with a user-added server
+    await writeFile(
+      join(dir, "opencode.json"),
+      JSON.stringify({ mcp: { "my-custom-server": { type: "local", command: ["my-tool"] } } }, null, 2),
+      "utf-8",
+    );
+
+    await writeMcpConfigs(dir, ["opencode"], [STDIO_SERVER]);
+
+    const content = JSON.parse(await readFile(join(dir, "opencode.json"), "utf-8"));
+    // dotagents-managed server should be present
+    expect(content.mcp.github).toBeDefined();
+    // User's custom server should NOT be deleted
+    expect(content.mcp["my-custom-server"]).toEqual({ type: "local", command: ["my-tool"] });
+  });
+
   it("is idempotent", async () => {
     await writeMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
     const first = await readFile(join(dir, ".mcp.json"), "utf-8");
