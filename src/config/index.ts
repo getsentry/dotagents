@@ -11,4 +11,5 @@ export type {
   SymlinksConfig,
   ProjectConfig,
   SkillSource,
+  McpConfig,
 } from "./schema.js";

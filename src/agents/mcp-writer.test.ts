@@ -1,0 +1,170 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
+import { writeMcpConfigs, verifyMcpConfigs } from "./mcp-writer.js";
+import type { McpDeclaration } from "./types.js";
+
+const STDIO_SERVER: McpDeclaration = {
+  name: "github",
+  command: "npx",
+  args: ["-y", "@mcp/server-github"],
+  env: ["GITHUB_TOKEN"],
+};
+
+const HTTP_SERVER: McpDeclaration = {
+  name: "remote",
+  url: "https://mcp.example.com/sse",
+  headers: { Authorization: "Bearer tok" },
+};
+
+describe("writeMcpConfigs", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "dotagents-mcp-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true });
+  });
+
+  it("skips when no servers declared", async () => {
+    await writeMcpConfigs(dir, ["claude"], []);
+    expect(existsSync(join(dir, ".mcp.json"))).toBe(false);
+  });
+
+  it("writes claude .mcp.json", async () => {
+    await writeMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
+
+    const content = JSON.parse(await readFile(join(dir, ".mcp.json"), "utf-8"));
+    expect(content.mcpServers.github).toEqual({
+      command: "npx",
+      args: ["-y", "@mcp/server-github"],
+      env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
+    });
+  });
+
+  it("writes cursor .cursor/mcp.json", async () => {
+    await writeMcpConfigs(dir, ["cursor"], [STDIO_SERVER]);
+
+    const content = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf-8"));
+    expect(content.mcpServers.github).toBeDefined();
+  });
+
+  it("writes vscode .vscode/mcp.json with input refs", async () => {
+    await writeMcpConfigs(dir, ["vscode"], [STDIO_SERVER]);
+
+    const content = JSON.parse(await readFile(join(dir, ".vscode", "mcp.json"), "utf-8"));
+    expect(content.servers.github).toEqual({
+      type: "stdio",
+      command: "npx",
+      args: ["-y", "@mcp/server-github"],
+      env: { GITHUB_TOKEN: "${input:GITHUB_TOKEN}" },
+    });
+  });
+
+  it("writes codex .codex/config.toml", async () => {
+    await writeMcpConfigs(dir, ["codex"], [STDIO_SERVER]);
+
+    const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
+    expect(raw).toContain("mcp_servers");
+    expect(raw).toContain("github");
+  });
+
+  it("writes opencode.json", async () => {
+    await writeMcpConfigs(dir, ["opencode"], [STDIO_SERVER]);
+
+    const content = JSON.parse(await readFile(join(dir, "opencode.json"), "utf-8"));
+    expect(content.mcp.github).toEqual({
+      type: "local",
+      command: ["npx", "-y", "@mcp/server-github"],
+      environment: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
+    });
+  });
+
+  it("handles multiple agents", async () => {
+    await writeMcpConfigs(dir, ["claude", "cursor", "vscode"], [STDIO_SERVER]);
+
+    expect(existsSync(join(dir, ".mcp.json"))).toBe(true);
+    expect(existsSync(join(dir, ".cursor", "mcp.json"))).toBe(true);
+    expect(existsSync(join(dir, ".vscode", "mcp.json"))).toBe(true);
+  });
+
+  it("handles multiple servers", async () => {
+    await writeMcpConfigs(dir, ["claude"], [STDIO_SERVER, HTTP_SERVER]);
+
+    const content = JSON.parse(await readFile(join(dir, ".mcp.json"), "utf-8"));
+    expect(Object.keys(content.mcpServers)).toHaveLength(2);
+    expect(content.mcpServers.github).toBeDefined();
+    expect(content.mcpServers.remote).toBeDefined();
+  });
+
+  it("merges into existing shared config file", async () => {
+    // Codex config.toml is shared — write something else first
+    const codexDir = join(dir, ".codex");
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(codexDir, { recursive: true });
+    await writeFile(join(codexDir, "config.toml"), 'model = "o3"\n', "utf-8");
+
+    await writeMcpConfigs(dir, ["codex"], [STDIO_SERVER]);
+
+    const raw = await readFile(join(codexDir, "config.toml"), "utf-8");
+    // Should preserve existing keys
+    expect(raw).toContain("model");
+    expect(raw).toContain("mcp_servers");
+  });
+
+  it("is idempotent", async () => {
+    await writeMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
+    const first = await readFile(join(dir, ".mcp.json"), "utf-8");
+
+    await writeMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
+    const second = await readFile(join(dir, ".mcp.json"), "utf-8");
+
+    expect(first).toBe(second);
+  });
+
+  it("creates parent directories as needed", async () => {
+    await writeMcpConfigs(dir, ["cursor"], [STDIO_SERVER]);
+    expect(existsSync(join(dir, ".cursor", "mcp.json"))).toBe(true);
+  });
+});
+
+describe("verifyMcpConfigs", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "dotagents-mcp-verify-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true });
+  });
+
+  it("returns no issues when configs match", async () => {
+    await writeMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
+    const issues = await verifyMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
+    expect(issues).toEqual([]);
+  });
+
+  it("reports missing config file", async () => {
+    const issues = await verifyMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.issue).toContain("missing");
+  });
+
+  it("reports missing server in config", async () => {
+    // Write config with only one server
+    await writeMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
+    // Verify expecting two servers
+    const issues = await verifyMcpConfigs(dir, ["claude"], [STDIO_SERVER, HTTP_SERVER]);
+    expect(issues.some((i) => i.issue.includes("remote"))).toBe(true);
+  });
+
+  it("returns empty when no servers declared", async () => {
+    const issues = await verifyMcpConfigs(dir, ["claude"], []);
+    expect(issues).toEqual([]);
+  });
+});

@@ -6,15 +6,17 @@ import { generateDefaultConfig } from "../../config/writer.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { loadConfig } from "../../config/loader.js";
+import { getAgent, allAgentIds } from "../../agents/registry.js";
 import { parseArgs } from "node:util";
 
 export interface InitOptions {
   force?: boolean;
+  agents?: string[];
   projectRoot: string;
 }
 
 export async function runInit(opts: InitOptions): Promise<void> {
-  const { projectRoot, force } = opts;
+  const { projectRoot, force, agents } = opts;
   const configPath = join(projectRoot, "agents.toml");
   const agentsDir = join(projectRoot, ".agents");
   const skillsDir = join(agentsDir, "skills");
@@ -23,7 +25,18 @@ export async function runInit(opts: InitOptions): Promise<void> {
     throw new InitError("agents.toml already exists. Use --force to overwrite.");
   }
 
-  await writeFile(configPath, generateDefaultConfig(), "utf-8");
+  // Validate agent IDs before writing config
+  const validIds = allAgentIds();
+  if (agents) {
+    const unknown = agents.filter((id) => !validIds.includes(id));
+    if (unknown.length > 0) {
+      throw new InitError(
+        `Unknown agent(s): ${unknown.join(", ")}. Valid agents: ${validIds.join(", ")}`,
+      );
+    }
+  }
+
+  await writeFile(configPath, generateDefaultConfig(agents), "utf-8");
   await mkdir(skillsDir, { recursive: true });
 
   // Set up gitignore and symlinks based on config
@@ -38,6 +51,17 @@ export async function runInit(opts: InitOptions): Promise<void> {
     symlinkResults.push({ target, ...result });
   }
 
+  // Create agent-specific symlinks (dedup with legacy targets)
+  const legacyTargetSet = new Set(targets);
+  for (const agentId of config.agents) {
+    const agent = getAgent(agentId);
+    if (!agent) continue;
+    if (legacyTargetSet.has(agent.skillsParentDir)) continue;
+    const targetDir = join(projectRoot, agent.skillsParentDir);
+    const result = await ensureSkillsSymlink(agentsDir, targetDir);
+    symlinkResults.push({ target: agent.skillsParentDir, ...result });
+  }
+
   return printSummary(config.gitignore, symlinkResults);
 }
 
@@ -45,22 +69,17 @@ function printSummary(
   gitignore: boolean,
   symlinks: { target: string; created: boolean; migrated: string[] }[],
 ): void {
-  // eslint-disable-next-line no-console
   console.log(chalk.green("Created agents.toml"));
-  // eslint-disable-next-line no-console
   console.log(chalk.green("Created .agents/skills/"));
   if (gitignore) {
-    // eslint-disable-next-line no-console
     console.log(chalk.green("Created .agents/.gitignore"));
   }
 
   for (const s of symlinks) {
     if (s.created) {
-      // eslint-disable-next-line no-console
       console.log(chalk.green(`Created symlink: ${s.target}/skills/ → .agents/skills/`));
     }
     if (s.migrated.length > 0) {
-      // eslint-disable-next-line no-console
       console.log(
         chalk.yellow(
           `Migrated ${s.migrated.length} skill(s) from ${s.target}/skills/ to .agents/skills/`,
@@ -69,7 +88,6 @@ function printSummary(
     }
   }
 
-  // eslint-disable-next-line no-console
   console.log(
     `\n${chalk.bold("Next steps:")}\n  1. Add skills: dotagents add @anthropics/pdf-processing\n  2. Install: dotagents install`,
   );
@@ -87,13 +105,18 @@ export default async function init(args: string[]): Promise<void> {
     args,
     options: {
       force: { type: "boolean" },
+      agents: { type: "string" },
     },
     strict: true,
   });
 
   const { resolve } = await import("node:path");
+  const agents = values["agents"]
+    ? values["agents"].split(",").map((s) => s.trim()).filter(Boolean)
+    : undefined;
+
   try {
-    await runInit({ projectRoot: resolve("."), force: values["force"] });
+    await runInit({ projectRoot: resolve("."), force: values["force"], agents });
   } catch (err) {
     if (err instanceof InitError) {
       console.error(chalk.red(err.message));

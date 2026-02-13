@@ -164,4 +164,117 @@ describe("agentsConfigSchema", () => {
       expect(parseWithName("-bad").success).toBe(false);
     });
   });
+
+  describe("agents field", () => {
+    it("defaults to empty array when absent", () => {
+      const result = agentsConfigSchema.safeParse({ version: 1 });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.agents).toEqual([]);
+      }
+    });
+
+    it("accepts valid agent IDs", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        agents: ["claude", "cursor"],
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.agents).toEqual(["claude", "cursor"]);
+      }
+    });
+  });
+
+  describe("mcp field", () => {
+    it("defaults to empty array when absent", () => {
+      const result = agentsConfigSchema.safeParse({ version: 1 });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.mcp).toEqual([]);
+      }
+    });
+
+    it("accepts a stdio MCP server", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        mcp: [{ name: "github", command: "npx", args: ["-y", "@mcp/server-github"] }],
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.mcp[0]!.name).toBe("github");
+        expect(result.data.mcp[0]!.command).toBe("npx");
+      }
+    });
+
+    it("accepts an http MCP server", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        mcp: [{ name: "remote", url: "https://mcp.example.com/sse" }],
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.mcp[0]!.url).toBe("https://mcp.example.com/sse");
+      }
+    });
+
+    it("accepts MCP server with env vars", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        mcp: [{ name: "gh", command: "npx", args: [], env: ["GITHUB_TOKEN"] }],
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.mcp[0]!.env).toEqual(["GITHUB_TOKEN"]);
+      }
+    });
+
+    it("accepts MCP server with headers", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        mcp: [{ name: "r", url: "https://x.com", headers: { Authorization: "Bearer tok" } }],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects MCP server with both command and url", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        mcp: [{ name: "bad", command: "x", url: "https://x.com" }],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects MCP server with neither command nor url", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        mcp: [{ name: "bad" }],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects MCP server with empty name", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        mcp: [{ name: "", command: "x" }],
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("backward compatibility", () => {
+    it("parses config without agents or mcp fields", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        gitignore: false,
+        skills: [{ name: "test", source: "owner/repo" }],
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.agents).toEqual([]);
+        expect(result.data.mcp).toEqual([]);
+        expect(result.data.skills).toHaveLength(1);
+      }
+    });
+  });
 });

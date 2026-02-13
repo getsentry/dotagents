@@ -29,6 +29,7 @@ The manifest file. Lives at the project root.
 ```toml
 version = 1
 gitignore = false
+agents = ["claude", "cursor"]
 
 [project]
 name = "my-project"              # Optional. For display purposes.
@@ -52,6 +53,17 @@ ref = "v2.0.0"
 [[skills]]
 name = "my-custom-skill"
 source = "path:../shared-skills/my-custom-skill"
+
+[[mcp]]
+name = "github"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = ["GITHUB_TOKEN"]
+
+[[mcp]]
+name = "remote-api"
+url = "https://mcp.example.com/sse"
+headers = { Authorization = "Bearer tok" }
 ```
 
 ### Fields
@@ -62,9 +74,11 @@ source = "path:../shared-skills/my-custom-skill"
 |-------|----------|-------------|
 | `version` | Yes | Schema version. Always `1`. |
 | `gitignore` | No | When `true` (default), generates `.agents/.gitignore` to exclude managed skills. When `false`, skills are checked into git. `dotagents init` sets this to `false`. |
+| `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Defaults to `[]`. When set, dotagents creates skills symlinks and MCP config files for each agent. |
 | `project` | No | Project metadata. |
-| `symlinks` | No | Symlink configuration. |
+| `symlinks` | No | Symlink configuration (legacy — prefer `agents` for new projects). |
 | `skills` | No | Skill dependencies (array of tables). |
+| `mcp` | No | MCP server declarations (array of tables). Generates agent-specific config files during install/sync. |
 
 #### `[project]`
 
@@ -86,6 +100,33 @@ source = "path:../shared-skills/my-custom-skill"
 | `source` | Yes | Skill source. `owner/repo` for GitHub, `owner/repo@ref` for pinned, `git:<url>` for non-GitHub, `path:<relative>` for local. |
 | `ref` | No | Git ref (tag, branch, or SHA). Can also be specified inline as `owner/repo@ref`. Defaults to repo's default branch. |
 | `path` | No | Explicit subdirectory path to the skill within the repo. Only needed when automatic discovery fails. |
+
+#### `[[mcp]]`
+
+MCP server declarations. Each entry defines an MCP server that dotagents will configure for the agents listed in the `agents` field.
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Server name (used as key in generated config files). |
+| `command` | Conditional | Command to run (stdio transport). Required if `url` is not set. |
+| `args` | No | Arguments for the command. Defaults to `[]`. |
+| `url` | Conditional | URL for HTTP/SSE transport. Required if `command` is not set. |
+| `headers` | No | HTTP headers (only for `url` servers). |
+| `env` | No | Array of environment variable names. Values are referenced from the user's environment. Defaults to `[]`. |
+
+A server must have either `command` (stdio) or `url` (HTTP), but not both.
+
+#### Supported Agents
+
+| ID | Tool | Config Dir | MCP File | MCP Format |
+|----|------|-----------|----------|------------|
+| `claude` | Claude Code | `.claude` | `.mcp.json` | JSON |
+| `cursor` | Cursor | `.cursor` | `.cursor/mcp.json` | JSON |
+| `codex` | Codex | `.codex` | `.codex/config.toml` | TOML (shared) |
+| `vscode` | VS Code Copilot | `.vscode` | `.vscode/mcp.json` | JSON |
+| `opencode` | OpenCode | `.claude` | `opencode.json` | JSON (shared) |
+
+Each agent has its own MCP config format. dotagents translates the universal `[[mcp]]` declarations into the format each tool expects during `install` and `sync`.
 
 ### Source Types
 
@@ -227,18 +268,19 @@ The CLI binary is `dotagents`. Currently runs via `tsx` during development; will
 Initialize a new project.
 
 ```
-dotagents init [--force]
+dotagents init [--force] [--agents claude,cursor]
 ```
 
 **Behavior:**
 1. Create `agents.toml` with `version = 1`
 2. Create `.agents/skills/` directory
 3. Generate `.agents/.gitignore`
-4. If symlink targets are configured, set up symlinks
+4. If symlink targets or agents are configured, set up symlinks
 5. Print next steps
 
 **Flags:**
 - `--force`: Overwrite existing `agents.toml`
+- `--agents <list>`: Comma-separated list of agent IDs to include in config (e.g. `claude,cursor`)
 
 ### `dotagents install`
 
@@ -259,8 +301,9 @@ dotagents install [--frozen] [--force]
    d. Compute integrity hash
 5. Write `agents.lock` (unless `--frozen`)
 6. Regenerate `.agents/.gitignore`
-7. Create/verify symlinks
-8. Print summary
+7. Create/verify symlinks (legacy `[symlinks]` and agent-specific)
+8. Write MCP config files for each declared agent
+9. Print summary
 
 **Flags:**
 - `--frozen`: Fail if lockfile is stale. Do not modify lockfile. For CI.
@@ -339,10 +382,11 @@ dotagents sync
 
 **Behavior:**
 1. Regenerate `.agents/.gitignore`
-2. Create/verify/repair symlinks
+2. Create/verify/repair symlinks (legacy and agent-specific)
 3. Warn if orphaned skills exist (installed but not in agents.toml)
 4. Warn if declared skills are missing (in agents.toml but not installed)
 5. Verify integrity hashes, warn on local modifications
+6. Verify and repair MCP config files for declared agents
 
 ### `dotagents list`
 
@@ -521,6 +565,11 @@ dotagents/
         update.ts
         sync.ts
         list.ts
+    agents/
+      types.ts             # McpDeclaration, AgentDefinition interfaces
+      registry.ts          # Agent registry (claude, cursor, codex, vscode, opencode)
+      mcp-writer.ts        # MCP config file generation per agent
+      index.ts             # Re-exports
     config/
       schema.ts            # Zod schemas for agents.toml
       loader.ts            # TOML parse + validate

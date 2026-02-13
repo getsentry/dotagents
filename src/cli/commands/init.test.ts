@@ -92,4 +92,29 @@ describe("runInit", () => {
     const entries = await readdir(join(dir, ".agents", "skills"));
     expect(entries).toContain("my-skill");
   });
+
+  it("writes agents field when --agents is provided", async () => {
+    await runInit({ projectRoot: dir, agents: ["claude", "cursor"] });
+
+    const config = await loadConfig(join(dir, "agents.toml"));
+    expect(config.agents).toEqual(["claude", "cursor"]);
+  });
+
+  it("creates agent-specific symlinks when --agents is provided", async () => {
+    await runInit({ projectRoot: dir, agents: ["claude", "cursor"] });
+
+    const claudeStat = await lstat(join(dir, ".claude", "skills"));
+    expect(claudeStat.isSymbolicLink()).toBe(true);
+    const cursorStat = await lstat(join(dir, ".cursor", "skills"));
+    expect(cursorStat.isSymbolicLink()).toBe(true);
+  });
+
+  it("rejects unknown agent IDs", async () => {
+    await expect(
+      runInit({ projectRoot: dir, agents: ["claude", "emacs"] }),
+    ).rejects.toThrow(InitError);
+    await expect(
+      runInit({ projectRoot: dir, agents: ["emacs"] }),
+    ).rejects.toThrow(/Unknown agent/);
+  });
 });

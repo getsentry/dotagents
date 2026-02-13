@@ -79,10 +79,15 @@ function removeBlockByName(content: string, name: string): string {
 /**
  * Generate a minimal agents.toml scaffold.
  */
-export function generateDefaultConfig(): string {
-  return `version = 1
+export function generateDefaultConfig(agents?: string[]): string {
+  let config = `version = 1
 # Check skills into git so collaborators get them without running 'dotagents install'.
 # Set to true (or remove) to gitignore managed skills instead.
 gitignore = false
 `;
+  if (agents && agents.length > 0) {
+    const list = agents.map((a) => `"${a}"`).join(", ");
+    config += `agents = [${list}]\n`;
+  }
+  return config;
 }

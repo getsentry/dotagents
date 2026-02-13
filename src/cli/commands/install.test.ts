@@ -144,4 +144,33 @@ describe("runInstall", () => {
     const result = await runInstall({ projectRoot, frozen: true });
     expect(result.installed).toContain("pdf");
   });
+
+  it("creates agent-specific symlinks", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\nagents = ["claude", "cursor"]\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+
+    await runInstall({ projectRoot });
+
+    const { lstat } = await import("node:fs/promises");
+    const claudeStat = await lstat(join(projectRoot, ".claude", "skills"));
+    expect(claudeStat.isSymbolicLink()).toBe(true);
+    const cursorStat = await lstat(join(projectRoot, ".cursor", "skills"));
+    expect(cursorStat.isSymbolicLink()).toBe(true);
+  });
+
+  it("writes MCP configs for declared agents", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\nagents = ["claude"]\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[mcp]]\nname = "github"\ncommand = "npx"\nargs = ["-y", "@mcp/server-github"]\n`,
+    );
+
+    await runInstall({ projectRoot });
+
+    const { readFile } = await import("node:fs/promises");
+    const mcp = JSON.parse(await readFile(join(projectRoot, ".mcp.json"), "utf-8"));
+    expect(mcp.mcpServers.github).toBeDefined();
+    expect(mcp.mcpServers.github.command).toBe("npx");
+  });
 });

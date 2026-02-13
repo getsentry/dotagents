@@ -7,9 +7,12 @@ import { loadLockfile } from "../../lockfile/loader.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
 import { hashDirectory } from "../../utils/hash.js";
+import { getAgent } from "../../agents/registry.js";
+import { verifyMcpConfigs, writeMcpConfigs } from "../../agents/mcp-writer.js";
+import type { McpDeclaration } from "../../agents/types.js";
 
 export interface SyncIssue {
-  type: "orphan" | "modified" | "symlink" | "missing";
+  type: "orphan" | "modified" | "symlink" | "missing" | "mcp";
   name: string;
   message: string;
 }
@@ -22,6 +25,7 @@ export interface SyncResult {
   issues: SyncIssue[];
   gitignoreUpdated: boolean;
   symlinksRepaired: number;
+  mcpRepaired: number;
 }
 
 export async function runSync(opts: SyncOptions): Promise<SyncResult> {
@@ -82,7 +86,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
-  // 5. Verify and repair symlinks
+  // 5. Verify and repair legacy symlinks
   const targets = config.symlinks?.targets ?? [];
   let symlinksRepaired = 0;
 
@@ -97,10 +101,51 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     symlinksRepaired++;
   }
 
+  // 6. Verify and repair agent-specific symlinks
+  const legacyTargetSet = new Set(targets);
+  const agentTargets: string[] = [];
+  for (const agentId of config.agents) {
+    const agent = getAgent(agentId);
+    if (!agent) continue;
+    if (legacyTargetSet.has(agent.skillsParentDir)) continue;
+    agentTargets.push(join(projectRoot, agent.skillsParentDir));
+  }
+
+  const agentSymlinkIssues = await verifySymlinks(agentsDir, agentTargets);
+  for (const issue of agentSymlinkIssues) {
+    await ensureSkillsSymlink(agentsDir, issue.target);
+    symlinksRepaired++;
+  }
+
+  // 7. Verify and repair MCP configs
+  let mcpRepaired = 0;
+  const mcpServers: McpDeclaration[] = config.mcp.map((m) => ({
+    name: m.name,
+    ...(m.command && { command: m.command }),
+    ...(m.args && { args: m.args }),
+    ...(m.url && { url: m.url }),
+    ...(m.headers && { headers: m.headers }),
+    ...(m.env.length > 0 && { env: m.env }),
+  }));
+
+  const mcpIssues = await verifyMcpConfigs(projectRoot, config.agents, mcpServers);
+  if (mcpIssues.length > 0) {
+    await writeMcpConfigs(projectRoot, config.agents, mcpServers);
+    mcpRepaired = mcpIssues.length;
+    for (const issue of mcpIssues) {
+      issues.push({
+        type: "mcp",
+        name: issue.agent,
+        message: issue.issue,
+      });
+    }
+  }
+
   return {
     issues,
     gitignoreUpdated: config.gitignore,
     symlinksRepaired,
+    mcpRepaired,
   };
 }
 
@@ -118,6 +163,10 @@ export default async function sync(): Promise<void> {
     console.log(chalk.green(`Repaired ${result.symlinksRepaired} symlink(s)`));
   }
 
+  if (result.mcpRepaired > 0) {
+    console.log(chalk.green(`Repaired ${result.mcpRepaired} MCP config(s)`));
+  }
+
   if (result.issues.length === 0) {
     console.log(chalk.green("Everything in sync."));
     return;
@@ -126,9 +175,8 @@ export default async function sync(): Promise<void> {
   for (const issue of result.issues) {
     switch (issue.type) {
       case "orphan":
-        console.log(chalk.yellow(`  warn: ${issue.message}`));
-        break;
       case "modified":
+      case "mcp":
         console.log(chalk.yellow(`  warn: ${issue.message}`));
         break;
       case "missing":

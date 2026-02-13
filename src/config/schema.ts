@@ -52,12 +52,40 @@ const projectConfigSchema = z.object({
 
 export type ProjectConfig = z.infer<typeof projectConfigSchema>;
 
+/**
+ * MCP server declaration: either stdio (command+args) or HTTP (url).
+ * env is an array of environment variable names (values come from the user's env).
+ */
+const mcpSchema = z
+  .object({
+    name: z.string().min(1, "MCP server name is required"),
+    command: z.string().optional(),
+    args: z.array(z.string()).optional(),
+    url: z.string().optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    env: z.array(z.string()).default([]),
+  })
+  .check(
+    z.refine(
+      (m) => {
+        const hasStdio = !!m.command;
+        const hasHttp = !!m.url;
+        return (hasStdio || hasHttp) && !(hasStdio && hasHttp);
+      },
+      "MCP server must have either command (stdio) or url (http), but not both",
+    ),
+  );
+
+export type McpConfig = z.infer<typeof mcpSchema>;
+
 export const agentsConfigSchema = z.object({
   version: z.literal(1),
   gitignore: z.boolean().default(true),
   project: projectConfigSchema.optional(),
   symlinks: symlinksConfigSchema.optional(),
+  agents: z.array(z.string()).default([]),
   skills: z.array(skillDependencySchema).default([]),
+  mcp: z.array(mcpSchema).default([]),
 });
 
 export type AgentsConfig = z.infer<typeof agentsConfigSchema>;

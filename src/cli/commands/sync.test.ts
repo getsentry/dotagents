@@ -137,4 +137,31 @@ describe("runSync", () => {
     );
     expect(gitignore).toContain("/skills/pdf/");
   });
+
+  it("repairs missing MCP configs", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\nagents = ["claude"]\n\n[[mcp]]\nname = "github"\ncommand = "npx"\nargs = ["-y", "@mcp/server-github"]\n`,
+    );
+
+    const result = await runSync({ projectRoot });
+    expect(result.mcpRepaired).toBeGreaterThan(0);
+
+    // Verify config was created
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(join(projectRoot, ".mcp.json"))).toBe(true);
+  });
+
+  it("repairs agent-specific symlinks", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\nagents = ["claude"]\n`,
+    );
+
+    // .claude dir exists but no symlink
+    await mkdir(join(projectRoot, ".claude"), { recursive: true });
+
+    const result = await runSync({ projectRoot });
+    expect(result.symlinksRepaired).toBe(1);
+  });
 });

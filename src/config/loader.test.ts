@@ -78,4 +78,32 @@ targets = [".claude"]
     const config = await loadConfig(configPath);
     expect(config.symlinks?.targets).toEqual([".claude"]);
   });
+
+  it("loads config with agents and mcp", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1
+agents = ["claude", "cursor"]
+
+[[mcp]]
+name = "github"
+command = "npx"
+args = ["-y", "@mcp/server-github"]
+env = ["GITHUB_TOKEN"]
+`,
+    );
+
+    const config = await loadConfig(configPath);
+    expect(config.agents).toEqual(["claude", "cursor"]);
+    expect(config.mcp).toHaveLength(1);
+    expect(config.mcp[0]!.name).toBe("github");
+  });
+
+  it("rejects unknown agent IDs", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(configPath, `version = 1\nagents = ["claude", "emacs"]\n`);
+
+    await expect(loadConfig(configPath)).rejects.toThrow(/Unknown agent.*emacs/);
+  });
 });

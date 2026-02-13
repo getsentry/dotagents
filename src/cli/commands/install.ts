@@ -13,6 +13,9 @@ import { hashDirectory } from "../../utils/hash.js";
 import { copyDir } from "../../utils/fs.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
+import { getAgent } from "../../agents/registry.js";
+import { writeMcpConfigs } from "../../agents/mcp-writer.js";
+import type { McpDeclaration } from "../../agents/types.js";
 
 export class InstallError extends Error {
   constructor(message: string) {
@@ -138,11 +141,31 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   // 6. Regenerate .agents/.gitignore
   await updateAgentsGitignore(agentsDir, config.gitignore, skillNames);
 
-  // 7. Create/verify symlinks
+  // 7. Create/verify symlinks (legacy [symlinks] config)
   const targets = config.symlinks?.targets ?? [];
   for (const target of targets) {
     await ensureSkillsSymlink(agentsDir, join(projectRoot, target));
   }
+
+  // 8. Create agent-specific symlinks (dedup with legacy targets)
+  const legacyTargetSet = new Set(targets);
+  for (const agentId of config.agents) {
+    const agent = getAgent(agentId);
+    if (!agent) continue;
+    if (legacyTargetSet.has(agent.skillsParentDir)) continue;
+    await ensureSkillsSymlink(agentsDir, join(projectRoot, agent.skillsParentDir));
+  }
+
+  // 9. Write MCP config files
+  const mcpServers: McpDeclaration[] = config.mcp.map((m) => ({
+    name: m.name,
+    ...(m.command && { command: m.command }),
+    ...(m.args && { args: m.args }),
+    ...(m.url && { url: m.url }),
+    ...(m.headers && { headers: m.headers }),
+    ...(m.env.length > 0 && { env: m.env }),
+  }));
+  await writeMcpConfigs(projectRoot, config.agents, mcpServers);
 
   return { installed, skipped };
 }

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
 import { agentsConfigSchema } from "./schema.js";
 import type { AgentsConfig } from "./schema.js";
+import { allAgentIds } from "../agents/registry.js";
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -32,6 +33,15 @@ export async function loadConfig(filePath: string): Promise<AgentsConfig> {
       .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
       .join("\n");
     throw new ConfigError(`Invalid config in ${filePath}:\n${issues}`);
+  }
+
+  // Post-parse validation: reject unknown agent IDs
+  const validIds = allAgentIds();
+  const unknown = result.data.agents.filter((id) => !validIds.includes(id));
+  if (unknown.length > 0) {
+    throw new ConfigError(
+      `Unknown agent(s) in ${filePath}: ${unknown.join(", ")}. Valid agents: ${validIds.join(", ")}`,
+    );
   }
 
   return result.data;
