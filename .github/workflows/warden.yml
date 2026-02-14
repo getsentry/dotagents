@@ -25,4 +25,5 @@ jobs:
 
       - uses: getsentry/warden@v0
         with:
+          anthropic-api-key: ${{ secrets.WARDEN_ANTHROPIC_API_KEY }}
           github-token: ${{ steps.app-token.outputs.token }}
