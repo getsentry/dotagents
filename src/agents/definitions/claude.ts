@@ -1,5 +1,5 @@
 import type { AgentDefinition } from "../types.js";
-import { envRecord, httpServer } from "./helpers.js";
+import { envRecord, httpServer, serializeClaudeHooks } from "./helpers.js";
 
 const claude: AgentDefinition = {
   id: "claude",
@@ -17,6 +17,13 @@ const claude: AgentDefinition = {
     const env = envRecord(s.env, (k) => `\${${k}}`);
     return [s.name, { command: s.command, args: s.args ?? [], ...(env && { env }) }];
   },
+  hooks: {
+    filePath: ".claude/settings.json",
+    rootKey: "hooks",
+    format: "json",
+    shared: true,
+  },
+  serializeHooks: serializeClaudeHooks,
 };
 
 export default claude;

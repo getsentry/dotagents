@@ -78,6 +78,23 @@ const mcpSchema = z
 
 export type McpConfig = z.infer<typeof mcpSchema>;
 
+export const hookEventSchema = z.enum([
+  "PreToolUse",
+  "PostToolUse",
+  "UserPromptSubmit",
+  "Stop",
+]);
+
+export type HookEvent = z.infer<typeof hookEventSchema>;
+
+const hookSchema = z.object({
+  event: hookEventSchema,
+  matcher: z.string().optional(),
+  command: z.string().min(1, "Hook command is required"),
+});
+
+export type HookConfig = z.infer<typeof hookSchema>;
+
 export const agentsConfigSchema = z.object({
   version: z.literal(1),
   gitignore: z.boolean().default(true),
@@ -86,6 +103,7 @@ export const agentsConfigSchema = z.object({
   agents: z.array(z.string()).default([]),
   skills: z.array(skillDependencySchema).default([]),
   mcp: z.array(mcpSchema).default([]),
+  hooks: z.array(hookSchema).default([]),
 });
 
 export type AgentsConfig = z.infer<typeof agentsConfigSchema>;

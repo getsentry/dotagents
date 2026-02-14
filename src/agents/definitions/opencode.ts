@@ -1,4 +1,5 @@
 import type { AgentDefinition } from "../types.js";
+import { UnsupportedFeature } from "../errors.js";
 import { envRecord, httpServer } from "./helpers.js";
 
 const opencode: AgentDefinition = {
@@ -23,6 +24,10 @@ const opencode: AgentDefinition = {
         ...(env && { environment: env }),
       },
     ];
+  },
+  hooks: undefined,
+  serializeHooks() {
+    throw new UnsupportedFeature("opencode", "hooks");
   },
 };
 

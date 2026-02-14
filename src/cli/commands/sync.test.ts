@@ -164,4 +164,37 @@ describe("runSync", () => {
     const result = await runSync({ projectRoot });
     expect(result.symlinksRepaired).toBe(1);
   });
+
+  it("repairs missing hook configs", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\nagents = ["claude"]\n\n[[hooks]]\nevent = "PreToolUse"\nmatcher = "Bash"\ncommand = ".agents/hooks/block-rm.sh"\n`,
+    );
+
+    const result = await runSync({ projectRoot });
+    expect(result.hooksRepaired).toBeGreaterThan(0);
+
+    // Verify config was created
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(join(projectRoot, ".claude", "settings.json"))).toBe(true);
+
+    const { readFile } = await import("node:fs/promises");
+    const settings = JSON.parse(await readFile(join(projectRoot, ".claude", "settings.json"), "utf-8"));
+    expect(settings.hooks.PreToolUse).toBeDefined();
+  });
+
+  it("reports no hook issues when configs are present", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\nagents = ["claude"]\n\n[[hooks]]\nevent = "Stop"\ncommand = "check.sh"\n`,
+    );
+
+    // First sync to create the config
+    await runSync({ projectRoot });
+
+    // Second sync should find everything in order
+    const result = await runSync({ projectRoot });
+    expect(result.hooksRepaired).toBe(0);
+    expect(result.issues.filter((i) => i.type === "hooks")).toHaveLength(0);
+  });
 });

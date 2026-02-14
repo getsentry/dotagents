@@ -1,5 +1,5 @@
 import type { AgentDefinition } from "../types.js";
-import { envRecord, httpServer } from "./helpers.js";
+import { envRecord, httpServer, serializeClaudeHooks } from "./helpers.js";
 
 const vscode: AgentDefinition = {
   id: "vscode",
@@ -20,6 +20,13 @@ const vscode: AgentDefinition = {
       { type: "stdio", command: s.command, args: s.args ?? [], ...(env && { env }) },
     ];
   },
+  hooks: {
+    filePath: ".claude/settings.json",
+    rootKey: "hooks",
+    format: "json",
+    shared: true,
+  },
+  serializeHooks: serializeClaudeHooks,
 };
 
 export default vscode;

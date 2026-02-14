@@ -15,6 +15,7 @@ import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
 import { writeMcpConfigs, toMcpDeclarations } from "../../agents/mcp-writer.js";
+import { writeHookConfigs, toHookDeclarations } from "../../agents/hook-writer.js";
 
 export class InstallError extends Error {
   constructor(message: string) {
@@ -32,6 +33,7 @@ export interface InstallOptions {
 export interface InstallResult {
   installed: string[];
   skipped: string[];
+  hookWarnings: { agent: string; message: string }[];
 }
 
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
@@ -148,7 +150,14 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   // 6. Write MCP config files
   await writeMcpConfigs(projectRoot, config.agents, toMcpDeclarations(config.mcp));
 
-  return { installed, skipped };
+  // 7. Write hook config files
+  const hookWarnings = await writeHookConfigs(
+    projectRoot,
+    config.agents,
+    toHookDeclarations(config.hooks),
+  );
+
+  return { installed, skipped, hookWarnings };
 }
 
 export default async function install(args: string[]): Promise<void> {
@@ -173,6 +182,9 @@ export default async function install(args: string[]): Promise<void> {
       console.log(
         chalk.green(`Installed ${result.installed.length} skill(s): ${result.installed.join(", ")}`),
       );
+    }
+    for (const w of result.hookWarnings) {
+      console.log(chalk.yellow(`  warn: ${w.message}`));
     }
   } catch (err) {
     if (err instanceof InstallError) {

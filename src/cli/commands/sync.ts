@@ -9,9 +9,10 @@ import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
 import { hashDirectory } from "../../utils/hash.js";
 import { getAgent } from "../../agents/registry.js";
 import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations } from "../../agents/mcp-writer.js";
+import { verifyHookConfigs, writeHookConfigs, toHookDeclarations } from "../../agents/hook-writer.js";
 
 export interface SyncIssue {
-  type: "orphan" | "modified" | "symlink" | "missing" | "mcp";
+  type: "orphan" | "modified" | "symlink" | "missing" | "mcp" | "hooks";
   name: string;
   message: string;
 }
@@ -25,6 +26,7 @@ export interface SyncResult {
   gitignoreUpdated: boolean;
   symlinksRepaired: number;
   mcpRepaired: number;
+  hooksRepaired: number;
 }
 
 export async function runSync(opts: SyncOptions): Promise<SyncResult> {
@@ -134,11 +136,29 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
+  // 8. Verify and repair hook configs
+  let hooksRepaired = 0;
+  const hookDecls = toHookDeclarations(config.hooks);
+
+  const hookIssues = await verifyHookConfigs(projectRoot, config.agents, hookDecls);
+  if (hookIssues.length > 0) {
+    await writeHookConfigs(projectRoot, config.agents, hookDecls);
+    hooksRepaired = hookIssues.length;
+    for (const issue of hookIssues) {
+      issues.push({
+        type: "hooks",
+        name: issue.agent,
+        message: issue.issue,
+      });
+    }
+  }
+
   return {
     issues,
     gitignoreUpdated: config.gitignore,
     symlinksRepaired,
     mcpRepaired,
+    hooksRepaired,
   };
 }
 
@@ -160,6 +180,10 @@ export default async function sync(): Promise<void> {
     console.log(chalk.green(`Repaired ${result.mcpRepaired} MCP config(s)`));
   }
 
+  if (result.hooksRepaired > 0) {
+    console.log(chalk.green(`Repaired ${result.hooksRepaired} hook config(s)`));
+  }
+
   if (result.issues.length === 0) {
     console.log(chalk.green("Everything in sync."));
     return;
@@ -170,6 +194,7 @@ export default async function sync(): Promise<void> {
       case "orphan":
       case "modified":
       case "mcp":
+      case "hooks":
         console.log(chalk.yellow(`  warn: ${issue.message}`));
         break;
       case "missing":

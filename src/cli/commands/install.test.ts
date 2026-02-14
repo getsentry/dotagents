@@ -191,4 +191,31 @@ describe("runInstall", () => {
     expect(mcp.mcpServers.github).toBeDefined();
     expect(mcp.mcpServers.github.command).toBe("npx");
   });
+
+  it("writes hook configs for declared agents", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\nagents = ["claude"]\n\n[[hooks]]\nevent = "PreToolUse"\nmatcher = "Bash"\ncommand = ".agents/hooks/block-rm.sh"\n`,
+    );
+
+    const result = await runInstall({ projectRoot });
+    expect(result.hookWarnings).toHaveLength(0);
+
+    const { readFile } = await import("node:fs/promises");
+    const settings = JSON.parse(await readFile(join(projectRoot, ".claude", "settings.json"), "utf-8"));
+    expect(settings.hooks.PreToolUse).toEqual([
+      { matcher: "Bash", hooks: [{ type: "command", command: ".agents/hooks/block-rm.sh" }] },
+    ]);
+  });
+
+  it("returns hook warnings for unsupported agents", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\nagents = ["codex"]\n\n[[hooks]]\nevent = "Stop"\ncommand = "check.sh"\n`,
+    );
+
+    const result = await runInstall({ projectRoot });
+    expect(result.hookWarnings).toHaveLength(1);
+    expect(result.hookWarnings[0]!.agent).toBe("codex");
+  });
 });
