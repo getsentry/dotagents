@@ -95,6 +95,15 @@ const hookSchema = z.object({
 
 export type HookConfig = z.infer<typeof hookSchema>;
 
+const trustConfigSchema = z.object({
+  allow_all: z.boolean().default(false),
+  github_orgs: z.array(z.string()).default([]),
+  github_repos: z.array(z.string()).default([]),
+  git_domains: z.array(z.string()).default([]),
+});
+
+export type TrustConfig = z.infer<typeof trustConfigSchema>;
+
 export const agentsConfigSchema = z.object({
   version: z.literal(1),
   gitignore: z.boolean().default(true),
@@ -104,6 +113,7 @@ export const agentsConfigSchema = z.object({
   skills: z.array(skillDependencySchema).default([]),
   mcp: z.array(mcpSchema).default([]),
   hooks: z.array(hookSchema).default([]),
+  trust: trustConfigSchema.optional(),
 });
 
 export type AgentsConfig = z.infer<typeof agentsConfigSchema>;

@@ -6,6 +6,7 @@ import { addSkillToConfig } from "../../config/writer.js";
 import { parseSource, resolveSkill } from "../../skills/resolver.js";
 import { discoverAllSkills } from "../../skills/discovery.js";
 import { ensureCached } from "../../sources/cache.js";
+import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import { runInstall } from "./install.js";
 
 export class AddError extends Error {
@@ -25,6 +26,12 @@ export interface AddOptions {
 export async function runAdd(opts: AddOptions): Promise<string> {
   const { projectRoot, specifier, ref, name: nameOverride } = opts;
   const configPath = join(projectRoot, "agents.toml");
+
+  // Load config early so we can check trust before any network work
+  const config = await loadConfig(configPath);
+
+  // Validate trust before resolution
+  validateTrustedSource(specifier, config.trust);
 
   // Parse the specifier
   const parsed = parseSource(specifier);
@@ -89,7 +96,6 @@ export async function runAdd(opts: AddOptions): Promise<string> {
   }
 
   // Check if skill already exists in config
-  const config = await loadConfig(configPath);
   if (config.skills.some((s) => s.name === skillName)) {
     throw new AddError(
       `Skill "${skillName}" already exists in agents.toml. Remove it first or use 'dotagents update'.`,
@@ -145,7 +151,7 @@ export default async function add(args: string[]): Promise<void> {
     });
     console.log(chalk.green(`Added skill: ${name}`));
   } catch (err) {
-    if (err instanceof AddError) {
+    if (err instanceof AddError || err instanceof TrustError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

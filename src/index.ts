@@ -6,7 +6,9 @@ export type {
   ProjectConfig,
   SkillSource,
   McpConfig,
+  TrustConfig,
 } from "./config/index.js";
+export { validateTrustedSource, extractDomain, TrustError } from "./trust/index.js";
 export { getAgent, allAgentIds, writeMcpConfigs, verifyMcpConfigs } from "./agents/index.js";
 export type { AgentDefinition, McpDeclaration, McpConfigSpec, McpSerializer } from "./agents/index.js";
 export { writeAgentsGitignore, removeAgentsGitignore, updateAgentsGitignore } from "./gitignore/index.js";

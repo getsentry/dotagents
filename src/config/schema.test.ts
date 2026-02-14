@@ -262,6 +262,64 @@ describe("agentsConfigSchema", () => {
     });
   });
 
+  describe("trust section", () => {
+    it("parses trust with all fields", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        trust: {
+          allow_all: false,
+          github_orgs: ["getsentry", "anthropics"],
+          github_repos: ["external-org/one-approved"],
+          git_domains: ["git.corp.example.com"],
+        },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.trust).toEqual({
+          allow_all: false,
+          github_orgs: ["getsentry", "anthropics"],
+          github_repos: ["external-org/one-approved"],
+          git_domains: ["git.corp.example.com"],
+        });
+      }
+    });
+
+    it("applies defaults for missing arrays", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        trust: { github_orgs: ["getsentry"] },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.trust).toEqual({
+          allow_all: false,
+          github_orgs: ["getsentry"],
+          github_repos: [],
+          git_domains: [],
+        });
+      }
+    });
+
+    it("parses allow_all = true", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        trust: { allow_all: true },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.trust?.allow_all).toBe(true);
+      }
+    });
+
+    it("is undefined when trust section is absent", () => {
+      const result = agentsConfigSchema.safeParse({ version: 1 });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.trust).toBeUndefined();
+      }
+    });
+  });
+
   describe("backward compatibility", () => {
     it("parses config without agents or mcp fields", () => {
       const result = agentsConfigSchema.safeParse({

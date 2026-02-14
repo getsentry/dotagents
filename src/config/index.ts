@@ -12,4 +12,5 @@ export type {
   ProjectConfig,
   SkillSource,
   McpConfig,
+  TrustConfig,
 } from "./schema.js";

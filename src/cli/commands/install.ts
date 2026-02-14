@@ -8,6 +8,7 @@ import { writeLockfile } from "../../lockfile/writer.js";
 import { isGitLocked } from "../../lockfile/schema.js";
 import type { Lockfile, LockedSkill } from "../../lockfile/schema.js";
 import { resolveSkill } from "../../skills/resolver.js";
+import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import type { ResolvedSkill } from "../../skills/resolver.js";
 import { hashDirectory } from "../../utils/hash.js";
 import { copyDir } from "../../utils/fs.js";
@@ -74,6 +75,10 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
 
     for (const name of skillNames) {
       const dep = config.skills.find((s) => s.name === name)!;
+
+      // Validate trust before any network work
+      validateTrustedSource(dep.source, config.trust);
+
       const locked = lockfile?.skills[name];
 
       const lockedCommit =
@@ -187,7 +192,7 @@ export default async function install(args: string[]): Promise<void> {
       console.log(chalk.yellow(`  warn: ${w.message}`));
     }
   } catch (err) {
-    if (err instanceof InstallError) {
+    if (err instanceof InstallError || err instanceof TrustError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

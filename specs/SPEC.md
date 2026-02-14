@@ -79,6 +79,39 @@ headers = { Authorization = "Bearer tok" }
 | `symlinks` | No | Symlink configuration (legacy — prefer `agents` for new projects). |
 | `skills` | No | Skill dependencies (array of tables). |
 | `mcp` | No | MCP server declarations (array of tables). Generates agent-specific config files during install/sync. |
+| `trust` | No | Trusted source restrictions. When absent, all sources allowed. See `[trust]` below. |
+
+#### `[trust]`
+
+Optional section to restrict which skill sources are allowed. Useful for teams that want to lock down skill provenance.
+
+```toml
+# Restrictive: only allow specific sources
+[trust]
+github_orgs = ["getsentry", "anthropics"]      # owner/repo where owner matches
+github_repos = ["external-org/one-approved"]    # exact owner/repo match
+git_domains = ["git.corp.example.com"]          # domain extracted from git: URLs
+
+# Explicit opt-out: trust everything (makes intent clear in shared repos)
+[trust]
+allow_all = true
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `allow_all` | No | When `true`, all sources are allowed (ignores other fields). Defaults to `false`. |
+| `github_orgs` | No | Array of GitHub org/user names. A GitHub source `owner/repo` passes if `owner` matches. Defaults to `[]`. |
+| `github_repos` | No | Array of exact `owner/repo` strings. Defaults to `[]`. |
+| `git_domains` | No | Array of domain names. A `git:` source passes if its domain matches. Defaults to `[]`. |
+
+**Semantics:**
+- `[trust]` absent → all sources allowed (backward compat)
+- `allow_all = true` → all sources allowed (explicit intent)
+- `[trust]` present without `allow_all` → only matching sources allowed (allow-list)
+- A source passes if it matches ANY rule (org OR repo OR domain)
+- Local `path:` sources are always allowed (already sandboxed to project root)
+
+Trust is checked before any network work in both `dotagents add` and `dotagents install`.
 
 #### `[project]`
 
