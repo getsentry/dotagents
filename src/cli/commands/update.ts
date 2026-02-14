@@ -5,6 +5,7 @@ import { loadConfig } from "../../config/loader.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { isGitLocked } from "../../lockfile/schema.js";
 import { resolveSkill } from "../../skills/resolver.js";
+import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import { hashDirectory } from "../../utils/hash.js";
 import { copyDir } from "../../utils/fs.js";
 import { writeLockfile } from "../../lockfile/writer.js";
@@ -62,6 +63,9 @@ export async function runUpdate(opts: UpdateOptions): Promise<UpdatedSkill[]> {
 
     // Skip non-git sources (local paths are always re-copied by install)
     if (!isGitLocked(locked)) continue;
+
+    // Validate trust before any network work
+    validateTrustedSource(dep.source, config.trust);
 
     // Skip pinned commits (SHA refs are immutable)
     if (dep.ref && /^[a-f0-9]{40}$/.test(dep.ref)) continue;
@@ -133,7 +137,7 @@ export default async function update(args: string[]): Promise<void> {
     }
     console.log(chalk.green(`Updated ${updated.length} skill(s).`));
   } catch (err) {
-    if (err instanceof UpdateError) {
+    if (err instanceof UpdateError || err instanceof TrustError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

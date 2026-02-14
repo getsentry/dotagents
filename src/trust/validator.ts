@@ -72,11 +72,11 @@ export function validateTrustedSource(
   if (parsed.type === "local") return;
 
   if (parsed.type === "github") {
-    const owner = parsed.owner!;
-    const repo = `${owner}/${parsed.repo!}`;
+    const owner = parsed.owner!.toLowerCase();
+    const repo = `${owner}/${parsed.repo!.toLowerCase()}`;
 
-    if (trust.github_orgs.includes(owner)) return;
-    if (trust.github_repos.includes(repo)) return;
+    if (trust.github_orgs.some((o) => o.toLowerCase() === owner)) return;
+    if (trust.github_repos.some((r) => r.toLowerCase() === repo)) return;
 
     throw new TrustError(
       `Source "${source}" is not trusted. ` +
@@ -86,8 +86,8 @@ export function validateTrustedSource(
   }
 
   if (parsed.type === "git") {
-    const domain = extractDomain(parsed.url!);
-    if (domain && trust.git_domains.includes(domain)) return;
+    const domain = extractDomain(parsed.url!)?.toLowerCase();
+    if (domain && trust.git_domains.some((d) => d.toLowerCase() === domain)) return;
 
     throw new TrustError(
       `Source "${source}" is not trusted. ` +

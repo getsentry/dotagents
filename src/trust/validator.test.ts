@@ -129,6 +129,27 @@ describe("validateTrustedSource", () => {
     });
   });
 
+  describe("case-insensitive matching", () => {
+    it("matches GitHub orgs case-insensitively", () => {
+      const trust = makeTrust({ github_orgs: ["getsentry"] });
+      expect(() => validateTrustedSource("GetSentry/repo", trust)).not.toThrow();
+      expect(() => validateTrustedSource("GETSENTRY/repo", trust)).not.toThrow();
+    });
+
+    it("matches GitHub repos case-insensitively", () => {
+      const trust = makeTrust({ github_repos: ["MyOrg/MyRepo"] });
+      expect(() => validateTrustedSource("myorg/myrepo", trust)).not.toThrow();
+      expect(() => validateTrustedSource("MYORG/MYREPO", trust)).not.toThrow();
+    });
+
+    it("matches git domains case-insensitively", () => {
+      const trust = makeTrust({ git_domains: ["git.corp.example.com"] });
+      expect(() =>
+        validateTrustedSource("git:https://Git.Corp.Example.COM/repo.git", trust),
+      ).not.toThrow();
+    });
+  });
+
   describe("error messages", () => {
     it("includes the rejected source", () => {
       const trust = makeTrust({ github_orgs: ["getsentry"] });
