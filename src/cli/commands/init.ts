@@ -51,12 +51,13 @@ export async function runInit(opts: InitOptions): Promise<void> {
     symlinkResults.push({ target, ...result });
   }
 
-  // Create agent-specific symlinks (dedup with legacy targets)
-  const legacyTargetSet = new Set(targets);
+  // Create agent-specific symlinks (dedup with legacy targets and across agents)
+  const seenParentDirs = new Set(targets);
   for (const agentId of config.agents) {
     const agent = getAgent(agentId);
     if (!agent) continue;
-    if (legacyTargetSet.has(agent.skillsParentDir)) continue;
+    if (seenParentDirs.has(agent.skillsParentDir)) continue;
+    seenParentDirs.add(agent.skillsParentDir);
     const targetDir = join(projectRoot, agent.skillsParentDir);
     const result = await ensureSkillsSymlink(agentsDir, targetDir);
     symlinkResults.push({ target: agent.skillsParentDir, ...result });

@@ -17,12 +17,13 @@ const serializeClaude: McpSerializer = (s: McpDeclaration) => {
   if (s.url) {
     return [s.name, { url: s.url, ...(s.headers && { headers: s.headers }) }];
   }
+  const env = envRecord(s.env, (k) => `\${${k}}`);
   return [
     s.name,
     {
       command: s.command,
       args: s.args ?? [],
-      ...(envRecord(s.env, (k) => `\${${k}}`) && { env: envRecord(s.env, (k) => `\${${k}}`) }),
+      ...(env && { env }),
     },
   ];
 };
@@ -40,13 +41,14 @@ const serializeVscode: McpSerializer = (s: McpDeclaration) => {
   if (s.url) {
     return [s.name, { type: "sse", url: s.url, ...(s.headers && { headers: s.headers }) }];
   }
+  const env = envRecord(s.env, (k) => `\${input:${k}}`);
   return [
     s.name,
     {
       type: "stdio",
       command: s.command,
       args: s.args ?? [],
-      ...(envRecord(s.env, (k) => `\${input:${k}}`) && { env: envRecord(s.env, (k) => `\${input:${k}}`) }),
+      ...(env && { env }),
     },
   ];
 };
@@ -60,12 +62,13 @@ const serializeOpencode: McpSerializer = (s: McpDeclaration) => {
   if (s.url) {
     return [s.name, { type: "remote", url: s.url, ...(s.headers && { headers: s.headers }) }];
   }
+  const env = envRecord(s.env, (k) => `\${${k}}`);
   return [
     s.name,
     {
       type: "local",
       command: [s.command!, ...(s.args ?? [])],
-      ...(envRecord(s.env, (k) => `\${${k}}`) && { environment: envRecord(s.env, (k) => `\${${k}}`) }),
+      ...(env && { environment: env }),
     },
   ];
 };

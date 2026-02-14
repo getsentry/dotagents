@@ -135,12 +135,13 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     await ensureSkillsSymlink(agentsDir, join(projectRoot, target));
   }
 
-  // 5. Create agent-specific symlinks (dedup with legacy targets)
-  const legacyTargetSet = new Set(targets);
+  // 5. Create agent-specific symlinks (dedup with legacy targets and across agents)
+  const seenParentDirs = new Set(targets);
   for (const agentId of config.agents) {
     const agent = getAgent(agentId);
     if (!agent) continue;
-    if (legacyTargetSet.has(agent.skillsParentDir)) continue;
+    if (seenParentDirs.has(agent.skillsParentDir)) continue;
+    seenParentDirs.add(agent.skillsParentDir);
     await ensureSkillsSymlink(agentsDir, join(projectRoot, agent.skillsParentDir));
   }
 

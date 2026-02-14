@@ -100,13 +100,14 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     symlinksRepaired++;
   }
 
-  // 6. Verify and repair agent-specific symlinks
-  const legacyTargetSet = new Set(targets);
+  // 6. Verify and repair agent-specific symlinks (dedup across agents)
+  const seenParentDirs = new Set(targets);
   const agentTargets: string[] = [];
   for (const agentId of config.agents) {
     const agent = getAgent(agentId);
     if (!agent) continue;
-    if (legacyTargetSet.has(agent.skillsParentDir)) continue;
+    if (seenParentDirs.has(agent.skillsParentDir)) continue;
+    seenParentDirs.add(agent.skillsParentDir);
     agentTargets.push(join(projectRoot, agent.skillsParentDir));
   }
 
