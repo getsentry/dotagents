@@ -1,12 +1,35 @@
 version = 1
 
-[defaults.output]
+[defaults]
 failOn = "high"
-commentOn = "medium"
+reportOn = "medium"
+ignorePaths = ["dist/**"]
 
-[[triggers]]
-name = "find-bugs"
-event = "pull_request"
+[[skills]]
+name = "notseer"
+paths = ["src/**/*.ts"]
+ignorePaths = ["src/**/*.test.ts"]
+
+[[skills.triggers]]
+type = "pull_request"
 actions = ["opened", "synchronize", "reopened"]
-skill = "find-bugs"
+
+[[skills]]
+name = "security-review"
 remote = "getsentry/sentry-skills"
+paths = ["src/**/*.ts"]
+ignorePaths = ["src/**/*.test.ts"]
+
+[[skills.triggers]]
+type = "pull_request"
+actions = ["opened", "synchronize", "reopened"]
+
+# TODO: enable once getsentry/warden#144 lands
+# [[skills]]
+# name = "warden-lint-judge"
+# remote = "getsentry/skills"
+# scope = "report"
+#
+# [[skills.triggers]]
+# type = "pull_request"
+# actions = ["opened", "synchronize", "reopened"]
