@@ -6,7 +6,8 @@ reportOn = "medium"
 ignorePaths = ["dist/**"]
 
 [[skills]]
-name = "notseer"
+name = "find-bugs"
+remote = "getsentry/skills"
 paths = ["src/**/*.ts"]
 ignorePaths = ["src/**/*.test.ts"]
 
