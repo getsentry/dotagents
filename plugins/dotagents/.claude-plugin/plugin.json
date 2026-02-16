@@ -1,0 +1,7 @@
+{
+  "name": "dotagents",
+  "description": "Manage agent skill dependencies with dotagents",
+  "author": {
+    "name": "Sentry"
+  }
+}

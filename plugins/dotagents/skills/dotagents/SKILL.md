@@ -1,0 +1,66 @@
+---
+name: dotagents
+description: Manage agent skill dependencies with dotagents. Use when asked to "add a skill", "install skills", "remove a skill", "update skills", "dotagents init", "agents.toml", "agents.lock", "sync skills", "list skills", "set up dotagents", "configure trust", "add MCP server", "add hook", or any dotagents-related task.
+---
+
+Manage agent skill dependencies declared in `agents.toml`. dotagents resolves, installs, and symlinks skills so multiple agent tools (Claude Code, Cursor, Codex, etc.) discover them from `.agents/skills/`.
+
+## References
+
+Read the relevant reference when the task requires deeper detail:
+
+| Document | Read When |
+|----------|-----------|
+| `${CLAUDE_SKILL_ROOT}/references/cli-reference.md` | Full command options, flags, examples |
+| `${CLAUDE_SKILL_ROOT}/references/configuration.md` | Editing agents.toml, source formats, trust, MCP, hooks |
+| `${CLAUDE_SKILL_ROOT}/references/config-schema.md` | Exact field names, types, and defaults |
+
+## Quick Start
+
+```bash
+# Initialize a new project (interactive TUI)
+dotagents init
+
+# Add a skill from GitHub
+dotagents add getsentry/skills
+
+# Add a pinned skill
+dotagents add getsentry/warden@v1.0.0
+
+# Install all dependencies from agents.toml
+dotagents install
+
+# List installed skills
+dotagents list
+```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `dotagents init` | Initialize `agents.toml` and `.agents/` directory |
+| `dotagents install` | Install all skills from `agents.toml` |
+| `dotagents add <specifier>` | Add a skill dependency |
+| `dotagents remove <name>` | Remove a skill |
+| `dotagents update [name]` | Update skills to latest versions |
+| `dotagents sync` | Reconcile state (adopt orphans, repair symlinks, verify integrity) |
+| `dotagents list` | Show installed skills and their status |
+
+For full options and flags, read `${CLAUDE_SKILL_ROOT}/references/cli-reference.md`.
+
+## Source Formats
+
+| Format | Example | Description |
+|--------|---------|-------------|
+| GitHub | `getsentry/skills` | GitHub owner/repo |
+| GitHub pinned | `getsentry/warden@v1.0.0` | With tag, branch, or commit |
+| Git URL | `git:https://git.corp.dev/team/skills` | Any git remote |
+| Local path | `path:./my-skills/custom` | Relative to project root |
+
+## Key Concepts
+
+- **`.agents/skills/`** is the canonical home for all installed skills
+- **`agents.toml`** declares dependencies; **`agents.lock`** pins exact commits and integrity hashes
+- **Symlinks**: `.claude/skills/`, `.cursor/skills/`, etc. point to `.agents/skills/`
+- **Trust**: Optional `[trust]` section restricts which sources are allowed
+- **Gitignore**: When `gitignore = true`, managed skills are gitignored; custom in-place skills are tracked

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "dotagents",
+  "description": "Package manager for .agents directories — manages agent skill dependencies, lockfiles, and symlinks",
+  "owner": {
+    "name": "dcramer",
+    "email": "dcramer@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "dotagents",
+      "description": "Manage agent skill dependencies with dotagents",
+      "author": {
+        "name": "Sentry"
+      },
+      "source": "./plugins/dotagents",
+      "category": "package-management"
+    }
+  ]
+}
