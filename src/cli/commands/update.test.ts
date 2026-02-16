@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runUpdate, UpdateError } from "./update.js";
@@ -120,5 +120,37 @@ describe("runUpdate", () => {
     const updated = await runUpdate({ projectRoot, skillName: "pdf" });
     // Both changed since they come from the same repo and re-resolved
     expect(updated.some((u) => u.name === "pdf")).toBe(true);
+  });
+
+  it("excludes in-place skills from gitignore after update", async () => {
+    // Install a regular git skill
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+    await runInstall({ projectRoot });
+
+    // Simulate an adopted orphan alongside the git skill
+    const inPlaceDir = join(projectRoot, ".agents", "skills", "local-skill");
+    await mkdir(inPlaceDir, { recursive: true });
+    await writeFile(join(inPlaceDir, "SKILL.md"), SKILL_MD("local-skill"));
+
+    // Add in-place skill to config
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "local-skill"\nsource = "path:.agents/skills/local-skill"\n`,
+    );
+
+    // Make a change in the repo so update has something to do
+    await writeFile(join(repoDir, "pdf", "extra.md"), "changed");
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "change pdf"], { cwd: repoDir });
+    await rm(stateDir, { recursive: true, force: true });
+
+    await runUpdate({ projectRoot });
+
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).toContain("/skills/pdf/");
+    expect(gitignore).not.toContain("/skills/local-skill/");
   });
 });

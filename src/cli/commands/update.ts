@@ -12,6 +12,11 @@ import { writeLockfile } from "../../lockfile/writer.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import type { Lockfile, LockedSkill } from "../../lockfile/schema.js";
 
+/** A skill whose source points to its own install location (adopted orphan). */
+function isInPlaceSkill(source: string): boolean {
+  return source.startsWith("path:.agents/skills/");
+}
+
 export class UpdateError extends Error {
   constructor(message: string) {
     super(message);
@@ -105,7 +110,8 @@ export async function runUpdate(opts: UpdateOptions): Promise<UpdatedSkill[]> {
   // Write updated lockfile
   if (updated.length > 0) {
     await writeLockfile(lockPath, newLock);
-    await updateAgentsGitignore(agentsDir, config.gitignore, config.skills.map((s) => s.name));
+    const managedNames = config.skills.filter((s) => !isInPlaceSkill(s.source)).map((s) => s.name);
+    await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
   }
 
   return updated;
