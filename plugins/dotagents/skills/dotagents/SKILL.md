@@ -11,9 +11,9 @@ Read the relevant reference when the task requires deeper detail:
 
 | Document | Read When |
 |----------|-----------|
-| `${CLAUDE_SKILL_ROOT}/references/cli-reference.md` | Full command options, flags, examples |
-| `${CLAUDE_SKILL_ROOT}/references/configuration.md` | Editing agents.toml, source formats, trust, MCP, hooks |
-| `${CLAUDE_SKILL_ROOT}/references/config-schema.md` | Exact field names, types, and defaults |
+| [references/cli-reference.md](references/cli-reference.md) | Full command options, flags, examples |
+| [references/configuration.md](references/configuration.md) | Editing agents.toml, source formats, trust, MCP, hooks |
+| [references/config-schema.md](references/config-schema.md) | Exact field names, types, and defaults |
 
 ## Quick Start
 
@@ -46,7 +46,7 @@ dotagents list
 | `dotagents sync` | Reconcile state (adopt orphans, repair symlinks, verify integrity) |
 | `dotagents list` | Show installed skills and their status |
 
-For full options and flags, read `${CLAUDE_SKILL_ROOT}/references/cli-reference.md`.
+For full options and flags, read [references/cli-reference.md](references/cli-reference.md).
 
 ## Source Formats
 
