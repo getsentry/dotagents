@@ -172,9 +172,7 @@ async function runInteractiveInit(projectRoot: string, force?: boolean): Promise
     const github_orgs = entries.filter((e) => !e.includes("/"));
     const github_repos = entries.filter((e) => e.includes("/"));
 
-    if (github_orgs.length > 0 || github_repos.length > 0) {
-      trust = { allow_all: false, github_orgs, github_repos, git_domains: [] };
-    }
+    trust = { allow_all: false, github_orgs, github_repos, git_domains: [] };
   }
 
   await runInit({
