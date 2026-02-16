@@ -39,6 +39,66 @@ describe("writer", () => {
       const content = generateDefaultConfig();
       expect(content).toContain("gitignore = false");
     });
+
+    it("sets gitignore = true when requested", () => {
+      const content = generateDefaultConfig({ gitignore: true });
+      expect(content).toContain("gitignore = true");
+    });
+
+    it("includes agents when provided via options object", () => {
+      const content = generateDefaultConfig({ agents: ["claude", "cursor"] });
+      expect(content).toContain('agents = ["claude", "cursor"]');
+    });
+
+    it("backwards-compat: accepts bare string[]", () => {
+      const content = generateDefaultConfig(["claude"]);
+      expect(content).toContain('agents = ["claude"]');
+    });
+
+    it("includes [trust] with allow_all", () => {
+      const content = generateDefaultConfig({
+        trust: { allow_all: true, github_orgs: [], github_repos: [], git_domains: [] },
+      });
+      expect(content).toContain("[trust]");
+      expect(content).toContain("allow_all = true");
+    });
+
+    it("includes [trust] with restrictions", () => {
+      const content = generateDefaultConfig({
+        trust: {
+          allow_all: false,
+          github_orgs: ["anthropics"],
+          github_repos: ["owner/repo"],
+          git_domains: ["gitlab.example.com"],
+        },
+      });
+      expect(content).toContain("[trust]");
+      expect(content).toMatch(/github_orgs\s*=.*"anthropics"/);
+      expect(content).toMatch(/github_repos\s*=.*"owner\/repo"/);
+      expect(content).toMatch(/git_domains\s*=.*"gitlab\.example\.com"/);
+      expect(content).not.toContain("allow_all");
+    });
+
+    it("omits [trust] when no restrictions set", () => {
+      const content = generateDefaultConfig({
+        trust: { allow_all: false, github_orgs: [], github_repos: [], git_domains: [] },
+      });
+      expect(content).not.toContain("[trust]");
+    });
+
+    it("generates valid TOML with all options combined", async () => {
+      const content = generateDefaultConfig({
+        agents: ["claude"],
+        gitignore: true,
+        trust: { allow_all: false, github_orgs: ["my-org"], github_repos: [], git_domains: [] },
+      });
+      await writeFile(configPath, content);
+      const config = await loadConfig(configPath);
+      expect(config.version).toBe(1);
+      expect(config.gitignore).toBe(true);
+      expect(config.agents).toEqual(["claude"]);
+      expect(config.trust?.github_orgs).toEqual(["my-org"]);
+    });
   });
 
   describe("addSkillToConfig", () => {

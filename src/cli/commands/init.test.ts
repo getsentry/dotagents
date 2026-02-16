@@ -117,4 +117,32 @@ describe("runInit", () => {
       runInit({ projectRoot: dir, agents: ["emacs"] }),
     ).rejects.toThrow(/Unknown agent/);
   });
+
+  it("creates .agents/.gitignore when gitignore option is true", async () => {
+    await runInit({ projectRoot: dir, gitignore: true });
+
+    const config = await loadConfig(join(dir, "agents.toml"));
+    expect(config.gitignore).toBe(true);
+    expect(existsSync(join(dir, ".agents", ".gitignore"))).toBe(true);
+  });
+
+  it("writes trust section when trust option is provided", async () => {
+    await runInit({
+      projectRoot: dir,
+      trust: { allow_all: false, github_orgs: ["my-org"], github_repos: [], git_domains: [] },
+    });
+
+    const config = await loadConfig(join(dir, "agents.toml"));
+    expect(config.trust?.github_orgs).toEqual(["my-org"]);
+  });
+
+  it("writes allow_all trust when specified", async () => {
+    await runInit({
+      projectRoot: dir,
+      trust: { allow_all: true, github_orgs: [], github_repos: [], git_domains: [] },
+    });
+
+    const config = await loadConfig(join(dir, "agents.toml"));
+    expect(config.trust?.allow_all).toBe(true);
+  });
 });

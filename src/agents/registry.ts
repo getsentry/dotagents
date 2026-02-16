@@ -18,3 +18,7 @@ export function getAgent(id: string): AgentDefinition | undefined {
 export function allAgentIds(): string[] {
   return [...AGENT_REGISTRY.keys()];
 }
+
+export function allAgents(): AgentDefinition[] {
+  return ALL_AGENTS;
+}

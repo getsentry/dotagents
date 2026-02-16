@@ -6,17 +6,20 @@ import { generateDefaultConfig } from "../../config/writer.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { loadConfig } from "../../config/loader.js";
-import { getAgent, allAgentIds } from "../../agents/registry.js";
+import { getAgent, allAgentIds, allAgents } from "../../agents/registry.js";
 import { parseArgs } from "node:util";
+import type { TrustConfig } from "../../config/schema.js";
 
 export interface InitOptions {
   force?: boolean;
   agents?: string[];
+  gitignore?: boolean;
+  trust?: TrustConfig;
   projectRoot: string;
 }
 
 export async function runInit(opts: InitOptions): Promise<void> {
-  const { projectRoot, force, agents } = opts;
+  const { projectRoot, force, agents, gitignore, trust } = opts;
   const configPath = join(projectRoot, "agents.toml");
   const agentsDir = join(projectRoot, ".agents");
   const skillsDir = join(agentsDir, "skills");
@@ -36,7 +39,7 @@ export async function runInit(opts: InitOptions): Promise<void> {
     }
   }
 
-  await writeFile(configPath, generateDefaultConfig(agents), "utf-8");
+  await writeFile(configPath, generateDefaultConfig({ agents, gitignore, trust }), "utf-8");
   await mkdir(skillsDir, { recursive: true });
 
   // Set up gitignore and symlinks based on config
@@ -101,6 +104,90 @@ export class InitError extends Error {
   }
 }
 
+class CancelledError extends Error {}
+
+const BANNER = `
+     _       _                         _
+  __| | ___ | |_  __ _  __ _  ___ _ __| |_ ___
+ / _\` |/ _ \\| __|/ _\` |/ _\` |/ _ \\ '_ \\ __/ __|
+| (_| | (_) | |_| (_| | (_| |  __/ | | | |_\\__ \\
+ \\__,_|\\___/ \\__|\\__,_|\\__, |\\___|_| |_|\\__|___/
+                       |___/
+`;
+
+async function runInteractiveInit(projectRoot: string, force?: boolean): Promise<void> {
+  const clack = await import("@clack/prompts");
+
+  function cancelled(): never {
+    clack.outro("Setup cancelled.");
+    // eslint-disable-next-line no-restricted-syntax
+    throw new CancelledError();
+  }
+
+  function prompt<T>(result: T | symbol): T {
+    if (clack.isCancel(result)) cancelled();
+    return result;
+  }
+
+  clack.intro(BANNER);
+
+  const selectedAgents = prompt(
+    await clack.multiselect({
+      message: "Which agents do you use?",
+      options: allAgents().map((a) => ({ label: a.displayName, value: a.id })),
+      required: false,
+    }),
+  );
+
+  const gitignore = prompt(
+    await clack.confirm({
+      message: "Manage a .gitignore inside .agents/?",
+      initialValue: false,
+    }),
+  );
+
+  const trustMode = prompt(
+    await clack.select({
+      message: "Skill source trust policy:",
+      options: [
+        { label: "Allow all sources", value: "allow_all" as const },
+        { label: "Restrict to trusted sources", value: "restricted" as const },
+      ],
+    }),
+  );
+
+  let trust: TrustConfig | undefined;
+  if (trustMode === "allow_all") {
+    trust = { allow_all: true, github_orgs: [], github_repos: [], git_domains: [] };
+  } else {
+    const sourcesInput = prompt(
+      await clack.text({
+        message: "Trusted GitHub sources (comma-separated, or leave blank):",
+        placeholder: "e.g. getsentry, getsentry/skills",
+        defaultValue: "",
+      }),
+    );
+
+    const entries = sourcesInput.split(",").map((x) => x.trim()).filter(Boolean);
+    const github_orgs = entries.filter((e) => !e.includes("/"));
+    const github_repos = entries.filter((e) => e.includes("/"));
+
+    if (github_orgs.length > 0 || github_repos.length > 0) {
+      trust = { allow_all: false, github_orgs, github_repos, git_domains: [] };
+    }
+  }
+
+  await runInit({
+    projectRoot,
+    force,
+    agents: selectedAgents.length > 0 ? selectedAgents : undefined,
+    gitignore,
+    trust,
+  });
+
+  clack.outro("You're all set! Run `dotagents add` to install your first skill.");
+}
+
 export default async function init(args: string[]): Promise<void> {
   const { values } = parseArgs({
     args,
@@ -112,13 +199,22 @@ export default async function init(args: string[]): Promise<void> {
   });
 
   const { resolve } = await import("node:path");
-  const agents = values["agents"]
-    ? values["agents"].split(",").map((s) => s.trim()).filter(Boolean)
-    : undefined;
+  const projectRoot = resolve(".");
 
   try {
-    await runInit({ projectRoot: resolve("."), force: values["force"], agents });
+    // Interactive mode: TTY with no --agents flag
+    if (process.stdout.isTTY && values["agents"] === undefined) {
+      await runInteractiveInit(projectRoot, values["force"]);
+      return;
+    }
+
+    const agents = values["agents"]
+      ? values["agents"].split(",").map((s) => s.trim()).filter(Boolean)
+      : undefined;
+
+    await runInit({ projectRoot, force: values["force"], agents });
   } catch (err) {
+    if (err instanceof CancelledError) return;
     if (err instanceof InitError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;

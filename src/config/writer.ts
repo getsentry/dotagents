@@ -1,6 +1,12 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { stringify } from "smol-toml";
-import type { SkillDependency } from "./schema.js";
+import type { SkillDependency, TrustConfig } from "./schema.js";
+
+export interface DefaultConfigOptions {
+  agents?: string[];
+  gitignore?: boolean;
+  trust?: TrustConfig;
+}
 
 /**
  * Add a skill entry to agents.toml.
@@ -76,18 +82,46 @@ function removeBlockByName(content: string, name: string): string {
   return result.join("\n");
 }
 
+function tomlArray(values: string[]): string {
+  return stringify({ v: values }).replace("v = ", "");
+}
+
 /**
  * Generate a minimal agents.toml scaffold.
  */
-export function generateDefaultConfig(agents?: string[]): string {
-  let config = `version = 1
-# Check skills into git so collaborators get them without running 'dotagents install'.
-# Set to true (or remove) to gitignore managed skills instead.
-gitignore = false
-`;
-  if (agents && agents.length > 0) {
-    const list = agents.map((a) => `"${a}"`).join(", ");
+export function generateDefaultConfig(opts?: DefaultConfigOptions | string[]): string {
+  // Backwards compat: bare string[] treated as agents list
+  const options: DefaultConfigOptions = Array.isArray(opts) ? { agents: opts } : (opts ?? {});
+  const gitignore = options.gitignore ?? false;
+
+  let config = `version = 1\n`;
+  if (gitignore) {
+    config += `# Managed skills are gitignored; collaborators must run 'dotagents install'.\ngitignore = true\n`;
+  } else {
+    config += `# Check skills into git so collaborators get them without running 'dotagents install'.\n# Set to true (or remove) to gitignore managed skills instead.\ngitignore = false\n`;
+  }
+
+  if (options.agents && options.agents.length > 0) {
+    const list = options.agents.map((a) => `"${a}"`).join(", ");
     config += `agents = [${list}]\n`;
   }
+
+  if (options.trust) {
+    const t = options.trust;
+    if (t.allow_all) {
+      config += `\n[trust]\nallow_all = true\n`;
+    } else {
+      const fields = (
+        ["github_orgs", "github_repos", "git_domains"] as const
+      ).filter((k) => t[k].length > 0);
+      if (fields.length > 0) {
+        config += `\n[trust]\n`;
+        for (const key of fields) {
+          config += `${key} = ${tomlArray(t[key])}\n`;
+        }
+      }
+    }
+  }
+
   return config;
 }
