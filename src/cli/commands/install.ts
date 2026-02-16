@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
@@ -17,6 +17,11 @@ import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
 import { writeMcpConfigs, toMcpDeclarations } from "../../agents/mcp-writer.js";
 import { writeHookConfigs, toHookDeclarations } from "../../agents/hook-writer.js";
+
+/** A skill whose source points to its own install location (adopted orphan). */
+function isInPlaceSkill(source: string): boolean {
+  return source.startsWith("path:.agents/skills/");
+}
 
 export class InstallError extends Error {
   constructor(message: string) {
@@ -96,7 +101,11 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       }
 
       const destDir = join(skillsDir, name);
-      await copyDir(resolved.skillDir, destDir);
+
+      // Skip copy when source resolves to the install destination (in-place skills)
+      if (resolve(resolved.skillDir) !== resolve(destDir)) {
+        await copyDir(resolved.skillDir, destDir);
+      }
 
       const integrity = await hashDirectory(destDir);
 
@@ -133,8 +142,9 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     }
   }
 
-  // 3. Regenerate .agents/.gitignore
-  await updateAgentsGitignore(agentsDir, config.gitignore, skillNames);
+  // 3. Regenerate .agents/.gitignore (exclude in-place skills — they must be checked into git)
+  const managedNames = config.skills.filter((s) => !isInPlaceSkill(s.source)).map((s) => s.name);
+  await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
 
   // 4. Create/verify symlinks (legacy [symlinks] config)
   const targets = config.symlinks?.targets ?? [];

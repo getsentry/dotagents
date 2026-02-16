@@ -218,4 +218,48 @@ describe("runInstall", () => {
     expect(result.hookWarnings).toHaveLength(1);
     expect(result.hookWarnings[0]!.agent).toBe("codex");
   });
+
+  it("skips copy for in-place path skill", async () => {
+    // Pre-install the skill directory (simulating an adopted orphan)
+    const skillDir = join(projectRoot, ".agents", "skills", "local-skill");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("local-skill"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "local-skill"\nsource = "path:.agents/skills/local-skill"\n`,
+    );
+
+    const result = await runInstall({ projectRoot });
+    expect(result.installed).toContain("local-skill");
+
+    // Lockfile should have integrity and source
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile).not.toBeNull();
+    expect(lockfile!.skills["local-skill"]).toBeDefined();
+    expect(lockfile!.skills["local-skill"]!.integrity).toMatch(/^sha256-/);
+    expect(lockfile!.skills["local-skill"]!.source).toBe("path:.agents/skills/local-skill");
+  });
+
+  it("excludes in-place skills from gitignore", async () => {
+    // Pre-install the in-place skill
+    const skillDir = join(projectRoot, ".agents", "skills", "local-skill");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("local-skill"));
+
+    // Also have a sourced skill
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "local-skill"\nsource = "path:.agents/skills/local-skill"\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+
+    await runInstall({ projectRoot });
+
+    const { readFile: rf } = await import("node:fs/promises");
+    const gitignore = await rf(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    // Sourced skill should be gitignored
+    expect(gitignore).toContain("/skills/pdf/");
+    // In-place skill should NOT be gitignored
+    expect(gitignore).not.toContain("/skills/local-skill/");
+  });
 });

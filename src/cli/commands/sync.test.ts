@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runSync } from "./sync.js";
 import { writeLockfile } from "../../lockfile/writer.js";
+import { loadLockfile } from "../../lockfile/loader.js";
+import { loadConfig } from "../../config/loader.js";
 import { hashDirectory } from "../../utils/hash.js";
 
 const SKILL_MD = (name: string) => `---
@@ -26,20 +28,67 @@ describe("runSync", () => {
     await rm(tmpDir, { recursive: true });
   });
 
-  it("detects orphaned skills", async () => {
+  it("adopts orphaned skill into agents.toml and agents.lock", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       "version = 1\n",
     );
-    // Orphan: installed but not in config
     const orphanDir = join(projectRoot, ".agents", "skills", "orphan");
     await mkdir(orphanDir, { recursive: true });
     await writeFile(join(orphanDir, "SKILL.md"), SKILL_MD("orphan"));
 
     const result = await runSync({ projectRoot });
-    const orphanIssues = result.issues.filter((i) => i.type === "orphan");
-    expect(orphanIssues).toHaveLength(1);
-    expect(orphanIssues[0]!.name).toBe("orphan");
+
+    // Should be adopted, not reported as an issue
+    expect(result.adopted).toEqual(["orphan"]);
+    expect(result.issues).toHaveLength(0);
+
+    // agents.toml should now declare the skill with path: source
+    const config = await loadConfig(join(projectRoot, "agents.toml"));
+    const skill = config.skills.find((s) => s.name === "orphan");
+    expect(skill).toBeDefined();
+    expect(skill!.source).toBe("path:.agents/skills/orphan");
+
+    // agents.lock should have integrity for the skill
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile).not.toBeNull();
+    expect(lockfile!.skills["orphan"]).toBeDefined();
+    expect(lockfile!.skills["orphan"]!.integrity).toMatch(/^sha256-/);
+    expect(lockfile!.skills["orphan"]!.source).toBe("path:.agents/skills/orphan");
+  });
+
+  it("adopts multiple orphans in one sync", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      "version = 1\n",
+    );
+    for (const name of ["alpha", "beta"]) {
+      const dir = join(projectRoot, ".agents", "skills", name);
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "SKILL.md"), SKILL_MD(name));
+    }
+
+    const result = await runSync({ projectRoot });
+    expect(result.adopted).toHaveLength(2);
+    expect(result.adopted).toContain("alpha");
+    expect(result.adopted).toContain("beta");
+
+    const config = await loadConfig(join(projectRoot, "agents.toml"));
+    expect(config.skills).toHaveLength(2);
+  });
+
+  it("adopted skill does not appear as orphan issue", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      "version = 1\n",
+    );
+    const orphanDir = join(projectRoot, ".agents", "skills", "stray");
+    await mkdir(orphanDir, { recursive: true });
+    await writeFile(join(orphanDir, "SKILL.md"), SKILL_MD("stray"));
+
+    const result = await runSync({ projectRoot });
+    expect(result.adopted).toContain("stray");
+    expect(result.issues).toHaveLength(0);
   });
 
   it("detects missing skills", async () => {

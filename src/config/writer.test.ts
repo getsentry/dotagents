@@ -87,6 +87,17 @@ describe("writer", () => {
       const config = await loadConfig(configPath);
       expect(config.skills).toHaveLength(2);
     });
+
+    it("adds in-place skill with path source", async () => {
+      await addSkillToConfig(configPath, "my-skill", {
+        source: "path:.agents/skills/my-skill",
+      });
+
+      const config = await loadConfig(configPath);
+      const skill = config.skills.find((s) => s.name === "my-skill");
+      expect(skill).toBeDefined();
+      expect(skill!.source).toBe("path:.agents/skills/my-skill");
+    });
   });
 
   describe("removeSkillFromConfig", () => {

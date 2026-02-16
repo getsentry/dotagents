@@ -4,6 +4,8 @@ import { readdir } from "node:fs/promises";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import { loadLockfile } from "../../lockfile/loader.js";
+import { writeLockfile } from "../../lockfile/writer.js";
+import { addSkillToConfig } from "../../config/writer.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
 import { hashDirectory } from "../../utils/hash.js";
@@ -11,8 +13,13 @@ import { getAgent } from "../../agents/registry.js";
 import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations } from "../../agents/mcp-writer.js";
 import { verifyHookConfigs, writeHookConfigs, toHookDeclarations } from "../../agents/hook-writer.js";
 
+/** A skill whose source points to its own install location (adopted orphan). */
+function isInPlaceSkill(source: string): boolean {
+  return source.startsWith("path:.agents/skills/");
+}
+
 export interface SyncIssue {
-  type: "orphan" | "modified" | "symlink" | "missing" | "mcp" | "hooks";
+  type: "modified" | "symlink" | "missing" | "mcp" | "hooks";
   name: string;
   message: string;
 }
@@ -23,6 +30,7 @@ export interface SyncOptions {
 
 export interface SyncResult {
   issues: SyncIssue[];
+  adopted: string[];
   gitignoreUpdated: boolean;
   symlinksRepaired: number;
   mcpRepaired: number;
@@ -36,28 +44,41 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const agentsDir = join(projectRoot, ".agents");
   const skillsDir = join(agentsDir, "skills");
 
-  const config = await loadConfig(configPath);
+  let config = await loadConfig(configPath);
   const lockfile = await loadLockfile(lockPath);
   const declaredNames = new Set(config.skills.map((s) => s.name));
   const issues: SyncIssue[] = [];
+  const adopted: string[] = [];
 
-  // 1. Regenerate .agents/.gitignore
-  await updateAgentsGitignore(agentsDir, config.gitignore, [...declaredNames]);
-
-  // 2. Check for orphaned skills (installed but not in agents.toml)
+  // 1. Adopt orphaned skills (installed but not in agents.toml)
   if (existsSync(skillsDir)) {
+    const adoptedLockEntries: Record<string, { source: string; integrity: string }> = {};
     const entries = await readdir(skillsDir, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      if (!declaredNames.has(entry.name)) {
-        issues.push({
-          type: "orphan",
-          name: entry.name,
-          message: `"${entry.name}" is installed but not in agents.toml`,
-        });
-      }
+      if (declaredNames.has(entry.name)) continue;
+
+      const source = `path:.agents/skills/${entry.name}`;
+      await addSkillToConfig(configPath, entry.name, { source });
+      declaredNames.add(entry.name);
+
+      const integrity = await hashDirectory(join(skillsDir, entry.name));
+      adoptedLockEntries[entry.name] = { source, integrity };
+      adopted.push(entry.name);
+    }
+
+    if (adopted.length > 0) {
+      await writeLockfile(lockPath, {
+        version: 1,
+        skills: { ...lockfile?.skills, ...adoptedLockEntries },
+      });
+      config = await loadConfig(configPath);
     }
   }
+
+  // 2. Regenerate .agents/.gitignore (exclude in-place skills — they must be checked into git)
+  const managedNames = config.skills.filter((s) => !isInPlaceSkill(s.source)).map((s) => s.name);
+  await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
 
   // 3. Check for missing skills (in agents.toml but not installed)
   for (const name of declaredNames) {
@@ -155,6 +176,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 
   return {
     issues,
+    adopted,
     gitignoreUpdated: config.gitignore,
     symlinksRepaired,
     mcpRepaired,
@@ -165,6 +187,10 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 export default async function sync(): Promise<void> {
   const { resolve } = await import("node:path");
   const result = await runSync({ projectRoot: resolve(".") });
+
+  if (result.adopted.length > 0) {
+    console.log(chalk.green(`Adopted ${result.adopted.length} orphan(s): ${result.adopted.join(", ")}`));
+  }
 
   if (result.gitignoreUpdated) {
     console.log(chalk.green("Regenerated .agents/.gitignore"));
@@ -191,7 +217,6 @@ export default async function sync(): Promise<void> {
 
   for (const issue of result.issues) {
     switch (issue.type) {
-      case "orphan":
       case "modified":
       case "mcp":
       case "hooks":
