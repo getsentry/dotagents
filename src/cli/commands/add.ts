@@ -132,9 +132,12 @@ export default async function add(args: string[], flags?: { user?: boolean }): P
     options: {
       ref: { type: "string" },
       name: { type: "string" },
+      skill: { type: "string" },
     },
     strict: true,
   });
+
+  const nameValue = values["name"] ?? values["skill"];
 
   const specifier = positionals[0];
   if (!specifier) {
@@ -149,7 +152,7 @@ export default async function add(args: string[], flags?: { user?: boolean }): P
       scope,
       specifier,
       ref: values["ref"],
-      name: values["name"],
+      name: nameValue,
     });
     console.log(chalk.green(`Added skill: ${name}`));
   } catch (err) {
