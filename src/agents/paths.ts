@@ -7,9 +7,6 @@ export interface UserMcpTarget {
   shared: boolean;
 }
 
-/** The single symlink parent for user-scope skills: ~/.claude */
-export const USER_SKILLS_PARENT = join(homedir(), ".claude");
-
 /**
  * Returns the absolute path to the user-scope MCP config file for an agent,
  * plus whether that file is shared with other content.

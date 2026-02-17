@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { getUserMcpTarget, USER_SKILLS_PARENT } from "./paths.js";
+import { getUserMcpTarget } from "./paths.js";
+import { getAgent } from "./registry.js";
 
 describe("getUserMcpTarget", () => {
   const home = homedir();
@@ -42,8 +43,26 @@ describe("getUserMcpTarget", () => {
   });
 });
 
-describe("USER_SKILLS_PARENT", () => {
-  it("points to ~/.claude", () => {
-    expect(USER_SKILLS_PARENT).toBe(join(homedir(), ".claude"));
+describe("userSkillsParentDirs", () => {
+  const home = homedir();
+
+  it("claude needs ~/.claude symlink", () => {
+    expect(getAgent("claude")!.userSkillsParentDirs).toEqual([join(home, ".claude")]);
+  });
+
+  it("cursor needs ~/.cursor symlink", () => {
+    expect(getAgent("cursor")!.userSkillsParentDirs).toEqual([join(home, ".cursor")]);
+  });
+
+  it("vscode needs ~/.copilot symlink", () => {
+    expect(getAgent("vscode")!.userSkillsParentDirs).toEqual([join(home, ".copilot")]);
+  });
+
+  it("codex reads ~/.agents/skills/ natively", () => {
+    expect(getAgent("codex")!.userSkillsParentDirs).toBeUndefined();
+  });
+
+  it("opencode reads ~/.agents/skills/ natively", () => {
+    expect(getAgent("opencode")!.userSkillsParentDirs).toBeUndefined();
   });
 });

@@ -4,7 +4,7 @@ export type { McpTargetResolver, McpResolvedTarget } from "./mcp-writer.js";
 export { writeHookConfigs, verifyHookConfigs, toHookDeclarations, projectHookResolver } from "./hook-writer.js";
 export type { HookTargetResolver, HookResolvedTarget } from "./hook-writer.js";
 export { UnsupportedFeature } from "./errors.js";
-export { getUserMcpTarget, userMcpResolver, USER_SKILLS_PARENT } from "./paths.js";
+export { getUserMcpTarget, userMcpResolver } from "./paths.js";
 export type { UserMcpTarget } from "./paths.js";
 export type {
   AgentDefinition,

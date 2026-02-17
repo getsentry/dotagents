@@ -17,7 +17,7 @@ import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
 import { writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
 import { writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
-import { userMcpResolver, USER_SKILLS_PARENT } from "../../agents/paths.js";
+import { userMcpResolver } from "../../agents/paths.js";
 import { resolveScope } from "../../scope.js";
 import type { ScopeRoot } from "../../scope.js";
 
@@ -148,18 +148,24 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
   }
 
-  // 4. Symlinks
+  // 4. Symlinks — create per-agent symlinks so each agent discovers skills
   if (scope.scope === "user") {
-    // User scope: single symlink ~/.claude/skills/ → ~/.agents/skills/
-    await ensureSkillsSymlink(agentsDir, USER_SKILLS_PARENT);
+    const seen = new Set<string>();
+    for (const agentId of config.agents) {
+      const agent = getAgent(agentId);
+      if (!agent?.userSkillsParentDirs) continue;
+      for (const dir of agent.userSkillsParentDirs) {
+        if (seen.has(dir)) continue;
+        seen.add(dir);
+        await ensureSkillsSymlink(agentsDir, dir);
+      }
+    }
   } else {
-    // Project scope: legacy [symlinks] config
     const targets = config.symlinks?.targets ?? [];
     for (const target of targets) {
       await ensureSkillsSymlink(agentsDir, join(scope.root, target));
     }
 
-    // Agent-specific symlinks (dedup with legacy targets and across agents)
     const seenParentDirs = new Set(targets);
     for (const agentId of config.agents) {
       const agent = getAgent(agentId);

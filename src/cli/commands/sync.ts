@@ -12,7 +12,7 @@ import { hashDirectory } from "../../utils/hash.js";
 import { getAgent } from "../../agents/registry.js";
 import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
 import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
-import { userMcpResolver, USER_SKILLS_PARENT } from "../../agents/paths.js";
+import { userMcpResolver } from "../../agents/paths.js";
 import { resolveScope } from "../../scope.js";
 import type { ScopeRoot } from "../../scope.js";
 
@@ -117,28 +117,35 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   let symlinksRepaired = 0;
 
   if (scope.scope === "user") {
-    // User scope: single symlink ~/.claude/skills/ → ~/.agents/skills/
-    const symlinkIssues = await verifySymlinks(agentsDir, [USER_SKILLS_PARENT]);
-    for (const _issue of symlinkIssues) {
-      await ensureSkillsSymlink(agentsDir, USER_SKILLS_PARENT);
+    const seen = new Set<string>();
+    const targets: string[] = [];
+    for (const agentId of config.agents) {
+      const agent = getAgent(agentId);
+      if (!agent?.userSkillsParentDirs) continue;
+      for (const dir of agent.userSkillsParentDirs) {
+        if (seen.has(dir)) continue;
+        seen.add(dir);
+        targets.push(dir);
+      }
+    }
+
+    const symlinkIssues = await verifySymlinks(agentsDir, targets);
+    for (const issue of symlinkIssues) {
+      await ensureSkillsSymlink(agentsDir, issue.target);
       symlinksRepaired++;
     }
   } else {
-    // Project scope: legacy symlinks
-    const targets = config.symlinks?.targets ?? [];
-    const symlinkIssues = await verifySymlinks(
+    const legacyTargets = config.symlinks?.targets ?? [];
+    const legacyIssues = await verifySymlinks(
       agentsDir,
-      targets.map((t) => join(scope.root, t)),
+      legacyTargets.map((t) => join(scope.root, t)),
     );
-
-    for (const issue of symlinkIssues) {
-      const targetDir = join(scope.root, issue.target);
-      await ensureSkillsSymlink(agentsDir, targetDir);
+    for (const issue of legacyIssues) {
+      await ensureSkillsSymlink(agentsDir, join(scope.root, issue.target));
       symlinksRepaired++;
     }
 
-    // Agent-specific symlinks (dedup across agents)
-    const seenParentDirs = new Set(targets);
+    const seenParentDirs = new Set(legacyTargets);
     const agentTargets: string[] = [];
     for (const agentId of config.agents) {
       const agent = getAgent(agentId);

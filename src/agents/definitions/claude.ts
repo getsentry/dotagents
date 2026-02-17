@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { homedir } from "node:os";
 import type { AgentDefinition } from "../types.js";
 import { envRecord, httpServer, serializeClaudeHooks } from "./helpers.js";
 
@@ -6,6 +8,7 @@ const claude: AgentDefinition = {
   displayName: "Claude Code",
   configDir: ".claude",
   skillsParentDir: ".claude",
+  userSkillsParentDirs: [join(homedir(), ".claude")],
   mcp: {
     filePath: ".mcp.json",
     rootKey: "mcpServers",

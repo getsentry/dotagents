@@ -7,7 +7,6 @@ import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { loadConfig } from "../../config/loader.js";
 import { getAgent, allAgentIds, allAgents } from "../../agents/registry.js";
-import { USER_SKILLS_PARENT } from "../../agents/paths.js";
 import { parseArgs } from "node:util";
 import { resolveScope } from "../../scope.js";
 import type { ScopeRoot } from "../../scope.js";
@@ -53,35 +52,42 @@ export async function runInit(opts: InitOptions): Promise<void> {
     await updateAgentsGitignore(agentsDir, config.gitignore, []);
   }
 
-  if (scope.scope === "user") {
-    // User scope: single symlink ~/.claude/skills/ → ~/.agents/skills/
-    await ensureSkillsSymlink(agentsDir, USER_SKILLS_PARENT);
-    return printSummary(scope, false, [{ target: USER_SKILLS_PARENT, created: true, migrated: [] }]);
-  }
-
-  // Project scope: legacy and agent-specific symlinks
-  const targets = config.symlinks?.targets ?? [];
+  // Symlinks — create per-agent symlinks so each agent discovers skills
   const symlinkResults: { target: string; created: boolean; migrated: string[] }[] = [];
 
-  for (const target of targets) {
-    const targetDir = join(scope.root, target);
-    const result = await ensureSkillsSymlink(agentsDir, targetDir);
-    symlinkResults.push({ target, ...result });
+  if (scope.scope === "user") {
+    const seen = new Set<string>();
+    for (const agentId of config.agents) {
+      const agent = getAgent(agentId);
+      if (!agent?.userSkillsParentDirs) continue;
+      for (const dir of agent.userSkillsParentDirs) {
+        if (seen.has(dir)) continue;
+        seen.add(dir);
+        const result = await ensureSkillsSymlink(agentsDir, dir);
+        symlinkResults.push({ target: dir, ...result });
+      }
+    }
+  } else {
+    const targets = config.symlinks?.targets ?? [];
+    for (const target of targets) {
+      const targetDir = join(scope.root, target);
+      const result = await ensureSkillsSymlink(agentsDir, targetDir);
+      symlinkResults.push({ target, ...result });
+    }
+
+    const seenParentDirs = new Set(targets);
+    for (const agentId of config.agents) {
+      const agent = getAgent(agentId);
+      if (!agent) continue;
+      if (seenParentDirs.has(agent.skillsParentDir)) continue;
+      seenParentDirs.add(agent.skillsParentDir);
+      const targetDir = join(scope.root, agent.skillsParentDir);
+      const result = await ensureSkillsSymlink(agentsDir, targetDir);
+      symlinkResults.push({ target: agent.skillsParentDir, ...result });
+    }
   }
 
-  // Create agent-specific symlinks (dedup with legacy targets and across agents)
-  const seenParentDirs = new Set(targets);
-  for (const agentId of config.agents) {
-    const agent = getAgent(agentId);
-    if (!agent) continue;
-    if (seenParentDirs.has(agent.skillsParentDir)) continue;
-    seenParentDirs.add(agent.skillsParentDir);
-    const targetDir = join(scope.root, agent.skillsParentDir);
-    const result = await ensureSkillsSymlink(agentsDir, targetDir);
-    symlinkResults.push({ target: agent.skillsParentDir, ...result });
-  }
-
-  return printSummary(scope, config.gitignore, symlinkResults);
+  return printSummary(scope, scope.scope === "project" ? config.gitignore : false, symlinkResults);
 }
 
 function printSummary(
@@ -98,7 +104,7 @@ function printSummary(
 
   for (const s of symlinks) {
     if (s.created) {
-      const label = scope.scope === "user" ? `${s.target}/skills/` : `${s.target}/skills/`;
+      const label = `${s.target}/skills/`;
       const source = scope.scope === "user" ? "~/.agents/skills/" : ".agents/skills/";
       console.log(chalk.green(`Created symlink: ${label} → ${source}`));
     }

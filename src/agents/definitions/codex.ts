@@ -8,6 +8,7 @@ const codex: AgentDefinition = {
   displayName: "Codex",
   configDir: ".codex",
   skillsParentDir: ".codex",
+  userSkillsParentDirs: undefined, // reads ~/.agents/skills/ natively
   mcp: {
     filePath: ".codex/config.toml",
     rootKey: "mcp_servers",

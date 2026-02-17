@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { homedir } from "node:os";
 import type { AgentDefinition } from "../types.js";
 import { envRecord, httpServer, serializeClaudeHooks } from "./helpers.js";
 
@@ -6,6 +8,7 @@ const vscode: AgentDefinition = {
   displayName: "VS Code Copilot",
   configDir: ".vscode",
   skillsParentDir: ".vscode",
+  userSkillsParentDirs: [join(homedir(), ".copilot")],
   mcp: {
     filePath: ".vscode/mcp.json",
     rootKey: "servers",

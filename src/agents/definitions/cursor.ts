@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { homedir } from "node:os";
 import type { AgentDefinition, HookDeclaration } from "../types.js";
 import type { HookEvent } from "../../config/schema.js";
 import claude from "./claude.js";
@@ -19,6 +21,7 @@ const cursor: AgentDefinition = {
   displayName: "Cursor",
   configDir: ".cursor",
   skillsParentDir: ".cursor",
+  userSkillsParentDirs: [join(homedir(), ".cursor")],
   mcp: {
     filePath: ".cursor/mcp.json",
     rootKey: "mcpServers",
