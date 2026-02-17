@@ -11,7 +11,7 @@ import { copyDir } from "../../utils/fs.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import type { Lockfile, LockedSkill } from "../../lockfile/schema.js";
-import { resolveScope } from "../../scope.js";
+import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
 import type { ScopeRoot } from "../../scope.js";
 
 /** A skill whose source points to its own install location (adopted orphan). */
@@ -128,7 +128,7 @@ export default async function update(args: string[], flags?: { user?: boolean })
   });
 
   try {
-    const scope = resolveScope(flags?.user ? "user" : "project", resolve("."));
+    const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
     const updated = await runUpdate({
       scope,
       skillName: positionals[0],
@@ -146,7 +146,7 @@ export default async function update(args: string[], flags?: { user?: boolean })
     }
     console.log(chalk.green(`Updated ${updated.length} skill(s).`));
   } catch (err) {
-    if (err instanceof UpdateError || err instanceof TrustError) {
+    if (err instanceof ScopeError || err instanceof UpdateError || err instanceof TrustError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

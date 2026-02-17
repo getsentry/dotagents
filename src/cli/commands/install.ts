@@ -18,7 +18,7 @@ import { getAgent } from "../../agents/registry.js";
 import { writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
 import { writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
 import { userMcpResolver } from "../../agents/paths.js";
-import { resolveScope } from "../../scope.js";
+import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
 import type { ScopeRoot } from "../../scope.js";
 
 /** A skill whose source points to its own install location (adopted orphan). */
@@ -204,7 +204,7 @@ export default async function install(args: string[], flags?: { user?: boolean }
   });
 
   try {
-    const scope = resolveScope(flags?.user ? "user" : "project", resolve("."));
+    const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
     const result = await runInstall({
       scope,
       frozen: values["frozen"],
@@ -220,7 +220,7 @@ export default async function install(args: string[], flags?: { user?: boolean }
       console.log(chalk.yellow(`  warn: ${w.message}`));
     }
   } catch (err) {
-    if (err instanceof InstallError || err instanceof TrustError) {
+    if (err instanceof ScopeError || err instanceof InstallError || err instanceof TrustError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

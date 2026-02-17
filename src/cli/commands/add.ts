@@ -8,7 +8,7 @@ import { discoverAllSkills } from "../../skills/discovery.js";
 import { ensureCached } from "../../sources/cache.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import { runInstall } from "./install.js";
-import { resolveScope } from "../../scope.js";
+import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
 import type { ScopeRoot } from "../../scope.js";
 
 export class AddError extends Error {
@@ -144,7 +144,7 @@ export default async function add(args: string[], flags?: { user?: boolean }): P
   }
 
   try {
-    const scope = resolveScope(flags?.user ? "user" : "project", resolve("."));
+    const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
     const name = await runAdd({
       scope,
       specifier,
@@ -153,7 +153,7 @@ export default async function add(args: string[], flags?: { user?: boolean }): P
     });
     console.log(chalk.green(`Added skill: ${name}`));
   } catch (err) {
-    if (err instanceof AddError || err instanceof TrustError) {
+    if (err instanceof ScopeError || err instanceof AddError || err instanceof TrustError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

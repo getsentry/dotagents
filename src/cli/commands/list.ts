@@ -6,7 +6,7 @@ import { loadLockfile } from "../../lockfile/loader.js";
 import { isGitLocked } from "../../lockfile/schema.js";
 import { hashDirectory } from "../../utils/hash.js";
 import { existsSync } from "node:fs";
-import { resolveScope } from "../../scope.js";
+import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
 import type { ScopeRoot } from "../../scope.js";
 
 export interface SkillStatus {
@@ -85,7 +85,17 @@ export default async function list(args: string[], flags?: { user?: boolean }): 
     strict: true,
   });
 
-  const scope = resolveScope(flags?.user ? "user" : "project", resolve("."));
+  let scope: ScopeRoot;
+  try {
+    scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
+  } catch (err) {
+    if (err instanceof ScopeError) {
+      console.error(chalk.red(err.message));
+      process.exitCode = 1;
+      return;
+    }
+    throw err;
+  }
   const results = await runList({
     scope,
     json: values["json"],

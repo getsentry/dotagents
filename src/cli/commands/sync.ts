@@ -13,7 +13,7 @@ import { getAgent } from "../../agents/registry.js";
 import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
 import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
 import { userMcpResolver } from "../../agents/paths.js";
-import { resolveScope } from "../../scope.js";
+import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
 import type { ScopeRoot } from "../../scope.js";
 
 /** A skill whose source points to its own install location (adopted orphan). */
@@ -211,7 +211,17 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 }
 
 export default async function sync(_args: string[], flags?: { user?: boolean }): Promise<void> {
-  const scope = resolveScope(flags?.user ? "user" : "project", resolve("."));
+  let scope: ScopeRoot;
+  try {
+    scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
+  } catch (err) {
+    if (err instanceof ScopeError) {
+      console.error(chalk.red(err.message));
+      process.exitCode = 1;
+      return;
+    }
+    throw err;
+  }
   const result = await runSync({ scope });
 
   if (result.adopted.length > 0) {

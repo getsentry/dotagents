@@ -7,7 +7,7 @@ import { removeSkillFromConfig } from "../../config/writer.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
-import { resolveScope } from "../../scope.js";
+import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
 import type { ScopeRoot } from "../../scope.js";
 
 export class RemoveError extends Error {
@@ -69,11 +69,11 @@ export default async function remove(args: string[], flags?: { user?: boolean })
   }
 
   try {
-    const scope = resolveScope(flags?.user ? "user" : "project", resolve("."));
+    const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
     await runRemove({ scope, skillName });
     console.log(chalk.green(`Removed skill: ${skillName}`));
   } catch (err) {
-    if (err instanceof RemoveError) {
+    if (err instanceof ScopeError || err instanceof RemoveError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

@@ -8,7 +8,7 @@ import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { loadConfig } from "../../config/loader.js";
 import { getAgent, allAgentIds, allAgents } from "../../agents/registry.js";
 import { parseArgs } from "node:util";
-import { resolveScope } from "../../scope.js";
+import { resolveScope, isInsideGitRepo } from "../../scope.js";
 import type { ScopeRoot } from "../../scope.js";
 import type { TrustConfig } from "../../config/schema.js";
 
@@ -226,7 +226,15 @@ export default async function init(args: string[], flags?: { user?: boolean }): 
     strict: true,
   });
 
-  const scope = resolveScope(flags?.user ? "user" : "project", resolve("."));
+  let scope: ScopeRoot;
+  if (flags?.user) {
+    scope = resolveScope("user");
+  } else if (!isInsideGitRepo(resolve("."))) {
+    console.error("No project found, using user scope (~/.agents/)");
+    scope = resolveScope("user");
+  } else {
+    scope = resolveScope("project", resolve("."));
+  }
 
   try {
     // Interactive mode: TTY with no --agents flag

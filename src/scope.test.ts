@@ -1,7 +1,9 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { join } from "node:path";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { homedir } from "node:os";
-import { resolveScope } from "./scope.js";
+import { resolveScope, isInsideGitRepo, resolveDefaultScope, ScopeError } from "./scope.js";
 
 describe("resolveScope", () => {
   afterEach(() => {
@@ -46,5 +48,67 @@ describe("resolveScope", () => {
   it("project scope defaults to cwd when no projectRoot given", () => {
     const s = resolveScope("project");
     expect(s.root).toBe(process.cwd());
+  });
+});
+
+describe("isInsideGitRepo", () => {
+  let tempDir: string;
+
+  afterEach(() => {
+    if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("returns true when .git exists in dir", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    mkdirSync(join(tempDir, ".git"));
+    expect(isInsideGitRepo(tempDir)).toBe(true);
+  });
+
+  it("returns true when .git exists in a parent", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    mkdirSync(join(tempDir, ".git"));
+    const child = join(tempDir, "sub", "deep");
+    mkdirSync(child, { recursive: true });
+    expect(isInsideGitRepo(child)).toBe(true);
+  });
+
+  it("returns false when no .git in any parent", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    // No .git directory created
+    expect(isInsideGitRepo(tempDir)).toBe(false);
+  });
+});
+
+describe("resolveDefaultScope", () => {
+  let tempDir: string;
+
+  afterEach(() => {
+    delete process.env["DOTAGENTS_HOME"];
+    if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("returns project scope when agents.toml exists", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    writeFileSync(join(tempDir, "agents.toml"), "");
+    const s = resolveDefaultScope(tempDir);
+    expect(s.scope).toBe("project");
+    expect(s.root).toBe(tempDir);
+  });
+
+  it("falls back to user scope when not in a git repo", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    process.env["DOTAGENTS_HOME"] = join(tempDir, "user-home");
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const s = resolveDefaultScope(tempDir);
+    expect(s.scope).toBe("user");
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("user scope"));
+    spy.mockRestore();
+  });
+
+  it("throws ScopeError when in a git repo but no agents.toml", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    mkdirSync(join(tempDir, ".git"));
+    expect(() => resolveDefaultScope(tempDir)).toThrow(ScopeError);
+    expect(() => resolveDefaultScope(tempDir)).toThrow(/dotagents init/);
   });
 });
