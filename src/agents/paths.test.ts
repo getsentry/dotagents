@@ -43,26 +43,38 @@ describe("getUserMcpTarget", () => {
   });
 });
 
-describe("userSkillsParentDirs", () => {
+describe("skill discovery paths", () => {
   const home = homedir();
 
-  it("claude needs ~/.claude symlink", () => {
-    expect(getAgent("claude")!.userSkillsParentDirs).toEqual([join(home, ".claude")]);
+  // Agents that DON'T read .agents/skills/ natively need symlinks
+  it("claude needs project and user symlinks", () => {
+    const agent = getAgent("claude")!;
+    expect(agent.skillsParentDir).toBe(".claude");
+    expect(agent.userSkillsParentDirs).toEqual([join(home, ".claude")]);
   });
 
-  it("cursor needs ~/.cursor symlink", () => {
-    expect(getAgent("cursor")!.userSkillsParentDirs).toEqual([join(home, ".cursor")]);
+  it("cursor needs project and user symlinks", () => {
+    const agent = getAgent("cursor")!;
+    expect(agent.skillsParentDir).toBe(".cursor");
+    expect(agent.userSkillsParentDirs).toEqual([join(home, ".cursor")]);
   });
 
-  it("vscode needs ~/.copilot symlink", () => {
-    expect(getAgent("vscode")!.userSkillsParentDirs).toEqual([join(home, ".copilot")]);
+  // Agents that DO read .agents/skills/ natively need no symlinks
+  it("vscode reads .agents/skills/ natively", () => {
+    const agent = getAgent("vscode")!;
+    expect(agent.skillsParentDir).toBeUndefined();
+    expect(agent.userSkillsParentDirs).toBeUndefined();
   });
 
-  it("codex reads ~/.agents/skills/ natively", () => {
-    expect(getAgent("codex")!.userSkillsParentDirs).toBeUndefined();
+  it("codex reads .agents/skills/ natively", () => {
+    const agent = getAgent("codex")!;
+    expect(agent.skillsParentDir).toBeUndefined();
+    expect(agent.userSkillsParentDirs).toBeUndefined();
   });
 
-  it("opencode reads ~/.agents/skills/ natively", () => {
-    expect(getAgent("opencode")!.userSkillsParentDirs).toBeUndefined();
+  it("opencode reads .agents/skills/ natively", () => {
+    const agent = getAgent("opencode")!;
+    expect(agent.skillsParentDir).toBeUndefined();
+    expect(agent.userSkillsParentDirs).toBeUndefined();
   });
 });

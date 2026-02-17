@@ -6,8 +6,9 @@ const opencode: AgentDefinition = {
   id: "opencode",
   displayName: "OpenCode",
   configDir: ".claude",
-  skillsParentDir: ".claude",
-  userSkillsParentDirs: undefined, // reads ~/.agents/skills/ natively
+  // reads .agents/skills/ natively at both project and user scope
+  skillsParentDir: undefined,
+  userSkillsParentDirs: undefined,
   mcp: {
     filePath: "opencode.json",
     rootKey: "mcp",

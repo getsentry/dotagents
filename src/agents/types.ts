@@ -81,8 +81,11 @@ export interface AgentDefinition {
   displayName: string;
   /** Directory that holds agent-specific config (e.g. ".claude") */
   configDir: string;
-  /** Parent directory for the skills/ symlink (project scope, relative to project root) */
-  skillsParentDir: string;
+  /**
+   * Parent directory for the skills/ symlink (project scope, relative to project root).
+   * Undefined if the agent reads .agents/skills/ natively (no symlink needed).
+   */
+  skillsParentDir?: string;
   /**
    * Absolute parent directories for user-scope skills/ symlinks.
    * Undefined if the agent reads ~/.agents/skills/ natively (no symlink needed).

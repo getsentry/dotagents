@@ -149,7 +149,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     const agentTargets: string[] = [];
     for (const agentId of config.agents) {
       const agent = getAgent(agentId);
-      if (!agent) continue;
+      if (!agent?.skillsParentDir) continue;
       if (seenParentDirs.has(agent.skillsParentDir)) continue;
       seenParentDirs.add(agent.skillsParentDir);
       agentTargets.push(join(scope.root, agent.skillsParentDir));

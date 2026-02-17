@@ -159,8 +159,8 @@ describe("opencode serializer", () => {
     expect(config).not.toHaveProperty("environment");
   });
 
-  it("shares config and uses claude skillsParentDir", () => {
+  it("shares config and reads .agents/ natively", () => {
     expect(agent.mcp.shared).toBe(true);
-    expect(agent.skillsParentDir).toBe(".claude");
+    expect(agent.skillsParentDir).toBeUndefined();
   });
 });

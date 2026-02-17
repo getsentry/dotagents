@@ -78,7 +78,7 @@ export async function runInit(opts: InitOptions): Promise<void> {
     const seenParentDirs = new Set(targets);
     for (const agentId of config.agents) {
       const agent = getAgent(agentId);
-      if (!agent) continue;
+      if (!agent?.skillsParentDir) continue;
       if (seenParentDirs.has(agent.skillsParentDir)) continue;
       seenParentDirs.add(agent.skillsParentDir);
       const targetDir = join(scope.root, agent.skillsParentDir);
