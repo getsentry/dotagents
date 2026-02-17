@@ -15,12 +15,15 @@ import { copyDir } from "../../utils/fs.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
-import { writeMcpConfigs, toMcpDeclarations } from "../../agents/mcp-writer.js";
-import { writeHookConfigs, toHookDeclarations } from "../../agents/hook-writer.js";
+import { writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
+import { writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
+import { userMcpResolver, USER_SKILLS_PARENT } from "../../agents/paths.js";
+import { resolveScope } from "../../scope.js";
+import type { ScopeRoot } from "../../scope.js";
 
 /** A skill whose source points to its own install location (adopted orphan). */
 function isInPlaceSkill(source: string): boolean {
-  return source.startsWith("path:.agents/skills/");
+  return source.startsWith("path:.agents/skills/") || source.startsWith("path:skills/");
 }
 
 export class InstallError extends Error {
@@ -31,7 +34,7 @@ export class InstallError extends Error {
 }
 
 export interface InstallOptions {
-  projectRoot: string;
+  scope: ScopeRoot;
   frozen?: boolean;
   force?: boolean;
 }
@@ -43,11 +46,8 @@ export interface InstallResult {
 }
 
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
-  const { projectRoot, frozen, force } = opts;
-  const configPath = join(projectRoot, "agents.toml");
-  const lockPath = join(projectRoot, "agents.lock");
-  const agentsDir = join(projectRoot, ".agents");
-  const skillsDir = join(agentsDir, "skills");
+  const { scope, frozen, force } = opts;
+  const { configPath, lockPath, agentsDir, skillsDir } = scope;
 
   // 1. Read config
   const config = await loadConfig(configPath);
@@ -55,7 +55,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   const installed: string[] = [];
   const skipped: string[] = [];
 
-  // Ensure .agents/skills/ exists (needed for symlinks even without skills)
+  // Ensure skills/ exists (needed for symlinks even without skills)
   await mkdir(skillsDir, { recursive: true });
 
   // 2. Resolve and install skills (if any declared)
@@ -92,7 +92,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       let resolved: ResolvedSkill;
       try {
         resolved = await resolveSkill(name, dep, {
-          projectRoot,
+          projectRoot: scope.root,
           lockedCommit,
         });
       } catch (err) {
@@ -142,40 +142,52 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     }
   }
 
-  // 3. Regenerate .agents/.gitignore (exclude in-place skills — they must be checked into git)
-  const managedNames = config.skills.filter((s) => !isInPlaceSkill(s.source)).map((s) => s.name);
-  await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
-
-  // 4. Create/verify symlinks (legacy [symlinks] config)
-  const targets = config.symlinks?.targets ?? [];
-  for (const target of targets) {
-    await ensureSkillsSymlink(agentsDir, join(projectRoot, target));
+  // 3. Gitignore (skip for user scope — ~/.agents/ is not a git repo)
+  if (scope.scope === "project") {
+    const managedNames = config.skills.filter((s) => !isInPlaceSkill(s.source)).map((s) => s.name);
+    await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
   }
 
-  // 5. Create agent-specific symlinks (dedup with legacy targets and across agents)
-  const seenParentDirs = new Set(targets);
-  for (const agentId of config.agents) {
-    const agent = getAgent(agentId);
-    if (!agent) continue;
-    if (seenParentDirs.has(agent.skillsParentDir)) continue;
-    seenParentDirs.add(agent.skillsParentDir);
-    await ensureSkillsSymlink(agentsDir, join(projectRoot, agent.skillsParentDir));
+  // 4. Symlinks
+  if (scope.scope === "user") {
+    // User scope: single symlink ~/.claude/skills/ → ~/.agents/skills/
+    await ensureSkillsSymlink(agentsDir, USER_SKILLS_PARENT);
+  } else {
+    // Project scope: legacy [symlinks] config
+    const targets = config.symlinks?.targets ?? [];
+    for (const target of targets) {
+      await ensureSkillsSymlink(agentsDir, join(scope.root, target));
+    }
+
+    // Agent-specific symlinks (dedup with legacy targets and across agents)
+    const seenParentDirs = new Set(targets);
+    for (const agentId of config.agents) {
+      const agent = getAgent(agentId);
+      if (!agent) continue;
+      if (seenParentDirs.has(agent.skillsParentDir)) continue;
+      seenParentDirs.add(agent.skillsParentDir);
+      await ensureSkillsSymlink(agentsDir, join(scope.root, agent.skillsParentDir));
+    }
   }
 
-  // 6. Write MCP config files
-  await writeMcpConfigs(projectRoot, config.agents, toMcpDeclarations(config.mcp));
+  // 5. Write MCP config files
+  const mcpResolver = scope.scope === "user" ? userMcpResolver() : projectMcpResolver(scope.root);
+  await writeMcpConfigs(config.agents, toMcpDeclarations(config.mcp), mcpResolver);
 
-  // 7. Write hook config files
-  const hookWarnings = await writeHookConfigs(
-    projectRoot,
-    config.agents,
-    toHookDeclarations(config.hooks),
-  );
+  // 6. Write hook config files (skip for user scope)
+  let hookWarnings: { agent: string; message: string }[] = [];
+  if (scope.scope === "project") {
+    hookWarnings = await writeHookConfigs(
+      config.agents,
+      toHookDeclarations(config.hooks),
+      projectHookResolver(scope.root),
+    );
+  }
 
   return { installed, skipped, hookWarnings };
 }
 
-export default async function install(args: string[]): Promise<void> {
+export default async function install(args: string[], flags?: { user?: boolean }): Promise<void> {
   const { values } = parseArgs({
     args,
     options: {
@@ -185,10 +197,10 @@ export default async function install(args: string[]): Promise<void> {
     strict: true,
   });
 
-  const { resolve } = await import("node:path");
   try {
+    const scope = resolveScope(flags?.user ? "user" : "project", resolve("."));
     const result = await runInstall({
-      projectRoot: resolve("."),
+      scope,
       frozen: values["frozen"],
       force: values["force"],
     });

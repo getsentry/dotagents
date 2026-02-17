@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import chalk from "chalk";
@@ -10,12 +10,15 @@ import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
 import { hashDirectory } from "../../utils/hash.js";
 import { getAgent } from "../../agents/registry.js";
-import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations } from "../../agents/mcp-writer.js";
-import { verifyHookConfigs, writeHookConfigs, toHookDeclarations } from "../../agents/hook-writer.js";
+import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
+import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
+import { userMcpResolver, USER_SKILLS_PARENT } from "../../agents/paths.js";
+import { resolveScope } from "../../scope.js";
+import type { ScopeRoot } from "../../scope.js";
 
 /** A skill whose source points to its own install location (adopted orphan). */
 function isInPlaceSkill(source: string): boolean {
-  return source.startsWith("path:.agents/skills/");
+  return source.startsWith("path:.agents/skills/") || source.startsWith("path:skills/");
 }
 
 export interface SyncIssue {
@@ -25,7 +28,7 @@ export interface SyncIssue {
 }
 
 export interface SyncOptions {
-  projectRoot: string;
+  scope: ScopeRoot;
 }
 
 export interface SyncResult {
@@ -38,11 +41,8 @@ export interface SyncResult {
 }
 
 export async function runSync(opts: SyncOptions): Promise<SyncResult> {
-  const { projectRoot } = opts;
-  const configPath = join(projectRoot, "agents.toml");
-  const lockPath = join(projectRoot, "agents.lock");
-  const agentsDir = join(projectRoot, ".agents");
-  const skillsDir = join(agentsDir, "skills");
+  const { scope } = opts;
+  const { configPath, lockPath, agentsDir, skillsDir } = scope;
 
   let config = await loadConfig(configPath);
   const lockfile = await loadLockfile(lockPath);
@@ -58,7 +58,8 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       if (!entry.isDirectory()) continue;
       if (declaredNames.has(entry.name)) continue;
 
-      const source = `path:.agents/skills/${entry.name}`;
+      const sourcePrefix = scope.scope === "user" ? "path:skills/" : "path:.agents/skills/";
+      const source = `${sourcePrefix}${entry.name}`;
       await addSkillToConfig(configPath, entry.name, { source });
       declaredNames.add(entry.name);
 
@@ -76,9 +77,13 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
-  // 2. Regenerate .agents/.gitignore (exclude in-place skills — they must be checked into git)
-  const managedNames = config.skills.filter((s) => !isInPlaceSkill(s.source)).map((s) => s.name);
-  await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
+  // 2. Regenerate .agents/.gitignore (skip for user scope)
+  let gitignoreUpdated = false;
+  if (scope.scope === "project") {
+    const managedNames = config.skills.filter((s) => !isInPlaceSkill(s.source)).map((s) => s.name);
+    await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
+    gitignoreUpdated = config.gitignore;
+  }
 
   // 3. Check for missing skills (in agents.toml but not installed)
   for (const name of declaredNames) {
@@ -108,45 +113,56 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
-  // 5. Verify and repair legacy symlinks
-  const targets = config.symlinks?.targets ?? [];
+  // 5. Verify and repair symlinks
   let symlinksRepaired = 0;
 
-  const symlinkIssues = await verifySymlinks(
-    agentsDir,
-    targets.map((t) => join(projectRoot, t)),
-  );
+  if (scope.scope === "user") {
+    // User scope: single symlink ~/.claude/skills/ → ~/.agents/skills/
+    const symlinkIssues = await verifySymlinks(agentsDir, [USER_SKILLS_PARENT]);
+    for (const _issue of symlinkIssues) {
+      await ensureSkillsSymlink(agentsDir, USER_SKILLS_PARENT);
+      symlinksRepaired++;
+    }
+  } else {
+    // Project scope: legacy symlinks
+    const targets = config.symlinks?.targets ?? [];
+    const symlinkIssues = await verifySymlinks(
+      agentsDir,
+      targets.map((t) => join(scope.root, t)),
+    );
 
-  for (const issue of symlinkIssues) {
-    const targetDir = join(projectRoot, issue.target);
-    await ensureSkillsSymlink(agentsDir, targetDir);
-    symlinksRepaired++;
+    for (const issue of symlinkIssues) {
+      const targetDir = join(scope.root, issue.target);
+      await ensureSkillsSymlink(agentsDir, targetDir);
+      symlinksRepaired++;
+    }
+
+    // Agent-specific symlinks (dedup across agents)
+    const seenParentDirs = new Set(targets);
+    const agentTargets: string[] = [];
+    for (const agentId of config.agents) {
+      const agent = getAgent(agentId);
+      if (!agent) continue;
+      if (seenParentDirs.has(agent.skillsParentDir)) continue;
+      seenParentDirs.add(agent.skillsParentDir);
+      agentTargets.push(join(scope.root, agent.skillsParentDir));
+    }
+
+    const agentSymlinkIssues = await verifySymlinks(agentsDir, agentTargets);
+    for (const issue of agentSymlinkIssues) {
+      await ensureSkillsSymlink(agentsDir, issue.target);
+      symlinksRepaired++;
+    }
   }
 
-  // 6. Verify and repair agent-specific symlinks (dedup across agents)
-  const seenParentDirs = new Set(targets);
-  const agentTargets: string[] = [];
-  for (const agentId of config.agents) {
-    const agent = getAgent(agentId);
-    if (!agent) continue;
-    if (seenParentDirs.has(agent.skillsParentDir)) continue;
-    seenParentDirs.add(agent.skillsParentDir);
-    agentTargets.push(join(projectRoot, agent.skillsParentDir));
-  }
-
-  const agentSymlinkIssues = await verifySymlinks(agentsDir, agentTargets);
-  for (const issue of agentSymlinkIssues) {
-    await ensureSkillsSymlink(agentsDir, issue.target);
-    symlinksRepaired++;
-  }
-
-  // 7. Verify and repair MCP configs
+  // 6. Verify and repair MCP configs
   let mcpRepaired = 0;
   const mcpServers = toMcpDeclarations(config.mcp);
+  const mcpResolver = scope.scope === "user" ? userMcpResolver() : projectMcpResolver(scope.root);
 
-  const mcpIssues = await verifyMcpConfigs(projectRoot, config.agents, mcpServers);
+  const mcpIssues = await verifyMcpConfigs(config.agents, mcpServers, mcpResolver);
   if (mcpIssues.length > 0) {
-    await writeMcpConfigs(projectRoot, config.agents, mcpServers);
+    await writeMcpConfigs(config.agents, mcpServers, mcpResolver);
     mcpRepaired = mcpIssues.length;
     for (const issue of mcpIssues) {
       issues.push({
@@ -157,45 +173,50 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
-  // 8. Verify and repair hook configs
+  // 7. Verify and repair hook configs (skip for user scope)
   let hooksRepaired = 0;
-  const hookDecls = toHookDeclarations(config.hooks);
+  if (scope.scope === "project") {
+    const hookDecls = toHookDeclarations(config.hooks);
+    const hookResolver = projectHookResolver(scope.root);
 
-  const hookIssues = await verifyHookConfigs(projectRoot, config.agents, hookDecls);
-  if (hookIssues.length > 0) {
-    await writeHookConfigs(projectRoot, config.agents, hookDecls);
-    hooksRepaired = hookIssues.length;
-    for (const issue of hookIssues) {
-      issues.push({
-        type: "hooks",
-        name: issue.agent,
-        message: issue.issue,
-      });
+    const hookIssues = await verifyHookConfigs(config.agents, hookDecls, hookResolver);
+    if (hookIssues.length > 0) {
+      await writeHookConfigs(config.agents, hookDecls, hookResolver);
+      hooksRepaired = hookIssues.length;
+      for (const issue of hookIssues) {
+        issues.push({
+          type: "hooks",
+          name: issue.agent,
+          message: issue.issue,
+        });
+      }
     }
   }
 
   return {
     issues,
     adopted,
-    gitignoreUpdated: config.gitignore,
+    gitignoreUpdated,
     symlinksRepaired,
     mcpRepaired,
     hooksRepaired,
   };
 }
 
-export default async function sync(): Promise<void> {
-  const { resolve } = await import("node:path");
-  const result = await runSync({ projectRoot: resolve(".") });
+export default async function sync(_args: string[], flags?: { user?: boolean }): Promise<void> {
+  const scope = resolveScope(flags?.user ? "user" : "project", resolve("."));
+  const result = await runSync({ scope });
 
   if (result.adopted.length > 0) {
     console.log(chalk.green(`Adopted ${result.adopted.length} orphan(s): ${result.adopted.join(", ")}`));
   }
 
-  if (result.gitignoreUpdated) {
-    console.log(chalk.green("Regenerated .agents/.gitignore"));
-  } else {
-    console.log(chalk.green("Removed .agents/.gitignore (skills checked into git)"));
+  if (scope.scope === "project") {
+    if (result.gitignoreUpdated) {
+      console.log(chalk.green("Regenerated .agents/.gitignore"));
+    } else {
+      console.log(chalk.green("Removed .agents/.gitignore (skills checked into git)"));
+    }
   }
 
   if (result.symlinksRepaired > 0) {

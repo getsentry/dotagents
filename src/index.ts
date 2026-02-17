@@ -9,8 +9,10 @@ export type {
   TrustConfig,
 } from "./config/index.js";
 export { validateTrustedSource, extractDomain, TrustError } from "./trust/index.js";
-export { getAgent, allAgentIds, writeMcpConfigs, verifyMcpConfigs } from "./agents/index.js";
-export type { AgentDefinition, McpDeclaration, McpConfigSpec, McpSerializer } from "./agents/index.js";
+export { resolveScope } from "./scope.js";
+export type { Scope, ScopeRoot } from "./scope.js";
+export { getAgent, allAgentIds, writeMcpConfigs, verifyMcpConfigs, projectMcpResolver, getUserMcpTarget, userMcpResolver, USER_SKILLS_PARENT } from "./agents/index.js";
+export type { AgentDefinition, McpDeclaration, McpConfigSpec, McpSerializer, McpTargetResolver } from "./agents/index.js";
 export { writeAgentsGitignore, removeAgentsGitignore, updateAgentsGitignore } from "./gitignore/index.js";
 export { ensureSkillsSymlink, verifySymlinks } from "./symlinks/index.js";
 export { exec, ExecError, hashDirectory, sha256, copyDir } from "./utils/index.js";

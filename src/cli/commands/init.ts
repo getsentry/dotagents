@@ -1,13 +1,16 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import chalk from "chalk";
 import { generateDefaultConfig } from "../../config/writer.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { loadConfig } from "../../config/loader.js";
 import { getAgent, allAgentIds, allAgents } from "../../agents/registry.js";
+import { USER_SKILLS_PARENT } from "../../agents/paths.js";
 import { parseArgs } from "node:util";
+import { resolveScope } from "../../scope.js";
+import type { ScopeRoot } from "../../scope.js";
 import type { TrustConfig } from "../../config/schema.js";
 
 export interface InitOptions {
@@ -15,14 +18,12 @@ export interface InitOptions {
   agents?: string[];
   gitignore?: boolean;
   trust?: TrustConfig;
-  projectRoot: string;
+  scope: ScopeRoot;
 }
 
 export async function runInit(opts: InitOptions): Promise<void> {
-  const { projectRoot, force, agents, gitignore, trust } = opts;
-  const configPath = join(projectRoot, "agents.toml");
-  const agentsDir = join(projectRoot, ".agents");
-  const skillsDir = join(agentsDir, "skills");
+  const { scope, force, agents, gitignore, trust } = opts;
+  const { configPath, agentsDir, skillsDir } = scope;
 
   if (existsSync(configPath) && !force) {
     throw new InitError("agents.toml already exists. Use --force to overwrite.");
@@ -39,17 +40,31 @@ export async function runInit(opts: InitOptions): Promise<void> {
     }
   }
 
-  await writeFile(configPath, generateDefaultConfig({ agents, gitignore, trust }), "utf-8");
+  // For user scope, default gitignore to false and skip gitignore comments
+  const effectiveGitignore = scope.scope === "user" ? false : gitignore;
+  await mkdir(agentsDir, { recursive: true });
+  await writeFile(configPath, generateDefaultConfig({ agents, gitignore: effectiveGitignore, trust }), "utf-8");
   await mkdir(skillsDir, { recursive: true });
 
   // Set up gitignore and symlinks based on config
   const config = await loadConfig(configPath);
-  await updateAgentsGitignore(agentsDir, config.gitignore, []);
+
+  if (scope.scope === "project") {
+    await updateAgentsGitignore(agentsDir, config.gitignore, []);
+  }
+
+  if (scope.scope === "user") {
+    // User scope: single symlink ~/.claude/skills/ → ~/.agents/skills/
+    await ensureSkillsSymlink(agentsDir, USER_SKILLS_PARENT);
+    return printSummary(scope, false, [{ target: USER_SKILLS_PARENT, created: true, migrated: [] }]);
+  }
+
+  // Project scope: legacy and agent-specific symlinks
   const targets = config.symlinks?.targets ?? [];
   const symlinkResults: { target: string; created: boolean; migrated: string[] }[] = [];
 
   for (const target of targets) {
-    const targetDir = join(projectRoot, target);
+    const targetDir = join(scope.root, target);
     const result = await ensureSkillsSymlink(agentsDir, targetDir);
     symlinkResults.push({ target, ...result });
   }
@@ -61,39 +76,44 @@ export async function runInit(opts: InitOptions): Promise<void> {
     if (!agent) continue;
     if (seenParentDirs.has(agent.skillsParentDir)) continue;
     seenParentDirs.add(agent.skillsParentDir);
-    const targetDir = join(projectRoot, agent.skillsParentDir);
+    const targetDir = join(scope.root, agent.skillsParentDir);
     const result = await ensureSkillsSymlink(agentsDir, targetDir);
     symlinkResults.push({ target: agent.skillsParentDir, ...result });
   }
 
-  return printSummary(config.gitignore, symlinkResults);
+  return printSummary(scope, config.gitignore, symlinkResults);
 }
 
 function printSummary(
+  scope: ScopeRoot,
   gitignore: boolean,
   symlinks: { target: string; created: boolean; migrated: string[] }[],
 ): void {
-  console.log(chalk.green("Created agents.toml"));
-  console.log(chalk.green("Created .agents/skills/"));
+  const prefix = scope.scope === "user" ? "~/.agents/" : "";
+  console.log(chalk.green(`Created ${prefix}agents.toml`));
+  console.log(chalk.green(`Created ${prefix}${scope.scope === "user" ? "" : ".agents/"}skills/`));
   if (gitignore) {
     console.log(chalk.green("Created .agents/.gitignore"));
   }
 
   for (const s of symlinks) {
     if (s.created) {
-      console.log(chalk.green(`Created symlink: ${s.target}/skills/ → .agents/skills/`));
+      const label = scope.scope === "user" ? `${s.target}/skills/` : `${s.target}/skills/`;
+      const source = scope.scope === "user" ? "~/.agents/skills/" : ".agents/skills/";
+      console.log(chalk.green(`Created symlink: ${label} → ${source}`));
     }
     if (s.migrated.length > 0) {
       console.log(
         chalk.yellow(
-          `Migrated ${s.migrated.length} skill(s) from ${s.target}/skills/ to .agents/skills/`,
+          `Migrated ${s.migrated.length} skill(s) from ${s.target}/skills/ to ${scope.scope === "user" ? "~/.agents/" : ".agents/"}skills/`,
         ),
       );
     }
   }
 
+  const cmd = scope.scope === "user" ? "dotagents --user" : "dotagents";
   console.log(
-    `\n${chalk.bold("Next steps:")}\n  1. Add skills: dotagents add @anthropics/pdf-processing\n  2. Install: dotagents install`,
+    `\n${chalk.bold("Next steps:")}\n  1. Add skills: ${cmd} add @anthropics/pdf-processing\n  2. Install: ${cmd} install`,
   );
 }
 
@@ -115,7 +135,7 @@ const BANNER = `
                        |___/
 `;
 
-async function runInteractiveInit(projectRoot: string, force?: boolean): Promise<void> {
+async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<void> {
   const clack = await import("@clack/prompts");
 
   function cancelled(): never {
@@ -139,12 +159,16 @@ async function runInteractiveInit(projectRoot: string, force?: boolean): Promise
     }),
   );
 
-  const gitignore = prompt(
-    await clack.confirm({
-      message: "Manage a .gitignore inside .agents/?",
-      initialValue: false,
-    }),
-  );
+  // Skip gitignore prompt for user scope (not a git repo)
+  let gitignore = false;
+  if (scope.scope === "project") {
+    gitignore = prompt(
+      await clack.confirm({
+        message: "Manage a .gitignore inside .agents/?",
+        initialValue: false,
+      }),
+    );
+  }
 
   const trustMode = prompt(
     await clack.select({
@@ -176,7 +200,7 @@ async function runInteractiveInit(projectRoot: string, force?: boolean): Promise
   }
 
   await runInit({
-    projectRoot,
+    scope,
     force,
     agents: selectedAgents.length > 0 ? selectedAgents : undefined,
     gitignore,
@@ -186,7 +210,7 @@ async function runInteractiveInit(projectRoot: string, force?: boolean): Promise
   clack.outro("You're all set! Run `dotagents add` to install your first skill.");
 }
 
-export default async function init(args: string[]): Promise<void> {
+export default async function init(args: string[], flags?: { user?: boolean }): Promise<void> {
   const { values } = parseArgs({
     args,
     options: {
@@ -196,13 +220,12 @@ export default async function init(args: string[]): Promise<void> {
     strict: true,
   });
 
-  const { resolve } = await import("node:path");
-  const projectRoot = resolve(".");
+  const scope = resolveScope(flags?.user ? "user" : "project", resolve("."));
 
   try {
     // Interactive mode: TTY with no --agents flag
     if (process.stdout.isTTY && values["agents"] === undefined) {
-      await runInteractiveInit(projectRoot, values["force"]);
+      await runInteractiveInit(scope, values["force"]);
       return;
     }
 
@@ -210,7 +233,7 @@ export default async function init(args: string[]): Promise<void> {
       ? values["agents"].split(",").map((s) => s.trim()).filter(Boolean)
       : undefined;
 
-    await runInit({ projectRoot, force: values["force"], agents });
+    await runInit({ scope, force: values["force"], agents });
   } catch (err) {
     if (err instanceof CancelledError) return;
     if (err instanceof InitError) {

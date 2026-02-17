@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
@@ -8,6 +8,8 @@ import { discoverAllSkills } from "../../skills/discovery.js";
 import { ensureCached } from "../../sources/cache.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import { runInstall } from "./install.js";
+import { resolveScope } from "../../scope.js";
+import type { ScopeRoot } from "../../scope.js";
 
 export class AddError extends Error {
   constructor(message: string) {
@@ -17,15 +19,15 @@ export class AddError extends Error {
 }
 
 export interface AddOptions {
-  projectRoot: string;
+  scope: ScopeRoot;
   specifier: string;
   ref?: string;
   name?: string;
 }
 
 export async function runAdd(opts: AddOptions): Promise<string> {
-  const { projectRoot, specifier, ref, name: nameOverride } = opts;
-  const configPath = join(projectRoot, "agents.toml");
+  const { scope, specifier, ref, name: nameOverride } = opts;
+  const { configPath } = scope;
 
   // Load config early so we can check trust before any network work
   const config = await loadConfig(configPath);
@@ -47,7 +49,7 @@ export async function runAdd(opts: AddOptions): Promise<string> {
     const resolved = await resolveSkill(
       nameOverride ?? "unknown",
       { source: specifier },
-      { projectRoot },
+      { projectRoot: scope.root },
     );
     if (resolved.type !== "local") throw new AddError("Unexpected resolve type for local source");
 
@@ -103,7 +105,7 @@ export async function runAdd(opts: AddOptions): Promise<string> {
   }
 
   // Build the source string for agents.toml
-  let source = specifier;
+  const source = specifier;
   // If ref was provided inline (@ref), strip it from source since we'll use the ref field
   if (parsed.ref && !ref) {
     // Inline ref — keep it in source as-is
@@ -118,12 +120,12 @@ export async function runAdd(opts: AddOptions): Promise<string> {
   });
 
   // Run install to actually fetch and place the skill
-  await runInstall({ projectRoot });
+  await runInstall({ scope });
 
   return skillName;
 }
 
-export default async function add(args: string[]): Promise<void> {
+export default async function add(args: string[], flags?: { user?: boolean }): Promise<void> {
   const { positionals, values } = parseArgs({
     args,
     allowPositionals: true,
@@ -141,10 +143,10 @@ export default async function add(args: string[]): Promise<void> {
     return;
   }
 
-  const { resolve } = await import("node:path");
   try {
+    const scope = resolveScope(flags?.user ? "user" : "project", resolve("."));
     const name = await runAdd({
-      projectRoot: resolve("."),
+      scope,
       specifier,
       ref: values["ref"],
       name: values["name"],

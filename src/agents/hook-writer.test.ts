@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
-import { writeHookConfigs, verifyHookConfigs, toHookDeclarations } from "./hook-writer.js";
+import { writeHookConfigs, verifyHookConfigs, toHookDeclarations, projectHookResolver } from "./hook-writer.js";
 import type { HookDeclaration } from "./types.js";
 import type { HookConfig } from "../config/schema.js";
 
@@ -42,13 +42,13 @@ describe("writeHookConfigs", () => {
   });
 
   it("skips when no hooks declared", async () => {
-    const warnings = await writeHookConfigs(dir, ["claude"], []);
+    const warnings = await writeHookConfigs(["claude"], [], projectHookResolver(dir));
     expect(warnings).toEqual([]);
     expect(existsSync(join(dir, ".claude", "settings.json"))).toBe(false);
   });
 
   it("writes claude .claude/settings.json", async () => {
-    await writeHookConfigs(dir, ["claude"], HOOKS);
+    await writeHookConfigs(["claude"], HOOKS, projectHookResolver(dir));
 
     const content = JSON.parse(await readFile(join(dir, ".claude", "settings.json"), "utf-8"));
     expect(content.hooks.PreToolUse).toEqual([
@@ -60,7 +60,7 @@ describe("writeHookConfigs", () => {
   });
 
   it("writes cursor .cursor/hooks.json with version field", async () => {
-    await writeHookConfigs(dir, ["cursor"], HOOKS);
+    await writeHookConfigs(["cursor"], HOOKS, projectHookResolver(dir));
 
     const content = JSON.parse(await readFile(join(dir, ".cursor", "hooks.json"), "utf-8"));
     expect(content.version).toBe(1);
@@ -76,7 +76,7 @@ describe("writeHookConfigs", () => {
   });
 
   it("cursor drops matcher", async () => {
-    await writeHookConfigs(dir, ["cursor"], HOOKS);
+    await writeHookConfigs(["cursor"], HOOKS, projectHookResolver(dir));
 
     const content = JSON.parse(await readFile(join(dir, ".cursor", "hooks.json"), "utf-8"));
     // Cursor hooks should not contain matcher
@@ -88,14 +88,14 @@ describe("writeHookConfigs", () => {
   });
 
   it("writes vscode to same .claude/settings.json as claude", async () => {
-    await writeHookConfigs(dir, ["vscode"], HOOKS);
+    await writeHookConfigs(["vscode"], HOOKS, projectHookResolver(dir));
 
     const content = JSON.parse(await readFile(join(dir, ".claude", "settings.json"), "utf-8"));
     expect(content.hooks.PreToolUse).toBeDefined();
   });
 
   it("deduplicates shared file between claude and vscode", async () => {
-    await writeHookConfigs(dir, ["claude", "vscode"], HOOKS);
+    await writeHookConfigs(["claude", "vscode"], HOOKS, projectHookResolver(dir));
 
     // Should only write once — both target .claude/settings.json
     const content = JSON.parse(await readFile(join(dir, ".claude", "settings.json"), "utf-8"));
@@ -103,7 +103,7 @@ describe("writeHookConfigs", () => {
   });
 
   it("returns warnings for unsupported agents", async () => {
-    const warnings = await writeHookConfigs(dir, ["codex", "opencode"], HOOKS);
+    const warnings = await writeHookConfigs(["codex", "opencode"], HOOKS, projectHookResolver(dir));
     expect(warnings).toHaveLength(2);
     expect(warnings[0]!.agent).toBe("codex");
     expect(warnings[1]!.agent).toBe("opencode");
@@ -111,7 +111,7 @@ describe("writeHookConfigs", () => {
   });
 
   it("writes supported agents and warns for unsupported ones", async () => {
-    const warnings = await writeHookConfigs(dir, ["claude", "codex"], HOOKS);
+    const warnings = await writeHookConfigs(["claude", "codex"], HOOKS, projectHookResolver(dir));
     expect(warnings).toHaveLength(1);
     expect(warnings[0]!.agent).toBe("codex");
     expect(existsSync(join(dir, ".claude", "settings.json"))).toBe(true);
@@ -126,7 +126,7 @@ describe("writeHookConfigs", () => {
       "utf-8",
     );
 
-    await writeHookConfigs(dir, ["claude"], HOOKS);
+    await writeHookConfigs(["claude"], HOOKS, projectHookResolver(dir));
 
     const content = JSON.parse(await readFile(join(claudeDir, "settings.json"), "utf-8"));
     expect(content.permissions).toEqual({ allow: ["Read"] });
@@ -134,17 +134,17 @@ describe("writeHookConfigs", () => {
   });
 
   it("is idempotent", async () => {
-    await writeHookConfigs(dir, ["claude"], HOOKS);
+    await writeHookConfigs(["claude"], HOOKS, projectHookResolver(dir));
     const first = await readFile(join(dir, ".claude", "settings.json"), "utf-8");
 
-    await writeHookConfigs(dir, ["claude"], HOOKS);
+    await writeHookConfigs(["claude"], HOOKS, projectHookResolver(dir));
     const second = await readFile(join(dir, ".claude", "settings.json"), "utf-8");
 
     expect(first).toBe(second);
   });
 
   it("handles multiple agents including cursor", async () => {
-    await writeHookConfigs(dir, ["claude", "cursor"], HOOKS);
+    await writeHookConfigs(["claude", "cursor"], HOOKS, projectHookResolver(dir));
 
     expect(existsSync(join(dir, ".claude", "settings.json"))).toBe(true);
     expect(existsSync(join(dir, ".cursor", "hooks.json"))).toBe(true);
@@ -163,24 +163,24 @@ describe("verifyHookConfigs", () => {
   });
 
   it("returns no issues when configs match", async () => {
-    await writeHookConfigs(dir, ["claude"], HOOKS);
-    const issues = await verifyHookConfigs(dir, ["claude"], HOOKS);
+    await writeHookConfigs(["claude"], HOOKS, projectHookResolver(dir));
+    const issues = await verifyHookConfigs(["claude"], HOOKS, projectHookResolver(dir));
     expect(issues).toEqual([]);
   });
 
   it("reports missing config file", async () => {
-    const issues = await verifyHookConfigs(dir, ["claude"], HOOKS);
+    const issues = await verifyHookConfigs(["claude"], HOOKS, projectHookResolver(dir));
     expect(issues).toHaveLength(1);
     expect(issues[0]!.issue).toContain("missing");
   });
 
   it("skips unsupported agents without reporting issues", async () => {
-    const issues = await verifyHookConfigs(dir, ["codex"], HOOKS);
+    const issues = await verifyHookConfigs(["codex"], HOOKS, projectHookResolver(dir));
     expect(issues).toEqual([]);
   });
 
   it("returns empty when no hooks declared", async () => {
-    const issues = await verifyHookConfigs(dir, ["claude"], []);
+    const issues = await verifyHookConfigs(["claude"], [], projectHookResolver(dir));
     expect(issues).toEqual([]);
   });
 
@@ -193,7 +193,7 @@ describe("verifyHookConfigs", () => {
       "utf-8",
     );
 
-    const issues = await verifyHookConfigs(dir, ["claude"], HOOKS);
+    const issues = await verifyHookConfigs(["claude"], HOOKS, projectHookResolver(dir));
     expect(issues).toHaveLength(1);
     expect(issues[0]!.issue).toContain("hooks");
   });

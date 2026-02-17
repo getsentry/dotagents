@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { runList } from "./list.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { hashDirectory } from "../../utils/hash.js";
+import { resolveScope } from "../../scope.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -31,7 +32,7 @@ describe("runList", () => {
       join(projectRoot, "agents.toml"),
       "version = 1\n",
     );
-    const results = await runList({ projectRoot });
+    const results = await runList({ scope: resolveScope("project", projectRoot) });
     expect(results).toHaveLength(0);
   });
 
@@ -40,7 +41,7 @@ describe("runList", () => {
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "org/repo"\n`,
     );
-    const results = await runList({ projectRoot });
+    const results = await runList({ scope: resolveScope("project", projectRoot) });
     expect(results).toHaveLength(1);
     expect(results[0]!.status).toBe("missing");
   });
@@ -55,7 +56,7 @@ describe("runList", () => {
     await mkdir(skillDir, { recursive: true });
     await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("pdf"));
 
-    const results = await runList({ projectRoot });
+    const results = await runList({ scope: resolveScope("project", projectRoot) });
     expect(results).toHaveLength(1);
     expect(results[0]!.status).toBe("unlocked");
   });
@@ -83,7 +84,7 @@ describe("runList", () => {
       },
     });
 
-    const results = await runList({ projectRoot });
+    const results = await runList({ scope: resolveScope("project", projectRoot) });
     expect(results).toHaveLength(1);
     expect(results[0]!.status).toBe("ok");
     expect(results[0]!.commit).toBe("aaaaaaaa");
@@ -111,7 +112,7 @@ describe("runList", () => {
       },
     });
 
-    const results = await runList({ projectRoot });
+    const results = await runList({ scope: resolveScope("project", projectRoot) });
     expect(results).toHaveLength(1);
     expect(results[0]!.status).toBe("modified");
   });
@@ -121,7 +122,7 @@ describe("runList", () => {
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "z-skill"\nsource = "org/z"\n\n[[skills]]\nname = "a-skill"\nsource = "org/a"\n`,
     );
-    const results = await runList({ projectRoot });
+    const results = await runList({ scope: resolveScope("project", projectRoot) });
     expect(results[0]!.name).toBe("a-skill");
     expect(results[1]!.name).toBe("z-skill");
   });

@@ -7,6 +7,7 @@ import { writeLockfile } from "../../lockfile/writer.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { loadConfig } from "../../config/loader.js";
 import { hashDirectory } from "../../utils/hash.js";
+import { resolveScope } from "../../scope.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -37,7 +38,7 @@ describe("runSync", () => {
     await mkdir(orphanDir, { recursive: true });
     await writeFile(join(orphanDir, "SKILL.md"), SKILL_MD("orphan"));
 
-    const result = await runSync({ projectRoot });
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
 
     // Should be adopted, not reported as an issue
     expect(result.adopted).toEqual(["orphan"]);
@@ -68,7 +69,7 @@ describe("runSync", () => {
       await writeFile(join(dir, "SKILL.md"), SKILL_MD(name));
     }
 
-    const result = await runSync({ projectRoot });
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.adopted).toHaveLength(2);
     expect(result.adopted).toContain("alpha");
     expect(result.adopted).toContain("beta");
@@ -86,7 +87,7 @@ describe("runSync", () => {
     await mkdir(orphanDir, { recursive: true });
     await writeFile(join(orphanDir, "SKILL.md"), SKILL_MD("stray"));
 
-    const result = await runSync({ projectRoot });
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.adopted).toContain("stray");
     expect(result.issues).toHaveLength(0);
   });
@@ -97,7 +98,7 @@ describe("runSync", () => {
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "org/repo"\n`,
     );
 
-    const result = await runSync({ projectRoot });
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
     const missingIssues = result.issues.filter((i) => i.type === "missing");
     expect(missingIssues).toHaveLength(1);
     expect(missingIssues[0]!.name).toBe("pdf");
@@ -125,7 +126,7 @@ describe("runSync", () => {
       },
     });
 
-    const result = await runSync({ projectRoot });
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
     const modifiedIssues = result.issues.filter((i) => i.type === "modified");
     expect(modifiedIssues).toHaveLength(1);
   });
@@ -153,7 +154,7 @@ describe("runSync", () => {
       },
     });
 
-    const result = await runSync({ projectRoot });
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.issues).toHaveLength(0);
   });
 
@@ -166,7 +167,7 @@ describe("runSync", () => {
     // Create .claude dir without the symlink
     await mkdir(join(projectRoot, ".claude"), { recursive: true });
 
-    const result = await runSync({ projectRoot });
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.symlinksRepaired).toBe(1);
   });
 
@@ -176,7 +177,7 @@ describe("runSync", () => {
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "org/repo"\n`,
     );
 
-    const result = await runSync({ projectRoot });
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.gitignoreUpdated).toBe(true);
 
     const { readFile } = await import("node:fs/promises");
@@ -193,7 +194,7 @@ describe("runSync", () => {
       `version = 1\nagents = ["claude"]\n\n[[mcp]]\nname = "github"\ncommand = "npx"\nargs = ["-y", "@mcp/server-github"]\n`,
     );
 
-    const result = await runSync({ projectRoot });
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.mcpRepaired).toBeGreaterThan(0);
 
     // Verify config was created
@@ -210,7 +211,7 @@ describe("runSync", () => {
     // .claude dir exists but no symlink
     await mkdir(join(projectRoot, ".claude"), { recursive: true });
 
-    const result = await runSync({ projectRoot });
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.symlinksRepaired).toBe(1);
   });
 
@@ -220,7 +221,7 @@ describe("runSync", () => {
       `version = 1\nagents = ["claude"]\n\n[[hooks]]\nevent = "PreToolUse"\nmatcher = "Bash"\ncommand = ".agents/hooks/block-rm.sh"\n`,
     );
 
-    const result = await runSync({ projectRoot });
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.hooksRepaired).toBeGreaterThan(0);
 
     // Verify config was created
@@ -239,10 +240,10 @@ describe("runSync", () => {
     );
 
     // First sync to create the config
-    await runSync({ projectRoot });
+    await runSync({ scope: resolveScope("project", projectRoot) });
 
     // Second sync should find everything in order
-    const result = await runSync({ projectRoot });
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.hooksRepaired).toBe(0);
     expect(result.issues.filter((i) => i.type === "hooks")).toHaveLength(0);
   });

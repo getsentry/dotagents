@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
@@ -11,10 +11,12 @@ import { copyDir } from "../../utils/fs.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import type { Lockfile, LockedSkill } from "../../lockfile/schema.js";
+import { resolveScope } from "../../scope.js";
+import type { ScopeRoot } from "../../scope.js";
 
 /** A skill whose source points to its own install location (adopted orphan). */
 function isInPlaceSkill(source: string): boolean {
-  return source.startsWith("path:.agents/skills/");
+  return source.startsWith("path:.agents/skills/") || source.startsWith("path:skills/");
 }
 
 export class UpdateError extends Error {
@@ -25,7 +27,7 @@ export class UpdateError extends Error {
 }
 
 export interface UpdateOptions {
-  projectRoot: string;
+  scope: ScopeRoot;
   skillName?: string;
 }
 
@@ -36,11 +38,8 @@ export interface UpdatedSkill {
 }
 
 export async function runUpdate(opts: UpdateOptions): Promise<UpdatedSkill[]> {
-  const { projectRoot, skillName } = opts;
-  const configPath = join(projectRoot, "agents.toml");
-  const lockPath = join(projectRoot, "agents.lock");
-  const agentsDir = join(projectRoot, ".agents");
-  const skillsDir = join(agentsDir, "skills");
+  const { scope, skillName } = opts;
+  const { configPath, lockPath, agentsDir, skillsDir } = scope;
 
   const config = await loadConfig(configPath);
   const lockfile = await loadLockfile(lockPath);
@@ -76,7 +75,7 @@ export async function runUpdate(opts: UpdateOptions): Promise<UpdatedSkill[]> {
     if (dep.ref && /^[a-f0-9]{40}$/.test(dep.ref)) continue;
 
     // Resolve fresh (no locked commit → forces a new fetch)
-    const resolved = await resolveSkill(name, dep, { projectRoot });
+    const resolved = await resolveSkill(name, dep, { projectRoot: scope.root });
 
     if (resolved.type !== "git") continue;
 
@@ -110,24 +109,28 @@ export async function runUpdate(opts: UpdateOptions): Promise<UpdatedSkill[]> {
   // Write updated lockfile
   if (updated.length > 0) {
     await writeLockfile(lockPath, newLock);
-    const managedNames = config.skills.filter((s) => !isInPlaceSkill(s.source)).map((s) => s.name);
-    await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
+
+    // Regenerate gitignore (skip for user scope)
+    if (scope.scope === "project") {
+      const managedNames = config.skills.filter((s) => !isInPlaceSkill(s.source)).map((s) => s.name);
+      await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
+    }
   }
 
   return updated;
 }
 
-export default async function update(args: string[]): Promise<void> {
+export default async function update(args: string[], flags?: { user?: boolean }): Promise<void> {
   const { positionals } = parseArgs({
     args,
     allowPositionals: true,
     strict: true,
   });
 
-  const { resolve } = await import("node:path");
   try {
+    const scope = resolveScope(flags?.user ? "user" : "project", resolve("."));
     const updated = await runUpdate({
-      projectRoot: resolve("."),
+      scope,
       skillName: positionals[0],
     });
 

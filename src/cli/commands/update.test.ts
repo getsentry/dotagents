@@ -6,6 +6,7 @@ import { runUpdate, UpdateError } from "./update.js";
 import { runInstall } from "./install.js";
 import { exec } from "../../utils/exec.js";
 import { loadLockfile } from "../../lockfile/loader.js";
+import { resolveScope } from "../../scope.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -52,7 +53,7 @@ describe("runUpdate", () => {
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
 
-    await expect(runUpdate({ projectRoot })).rejects.toThrow(UpdateError);
+    await expect(runUpdate({ scope: resolveScope("project", projectRoot) })).rejects.toThrow(UpdateError);
   });
 
   it("reports no updates when nothing changed", async () => {
@@ -60,11 +61,11 @@ describe("runUpdate", () => {
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
-    await runInstall({ projectRoot });
+    await runInstall({ scope: resolveScope("project", projectRoot) });
 
     // Update with no changes to repo — should be up to date
     // Force cache refresh by setting TTL to 0
-    const updated = await runUpdate({ projectRoot });
+    const updated = await runUpdate({ scope: resolveScope("project", projectRoot) });
     expect(updated).toHaveLength(0);
   });
 
@@ -73,7 +74,7 @@ describe("runUpdate", () => {
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
-    await runInstall({ projectRoot });
+    await runInstall({ scope: resolveScope("project", projectRoot) });
 
     const lockBefore = await loadLockfile(join(projectRoot, "agents.lock"));
     const commitBefore = (lockBefore!.skills["pdf"] as { commit: string }).commit;
@@ -86,7 +87,7 @@ describe("runUpdate", () => {
     // Delete cache to force re-clone (simulating TTL expiry)
     await rm(stateDir, { recursive: true, force: true });
 
-    const updated = await runUpdate({ projectRoot });
+    const updated = await runUpdate({ scope: resolveScope("project", projectRoot) });
     expect(updated).toHaveLength(1);
     expect(updated[0]!.name).toBe("pdf");
 
@@ -107,7 +108,7 @@ describe("runUpdate", () => {
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "review"\nsource = "git:${repoDir}"\n`,
     );
-    await runInstall({ projectRoot });
+    await runInstall({ scope: resolveScope("project", projectRoot) });
 
     // Change repo
     await writeFile(join(repoDir, "pdf", "extra.md"), "changed");
@@ -117,7 +118,7 @@ describe("runUpdate", () => {
     await rm(stateDir, { recursive: true, force: true });
 
     // Update only pdf
-    const updated = await runUpdate({ projectRoot, skillName: "pdf" });
+    const updated = await runUpdate({ scope: resolveScope("project", projectRoot), skillName: "pdf" });
     // Both changed since they come from the same repo and re-resolved
     expect(updated.some((u) => u.name === "pdf")).toBe(true);
   });
@@ -128,7 +129,7 @@ describe("runUpdate", () => {
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
-    await runInstall({ projectRoot });
+    await runInstall({ scope: resolveScope("project", projectRoot) });
 
     // Simulate an adopted orphan alongside the git skill
     const inPlaceDir = join(projectRoot, ".agents", "skills", "local-skill");
@@ -147,7 +148,7 @@ describe("runUpdate", () => {
     await exec("git", ["commit", "-m", "change pdf"], { cwd: repoDir });
     await rm(stateDir, { recursive: true, force: true });
 
-    await runUpdate({ projectRoot });
+    await runUpdate({ scope: resolveScope("project", projectRoot) });
 
     const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
     expect(gitignore).toContain("/skills/pdf/");

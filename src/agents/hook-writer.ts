@@ -5,6 +5,13 @@ import { getAgent } from "./registry.js";
 import type { HookDeclaration, HookConfigSpec } from "./types.js";
 import type { HookConfig } from "../config/schema.js";
 
+export interface HookResolvedTarget {
+  filePath: string;
+  shared: boolean;
+}
+
+export type HookTargetResolver = (agentId: string, spec: HookConfigSpec) => HookResolvedTarget;
+
 /**
  * Convert HookConfig entries (from agents.toml) to universal HookDeclarations.
  */
@@ -14,6 +21,16 @@ export function toHookDeclarations(configs: HookConfig[]): HookDeclaration[] {
     ...(h.matcher && { matcher: h.matcher }),
     command: h.command,
   }));
+}
+
+/**
+ * Convenience resolver for project-scope hooks: joins spec.filePath with projectRoot.
+ */
+export function projectHookResolver(projectRoot: string): HookTargetResolver {
+  return (_id: string, spec: HookConfigSpec) => ({
+    filePath: join(projectRoot, spec.filePath),
+    shared: spec.shared,
+  });
 }
 
 export interface HookWriteWarning {
@@ -28,9 +45,9 @@ export interface HookWriteWarning {
  * - Agents that don't support hooks: collected as warnings.
  */
 export async function writeHookConfigs(
-  projectRoot: string,
   agentIds: string[],
   hooks: HookDeclaration[],
+  resolveTarget: HookTargetResolver,
 ): Promise<HookWriteWarning[]> {
   const warnings: HookWriteWarning[] = [];
   if (hooks.length === 0) return warnings;
@@ -48,13 +65,13 @@ export async function writeHookConfigs(
 
     const serialized = agent.serializeHooks(hooks);
     const spec = agent.hooks;
-    if (seen.has(spec.filePath)) continue;
-    seen.add(spec.filePath);
+    const { filePath, shared } = resolveTarget(id, spec);
+    if (seen.has(filePath)) continue;
+    seen.add(filePath);
 
-    const filePath = join(projectRoot, spec.filePath);
     await mkdir(dirname(filePath), { recursive: true });
 
-    if (spec.shared) {
+    if (shared) {
       await mergeWrite(filePath, spec, serialized);
     } else {
       await freshWrite(filePath, spec, serialized);
@@ -69,9 +86,9 @@ export async function writeHookConfigs(
  * Returns a list of issues found.
  */
 export async function verifyHookConfigs(
-  projectRoot: string,
   agentIds: string[],
   hooks: HookDeclaration[],
+  resolveTarget: HookTargetResolver,
 ): Promise<{ agent: string; issue: string }[]> {
   if (hooks.length === 0) return [];
 
@@ -86,12 +103,12 @@ export async function verifyHookConfigs(
     if (!agent.hooks) continue;
 
     const spec = agent.hooks;
-    if (seen.has(spec.filePath)) continue;
-    seen.add(spec.filePath);
+    const { filePath } = resolveTarget(id, spec);
+    if (seen.has(filePath)) continue;
+    seen.add(filePath);
 
-    const filePath = join(projectRoot, spec.filePath);
     if (!existsSync(filePath)) {
-      issues.push({ agent: id, issue: `Hook config missing: ${spec.filePath}` });
+      issues.push({ agent: id, issue: `Hook config missing: ${filePath}` });
       continue;
     }
 
@@ -99,10 +116,10 @@ export async function verifyHookConfigs(
       const existing = await readExisting(filePath);
       const hooksSection = existing[spec.rootKey];
       if (!hooksSection || typeof hooksSection !== "object") {
-        issues.push({ agent: id, issue: `Hook config missing "${spec.rootKey}" key in ${spec.filePath}` });
+        issues.push({ agent: id, issue: `Hook config missing "${spec.rootKey}" key in ${filePath}` });
       }
     } catch {
-      issues.push({ agent: id, issue: `Failed to read hook config: ${spec.filePath}` });
+      issues.push({ agent: id, issue: `Failed to read hook config: ${filePath}` });
     }
   }
 

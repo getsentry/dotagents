@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
@@ -6,6 +6,8 @@ import { loadLockfile } from "../../lockfile/loader.js";
 import { isGitLocked } from "../../lockfile/schema.js";
 import { hashDirectory } from "../../utils/hash.js";
 import { existsSync } from "node:fs";
+import { resolveScope } from "../../scope.js";
+import type { ScopeRoot } from "../../scope.js";
 
 export interface SkillStatus {
   name: string;
@@ -15,15 +17,13 @@ export interface SkillStatus {
 }
 
 export interface ListOptions {
-  projectRoot: string;
+  scope: ScopeRoot;
   json?: boolean;
 }
 
 export async function runList(opts: ListOptions): Promise<SkillStatus[]> {
-  const { projectRoot } = opts;
-  const configPath = join(projectRoot, "agents.toml");
-  const lockPath = join(projectRoot, "agents.lock");
-  const skillsDir = join(projectRoot, ".agents", "skills");
+  const { scope } = opts;
+  const { configPath, lockPath, skillsDir } = scope;
 
   const config = await loadConfig(configPath);
   const lockfile = await loadLockfile(lockPath);
@@ -76,7 +76,7 @@ function formatStatus(s: SkillStatus): string {
   }
 }
 
-export default async function list(args: string[]): Promise<void> {
+export default async function list(args: string[], flags?: { user?: boolean }): Promise<void> {
   const { values } = parseArgs({
     args,
     options: {
@@ -85,9 +85,9 @@ export default async function list(args: string[]): Promise<void> {
     strict: true,
   });
 
-  const { resolve } = await import("node:path");
+  const scope = resolveScope(flags?.user ? "user" : "project", resolve("."));
   const results = await runList({
-    projectRoot: resolve("."),
+    scope,
     json: values["json"],
   });
 

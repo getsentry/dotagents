@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { rm } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
@@ -7,6 +7,8 @@ import { removeSkillFromConfig } from "../../config/writer.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
+import { resolveScope } from "../../scope.js";
+import type { ScopeRoot } from "../../scope.js";
 
 export class RemoveError extends Error {
   constructor(message: string) {
@@ -16,16 +18,14 @@ export class RemoveError extends Error {
 }
 
 export interface RemoveOptions {
-  projectRoot: string;
+  scope: ScopeRoot;
   skillName: string;
 }
 
 export async function runRemove(opts: RemoveOptions): Promise<void> {
-  const { projectRoot, skillName } = opts;
-  const configPath = join(projectRoot, "agents.toml");
-  const lockPath = join(projectRoot, "agents.lock");
-  const agentsDir = join(projectRoot, ".agents");
-  const skillDir = join(agentsDir, "skills", skillName);
+  const { scope, skillName } = opts;
+  const { configPath, lockPath, skillsDir } = scope;
+  const skillDir = join(skillsDir, skillName);
 
   // Verify skill exists in config
   const config = await loadConfig(configPath);
@@ -46,13 +46,15 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
     await writeLockfile(lockPath, lockfile);
   }
 
-  // 4. Regenerate gitignore
-  const updatedConfig = await loadConfig(configPath);
-  const managedNames = updatedConfig.skills.map((s) => s.name);
-  await updateAgentsGitignore(agentsDir, updatedConfig.gitignore, managedNames);
+  // 4. Regenerate gitignore (skip for user scope)
+  if (scope.scope === "project") {
+    const updatedConfig = await loadConfig(configPath);
+    const managedNames = updatedConfig.skills.map((s) => s.name);
+    await updateAgentsGitignore(scope.agentsDir, updatedConfig.gitignore, managedNames);
+  }
 }
 
-export default async function remove(args: string[]): Promise<void> {
+export default async function remove(args: string[], flags?: { user?: boolean }): Promise<void> {
   const { positionals } = parseArgs({
     args,
     allowPositionals: true,
@@ -66,9 +68,9 @@ export default async function remove(args: string[]): Promise<void> {
     return;
   }
 
-  const { resolve } = await import("node:path");
   try {
-    await runRemove({ projectRoot: resolve("."), skillName });
+    const scope = resolveScope(flags?.user ? "user" : "project", resolve("."));
+    await runRemove({ scope, skillName });
     console.log(chalk.green(`Removed skill: ${skillName}`));
   } catch (err) {
     if (err instanceof RemoveError) {

@@ -6,6 +6,13 @@ import { getAgent } from "./registry.js";
 import type { McpDeclaration, McpConfigSpec } from "./types.js";
 import type { McpConfig } from "../config/schema.js";
 
+export interface McpResolvedTarget {
+  filePath: string;
+  shared: boolean;
+}
+
+export type McpTargetResolver = (agentId: string, spec: McpConfigSpec) => McpResolvedTarget;
+
 /**
  * Convert McpConfig entries (from agents.toml) to universal McpDeclarations.
  */
@@ -21,18 +28,28 @@ export function toMcpDeclarations(configs: McpConfig[]): McpDeclaration[] {
 }
 
 /**
+ * Convenience resolver for project-scope MCP: joins spec.filePath with projectRoot.
+ */
+export function projectMcpResolver(projectRoot: string): McpTargetResolver {
+  return (_id: string, spec: McpConfigSpec) => ({
+    filePath: join(projectRoot, spec.filePath),
+    shared: spec.shared,
+  });
+}
+
+/**
  * Write MCP config files for each agent.
  * - Dedicated files (shared=false): written fresh each time.
  * - Shared files (shared=true): read existing, merge dotagents servers under the root key, write back.
  */
 export async function writeMcpConfigs(
-  projectRoot: string,
   agentIds: string[],
   servers: McpDeclaration[],
+  resolveTarget: McpTargetResolver,
 ): Promise<void> {
   if (servers.length === 0) return;
 
-  // Deduplicate by filePath so shared files aren't written twice
+  // Deduplicate by resolved filePath so shared files aren't written twice
   const seen = new Set<string>();
 
   for (const id of agentIds) {
@@ -40,8 +57,9 @@ export async function writeMcpConfigs(
     if (!agent) continue;
 
     const { mcp } = agent;
-    if (seen.has(mcp.filePath)) continue;
-    seen.add(mcp.filePath);
+    const { filePath, shared } = resolveTarget(id, mcp);
+    if (seen.has(filePath)) continue;
+    seen.add(filePath);
 
     const serialized: Record<string, unknown> = {};
     for (const server of servers) {
@@ -49,10 +67,9 @@ export async function writeMcpConfigs(
       serialized[name] = config;
     }
 
-    const filePath = join(projectRoot, mcp.filePath);
     await mkdir(dirname(filePath), { recursive: true });
 
-    if (mcp.shared) {
+    if (shared) {
       await mergeWrite(filePath, mcp, serialized);
     } else {
       await freshWrite(filePath, mcp, serialized);
@@ -65,9 +82,9 @@ export async function writeMcpConfigs(
  * Returns a list of issues found.
  */
 export async function verifyMcpConfigs(
-  projectRoot: string,
   agentIds: string[],
   servers: McpDeclaration[],
+  resolveTarget: McpTargetResolver,
 ): Promise<{ agent: string; issue: string }[]> {
   if (servers.length === 0) return [];
 
@@ -79,12 +96,12 @@ export async function verifyMcpConfigs(
     if (!agent) continue;
 
     const { mcp } = agent;
-    if (seen.has(mcp.filePath)) continue;
-    seen.add(mcp.filePath);
+    const { filePath } = resolveTarget(id, mcp);
+    if (seen.has(filePath)) continue;
+    seen.add(filePath);
 
-    const filePath = join(projectRoot, mcp.filePath);
     if (!existsSync(filePath)) {
-      issues.push({ agent: id, issue: `MCP config missing: ${mcp.filePath}` });
+      issues.push({ agent: id, issue: `MCP config missing: ${filePath}` });
       continue;
     }
 
@@ -95,11 +112,11 @@ export async function verifyMcpConfigs(
       const existingServers = existing[mcp.rootKey] as Record<string, unknown> | undefined;
       for (const name of expectedNames) {
         if (!existingServers || !(name in existingServers)) {
-          issues.push({ agent: id, issue: `MCP server "${name}" missing from ${mcp.filePath}` });
+          issues.push({ agent: id, issue: `MCP server "${name}" missing from ${filePath}` });
         }
       }
     } catch {
-      issues.push({ agent: id, issue: `Failed to read MCP config: ${mcp.filePath}` });
+      issues.push({ agent: id, issue: `Failed to read MCP config: ${filePath}` });
     }
   }
 

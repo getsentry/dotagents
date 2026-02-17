@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
-import { writeMcpConfigs, verifyMcpConfigs } from "./mcp-writer.js";
+import { writeMcpConfigs, verifyMcpConfigs, projectMcpResolver } from "./mcp-writer.js";
 import type { McpDeclaration } from "./types.js";
 
 const STDIO_SERVER: McpDeclaration = {
@@ -31,12 +31,12 @@ describe("writeMcpConfigs", () => {
   });
 
   it("skips when no servers declared", async () => {
-    await writeMcpConfigs(dir, ["claude"], []);
+    await writeMcpConfigs(["claude"], [], projectMcpResolver(dir));
     expect(existsSync(join(dir, ".mcp.json"))).toBe(false);
   });
 
   it("writes claude .mcp.json", async () => {
-    await writeMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
+    await writeMcpConfigs(["claude"], [STDIO_SERVER], projectMcpResolver(dir));
 
     const content = JSON.parse(await readFile(join(dir, ".mcp.json"), "utf-8"));
     expect(content.mcpServers.github).toEqual({
@@ -47,14 +47,14 @@ describe("writeMcpConfigs", () => {
   });
 
   it("writes cursor .cursor/mcp.json", async () => {
-    await writeMcpConfigs(dir, ["cursor"], [STDIO_SERVER]);
+    await writeMcpConfigs(["cursor"], [STDIO_SERVER], projectMcpResolver(dir));
 
     const content = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf-8"));
     expect(content.mcpServers.github).toBeDefined();
   });
 
   it("writes vscode .vscode/mcp.json with input refs", async () => {
-    await writeMcpConfigs(dir, ["vscode"], [STDIO_SERVER]);
+    await writeMcpConfigs(["vscode"], [STDIO_SERVER], projectMcpResolver(dir));
 
     const content = JSON.parse(await readFile(join(dir, ".vscode", "mcp.json"), "utf-8"));
     expect(content.servers.github).toEqual({
@@ -66,7 +66,7 @@ describe("writeMcpConfigs", () => {
   });
 
   it("writes codex .codex/config.toml", async () => {
-    await writeMcpConfigs(dir, ["codex"], [STDIO_SERVER]);
+    await writeMcpConfigs(["codex"], [STDIO_SERVER], projectMcpResolver(dir));
 
     const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
     expect(raw).toContain("mcp_servers");
@@ -74,7 +74,7 @@ describe("writeMcpConfigs", () => {
   });
 
   it("writes opencode.json", async () => {
-    await writeMcpConfigs(dir, ["opencode"], [STDIO_SERVER]);
+    await writeMcpConfigs(["opencode"], [STDIO_SERVER], projectMcpResolver(dir));
 
     const content = JSON.parse(await readFile(join(dir, "opencode.json"), "utf-8"));
     expect(content.mcp.github).toEqual({
@@ -85,7 +85,7 @@ describe("writeMcpConfigs", () => {
   });
 
   it("handles multiple agents", async () => {
-    await writeMcpConfigs(dir, ["claude", "cursor", "vscode"], [STDIO_SERVER]);
+    await writeMcpConfigs(["claude", "cursor", "vscode"], [STDIO_SERVER], projectMcpResolver(dir));
 
     expect(existsSync(join(dir, ".mcp.json"))).toBe(true);
     expect(existsSync(join(dir, ".cursor", "mcp.json"))).toBe(true);
@@ -93,7 +93,7 @@ describe("writeMcpConfigs", () => {
   });
 
   it("handles multiple servers", async () => {
-    await writeMcpConfigs(dir, ["claude"], [STDIO_SERVER, HTTP_SERVER]);
+    await writeMcpConfigs(["claude"], [STDIO_SERVER, HTTP_SERVER], projectMcpResolver(dir));
 
     const content = JSON.parse(await readFile(join(dir, ".mcp.json"), "utf-8"));
     expect(Object.keys(content.mcpServers)).toHaveLength(2);
@@ -108,7 +108,7 @@ describe("writeMcpConfigs", () => {
     await mkdir(codexDir, { recursive: true });
     await writeFile(join(codexDir, "config.toml"), 'model = "o3"\n', "utf-8");
 
-    await writeMcpConfigs(dir, ["codex"], [STDIO_SERVER]);
+    await writeMcpConfigs(["codex"], [STDIO_SERVER], projectMcpResolver(dir));
 
     const raw = await readFile(join(codexDir, "config.toml"), "utf-8");
     // Should preserve existing keys
@@ -124,7 +124,7 @@ describe("writeMcpConfigs", () => {
       "utf-8",
     );
 
-    await writeMcpConfigs(dir, ["opencode"], [STDIO_SERVER]);
+    await writeMcpConfigs(["opencode"], [STDIO_SERVER], projectMcpResolver(dir));
 
     const content = JSON.parse(await readFile(join(dir, "opencode.json"), "utf-8"));
     // dotagents-managed server should be present
@@ -134,17 +134,17 @@ describe("writeMcpConfigs", () => {
   });
 
   it("is idempotent", async () => {
-    await writeMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
+    await writeMcpConfigs(["claude"], [STDIO_SERVER], projectMcpResolver(dir));
     const first = await readFile(join(dir, ".mcp.json"), "utf-8");
 
-    await writeMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
+    await writeMcpConfigs(["claude"], [STDIO_SERVER], projectMcpResolver(dir));
     const second = await readFile(join(dir, ".mcp.json"), "utf-8");
 
     expect(first).toBe(second);
   });
 
   it("creates parent directories as needed", async () => {
-    await writeMcpConfigs(dir, ["cursor"], [STDIO_SERVER]);
+    await writeMcpConfigs(["cursor"], [STDIO_SERVER], projectMcpResolver(dir));
     expect(existsSync(join(dir, ".cursor", "mcp.json"))).toBe(true);
   });
 });
@@ -161,27 +161,27 @@ describe("verifyMcpConfigs", () => {
   });
 
   it("returns no issues when configs match", async () => {
-    await writeMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
-    const issues = await verifyMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
+    await writeMcpConfigs(["claude"], [STDIO_SERVER], projectMcpResolver(dir));
+    const issues = await verifyMcpConfigs(["claude"], [STDIO_SERVER], projectMcpResolver(dir));
     expect(issues).toEqual([]);
   });
 
   it("reports missing config file", async () => {
-    const issues = await verifyMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
+    const issues = await verifyMcpConfigs(["claude"], [STDIO_SERVER], projectMcpResolver(dir));
     expect(issues).toHaveLength(1);
     expect(issues[0]!.issue).toContain("missing");
   });
 
   it("reports missing server in config", async () => {
     // Write config with only one server
-    await writeMcpConfigs(dir, ["claude"], [STDIO_SERVER]);
+    await writeMcpConfigs(["claude"], [STDIO_SERVER], projectMcpResolver(dir));
     // Verify expecting two servers
-    const issues = await verifyMcpConfigs(dir, ["claude"], [STDIO_SERVER, HTTP_SERVER]);
+    const issues = await verifyMcpConfigs(["claude"], [STDIO_SERVER, HTTP_SERVER], projectMcpResolver(dir));
     expect(issues.some((i) => i.issue.includes("remote"))).toBe(true);
   });
 
   it("returns empty when no servers declared", async () => {
-    const issues = await verifyMcpConfigs(dir, ["claude"], []);
+    const issues = await verifyMcpConfigs(["claude"], [], projectMcpResolver(dir));
     expect(issues).toEqual([]);
   });
 });

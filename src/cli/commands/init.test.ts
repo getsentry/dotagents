@@ -1,3 +1,4 @@
+import { resolveScope } from "../../scope.js";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, writeFile, lstat, readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -18,7 +19,7 @@ describe("runInit", () => {
   });
 
   it("creates agents.toml in project root", async () => {
-    await runInit({ projectRoot: dir });
+    await runInit({ scope: resolveScope("project", dir) });
 
     const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.version).toBe(1);
@@ -26,14 +27,14 @@ describe("runInit", () => {
   });
 
   it("creates .agents/skills/ directory", async () => {
-    await runInit({ projectRoot: dir });
+    await runInit({ scope: resolveScope("project", dir) });
 
     const stat = await lstat(join(dir, ".agents", "skills"));
     expect(stat.isDirectory()).toBe(true);
   });
 
   it("does not create .agents/.gitignore with default config (gitignore = false)", async () => {
-    await runInit({ projectRoot: dir });
+    await runInit({ scope: resolveScope("project", dir) });
 
     expect(existsSync(join(dir, ".agents", ".gitignore"))).toBe(false);
   });
@@ -41,8 +42,8 @@ describe("runInit", () => {
   it("throws InitError if agents.toml exists without --force", async () => {
     await writeFile(join(dir, "agents.toml"), "version = 1\n");
 
-    await expect(runInit({ projectRoot: dir })).rejects.toThrow(InitError);
-    await expect(runInit({ projectRoot: dir })).rejects.toThrow(
+    await expect(runInit({ scope: resolveScope("project", dir) })).rejects.toThrow(InitError);
+    await expect(runInit({ scope: resolveScope("project", dir) })).rejects.toThrow(
       "agents.toml already exists",
     );
   });
@@ -50,15 +51,15 @@ describe("runInit", () => {
   it("overwrites agents.toml with --force", async () => {
     await writeFile(join(dir, "agents.toml"), "garbage content");
 
-    await runInit({ projectRoot: dir, force: true });
+    await runInit({ scope: resolveScope("project", dir), force: true });
 
     const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.version).toBe(1);
   });
 
   it("is idempotent with --force", async () => {
-    await runInit({ projectRoot: dir });
-    await runInit({ projectRoot: dir, force: true });
+    await runInit({ scope: resolveScope("project", dir) });
+    await runInit({ scope: resolveScope("project", dir), force: true });
 
     const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.version).toBe(1);
@@ -66,14 +67,14 @@ describe("runInit", () => {
   });
 
   it("does not create symlinks with default config", async () => {
-    await runInit({ projectRoot: dir });
+    await runInit({ scope: resolveScope("project", dir) });
 
     // Default config has no symlinks configured, so .claude should not exist
     expect(existsSync(join(dir, ".claude"))).toBe(false);
   });
 
   it("creates all expected files and directories", async () => {
-    await runInit({ projectRoot: dir });
+    await runInit({ scope: resolveScope("project", dir) });
 
     expect(existsSync(join(dir, "agents.toml"))).toBe(true);
     expect(existsSync(join(dir, ".agents"))).toBe(true);
@@ -87,21 +88,21 @@ describe("runInit", () => {
     await mkdir(join(dir, ".agents", "skills", "my-skill"), { recursive: true });
     await wf(join(dir, ".agents", "skills", "my-skill", "SKILL.md"), "# test");
 
-    await runInit({ projectRoot: dir });
+    await runInit({ scope: resolveScope("project", dir) });
 
     const entries = await readdir(join(dir, ".agents", "skills"));
     expect(entries).toContain("my-skill");
   });
 
   it("writes agents field when --agents is provided", async () => {
-    await runInit({ projectRoot: dir, agents: ["claude", "cursor"] });
+    await runInit({ scope: resolveScope("project", dir), agents: ["claude", "cursor"] });
 
     const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.agents).toEqual(["claude", "cursor"]);
   });
 
   it("creates agent-specific symlinks when --agents is provided", async () => {
-    await runInit({ projectRoot: dir, agents: ["claude", "cursor"] });
+    await runInit({ scope: resolveScope("project", dir), agents: ["claude", "cursor"] });
 
     const claudeStat = await lstat(join(dir, ".claude", "skills"));
     expect(claudeStat.isSymbolicLink()).toBe(true);
@@ -111,15 +112,15 @@ describe("runInit", () => {
 
   it("rejects unknown agent IDs", async () => {
     await expect(
-      runInit({ projectRoot: dir, agents: ["claude", "emacs"] }),
+      runInit({ scope: resolveScope("project", dir), agents: ["claude", "emacs"] }),
     ).rejects.toThrow(InitError);
     await expect(
-      runInit({ projectRoot: dir, agents: ["emacs"] }),
+      runInit({ scope: resolveScope("project", dir), agents: ["emacs"] }),
     ).rejects.toThrow(/Unknown agent/);
   });
 
   it("creates .agents/.gitignore when gitignore option is true", async () => {
-    await runInit({ projectRoot: dir, gitignore: true });
+    await runInit({ scope: resolveScope("project", dir), gitignore: true });
 
     const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.gitignore).toBe(true);
@@ -128,7 +129,7 @@ describe("runInit", () => {
 
   it("writes trust section when trust option is provided", async () => {
     await runInit({
-      projectRoot: dir,
+      scope: resolveScope("project", dir),
       trust: { allow_all: false, github_orgs: ["my-org"], github_repos: [], git_domains: [] },
     });
 
@@ -138,7 +139,7 @@ describe("runInit", () => {
 
   it("writes allow_all trust when specified", async () => {
     await runInit({
-      projectRoot: dir,
+      scope: resolveScope("project", dir),
       trust: { allow_all: true, github_orgs: [], github_repos: [], git_domains: [] },
     });
 

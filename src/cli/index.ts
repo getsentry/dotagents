@@ -6,7 +6,7 @@ function printUsage(): void {
   // eslint-disable-next-line no-console
   console.log(`dotagents - package manager for .agents directories
 
-Usage: dotagents <command> [options]
+Usage: dotagents [--user] <command> [options]
 
 Commands:
   init        Initialize agents.toml and .agents/skills/
@@ -18,12 +18,19 @@ Commands:
   list        Show installed skills
 
 Options:
+  --user      Operate on user-scope (~/.agents/) instead of project
   --help, -h  Show this help message
   --version   Show version`);
 }
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+
+  // Extract --user flag before command dispatch
+  const userIndex = args.indexOf("--user");
+  const isUser = userIndex !== -1;
+  if (isUser) args.splice(userIndex, 1);
+
   const first = args[0];
 
   // Handle top-level flags before any command
@@ -46,7 +53,7 @@ async function main(): Promise<void> {
 
   // Pass remaining args (after command name) to the subcommand
   const mod = await import(`./commands/${first}.js`);
-  await mod.default(args.slice(1));
+  await mod.default(args.slice(1), { user: isUser });
 }
 
 main().catch((err: unknown) => {

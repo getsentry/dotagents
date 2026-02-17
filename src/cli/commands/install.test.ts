@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { runInstall, InstallError } from "./install.js";
 import { exec } from "../../utils/exec.js";
 import { loadLockfile } from "../../lockfile/loader.js";
+import { resolveScope } from "../../scope.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -60,7 +61,8 @@ describe("runInstall", () => {
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
 
-    const result = await runInstall({ projectRoot });
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
     expect(result.installed).toContain("pdf");
 
     // Skill directory should exist
@@ -74,7 +76,8 @@ describe("runInstall", () => {
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
 
-    await runInstall({ projectRoot });
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
 
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile).not.toBeNull();
@@ -88,7 +91,8 @@ describe("runInstall", () => {
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "review"\nsource = "git:${repoDir}"\n`,
     );
 
-    const result = await runInstall({ projectRoot });
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
     expect(result.installed).toHaveLength(2);
     expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
     expect(existsSync(join(projectRoot, ".agents", "skills", "review", "SKILL.md"))).toBe(true);
@@ -100,7 +104,8 @@ describe("runInstall", () => {
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
 
-    await runInstall({ projectRoot });
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
 
     const { readFile } = await import("node:fs/promises");
     const gitignore = await readFile(
@@ -116,7 +121,8 @@ describe("runInstall", () => {
       "version = 1\n",
     );
 
-    const result = await runInstall({ projectRoot });
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
     expect(result.installed).toHaveLength(0);
   });
 
@@ -126,7 +132,8 @@ describe("runInstall", () => {
       `version = 1\nagents = ["claude"]\n\n[[mcp]]\nname = "github"\ncommand = "npx"\nargs = ["-y", "@mcp/server-github"]\n`,
     );
 
-    await runInstall({ projectRoot });
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
 
     const { readFile: rf } = await import("node:fs/promises");
     const mcp = JSON.parse(await rf(join(projectRoot, ".mcp.json"), "utf-8"));
@@ -144,8 +151,9 @@ describe("runInstall", () => {
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
 
+    const scope = resolveScope("project", projectRoot);
     await expect(
-      runInstall({ projectRoot, frozen: true }),
+      runInstall({ scope, frozen: true }),
     ).rejects.toThrow(InstallError);
   });
 
@@ -155,11 +163,13 @@ describe("runInstall", () => {
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
 
+    const scope = resolveScope("project", projectRoot);
+
     // First install to create lockfile
-    await runInstall({ projectRoot });
+    await runInstall({ scope });
 
     // Second install with --frozen
-    const result = await runInstall({ projectRoot, frozen: true });
+    const result = await runInstall({ scope, frozen: true });
     expect(result.installed).toContain("pdf");
   });
 
@@ -169,7 +179,8 @@ describe("runInstall", () => {
       `version = 1\nagents = ["claude", "cursor"]\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
 
-    await runInstall({ projectRoot });
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
 
     const { lstat } = await import("node:fs/promises");
     const claudeStat = await lstat(join(projectRoot, ".claude", "skills"));
@@ -184,7 +195,8 @@ describe("runInstall", () => {
       `version = 1\nagents = ["claude"]\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[mcp]]\nname = "github"\ncommand = "npx"\nargs = ["-y", "@mcp/server-github"]\n`,
     );
 
-    await runInstall({ projectRoot });
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
 
     const { readFile } = await import("node:fs/promises");
     const mcp = JSON.parse(await readFile(join(projectRoot, ".mcp.json"), "utf-8"));
@@ -198,7 +210,8 @@ describe("runInstall", () => {
       `version = 1\nagents = ["claude"]\n\n[[hooks]]\nevent = "PreToolUse"\nmatcher = "Bash"\ncommand = ".agents/hooks/block-rm.sh"\n`,
     );
 
-    const result = await runInstall({ projectRoot });
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
     expect(result.hookWarnings).toHaveLength(0);
 
     const { readFile } = await import("node:fs/promises");
@@ -214,7 +227,8 @@ describe("runInstall", () => {
       `version = 1\nagents = ["codex"]\n\n[[hooks]]\nevent = "Stop"\ncommand = "check.sh"\n`,
     );
 
-    const result = await runInstall({ projectRoot });
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
     expect(result.hookWarnings).toHaveLength(1);
     expect(result.hookWarnings[0]!.agent).toBe("codex");
   });
@@ -230,7 +244,8 @@ describe("runInstall", () => {
       `version = 1\n\n[[skills]]\nname = "local-skill"\nsource = "path:.agents/skills/local-skill"\n`,
     );
 
-    const result = await runInstall({ projectRoot });
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
     expect(result.installed).toContain("local-skill");
 
     // Lockfile should have integrity and source
@@ -253,7 +268,8 @@ describe("runInstall", () => {
       `version = 1\n\n[[skills]]\nname = "local-skill"\nsource = "path:.agents/skills/local-skill"\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
 
-    await runInstall({ projectRoot });
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
 
     const { readFile: rf } = await import("node:fs/promises");
     const gitignore = await rf(join(projectRoot, ".agents", ".gitignore"), "utf-8");
