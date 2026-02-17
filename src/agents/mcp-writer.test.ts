@@ -101,6 +101,108 @@ describe("writeMcpConfigs", () => {
     expect(content.mcpServers.remote).toBeDefined();
   });
 
+  it("writes claude HTTP server with type: http", async () => {
+    await writeMcpConfigs(["claude"], [HTTP_SERVER], projectMcpResolver(dir));
+
+    const content = JSON.parse(await readFile(join(dir, ".mcp.json"), "utf-8"));
+    expect(content.mcpServers.remote).toEqual({
+      type: "http",
+      url: "https://mcp.example.com/sse",
+      headers: { Authorization: "Bearer tok" },
+    });
+  });
+
+  it("writes cursor HTTP server with type: http", async () => {
+    await writeMcpConfigs(["cursor"], [HTTP_SERVER], projectMcpResolver(dir));
+
+    const content = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf-8"));
+    expect(content.mcpServers.remote).toEqual({
+      type: "http",
+      url: "https://mcp.example.com/sse",
+      headers: { Authorization: "Bearer tok" },
+    });
+  });
+
+  it("writes vscode HTTP server with type: http", async () => {
+    await writeMcpConfigs(["vscode"], [HTTP_SERVER], projectMcpResolver(dir));
+
+    const content = JSON.parse(await readFile(join(dir, ".vscode", "mcp.json"), "utf-8"));
+    expect(content.servers.remote).toEqual({
+      type: "http",
+      url: "https://mcp.example.com/sse",
+      headers: { Authorization: "Bearer tok" },
+    });
+  });
+
+  it("writes opencode HTTP server with type: remote", async () => {
+    await writeMcpConfigs(["opencode"], [HTTP_SERVER], projectMcpResolver(dir));
+
+    const content = JSON.parse(await readFile(join(dir, "opencode.json"), "utf-8"));
+    expect(content.mcp.remote).toEqual({
+      type: "remote",
+      url: "https://mcp.example.com/sse",
+      headers: { Authorization: "Bearer tok" },
+    });
+  });
+
+  it("writes codex HTTP server with http_headers and no type", async () => {
+    await writeMcpConfigs(["codex"], [HTTP_SERVER], projectMcpResolver(dir));
+
+    const { parse: parseTOML } = await import("smol-toml");
+    const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
+    const content = parseTOML(raw) as Record<string, Record<string, Record<string, unknown>>>;
+    expect(content["mcp_servers"]!["remote"]).toEqual({
+      url: "https://mcp.example.com/sse",
+      http_headers: { Authorization: "Bearer tok" },
+    });
+  });
+
+  it("writes correct HTTP servers for all agents", async () => {
+    const allAgents = ["claude", "cursor", "vscode", "opencode", "codex"];
+    await writeMcpConfigs(allAgents, [STDIO_SERVER, HTTP_SERVER], projectMcpResolver(dir));
+
+    // Claude
+    const claude = JSON.parse(await readFile(join(dir, ".mcp.json"), "utf-8"));
+    expect(claude.mcpServers.remote).toEqual({
+      type: "http",
+      url: "https://mcp.example.com/sse",
+      headers: { Authorization: "Bearer tok" },
+    });
+
+    // Cursor
+    const cursor = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf-8"));
+    expect(cursor.mcpServers.remote).toEqual({
+      type: "http",
+      url: "https://mcp.example.com/sse",
+      headers: { Authorization: "Bearer tok" },
+    });
+
+    // VS Code
+    const vscode = JSON.parse(await readFile(join(dir, ".vscode", "mcp.json"), "utf-8"));
+    expect(vscode.servers.remote).toEqual({
+      type: "http",
+      url: "https://mcp.example.com/sse",
+      headers: { Authorization: "Bearer tok" },
+    });
+
+    // OpenCode
+    const opencode = JSON.parse(await readFile(join(dir, "opencode.json"), "utf-8"));
+    expect(opencode.mcp.remote).toEqual({
+      type: "remote",
+      url: "https://mcp.example.com/sse",
+      headers: { Authorization: "Bearer tok" },
+    });
+
+    // Codex
+    const { parse: parseTOML } = await import("smol-toml");
+    const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
+    const codex = parseTOML(raw) as Record<string, Record<string, Record<string, unknown>>>;
+    expect(codex["mcp_servers"]!["remote"]).toEqual({
+      url: "https://mcp.example.com/sse",
+      http_headers: { Authorization: "Bearer tok" },
+    });
+  });
+
   it("merges into existing shared config file", async () => {
     // Codex config.toml is shared — write something else first
     const codexDir = join(dir, ".codex");

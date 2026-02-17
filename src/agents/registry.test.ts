@@ -56,6 +56,7 @@ describe("claude serializer", () => {
     const [name, config] = agent.serializeServer(HTTP_SERVER);
     expect(name).toBe("remote-api");
     expect(config).toEqual({
+      type: "http",
       url: "https://mcp.example.com/sse",
       headers: { Authorization: "Bearer tok" },
     });
@@ -90,6 +91,15 @@ describe("codex serializer", () => {
     });
   });
 
+  it("serializes http server with http_headers and no type", () => {
+    const [name, config] = agent.serializeServer(HTTP_SERVER);
+    expect(name).toBe("remote-api");
+    expect(config).toEqual({
+      url: "https://mcp.example.com/sse",
+      http_headers: { Authorization: "Bearer tok" },
+    });
+  });
+
   it("has toml format and shared flag", () => {
     expect(agent.mcp.format).toBe("toml");
     expect(agent.mcp.shared).toBe(true);
@@ -110,11 +120,11 @@ describe("vscode serializer", () => {
     });
   });
 
-  it("serializes http server with sse type", () => {
+  it("serializes http server with http type", () => {
     const [name, config] = agent.serializeServer(HTTP_SERVER);
     expect(name).toBe("remote-api");
     expect(config).toEqual({
-      type: "sse",
+      type: "http",
       url: "https://mcp.example.com/sse",
       headers: { Authorization: "Bearer tok" },
     });

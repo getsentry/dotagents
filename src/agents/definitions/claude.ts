@@ -16,7 +16,7 @@ const claude: AgentDefinition = {
     shared: false,
   },
   serializeServer(s) {
-    if (s.url) return httpServer(s);
+    if (s.url) return httpServer(s, "http");
     const env = envRecord(s.env, (k) => `\${${k}}`);
     return [s.name, { command: s.command, args: s.args ?? [], ...(env && { env }) }];
   },

@@ -1,6 +1,7 @@
 import type { AgentDefinition } from "../types.js";
 import { UnsupportedFeature } from "../errors.js";
 import claude from "./claude.js";
+import { envRecord } from "./helpers.js";
 
 const codex: AgentDefinition = {
   ...claude,
@@ -15,6 +16,13 @@ const codex: AgentDefinition = {
     rootKey: "mcp_servers",
     format: "toml",
     shared: true,
+  },
+  serializeServer(s) {
+    if (s.url) {
+      return [s.name, { url: s.url, ...(s.headers && { http_headers: s.headers }) }];
+    }
+    const env = envRecord(s.env, (k) => `\${${k}}`);
+    return [s.name, { command: s.command, args: s.args ?? [], ...(env && { env }) }];
   },
   hooks: undefined,
   serializeHooks() {

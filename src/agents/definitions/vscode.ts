@@ -13,7 +13,7 @@ const vscode: AgentDefinition = {
     shared: false,
   },
   serializeServer(s) {
-    if (s.url) return httpServer(s, "sse");
+    if (s.url) return httpServer(s, "http");
     const env = envRecord(s.env, (k) => `\${input:${k}}`);
     return [
       s.name,
