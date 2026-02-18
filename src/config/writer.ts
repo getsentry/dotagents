@@ -90,8 +90,8 @@ export async function addExcludeToWildcard(
       // Check if this is a wildcard block for the target source
       const nameLine = blockLines.find((l) => l.trim().startsWith("name"));
       const sourceLine = blockLines.find((l) => l.trim().startsWith("source"));
-      const isWildcard = nameLine?.match(/^name\s*=\s*"\*"/);
-      const sourceMatch = sourceLine?.match(/^source\s*=\s*"([^"]+)"/);
+      const isWildcard = nameLine?.trim().match(/^name\s*=\s*"\*"/);
+      const sourceMatch = sourceLine?.trim().match(/^source\s*=\s*"([^"]+)"/);
 
       if (isWildcard && sourceMatch && sourceMatch[1] === source && !found) {
         found = true;
@@ -100,7 +100,7 @@ export async function addExcludeToWildcard(
         if (excludeIdx >= 0) {
           // Parse existing exclude array and append
           const excludeLine = blockLines[excludeIdx]!;
-          const match = excludeLine.match(/^(exclude\s*=\s*)\[([^\]]*)\]/);
+          const match = excludeLine.trim().match(/^(exclude\s*=\s*)\[([^\]]*)\]/);
           if (match) {
             const existing = match[2]!.trim();
             const newValue = existing

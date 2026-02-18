@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
+import { isWildcardDep } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { addSkillToConfig } from "../../config/writer.js";
@@ -46,7 +47,21 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 
   let config = await loadConfig(configPath);
   const lockfile = await loadLockfile(lockPath);
-  const declaredNames = new Set(config.skills.map((s) => s.name));
+  // Build declared names from explicit entries + wildcard-expanded lockfile entries
+  const declaredNames = new Set(
+    config.skills.filter((s) => !isWildcardDep(s)).map((s) => s.name),
+  );
+  if (lockfile) {
+    // Add concrete skill names from wildcard sources
+    const wildcardSources = new Set(
+      config.skills.filter(isWildcardDep).map((s) => s.source),
+    );
+    for (const [name, locked] of Object.entries(lockfile.skills)) {
+      if (wildcardSources.has(locked.source)) {
+        declaredNames.add(name);
+      }
+    }
+  }
   const issues: SyncIssue[] = [];
   const adopted: string[] = [];
 
@@ -80,7 +95,17 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   // 2. Regenerate .agents/.gitignore (skip for user scope)
   let gitignoreUpdated = false;
   if (scope.scope === "project") {
-    const managedNames = config.skills.filter((s) => !isInPlaceSkill(s.source)).map((s) => s.name);
+    // Use lockfile for concrete names when available (wildcard entries expand there),
+    // fall back to explicit config entries when no lockfile exists
+    const lockNow = await loadLockfile(lockPath);
+    const allNames = lockNow
+      ? Object.keys(lockNow.skills)
+      : config.skills.filter((s) => !isWildcardDep(s)).map((s) => s.name);
+    const managedNames = allNames.filter((name) => {
+      const dep = config.skills.find((s) => s.name === name);
+      if (!dep || isWildcardDep(dep)) return true; // wildcard-sourced skills are always managed
+      return !isInPlaceSkill(dep.source);
+    });
     await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
     gitignoreUpdated = config.gitignore;
   }

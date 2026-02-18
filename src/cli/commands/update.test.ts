@@ -64,9 +64,8 @@ describe("runUpdate", () => {
     await runInstall({ scope: resolveScope("project", projectRoot) });
 
     // Update with no changes to repo — should be up to date
-    // Force cache refresh by setting TTL to 0
-    const updated = await runUpdate({ scope: resolveScope("project", projectRoot) });
-    expect(updated).toHaveLength(0);
+    const result = await runUpdate({ scope: resolveScope("project", projectRoot) });
+    expect(result.updated).toHaveLength(0);
   });
 
   it("detects and applies updates when repo changes", async () => {
@@ -87,9 +86,9 @@ describe("runUpdate", () => {
     // Delete cache to force re-clone (simulating TTL expiry)
     await rm(stateDir, { recursive: true, force: true });
 
-    const updated = await runUpdate({ scope: resolveScope("project", projectRoot) });
-    expect(updated).toHaveLength(1);
-    expect(updated[0]!.name).toBe("pdf");
+    const result = await runUpdate({ scope: resolveScope("project", projectRoot) });
+    expect(result.updated).toHaveLength(1);
+    expect(result.updated[0]!.name).toBe("pdf");
 
     // Lockfile should have new commit
     const lockAfter = await loadLockfile(join(projectRoot, "agents.lock"));
@@ -118,9 +117,9 @@ describe("runUpdate", () => {
     await rm(stateDir, { recursive: true, force: true });
 
     // Update only pdf
-    const updated = await runUpdate({ scope: resolveScope("project", projectRoot), skillName: "pdf" });
+    const result = await runUpdate({ scope: resolveScope("project", projectRoot), skillName: "pdf" });
     // Both changed since they come from the same repo and re-resolved
-    expect(updated.some((u) => u.name === "pdf")).toBe(true);
+    expect(result.updated.some((u) => u.name === "pdf")).toBe(true);
   });
 
   it("excludes in-place skills from gitignore after update", async () => {
@@ -172,9 +171,9 @@ describe("runUpdate", () => {
     // Delete cache to force re-clone
     await rm(stateDir, { recursive: true, force: true });
 
-    const updated = await runUpdate({ scope: resolveScope("project", projectRoot) });
+    const result = await runUpdate({ scope: resolveScope("project", projectRoot) });
     // new-skill should appear as a new entry
-    expect(updated.some((u) => u.name === "new-skill")).toBe(true);
+    expect(result.updated.some((u) => u.name === "new-skill")).toBe(true);
 
     // Verify it's in the lockfile
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
@@ -239,13 +238,13 @@ describe("runUpdate", () => {
     await rm(stateDir, { recursive: true, force: true });
 
     // Update targeting "pdf" specifically — should update the entire wildcard group
-    const updated = await runUpdate({
+    const result = await runUpdate({
       scope: resolveScope("project", projectRoot),
       skillName: "pdf",
     });
 
     // Both pdf and review should be updated (same commit for the group)
-    expect(updated.some((u) => u.name === "pdf")).toBe(true);
-    expect(updated.some((u) => u.name === "review")).toBe(true);
+    expect(result.updated.some((u) => u.name === "pdf")).toBe(true);
+    expect(result.updated.some((u) => u.name === "review")).toBe(true);
   });
 });

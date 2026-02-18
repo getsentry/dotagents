@@ -40,7 +40,12 @@ export interface UpdatedSkill {
   newCommit: string;
 }
 
-export async function runUpdate(opts: UpdateOptions): Promise<UpdatedSkill[]> {
+export interface UpdateResult {
+  updated: UpdatedSkill[];
+  removed: string[];
+}
+
+export async function runUpdate(opts: UpdateOptions): Promise<UpdateResult> {
   const { scope, skillName } = opts;
   const { configPath, lockPath, agentsDir, skillsDir } = scope;
 
@@ -107,7 +112,7 @@ export async function runUpdate(opts: UpdateOptions): Promise<UpdatedSkill[]> {
     }
   }
 
-  return updated;
+  return { updated, removed };
 }
 
 async function updateRegularSkill(
@@ -241,22 +246,27 @@ export default async function update(args: string[], flags?: { user?: boolean })
 
   try {
     const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
-    const updated = await runUpdate({
+    const result = await runUpdate({
       scope,
       skillName: positionals[0],
     });
 
-    if (updated.length === 0) {
+    if (result.updated.length === 0 && result.removed.length === 0) {
       console.log(chalk.dim("All skills are up to date."));
       return;
     }
 
-    for (const u of updated) {
+    for (const u of result.updated) {
       console.log(
         chalk.green(`  ${u.name}: ${chalk.dim(u.oldCommit)} → ${u.newCommit}`),
       );
     }
-    console.log(chalk.green(`Updated ${updated.length} skill(s).`));
+    for (const name of result.removed) {
+      console.log(chalk.yellow(`  ${name}: removed (no longer upstream)`));
+    }
+    if (result.updated.length > 0) {
+      console.log(chalk.green(`Updated ${result.updated.length} skill(s).`));
+    }
   } catch (err) {
     if (err instanceof ScopeError || err instanceof UpdateError || err instanceof TrustError) {
       console.error(chalk.red(err.message));

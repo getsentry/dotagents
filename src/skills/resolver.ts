@@ -140,9 +140,12 @@ export interface NamedResolvedSkill {
   resolved: ResolvedSkill;
 }
 
+/** Skill names must be safe for use in file paths. */
+const VALID_SKILL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
 /**
  * Resolve a wildcard dependency: discover all skills from a source and return them.
- * Excludes are filtered out.
+ * Excludes are filtered out. Skill names are validated to prevent path traversal.
  */
 export async function resolveWildcardSkills(
   dep: Pick<WildcardSkillDependency, "source" | "ref" | "exclude">,
@@ -159,7 +162,7 @@ export async function resolveWildcardSkills(
     const skillDir = await resolveLocalSource(projectRoot, parsed.path!);
     const discovered = await discoverAllSkills(skillDir);
     return discovered
-      .filter((d) => !excludeSet.has(d.meta.name))
+      .filter((d) => !excludeSet.has(d.meta.name) && VALID_SKILL_NAME.test(d.meta.name))
       .map((d) => ({
         name: d.meta.name,
         resolved: { type: "local" as const, source: dep.source, skillDir: join(skillDir, d.path) },
@@ -184,7 +187,7 @@ export async function resolveWildcardSkills(
   const discovered = await discoverAllSkills(cached.repoDir);
 
   return discovered
-    .filter((d) => !excludeSet.has(d.meta.name))
+    .filter((d) => !excludeSet.has(d.meta.name) && VALID_SKILL_NAME.test(d.meta.name))
     .map((d) => ({
       name: d.meta.name,
       resolved: {
