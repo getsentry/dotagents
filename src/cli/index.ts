@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+import { createRequire } from "node:module";
+import { checkForUpdate } from "./update-notifier.js";
+
+const require = createRequire(import.meta.url);
+const { version } = require("../../package.json") as { version: string };
+export { version };
+
 const COMMANDS = ["init", "install", "add", "remove", "update", "sync", "list"] as const;
 type Command = (typeof COMMANDS)[number];
 
@@ -24,6 +31,8 @@ Options:
 }
 
 async function main(): Promise<void> {
+  const updateMessage = checkForUpdate(version);
+
   const args = process.argv.slice(2);
 
   // Extract --user flag before command dispatch
@@ -40,7 +49,7 @@ async function main(): Promise<void> {
   }
   if (first === "--version" || first === "-V") {
     // eslint-disable-next-line no-console
-    console.log("0.1.0");
+    console.log(version);
     return;
   }
 
@@ -54,6 +63,11 @@ async function main(): Promise<void> {
   // Pass remaining args (after command name) to the subcommand
   const mod = await import(`./commands/${first}.js`);
   await mod.default(args.slice(1), { user: isUser });
+
+  const message = await updateMessage;
+  if (message) {
+    console.error(`\n${message}`);
+  }
 }
 
 main().catch((err: unknown) => {
