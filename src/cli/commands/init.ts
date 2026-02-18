@@ -159,9 +159,9 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
 
   const selectedAgents = prompt(
     await clack.multiselect({
-      message: "Which agents do you use?",
+      message: "Which agents do you use? (space to select, enter to confirm)",
       options: allAgents().map((a) => ({ label: a.displayName, value: a.id })),
-      required: false,
+      required: true,
     }),
   );
 
@@ -208,7 +208,7 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
   await runInit({
     scope,
     force,
-    agents: selectedAgents.length > 0 ? selectedAgents : undefined,
+    agents: selectedAgents,
     gitignore,
     trust,
   });
