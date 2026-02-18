@@ -31,8 +31,6 @@ Options:
 }
 
 async function main(): Promise<void> {
-  const updateMessage = checkForUpdate(version);
-
   const args = process.argv.slice(2);
 
   // Extract --user flag before command dispatch
@@ -42,7 +40,7 @@ async function main(): Promise<void> {
 
   const first = args[0];
 
-  // Handle top-level flags before any command
+  // Handle top-level flags before any command (no update check needed)
   if (!first || first === "--help" || first === "-h") {
     printUsage();
     return;
@@ -59,6 +57,9 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+
+  // Start update check in background (only for actual commands)
+  const updateMessage = checkForUpdate(version);
 
   // Pass remaining args (after command name) to the subcommand
   const mod = await import(`./commands/${first}.js`);
