@@ -56,12 +56,13 @@ export async function runUpdate(opts: UpdateOptions): Promise<UpdatedSkill[]> {
   const explicitNames = new Set(regularDeps.map((d) => d.name));
 
   const updated: UpdatedSkill[] = [];
+  const removed: string[] = [];
   const newLock: Lockfile = { version: 1, skills: { ...lockfile.skills } };
 
   if (skillName) {
     const dep = regularDeps.find((s) => s.name === skillName);
     if (dep) {
-      const result = await updateRegularSkill(skillName, dep, lockfile, newLock, scope);
+      const result = await updateRegularSkill(skillName, dep, lockfile, newLock, scope, config.trust);
       if (result) updated.push(result);
     } else {
       // Check if it's from a wildcard source (via lockfile)
@@ -73,23 +74,25 @@ export async function runUpdate(opts: UpdateOptions): Promise<UpdatedSkill[]> {
       if (!wDep) {
         throw new UpdateError(`Skill "${skillName}" not found in agents.toml.`);
       }
-      const results = await updateWildcardSource(wDep, explicitNames, lockfile, newLock, scope, skillsDir);
-      updated.push(...results);
+      const results = await updateWildcardSource(wDep, explicitNames, lockfile, newLock, scope, skillsDir, config.trust);
+      updated.push(...results.updated);
+      removed.push(...results.removed);
     }
   } else {
     for (const dep of regularDeps) {
-      const result = await updateRegularSkill(dep.name, dep, lockfile, newLock, scope);
+      const result = await updateRegularSkill(dep.name, dep, lockfile, newLock, scope, config.trust);
       if (result) updated.push(result);
     }
 
     for (const wDep of wildcardDeps) {
-      const results = await updateWildcardSource(wDep, explicitNames, lockfile, newLock, scope, skillsDir);
-      updated.push(...results);
+      const results = await updateWildcardSource(wDep, explicitNames, lockfile, newLock, scope, skillsDir, config.trust);
+      updated.push(...results.updated);
+      removed.push(...results.removed);
     }
   }
 
   // Write updated lockfile
-  if (updated.length > 0) {
+  if (updated.length > 0 || removed.length > 0) {
     await writeLockfile(lockPath, newLock);
 
     // Regenerate gitignore (skip for user scope)
@@ -113,12 +116,13 @@ async function updateRegularSkill(
   lockfile: Lockfile,
   newLock: Lockfile,
   scope: ScopeRoot,
+  trust?: Parameters<typeof validateTrustedSource>[1],
 ): Promise<UpdatedSkill | null> {
   const locked = lockfile.skills[name];
   if (!locked) return null;
   if (!isGitLocked(locked)) return null;
 
-  validateTrustedSource(dep.source);
+  validateTrustedSource(dep.source, trust);
 
   if (dep.ref && /^[a-f0-9]{40}$/.test(dep.ref)) return null;
 
@@ -157,10 +161,11 @@ async function updateWildcardSource(
   newLock: Lockfile,
   scope: ScopeRoot,
   skillsDir: string,
-): Promise<UpdatedSkill[]> {
-  validateTrustedSource(wDep.source);
+  trust?: Parameters<typeof validateTrustedSource>[1],
+): Promise<{ updated: UpdatedSkill[]; removed: string[] }> {
+  validateTrustedSource(wDep.source, trust);
 
-  if (wDep.ref && /^[a-f0-9]{40}$/.test(wDep.ref)) return [];
+  if (wDep.ref && /^[a-f0-9]{40}$/.test(wDep.ref)) return { updated: [], removed: [] };
 
   // Re-discover all skills fresh
   const named = await resolveWildcardSkills(wDep, { projectRoot: scope.root });
@@ -215,14 +220,16 @@ async function updateWildcardSource(
   }
 
   // Remove skills no longer discovered (removed from upstream)
+  const removed: string[] = [];
   for (const [name] of lockedFromSource) {
     if (!discoveredNames.has(name) && !excludeSet.has(name)) {
       delete newLock.skills[name];
       await rm(join(skillsDir, name), { recursive: true, force: true });
+      removed.push(name);
     }
   }
 
-  return updated;
+  return { updated, removed };
 }
 
 export default async function update(args: string[], flags?: { user?: boolean }): Promise<void> {

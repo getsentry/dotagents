@@ -57,7 +57,14 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
 
     if (scope.scope === "project") {
       const updatedConfig = await loadConfig(configPath);
-      const managedNames = updatedConfig.skills.map((s) => s.name);
+      // Use lockfile for concrete skill names (wildcard entries expand to concrete names there)
+      const updatedLock = await loadLockfile(lockPath);
+      const allNames = updatedLock ? Object.keys(updatedLock.skills) : [];
+      const managedNames = allNames.filter((name) => {
+        const dep = updatedConfig.skills.find((s) => s.name === name);
+        if (!dep || isWildcardDep(dep)) return true; // wildcard-sourced skills are always managed
+        return !dep.source.startsWith("path:.agents/skills/") && !dep.source.startsWith("path:skills/");
+      });
       await updateAgentsGitignore(scope.agentsDir, updatedConfig.gitignore, managedNames);
     }
     return;
