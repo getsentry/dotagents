@@ -31,14 +31,32 @@ const skillNameSchema = z.string().regex(
   "Skill names must start with alphanumeric and contain only [a-zA-Z0-9._-]",
 );
 
-const skillDependencySchema = z.object({
+const wildcardSkillDependencySchema = z.object({
+  name: z.literal("*"),
+  source: skillSourceSchema,
+  ref: z.string().optional(),
+  exclude: z.array(skillNameSchema).default([]),
+});
+
+const regularSkillDependencySchema = z.object({
   name: skillNameSchema,
   source: skillSourceSchema,
   ref: z.string().optional(),
   path: z.string().optional(),
 });
 
+const skillDependencySchema = z.union([
+  wildcardSkillDependencySchema,
+  regularSkillDependencySchema,
+]);
+
+export type WildcardSkillDependency = z.infer<typeof wildcardSkillDependencySchema>;
+export type RegularSkillDependency = z.infer<typeof regularSkillDependencySchema>;
 export type SkillDependency = z.infer<typeof skillDependencySchema>;
+
+export function isWildcardDep(dep: SkillDependency): dep is WildcardSkillDependency {
+  return dep.name === "*";
+}
 
 const symlinksConfigSchema = z.object({
   targets: z.array(z.string()).default([]),

@@ -4,10 +4,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   addSkillToConfig,
+  addWildcardToConfig,
+  addExcludeToWildcard,
   removeSkillFromConfig,
   generateDefaultConfig,
 } from "./writer.js";
 import { loadConfig } from "./loader.js";
+import { isWildcardDep } from "./schema.js";
 
 describe("writer", () => {
   let dir: string;
@@ -133,7 +136,7 @@ describe("writer", () => {
       const config = await loadConfig(configPath);
       const review = config.skills.find((s) => s.name === "review");
       expect(review?.source).toBe("git:https://example.com/repo.git");
-      expect(review?.path).toBe("skills/review");
+      expect(review && "path" in review ? review.path : undefined).toBe("skills/review");
     });
 
     it("adds multiple skills", async () => {
@@ -191,6 +194,91 @@ describe("writer", () => {
       await removeSkillFromConfig(configPath, "nope");
       const after = await readFile(configPath, "utf-8");
       expect(after).toBe(before);
+    });
+  });
+
+  describe("addWildcardToConfig", () => {
+    it("adds a wildcard entry", async () => {
+      await addWildcardToConfig(configPath, "getsentry/skills");
+
+      const config = await loadConfig(configPath);
+      expect(config.skills).toHaveLength(1);
+      const dep = config.skills[0]!;
+      expect(dep.name).toBe("*");
+      expect(dep.source).toBe("getsentry/skills");
+    });
+
+    it("adds wildcard with ref", async () => {
+      await addWildcardToConfig(configPath, "getsentry/skills", { ref: "v1.0.0", exclude: [] });
+
+      const config = await loadConfig(configPath);
+      const dep = config.skills[0]!;
+      expect(dep.ref).toBe("v1.0.0");
+    });
+
+    it("adds wildcard with exclude list", async () => {
+      await addWildcardToConfig(configPath, "getsentry/skills", {
+        exclude: ["deprecated-skill"],
+      });
+
+      const config = await loadConfig(configPath);
+      const dep = config.skills[0]!;
+      expect(isWildcardDep(dep)).toBe(true);
+      if (isWildcardDep(dep)) {
+        expect(dep.exclude).toEqual(["deprecated-skill"]);
+      }
+    });
+
+    it("round-trips with loadConfig", async () => {
+      await addWildcardToConfig(configPath, "getsentry/skills");
+      await addSkillToConfig(configPath, "pdf", { source: "anthropics/skills" });
+
+      const config = await loadConfig(configPath);
+      expect(config.skills).toHaveLength(2);
+      expect(config.skills.some((s) => s.name === "*")).toBe(true);
+      expect(config.skills.some((s) => s.name === "pdf")).toBe(true);
+    });
+  });
+
+  describe("addExcludeToWildcard", () => {
+    it("adds a skill to exclude list of new wildcard", async () => {
+      await addWildcardToConfig(configPath, "getsentry/skills");
+      await addExcludeToWildcard(configPath, "getsentry/skills", "deprecated");
+
+      const config = await loadConfig(configPath);
+      const dep = config.skills[0]!;
+      expect(isWildcardDep(dep)).toBe(true);
+      if (isWildcardDep(dep)) {
+        expect(dep.exclude).toContain("deprecated");
+      }
+    });
+
+    it("appends to existing exclude list", async () => {
+      await addWildcardToConfig(configPath, "getsentry/skills", {
+        exclude: ["old-skill"],
+      });
+      await addExcludeToWildcard(configPath, "getsentry/skills", "another-skill");
+
+      const config = await loadConfig(configPath);
+      const dep = config.skills[0]!;
+      expect(isWildcardDep(dep)).toBe(true);
+      if (isWildcardDep(dep)) {
+        expect(dep.exclude).toContain("old-skill");
+        expect(dep.exclude).toContain("another-skill");
+      }
+    });
+
+    it("only modifies the matching wildcard source", async () => {
+      await addWildcardToConfig(configPath, "getsentry/skills");
+      await addWildcardToConfig(configPath, "anthropics/skills");
+      await addExcludeToWildcard(configPath, "getsentry/skills", "my-skill");
+
+      // The anthropics entry should not have an exclude
+      const config = await loadConfig(configPath);
+      const getsentry = config.skills.find((s) => s.source === "getsentry/skills");
+      const anthropics = config.skills.find((s) => s.source === "anthropics/skills");
+      expect(isWildcardDep(getsentry!) && getsentry!.exclude).toContain("my-skill");
+      expect(isWildcardDep(anthropics!) && anthropics!.exclude).toEqual([]);
     });
   });
 });

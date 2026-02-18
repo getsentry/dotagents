@@ -278,4 +278,124 @@ describe("runInstall", () => {
     // In-place skill should NOT be gitignored
     expect(gitignore).not.toContain("/skills/local-skill/");
   });
+
+  it("installs all skills from a wildcard entry", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+    // Should discover and install both "pdf" and "review"
+    expect(result.installed).toContain("pdf");
+    expect(result.installed).toContain("review");
+    expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "skills", "review", "SKILL.md"))).toBe(true);
+  });
+
+  it("wildcard respects exclude list", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\nexclude = ["review"]\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+    expect(result.installed).toContain("pdf");
+    expect(result.installed).not.toContain("review");
+  });
+
+  it("explicit entry wins over wildcard for same skill", async () => {
+    // Explicit "pdf" entry + wildcard from same repo
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+    // "pdf" appears once (from explicit), "review" from wildcard
+    const pdfCount = result.installed.filter((n) => n === "pdf").length;
+    expect(pdfCount).toBe(1);
+    expect(result.installed).toContain("review");
+  });
+
+  it("wildcard creates lockfile with all discovered skills", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile).not.toBeNull();
+    expect(lockfile!.skills["pdf"]).toBeDefined();
+    expect(lockfile!.skills["review"]).toBeDefined();
+  });
+
+  it("frozen mode works with wildcard lockfile", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    // First install to create lockfile
+    await runInstall({ scope });
+
+    // Second install with --frozen
+    const result = await runInstall({ scope, frozen: true });
+    expect(result.installed).toContain("pdf");
+    expect(result.installed).toContain("review");
+  });
+
+  it("wildcard-expanded skills are gitignored", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const { readFile: rf2 } = await import("node:fs/promises");
+    const gitignore = await rf2(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).toContain("/skills/pdf/");
+    expect(gitignore).toContain("/skills/review/");
+  });
+
+  it("errors on name conflict between two wildcard sources", async () => {
+    // Create a second repo that also has a "pdf" skill
+    const repoDir2 = join(tmpDir, "repo2");
+    await mkdir(repoDir2, { recursive: true });
+    await exec("git", ["init"], { cwd: repoDir2 });
+    await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir2 });
+    await exec("git", ["config", "user.name", "Test"], { cwd: repoDir2 });
+    await mkdir(join(repoDir2, "pdf"), { recursive: true });
+    await writeFile(join(repoDir2, "pdf", "SKILL.md"), SKILL_MD("pdf"));
+    await exec("git", ["add", "."], { cwd: repoDir2 });
+    await exec("git", ["commit", "-m", "initial"], { cwd: repoDir2 });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir2}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(/found in both wildcard sources/);
+  });
+
+  it("wildcard with all skills excluded installs nothing from that source", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\nexclude = ["pdf", "review"]\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+    expect(result.installed).toHaveLength(0);
+  });
 });

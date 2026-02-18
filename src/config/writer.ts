@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { stringify } from "smol-toml";
-import type { SkillDependency, TrustConfig } from "./schema.js";
+import type { WildcardSkillDependency, TrustConfig } from "./schema.js";
 
 export interface DefaultConfigOptions {
   agents?: string[];
@@ -16,7 +16,7 @@ export interface DefaultConfigOptions {
 export async function addSkillToConfig(
   filePath: string,
   name: string,
-  dep: Omit<SkillDependency, "name">,
+  dep: { source: string; ref?: string; path?: string },
 ): Promise<void> {
   const content = await readFile(filePath, "utf-8");
 
@@ -41,6 +41,91 @@ export async function removeSkillFromConfig(
 ): Promise<void> {
   const content = await readFile(filePath, "utf-8");
   await writeFile(filePath, removeBlockByName(content, name), "utf-8");
+}
+
+/**
+ * Add a wildcard skill entry (name = "*") to agents.toml.
+ */
+export async function addWildcardToConfig(
+  filePath: string,
+  source: string,
+  opts?: Pick<WildcardSkillDependency, "ref" | "exclude">,
+): Promise<void> {
+  const content = await readFile(filePath, "utf-8");
+
+  const entry: Record<string, unknown> = { name: "*", source };
+  if (opts?.ref) entry["ref"] = opts.ref;
+  if (opts?.exclude && opts.exclude.length > 0) entry["exclude"] = opts.exclude;
+
+  const section = stringify({ skills: [entry] });
+
+  const newContent = content.trimEnd() + "\n\n" + section.trimEnd() + "\n";
+  await writeFile(filePath, newContent, "utf-8");
+}
+
+/**
+ * Add a skill name to the exclude list of a wildcard entry matching the given source.
+ * If the exclude line already exists, appends to it. Otherwise adds a new line.
+ */
+export async function addExcludeToWildcard(
+  filePath: string,
+  source: string,
+  skillName: string,
+): Promise<void> {
+  const content = await readFile(filePath, "utf-8");
+  const lines = content.split("\n");
+  const result: string[] = [];
+  let i = 0;
+  let found = false;
+
+  while (i < lines.length) {
+    if (lines[i]!.trim() === "[[skills]]") {
+      const blockLines = [lines[i]!];
+      i++;
+      while (i < lines.length && lines[i]!.trim() !== "" && !lines[i]!.trim().startsWith("[")) {
+        blockLines.push(lines[i]!);
+        i++;
+      }
+
+      // Check if this is a wildcard block for the target source
+      const nameLine = blockLines.find((l) => l.trim().startsWith("name"));
+      const sourceLine = blockLines.find((l) => l.trim().startsWith("source"));
+      const isWildcard = nameLine?.match(/^name\s*=\s*"\*"/);
+      const sourceMatch = sourceLine?.match(/^source\s*=\s*"([^"]+)"/);
+
+      if (isWildcard && sourceMatch && sourceMatch[1] === source && !found) {
+        found = true;
+        // Find or create exclude line
+        const excludeIdx = blockLines.findIndex((l) => l.trim().startsWith("exclude"));
+        if (excludeIdx >= 0) {
+          // Parse existing exclude array and append
+          const excludeLine = blockLines[excludeIdx]!;
+          const match = excludeLine.match(/^(exclude\s*=\s*)\[([^\]]*)\]/);
+          if (match) {
+            const existing = match[2]!.trim();
+            const newValue = existing
+              ? `${match[1]}[${existing}, ${stringify({ v: skillName }).replace("v = ", "")}]`
+              : `${match[1]}[${stringify({ v: skillName }).replace("v = ", "")}]`;
+            blockLines[excludeIdx] = newValue;
+          }
+        } else {
+          // Add new exclude line after the last key-value line
+          const excludeValue = stringify({ v: [skillName] }).replace("v = ", "");
+          blockLines.push(`exclude = ${excludeValue}`);
+        }
+        result.push(...blockLines);
+        continue;
+      }
+
+      result.push(...blockLines);
+      continue;
+    }
+
+    result.push(lines[i]!);
+    i++;
+  }
+
+  await writeFile(filePath, result.join("\n"), "utf-8");
 }
 
 function removeBlockByName(content: string, name: string): string {

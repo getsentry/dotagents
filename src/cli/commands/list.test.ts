@@ -126,4 +126,84 @@ describe("runList", () => {
     expect(results[0]!.name).toBe("a-skill");
     expect(results[1]!.name).toBe("z-skill");
   });
+
+  it("lists wildcard-expanded skills from lockfile", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "org/repo"\n`,
+    );
+
+    // Create installed skill directories
+    const pdfDir = join(projectRoot, ".agents", "skills", "pdf");
+    const reviewDir = join(projectRoot, ".agents", "skills", "review");
+    await mkdir(pdfDir, { recursive: true });
+    await mkdir(reviewDir, { recursive: true });
+    await writeFile(join(pdfDir, "SKILL.md"), SKILL_MD("pdf"));
+    await writeFile(join(reviewDir, "SKILL.md"), SKILL_MD("review"));
+
+    const pdfIntegrity = await hashDirectory(pdfDir);
+    const reviewIntegrity = await hashDirectory(reviewDir);
+
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        pdf: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "pdf",
+          commit: "a".repeat(40),
+          integrity: pdfIntegrity,
+        },
+        review: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "skills/review",
+          commit: "a".repeat(40),
+          integrity: reviewIntegrity,
+        },
+      },
+    });
+
+    const results = await runList({ scope: resolveScope("project", projectRoot) });
+    expect(results).toHaveLength(2);
+    expect(results.map((r) => r.name).sort()).toEqual(["pdf", "review"]);
+    // Both should be marked as wildcard
+    expect(results.every((r) => r.wildcard === "org/repo")).toBe(true);
+  });
+
+  it("wildcard exclude is respected in list", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "org/repo"\nexclude = ["review"]\n`,
+    );
+
+    const pdfDir = join(projectRoot, ".agents", "skills", "pdf");
+    await mkdir(pdfDir, { recursive: true });
+    await writeFile(join(pdfDir, "SKILL.md"), SKILL_MD("pdf"));
+    const pdfIntegrity = await hashDirectory(pdfDir);
+
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        pdf: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "pdf",
+          commit: "a".repeat(40),
+          integrity: pdfIntegrity,
+        },
+        review: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "skills/review",
+          commit: "a".repeat(40),
+          integrity: "sha256-whatever",
+        },
+      },
+    });
+
+    const results = await runList({ scope: resolveScope("project", projectRoot) });
+    expect(results).toHaveLength(1);
+    expect(results[0]!.name).toBe("pdf");
+  });
 });

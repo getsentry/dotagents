@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
-import { agentsConfigSchema } from "./schema.js";
+import { agentsConfigSchema, isWildcardDep } from "./schema.js";
 import type { AgentsConfig } from "./schema.js";
 import { allAgentIds } from "../agents/registry.js";
 
@@ -42,6 +42,19 @@ export async function loadConfig(filePath: string): Promise<AgentsConfig> {
     throw new ConfigError(
       `Unknown agent(s) in ${filePath}: ${unknown.join(", ")}. Valid agents: ${validIds.join(", ")}`,
     );
+  }
+
+  // Post-parse validation: no two wildcard entries may share the same source
+  const wildcardSources = new Set<string>();
+  for (const dep of result.data.skills) {
+    if (isWildcardDep(dep)) {
+      if (wildcardSources.has(dep.source)) {
+        throw new ConfigError(
+          `Duplicate wildcard source in ${filePath}: "${dep.source}". Only one name = "*" entry per source is allowed.`,
+        );
+      }
+      wildcardSources.add(dep.source);
+    }
   }
 
   return result.data;

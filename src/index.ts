@@ -1,7 +1,9 @@
-export { loadConfig, ConfigError, agentsConfigSchema } from "./config/index.js";
+export { loadConfig, ConfigError, agentsConfigSchema, isWildcardDep } from "./config/index.js";
 export type {
   AgentsConfig,
   SkillDependency,
+  WildcardSkillDependency,
+  RegularSkillDependency,
   SymlinksConfig,
   ProjectConfig,
   SkillSource,

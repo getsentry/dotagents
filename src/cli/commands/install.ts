@@ -3,11 +3,13 @@ import { mkdir } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
+import { isWildcardDep } from "../../config/schema.js";
+import type { SkillDependency } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { isGitLocked } from "../../lockfile/schema.js";
 import type { Lockfile, LockedSkill } from "../../lockfile/schema.js";
-import { resolveSkill } from "../../skills/resolver.js";
+import { resolveSkill, resolveWildcardSkills } from "../../skills/resolver.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import type { ResolvedSkill } from "../../skills/resolver.js";
 import { hashDirectory } from "../../utils/hash.js";
@@ -45,13 +47,87 @@ export interface InstallResult {
   hookWarnings: { agent: string; message: string }[];
 }
 
+/** Expanded skill ready for install — either from an explicit entry or a wildcard */
+interface ExpandedSkill {
+  name: string;
+  dep: SkillDependency;
+  lockedCommit?: string;
+  resolved?: ResolvedSkill;
+}
+
+/**
+ * Expand config skills into a flat list, resolving wildcards.
+ * Explicit entries always win over wildcard-discovered skills.
+ */
+async function expandSkills(
+  config: { skills: SkillDependency[]; trust?: Parameters<typeof validateTrustedSource>[1] },
+  lockfile: Lockfile | null,
+  opts: { frozen?: boolean; force?: boolean; projectRoot: string },
+): Promise<ExpandedSkill[]> {
+  const regularDeps = config.skills.filter((d) => !isWildcardDep(d));
+  const wildcardDeps = config.skills.filter(isWildcardDep);
+  const explicitNames = new Set(regularDeps.map((d) => d.name));
+
+  const expanded: ExpandedSkill[] = [];
+
+  // Add regular deps
+  for (const dep of regularDeps) {
+    const locked = lockfile?.skills[dep.name];
+    const lockedCommit =
+      !opts.force && locked && isGitLocked(locked) ? locked.commit : undefined;
+    expanded.push({ name: dep.name, dep, lockedCommit });
+  }
+
+  // Expand wildcards
+  const wildcardNames = new Map<string, string>(); // name → source (for conflict detection)
+  for (const wDep of wildcardDeps) {
+    validateTrustedSource(wDep.source, config.trust);
+    const excludeSet = new Set(wDep.exclude);
+
+    if (opts.frozen) {
+      // In frozen mode, expand from lockfile — no network needed
+      if (!lockfile) continue;
+      for (const [name, locked] of Object.entries(lockfile.skills)) {
+        if (locked.source !== wDep.source) continue;
+        if (explicitNames.has(name)) continue;
+        if (excludeSet.has(name)) continue;
+
+        const lockedCommit = isGitLocked(locked) ? locked.commit : undefined;
+        expanded.push({ name, dep: wDep, lockedCommit });
+      }
+    } else {
+      // resolveWildcardSkills already filters by exclude list
+      const named = await resolveWildcardSkills(wDep, { projectRoot: opts.projectRoot });
+      for (const { name, resolved } of named) {
+        if (explicitNames.has(name)) continue; // explicit wins
+
+        // Check for conflicts between different wildcards
+        const existingSource = wildcardNames.get(name);
+        if (existingSource && existingSource !== wDep.source) {
+          throw new InstallError(
+            `Skill "${name}" found in both wildcard sources: "${existingSource}" and "${wDep.source}". ` +
+              `Use an explicit [[skills]] entry or add it to one source's exclude list.`,
+          );
+        }
+        wildcardNames.set(name, wDep.source);
+
+        const locked = lockfile?.skills[name];
+        const lockedCommit =
+          !opts.force && locked && isGitLocked(locked) ? locked.commit : undefined;
+        expanded.push({ name, dep: wDep, lockedCommit, resolved });
+      }
+    }
+  }
+
+  return expanded;
+}
+
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   const { scope, frozen, force } = opts;
   const { configPath, lockPath, agentsDir, skillsDir } = scope;
 
   // 1. Read config
   const config = await loadConfig(configPath);
-  const skillNames = config.skills.map((s) => s.name);
   const installed: string[] = [];
   const skipped: string[] = [];
 
@@ -59,15 +135,21 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   await mkdir(skillsDir, { recursive: true });
 
   // 2. Resolve and install skills (if any declared)
-  if (skillNames.length > 0) {
+  if (config.skills.length > 0) {
     const lockfile = await loadLockfile(lockPath);
 
     if (frozen && !lockfile) {
       throw new InstallError("--frozen requires agents.lock to exist.");
     }
 
+    const expanded = await expandSkills(config, lockfile, {
+      frozen,
+      force,
+      projectRoot: scope.root,
+    });
+
     if (frozen) {
-      for (const name of skillNames) {
+      for (const { name } of expanded) {
         if (!lockfile!.skills[name]) {
           throw new InstallError(
             `--frozen: skill "${name}" is in agents.toml but missing from agents.lock.`,
@@ -78,26 +160,36 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
 
     const newLock: Lockfile = { version: 1, skills: {} };
 
-    for (const name of skillNames) {
-      const dep = config.skills.find((s) => s.name === name)!;
+    for (const item of expanded) {
+      const { name, dep, lockedCommit } = item;
 
       // Validate trust before any network work
       validateTrustedSource(dep.source, config.trust);
 
       const locked = lockfile?.skills[name];
 
-      const lockedCommit =
-        !force && locked && isGitLocked(locked) ? locked.commit : undefined;
-
       let resolved: ResolvedSkill;
-      try {
-        resolved = await resolveSkill(name, dep, {
-          projectRoot: scope.root,
-          lockedCommit,
-        });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new InstallError(`Failed to resolve skill "${name}": ${msg}`);
+      if (item.resolved) {
+        // Already resolved during wildcard expansion (use locked commit if available and unchanged)
+        if (lockedCommit && item.resolved.type === "git" && item.resolved.commit !== lockedCommit) {
+          // Re-resolve with locked commit for cache hit
+          resolved = await resolveSkill(name, dep, {
+            projectRoot: scope.root,
+            lockedCommit,
+          });
+        } else {
+          resolved = item.resolved;
+        }
+      } else {
+        try {
+          resolved = await resolveSkill(name, dep, {
+            projectRoot: scope.root,
+            lockedCommit,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new InstallError(`Failed to resolve skill "${name}": ${msg}`);
+        }
       }
 
       const destDir = join(skillsDir, name);
@@ -144,7 +236,13 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
 
   // 3. Gitignore (skip for user scope — ~/.agents/ is not a git repo)
   if (scope.scope === "project") {
-    const managedNames = config.skills.filter((s) => !isInPlaceSkill(s.source)).map((s) => s.name);
+    // For wildcard entries all expanded skills are managed (wildcards can't be in-place)
+    const managedNames = installed.filter((name) => {
+      const dep = config.skills.find((s) => s.name === name);
+      // Wildcard-sourced skills are always managed
+      if (!dep || isWildcardDep(dep)) return true;
+      return !isInPlaceSkill(dep.source);
+    });
     await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
   }
 

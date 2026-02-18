@@ -154,4 +154,98 @@ describe("runUpdate", () => {
     expect(gitignore).toContain("/skills/pdf/");
     expect(gitignore).not.toContain("/skills/local-skill/");
   });
+
+  it("detects new skills added upstream for wildcard source", async () => {
+    // Install with wildcard (pdf + review exist)
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    // Add a new skill to the repo
+    await mkdir(join(repoDir, "new-skill"), { recursive: true });
+    await writeFile(join(repoDir, "new-skill", "SKILL.md"), SKILL_MD("new-skill"));
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "add new-skill"], { cwd: repoDir });
+
+    // Delete cache to force re-clone
+    await rm(stateDir, { recursive: true, force: true });
+
+    const updated = await runUpdate({ scope: resolveScope("project", projectRoot) });
+    // new-skill should appear as a new entry
+    expect(updated.some((u) => u.name === "new-skill")).toBe(true);
+
+    // Verify it's in the lockfile
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills["new-skill"]).toBeDefined();
+  });
+
+  it("removes skills deleted upstream for wildcard source", async () => {
+    // Add a second skill, install with wildcard
+    await mkdir(join(repoDir, "skills", "review"), { recursive: true });
+    await writeFile(join(repoDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "add review"], { cwd: repoDir });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    // Verify both are in lockfile
+    let lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills["pdf"]).toBeDefined();
+    expect(lockfile!.skills["review"]).toBeDefined();
+
+    // Remove "review" from the repo
+    await rm(join(repoDir, "skills", "review"), { recursive: true });
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "remove review"], { cwd: repoDir });
+
+    await rm(stateDir, { recursive: true, force: true });
+
+    await runUpdate({ scope: resolveScope("project", projectRoot) });
+
+    // "review" should be removed from lockfile
+    lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills["review"]).toBeUndefined();
+    expect(lockfile!.skills["pdf"]).toBeDefined();
+
+    // Directory should be cleaned up
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
+  });
+
+  it("updates wildcard source group when targeting a specific wildcard-sourced skill", async () => {
+    // Install with wildcard
+    await mkdir(join(repoDir, "skills", "review"), { recursive: true });
+    await writeFile(join(repoDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "add review"], { cwd: repoDir });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    // Make a change to the repo
+    await writeFile(join(repoDir, "pdf", "extra.md"), "updated");
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "update"], { cwd: repoDir });
+
+    await rm(stateDir, { recursive: true, force: true });
+
+    // Update targeting "pdf" specifically — should update the entire wildcard group
+    const updated = await runUpdate({
+      scope: resolveScope("project", projectRoot),
+      skillName: "pdf",
+    });
+
+    // Both pdf and review should be updated (same commit for the group)
+    expect(updated.some((u) => u.name === "pdf")).toBe(true);
+    expect(updated.some((u) => u.name === "review")).toBe(true);
+  });
 });

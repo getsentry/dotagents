@@ -1,7 +1,8 @@
-import type { SkillDependency } from "../config/schema.js";
+import { join } from "node:path";
+import type { WildcardSkillDependency } from "../config/schema.js";
 import { ensureCached } from "../sources/cache.js";
 import { resolveLocalSource } from "../sources/local.js";
-import { discoverSkill } from "./discovery.js";
+import { discoverSkill, discoverAllSkills } from "./discovery.js";
 import type { DiscoveredSkill } from "./discovery.js";
 
 export class ResolveError extends Error {
@@ -75,7 +76,7 @@ export function parseSource(source: string): {
  */
 export async function resolveSkill(
   skillName: string,
-  dep: Pick<SkillDependency, "source" | "ref" | "path">,
+  dep: { source: string; ref?: string; path?: string },
   opts?: {
     projectRoot?: string;
     /** Locked commit from agents.lock — skip resolution, use this exact commit */
@@ -110,7 +111,6 @@ export async function resolveSkill(
   if (dep.path) {
     // Explicit path override — load directly
     const { loadSkillMd } = await import("./loader.js");
-    const { join } = await import("node:path");
     const meta = await loadSkillMd(join(cached.repoDir, dep.path, "SKILL.md"));
     discovered = { path: dep.path, meta };
   } else {
@@ -124,8 +124,6 @@ export async function resolveSkill(
     );
   }
 
-  const { join } = await import("node:path");
-
   return {
     type: "git",
     source: dep.source,
@@ -135,4 +133,68 @@ export async function resolveSkill(
     commit: cached.commit,
     skillDir: join(cached.repoDir, discovered.path),
   };
+}
+
+export interface NamedResolvedSkill {
+  name: string;
+  resolved: ResolvedSkill;
+}
+
+/**
+ * Resolve a wildcard dependency: discover all skills from a source and return them.
+ * Excludes are filtered out.
+ */
+export async function resolveWildcardSkills(
+  dep: Pick<WildcardSkillDependency, "source" | "ref" | "exclude">,
+  opts?: {
+    projectRoot?: string;
+    lockedCommit?: string;
+  },
+): Promise<NamedResolvedSkill[]> {
+  const parsed = parseSource(dep.source);
+  const excludeSet = new Set(dep.exclude);
+
+  if (parsed.type === "local") {
+    const projectRoot = opts?.projectRoot || process.cwd();
+    const skillDir = await resolveLocalSource(projectRoot, parsed.path!);
+    const discovered = await discoverAllSkills(skillDir);
+    return discovered
+      .filter((d) => !excludeSet.has(d.meta.name))
+      .map((d) => ({
+        name: d.meta.name,
+        resolved: { type: "local" as const, source: dep.source, skillDir: join(skillDir, d.path) },
+      }));
+  }
+
+  // Git source
+  const url = parsed.url!;
+  const ref = dep.ref ?? parsed.ref;
+  const cacheKey =
+    parsed.type === "github"
+      ? `${parsed.owner}/${parsed.repo}`
+      : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
+
+  const cached = await ensureCached({
+    url,
+    cacheKey,
+    ref,
+    pinnedCommit: opts?.lockedCommit,
+  });
+
+  const discovered = await discoverAllSkills(cached.repoDir);
+
+  return discovered
+    .filter((d) => !excludeSet.has(d.meta.name))
+    .map((d) => ({
+      name: d.meta.name,
+      resolved: {
+        type: "git" as const,
+        source: dep.source,
+        resolvedUrl: url,
+        resolvedPath: d.path,
+        resolvedRef: ref,
+        commit: cached.commit,
+        skillDir: join(cached.repoDir, d.path),
+      },
+    }));
 }

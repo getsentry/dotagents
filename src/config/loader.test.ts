@@ -106,4 +106,74 @@ env = ["GITHUB_TOKEN"]
 
     await expect(loadConfig(configPath)).rejects.toThrow(/Unknown agent.*emacs/);
   });
+
+  it("loads a wildcard skill entry", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "getsentry/skills"\n`,
+    );
+
+    const config = await loadConfig(configPath);
+    expect(config.skills).toHaveLength(1);
+    expect(config.skills[0]!.name).toBe("*");
+    expect(config.skills[0]!.source).toBe("getsentry/skills");
+  });
+
+  it("loads wildcard with exclude list", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "getsentry/skills"\nexclude = ["deprecated"]\n`,
+    );
+
+    const config = await loadConfig(configPath);
+    const dep = config.skills[0]!;
+    expect(dep.name).toBe("*");
+    expect("exclude" in dep && dep.exclude).toEqual(["deprecated"]);
+  });
+
+  it("defaults exclude to empty array", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "getsentry/skills"\n`,
+    );
+
+    const config = await loadConfig(configPath);
+    const dep = config.skills[0]!;
+    expect("exclude" in dep && dep.exclude).toEqual([]);
+  });
+
+  it("rejects duplicate wildcard sources", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "getsentry/skills"\n\n[[skills]]\nname = "*"\nsource = "getsentry/skills"\n`,
+    );
+
+    await expect(loadConfig(configPath)).rejects.toThrow(/Duplicate wildcard source/);
+  });
+
+  it("allows wildcards from different sources", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "getsentry/skills"\n\n[[skills]]\nname = "*"\nsource = "anthropics/skills"\n`,
+    );
+
+    const config = await loadConfig(configPath);
+    expect(config.skills).toHaveLength(2);
+  });
+
+  it("allows mixing wildcard and regular entries", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "getsentry/skills"\n\n[[skills]]\nname = "pdf"\nsource = "anthropics/skills"\n`,
+    );
+
+    const config = await loadConfig(configPath);
+    expect(config.skills).toHaveLength(2);
+  });
 });

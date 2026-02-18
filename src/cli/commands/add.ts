@@ -2,7 +2,8 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
-import { addSkillToConfig } from "../../config/writer.js";
+import { isWildcardDep } from "../../config/schema.js";
+import { addSkillToConfig, addWildcardToConfig } from "../../config/writer.js";
 import { parseSource, resolveSkill } from "../../skills/resolver.js";
 import { discoverAllSkills } from "../../skills/discovery.js";
 import { ensureCached } from "../../sources/cache.js";
@@ -23,10 +24,11 @@ export interface AddOptions {
   specifier: string;
   ref?: string;
   name?: string;
+  all?: boolean;
 }
 
 export async function runAdd(opts: AddOptions): Promise<string> {
-  const { scope, specifier, ref, name: nameOverride } = opts;
+  const { scope, specifier, ref, name: nameOverride, all } = opts;
   const { configPath } = scope;
 
   // Load config early so we can check trust before any network work
@@ -40,6 +42,27 @@ export async function runAdd(opts: AddOptions): Promise<string> {
 
   // Determine ref (flag overrides inline @ref)
   const effectiveRef = ref ?? parsed.ref;
+
+  // --all: add a wildcard entry
+  if (all) {
+    if (nameOverride) {
+      throw new AddError("Cannot use --all with --name. Use one or the other.");
+    }
+
+    if (config.skills.some((s) => isWildcardDep(s) && s.source === specifier)) {
+      throw new AddError(
+        `A wildcard entry for "${specifier}" already exists in agents.toml.`,
+      );
+    }
+
+    await addWildcardToConfig(configPath, specifier, {
+      ...(effectiveRef ? { ref: effectiveRef } : {}),
+      exclude: [],
+    });
+
+    await runInstall({ scope });
+    return "*";
+  }
 
   // For git sources, resolve to discover the skill name
   let skillName: string;
@@ -87,11 +110,11 @@ export async function runAdd(opts: AddOptions): Promise<string> {
       if (skills.length === 1) {
         skillName = skills[0]!.meta.name;
       } else {
-        // Multiple skills found — for now, list them and ask user to pick with --name
+        // Multiple skills found — list them and ask user to pick with --name or --all
         const names = skills.map((s) => s.meta.name).sort();
         throw new AddError(
           `Multiple skills found in ${specifier}: ${names.join(", ")}. ` +
-            `Use --name to specify which one.`,
+            `Use --name to specify which one, or --all for all skills.`,
         );
       }
     }
@@ -104,18 +127,9 @@ export async function runAdd(opts: AddOptions): Promise<string> {
     );
   }
 
-  // Build the source string for agents.toml
-  const source = specifier;
-  // If ref was provided inline (@ref), strip it from source since we'll use the ref field
-  if (parsed.ref && !ref) {
-    // Inline ref — keep it in source as-is
-  } else if (effectiveRef && !specifier.includes("@")) {
-    // Ref from --ref flag, not inline
-  }
-
   // Add to config
   await addSkillToConfig(configPath, skillName, {
-    source,
+    source: specifier,
     ...(effectiveRef ? { ref: effectiveRef } : {}),
   });
 
@@ -133,6 +147,7 @@ export default async function add(args: string[], flags?: { user?: boolean }): P
       ref: { type: "string" },
       name: { type: "string" },
       skill: { type: "string" },
+      all: { type: "boolean" },
     },
     strict: true,
   });
@@ -141,7 +156,7 @@ export default async function add(args: string[], flags?: { user?: boolean }): P
 
   const specifier = positionals[0];
   if (!specifier) {
-    console.error(chalk.red("Usage: dotagents add <specifier> [--ref <ref>] [--name <name>]"));
+    console.error(chalk.red("Usage: dotagents add <specifier> [--ref <ref>] [--name <name>] [--all]"));
     process.exitCode = 1;
     return;
   }
@@ -153,8 +168,10 @@ export default async function add(args: string[], flags?: { user?: boolean }): P
       specifier,
       ref: values["ref"],
       name: nameValue,
+      all: values["all"],
     });
-    console.log(chalk.green(`Added skill: ${name}`));
+    const msg = name === "*" ? `Added all skills from ${specifier}` : `Added skill: ${name}`;
+    console.log(chalk.green(msg));
   } catch (err) {
     if (err instanceof ScopeError || err instanceof AddError || err instanceof TrustError) {
       console.error(chalk.red(err.message));

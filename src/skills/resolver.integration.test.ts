@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { resolveSkill } from "./resolver.js";
+import { resolveSkill, resolveWildcardSkills } from "./resolver.js";
 import { exec } from "../utils/exec.js";
 
 /**
@@ -161,6 +161,119 @@ description: A local skill
     expect(result2.type).toBe("git");
     if (result1.type === "git" && result2.type === "git") {
       expect(result1.commit).toBe(result2.commit);
+    }
+  });
+});
+
+describe("resolveWildcardSkills integration", () => {
+  let tmpDir: string;
+  let stateDir: string;
+  let projectRoot: string;
+  let repoDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "dotagents-wildcard-"));
+    stateDir = join(tmpDir, "state");
+    projectRoot = join(tmpDir, "project");
+    repoDir = join(tmpDir, "repo");
+
+    await mkdir(stateDir, { recursive: true });
+    await mkdir(projectRoot, { recursive: true });
+
+    process.env["DOTAGENTS_STATE_DIR"] = stateDir;
+
+    // Create a local git repo with multiple skills
+    await mkdir(repoDir, { recursive: true });
+    await exec("git", ["init"], { cwd: repoDir });
+    await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
+    await exec("git", ["config", "user.name", "Test"], { cwd: repoDir });
+
+    await mkdir(join(repoDir, "pdf"), { recursive: true });
+    await writeFile(
+      join(repoDir, "pdf", "SKILL.md"),
+      `---\nname: pdf\ndescription: PDF skill\n---\n`,
+    );
+
+    await mkdir(join(repoDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "review", "SKILL.md"),
+      `---\nname: review\ndescription: Review skill\n---\n`,
+    );
+
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
+  });
+
+  afterEach(async () => {
+    delete process.env["DOTAGENTS_STATE_DIR"];
+    await rm(tmpDir, { recursive: true });
+  });
+
+  it("discovers all skills from a git source", async () => {
+    const results = await resolveWildcardSkills(
+      { source: `git:${repoDir}`, exclude: [] },
+      { projectRoot },
+    );
+
+    const names = results.map((r) => r.name).sort();
+    expect(names).toEqual(["pdf", "review"]);
+    expect(results.every((r) => r.resolved.type === "git")).toBe(true);
+  });
+
+  it("filters excluded skills", async () => {
+    const results = await resolveWildcardSkills(
+      { source: `git:${repoDir}`, exclude: ["review"] },
+      { projectRoot },
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0]!.name).toBe("pdf");
+  });
+
+  it("returns empty array when all skills excluded", async () => {
+    const results = await resolveWildcardSkills(
+      { source: `git:${repoDir}`, exclude: ["pdf", "review"] },
+      { projectRoot },
+    );
+
+    expect(results).toHaveLength(0);
+  });
+
+  it("discovers skills from a local source", async () => {
+    // Create a local skills directory inside projectRoot
+    const localSkills = join(projectRoot, "local-repo");
+    await mkdir(join(localSkills, "my-skill"), { recursive: true });
+    await writeFile(
+      join(localSkills, "my-skill", "SKILL.md"),
+      `---\nname: my-skill\ndescription: A local skill\n---\n`,
+    );
+
+    const results = await resolveWildcardSkills(
+      { source: `path:local-repo`, exclude: [] },
+      { projectRoot },
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0]!.name).toBe("my-skill");
+    expect(results[0]!.resolved.type).toBe("local");
+  });
+
+  it("each resolved skill has correct commit and path", async () => {
+    const results = await resolveWildcardSkills(
+      { source: `git:${repoDir}`, exclude: [] },
+      { projectRoot },
+    );
+
+    const pdf = results.find((r) => r.name === "pdf")!;
+    expect(pdf.resolved.type).toBe("git");
+    if (pdf.resolved.type === "git") {
+      expect(pdf.resolved.commit).toMatch(/^[a-f0-9]{40}$/);
+      expect(pdf.resolved.resolvedPath).toBe("pdf");
+    }
+
+    const review = results.find((r) => r.name === "review")!;
+    if (review.resolved.type === "git") {
+      expect(review.resolved.resolvedPath).toBe("skills/review");
     }
   });
 });
