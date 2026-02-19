@@ -39,4 +39,63 @@ describe("parseSource", () => {
     expect(result.type).toBe("local");
     expect(result.path).toBe("../shared/my-skill");
   });
+
+  it("parses HTTPS GitHub URL", () => {
+    const result = parseSource("https://github.com/getsentry/skills");
+    expect(result.type).toBe("github");
+    expect(result.owner).toBe("getsentry");
+    expect(result.repo).toBe("skills");
+    expect(result.url).toBe("https://github.com/getsentry/skills.git");
+    expect(result.ref).toBeUndefined();
+  });
+
+  it("parses HTTPS GitHub URL with .git suffix", () => {
+    const result = parseSource("https://github.com/getsentry/skills.git");
+    expect(result.type).toBe("github");
+    expect(result.owner).toBe("getsentry");
+    expect(result.repo).toBe("skills");
+    expect(result.url).toBe("https://github.com/getsentry/skills.git");
+  });
+
+  it("parses HTTPS GitHub URL with trailing slash", () => {
+    const result = parseSource("https://github.com/getsentry/skills/");
+    expect(result.type).toBe("github");
+    expect(result.owner).toBe("getsentry");
+    expect(result.repo).toBe("skills");
+  });
+
+  it("parses HTTPS GitHub URL with @ref", () => {
+    const result = parseSource("https://github.com/getsentry/skills@v1.0.0");
+    expect(result.type).toBe("github");
+    expect(result.owner).toBe("getsentry");
+    expect(result.repo).toBe("skills");
+    expect(result.ref).toBe("v1.0.0");
+    expect(result.url).toBe("https://github.com/getsentry/skills.git");
+  });
+
+  it("parses SSH GitHub URL", () => {
+    const result = parseSource("git@github.com:getsentry/skills");
+    expect(result.type).toBe("github");
+    expect(result.owner).toBe("getsentry");
+    expect(result.repo).toBe("skills");
+    expect(result.url).toBe("https://github.com/getsentry/skills.git");
+    expect(result.ref).toBeUndefined();
+  });
+
+  it("parses SSH GitHub URL with .git suffix", () => {
+    const result = parseSource("git@github.com:getsentry/skills.git");
+    expect(result.type).toBe("github");
+    expect(result.owner).toBe("getsentry");
+    expect(result.repo).toBe("skills");
+    expect(result.url).toBe("https://github.com/getsentry/skills.git");
+  });
+
+  it("parses SSH GitHub URL with @ref", () => {
+    const result = parseSource("git@github.com:getsentry/skills@v2.0");
+    expect(result.type).toBe("github");
+    expect(result.owner).toBe("getsentry");
+    expect(result.repo).toBe("skills");
+    expect(result.ref).toBe("v2.0");
+    expect(result.url).toBe("https://github.com/getsentry/skills.git");
+  });
 });

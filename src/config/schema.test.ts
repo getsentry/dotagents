@@ -131,6 +131,18 @@ describe("agentsConfigSchema", () => {
     it("rejects three-part path (not a valid format)", () => {
       expect(parseSkill("a/b/c").success).toBe(false);
     });
+
+    it("accepts GitHub HTTPS URL", () => {
+      expect(parseSkill("https://github.com/owner/repo").success).toBe(true);
+    });
+
+    it("accepts GitHub HTTPS URL with .git suffix", () => {
+      expect(parseSkill("https://github.com/owner/repo.git").success).toBe(true);
+    });
+
+    it("accepts GitHub SSH URL", () => {
+      expect(parseSkill("git@github.com:owner/repo.git").success).toBe(true);
+    });
   });
 
   describe("skill name validation", () => {

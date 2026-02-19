@@ -34,11 +34,17 @@ export async function runAdd(opts: AddOptions): Promise<string> {
   // Load config early so we can check trust before any network work
   const config = await loadConfig(configPath);
 
-  // Validate trust before resolution
-  validateTrustedSource(specifier, config.trust);
-
   // Parse the specifier
   const parsed = parseSource(specifier);
+
+  // Normalize GitHub URLs to owner/repo form for storage
+  const canonicalSource =
+    parsed.type === "github"
+      ? `${parsed.owner}/${parsed.repo}${parsed.ref ? `@${parsed.ref}` : ""}`
+      : specifier;
+
+  // Validate trust against the canonical source (owner/repo form for GitHub)
+  validateTrustedSource(canonicalSource, config.trust);
 
   // Determine ref (flag overrides inline @ref)
   const effectiveRef = ref ?? parsed.ref;
@@ -49,13 +55,13 @@ export async function runAdd(opts: AddOptions): Promise<string> {
       throw new AddError("Cannot use --all with --name. Use one or the other.");
     }
 
-    if (config.skills.some((s) => isWildcardDep(s) && s.source === specifier)) {
+    if (config.skills.some((s) => isWildcardDep(s) && s.source === canonicalSource)) {
       throw new AddError(
-        `A wildcard entry for "${specifier}" already exists in agents.toml.`,
+        `A wildcard entry for "${canonicalSource}" already exists in agents.toml.`,
       );
     }
 
-    await addWildcardToConfig(configPath, specifier, {
+    await addWildcardToConfig(configPath, canonicalSource, {
       ...(effectiveRef ? { ref: effectiveRef } : {}),
       exclude: [],
     });
@@ -96,8 +102,8 @@ export async function runAdd(opts: AddOptions): Promise<string> {
       const found = await discoverSkill(cached.repoDir, nameOverride);
       if (!found) {
         throw new AddError(
-          `Skill "${nameOverride}" not found in ${specifier}. ` +
-            `Use 'dotagents add ${specifier}' without --name to see available skills.`,
+          `Skill "${nameOverride}" not found in ${canonicalSource}. ` +
+            `Use 'dotagents add ${canonicalSource}' without --name to see available skills.`,
         );
       }
       skillName = nameOverride;
@@ -105,7 +111,7 @@ export async function runAdd(opts: AddOptions): Promise<string> {
       // Discover all skills and pick
       const skills = await discoverAllSkills(cached.repoDir);
       if (skills.length === 0) {
-        throw new AddError(`No skills found in ${specifier}.`);
+        throw new AddError(`No skills found in ${canonicalSource}.`);
       }
       if (skills.length === 1) {
         skillName = skills[0]!.meta.name;
@@ -113,7 +119,7 @@ export async function runAdd(opts: AddOptions): Promise<string> {
         // Multiple skills found — list them and ask user to pick with --name or --all
         const names = skills.map((s) => s.meta.name).sort();
         throw new AddError(
-          `Multiple skills found in ${specifier}: ${names.join(", ")}. ` +
+          `Multiple skills found in ${canonicalSource}: ${names.join(", ")}. ` +
             `Use --name to specify which one, or --all for all skills.`,
         );
       }
@@ -129,7 +135,7 @@ export async function runAdd(opts: AddOptions): Promise<string> {
 
   // Add to config
   await addSkillToConfig(configPath, skillName, {
-    source: specifier,
+    source: canonicalSource,
     ...(effectiveRef ? { ref: effectiveRef } : {}),
   });
 

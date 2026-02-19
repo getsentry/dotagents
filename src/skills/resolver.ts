@@ -56,6 +56,21 @@ export function parseSource(source: string): {
     return { type: "git", url: source.slice(4) };
   }
 
+  // GitHub HTTPS or SSH URL
+  const githubUrlMatch =
+    source.match(/^https?:\/\/github\.com\/([^/]+)\/([^/@.]+?)(?:\.git)?(?:\/)?(?:@(.+))?$/) ||
+    source.match(/^git@github\.com:([^/]+)\/([^/@.]+?)(?:\.git)?(?:@(.+))?$/);
+  if (githubUrlMatch) {
+    const [, owner, repo, ref] = githubUrlMatch;
+    return {
+      type: "github",
+      owner,
+      repo,
+      ref,
+      url: `https://github.com/${owner}/${repo}.git`,
+    };
+  }
+
   // owner/repo or owner/repo@ref
   const atIdx = source.indexOf("@");
   const base = atIdx !== -1 ? source.slice(0, atIdx) : source;

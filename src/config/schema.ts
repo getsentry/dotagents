@@ -9,6 +9,9 @@ import { z } from "zod/v4";
  */
 const GIT_URL_VALID = /^git:(https:\/\/|git:\/\/|ssh:\/\/|git@|file:\/\/|\/)/;
 
+const GITHUB_HTTPS_URL = /^https?:\/\/github\.com\/([^/]+)\/([^/@.]+?)(?:\.git)?(?:\/)?(?:@(.+))?$/;
+const GITHUB_SSH_URL = /^git@github\.com:([^/]+)\/([^/@.]+?)(?:\.git)?(?:@(.+))?$/;
+
 const skillSourceSchema = z.string().check(
   z.refine((s) => {
     if (s.startsWith("git:")) {
@@ -16,11 +19,14 @@ const skillSourceSchema = z.string().check(
       return GIT_URL_VALID.test(s);
     }
     if (s.startsWith("path:")) return true;
+    // GitHub HTTPS or SSH URLs
+    if (GITHUB_HTTPS_URL.test(s)) return true;
+    if (GITHUB_SSH_URL.test(s)) return true;
     // owner/repo or owner/repo@ref
     const base = s.includes("@") ? s.slice(0, s.indexOf("@")) : s;
     const parts = base.split("/");
     return parts.length === 2 && parts.every((p) => p.length > 0 && !p.startsWith("-"));
-  }, "Must be owner/repo, owner/repo@ref, git:<url> (with https/git/ssh protocol), or path:<relative>"),
+  }, "Must be owner/repo, owner/repo@ref, GitHub URL, git:<url> (with https/git/ssh protocol), or path:<relative>"),
 );
 
 export type SkillSource = z.infer<typeof skillSourceSchema>;
