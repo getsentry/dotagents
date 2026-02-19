@@ -98,4 +98,20 @@ describe("parseSource", () => {
     expect(result.ref).toBe("v2.0");
     expect(result.url).toBe("https://github.com/getsentry/skills.git");
   });
+
+  it("parses HTTPS GitHub URL with dotted repo name", () => {
+    const result = parseSource("https://github.com/vercel/next.js");
+    expect(result.type).toBe("github");
+    expect(result.owner).toBe("vercel");
+    expect(result.repo).toBe("next.js");
+    expect(result.url).toBe("https://github.com/vercel/next.js.git");
+  });
+
+  it("parses HTTPS GitHub URL with dotted repo name and .git suffix", () => {
+    const result = parseSource("https://github.com/vercel/next.js.git");
+    expect(result.type).toBe("github");
+    expect(result.owner).toBe("vercel");
+    expect(result.repo).toBe("next.js");
+    expect(result.url).toBe("https://github.com/vercel/next.js.git");
+  });
 });

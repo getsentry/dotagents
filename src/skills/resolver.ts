@@ -58,8 +58,8 @@ export function parseSource(source: string): {
 
   // GitHub HTTPS or SSH URL
   const githubUrlMatch =
-    source.match(/^https?:\/\/github\.com\/([^/]+)\/([^/@.]+?)(?:\.git)?(?:\/)?(?:@(.+))?$/) ||
-    source.match(/^git@github\.com:([^/]+)\/([^/@.]+?)(?:\.git)?(?:@(.+))?$/);
+    source.match(/^https?:\/\/github\.com\/([^/]+)\/([^/@]+?)(?:\.git)?(?:\/)?(?:@(.+))?$/) ||
+    source.match(/^git@github\.com:([^/]+)\/([^/@]+?)(?:\.git)?(?:@(.+))?$/);
   if (githubUrlMatch) {
     const [, owner, repo, ref] = githubUrlMatch;
     return {
