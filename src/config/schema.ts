@@ -9,8 +9,12 @@ import { z } from "zod/v4";
  */
 const GIT_URL_VALID = /^git:(https:\/\/|git:\/\/|ssh:\/\/|git@|file:\/\/|\/)/;
 
-const GITHUB_HTTPS_URL = /^https?:\/\/github\.com\/([^/]+)\/([^/@]+?)(?:\.git)?(?:\/)?(?:@(.+))?$/;
-const GITHUB_SSH_URL = /^git@github\.com:([^/]+)\/([^/@]+?)(?:\.git)?(?:@(.+))?$/;
+/** GitHub HTTPS URL pattern — owner/repo must start with alphanumeric (no dash prefix). */
+export const GITHUB_HTTPS_URL =
+  /^https?:\/\/github\.com\/([a-zA-Z0-9][^/]*)\/([a-zA-Z0-9][^/@]*?)(?:\.git)?(?:\/)?(?:@(.+))?$/;
+/** GitHub SSH URL pattern — owner/repo must start with alphanumeric (no dash prefix). */
+export const GITHUB_SSH_URL =
+  /^git@github\.com:([a-zA-Z0-9][^/]*)\/([a-zA-Z0-9][^/@]*?)(?:\.git)?(?:@(.+))?$/;
 
 const skillSourceSchema = z.string().check(
   z.refine((s) => {

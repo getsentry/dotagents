@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import type { WildcardSkillDependency } from "../config/schema.js";
+import { GITHUB_HTTPS_URL, GITHUB_SSH_URL } from "../config/schema.js";
 import { ensureCached } from "../sources/cache.js";
 import { resolveLocalSource } from "../sources/local.js";
 import { discoverSkill, discoverAllSkills } from "./discovery.js";
@@ -58,8 +59,7 @@ export function parseSource(source: string): {
 
   // GitHub HTTPS or SSH URL
   const githubUrlMatch =
-    source.match(/^https?:\/\/github\.com\/([^/]+)\/([^/@]+?)(?:\.git)?(?:\/)?(?:@(.+))?$/) ||
-    source.match(/^git@github\.com:([^/]+)\/([^/@]+?)(?:\.git)?(?:@(.+))?$/);
+    source.match(GITHUB_HTTPS_URL) || source.match(GITHUB_SSH_URL);
   if (githubUrlMatch) {
     const [, owner, repo, ref] = githubUrlMatch;
     return {

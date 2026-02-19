@@ -143,6 +143,10 @@ describe("agentsConfigSchema", () => {
     it("accepts GitHub SSH URL", () => {
       expect(parseSkill("git@github.com:owner/repo.git").success).toBe(true);
     });
+
+    it("rejects GitHub URL with dash-prefixed owner", () => {
+      expect(parseSkill("https://github.com/-bad/repo").success).toBe(false);
+    });
   });
 
   describe("skill name validation", () => {
