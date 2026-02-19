@@ -189,12 +189,11 @@ describe("pi serializer", () => {
     });
   });
 
-  it("serializes http server via mcp-remote proxy", () => {
+  it("serializes http server natively", () => {
     const [name, config] = agent.serializeServer(HTTP_SERVER);
     expect(name).toBe("remote-api");
     expect(config).toEqual({
-      command: "npx",
-      args: ["-y", "mcp-remote", "https://mcp.example.com/sse"],
+      url: "https://mcp.example.com/sse",
       headers: { Authorization: "Bearer tok" },
     });
   });

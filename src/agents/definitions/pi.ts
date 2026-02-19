@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import type { AgentDefinition } from "../types.js";
 import { UnsupportedFeature } from "../errors.js";
+import { envRecord, httpServer } from "./helpers.js";
 
 const pi: AgentDefinition = {
   id: "pi",
@@ -16,28 +17,9 @@ const pi: AgentDefinition = {
     shared: false,
   },
   serializeServer(s) {
-    if (s.url) {
-      return [
-        s.name,
-        {
-          command: "npx",
-          args: ["-y", "mcp-remote", s.url],
-          ...(s.headers && { headers: s.headers }),
-        },
-      ];
-    }
-    const env: Record<string, string> = {};
-    if (s.env) {
-      for (const key of s.env) env[key] = `\${${key}}`;
-    }
-    return [
-      s.name,
-      {
-        command: s.command,
-        args: s.args ?? [],
-        ...(Object.keys(env).length > 0 && { env }),
-      },
-    ];
+    if (s.url) return httpServer(s);
+    const env = envRecord(s.env, (k) => `\${${k}}`);
+    return [s.name, { command: s.command, args: s.args ?? [], ...(env && { env }) }];
   },
   hooks: undefined,
   serializeHooks() {
