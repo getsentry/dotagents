@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { stringify } from "smol-toml";
-import type { WildcardSkillDependency, TrustConfig } from "./schema.js";
+import type { WildcardSkillDependency, TrustConfig, McpConfig } from "./schema.js";
 
 export interface DefaultConfigOptions {
   agents?: string[];
@@ -40,7 +40,7 @@ export async function removeSkillFromConfig(
   name: string,
 ): Promise<void> {
   const content = await readFile(filePath, "utf-8");
-  await writeFile(filePath, removeBlockByName(content, name), "utf-8");
+  await writeFile(filePath, removeBlockByHeader(content, "[[skills]]", name), "utf-8");
 }
 
 /**
@@ -128,13 +128,52 @@ export async function addExcludeToWildcard(
   await writeFile(filePath, result.join("\n"), "utf-8");
 }
 
-function removeBlockByName(content: string, name: string): string {
+/**
+ * Add an MCP server entry to agents.toml.
+ * Appends a [[mcp]] block at the end of the file.
+ */
+export async function addMcpToConfig(
+  filePath: string,
+  entry: McpConfig,
+): Promise<void> {
+  const content = await readFile(filePath, "utf-8");
+
+  const obj: Record<string, unknown> = { name: entry.name };
+  if (entry.command) {
+    obj["command"] = entry.command;
+    if (entry.args && entry.args.length > 0) obj["args"] = entry.args;
+  }
+  if (entry.url) {
+    obj["url"] = entry.url;
+    if (entry.headers && Object.keys(entry.headers).length > 0) obj["headers"] = entry.headers;
+  }
+  if (entry.env.length > 0) obj["env"] = entry.env;
+
+  const section = stringify({ mcp: [obj] });
+
+  const newContent = content.trimEnd() + "\n\n" + section.trimEnd() + "\n";
+  await writeFile(filePath, newContent, "utf-8");
+}
+
+/**
+ * Remove an MCP server entry from agents.toml.
+ * Removes the [[mcp]] block whose name field matches.
+ */
+export async function removeMcpFromConfig(
+  filePath: string,
+  name: string,
+): Promise<void> {
+  const content = await readFile(filePath, "utf-8");
+  await writeFile(filePath, removeBlockByHeader(content, "[[mcp]]", name), "utf-8");
+}
+
+function removeBlockByHeader(content: string, header: string, name: string): string {
   const lines = content.split("\n");
   const result: string[] = [];
   let i = 0;
 
   while (i < lines.length) {
-    if (lines[i]!.trim() === "[[skills]]") {
+    if (lines[i]!.trim() === header) {
       // Collect the entire block (header + key-value lines)
       const blockLines = [lines[i]!];
       i++;

@@ -6,7 +6,7 @@ const require = createRequire(import.meta.url);
 const { version } = require("../../package.json") as { version: string };
 export { version };
 
-const COMMANDS = ["init", "install", "add", "remove", "update", "sync", "list"] as const;
+const COMMANDS = ["init", "install", "add", "remove", "update", "sync", "list", "mcp"] as const;
 type Command = (typeof COMMANDS)[number];
 
 function printUsage(): void {
@@ -23,6 +23,7 @@ Commands:
   update      Update skills to latest versions
   sync        Reconcile gitignore, symlinks, verify state
   list        Show installed skills
+  mcp         Manage MCP server declarations
 
 Options:
   --user      Operate on user-scope (~/.agents/) instead of project

@@ -200,6 +200,77 @@ export default function CliPage() {
         />
 
         <CliCommand
+          name="mcp add"
+          synopsis="dotagents mcp add <name> --command <cmd> [--args <a>...] [--env <VAR>...]
+dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"
+          description={
+            <>
+              Add an MCP server declaration to <code>agents.toml</code> and run{" "}
+              <code>install</code> to generate agent configs. Specify exactly one
+              transport: <code>--command</code> for stdio or <code>--url</code>{" "}
+              for HTTP.
+            </>
+          }
+          options={[
+            {
+              flag: "--command <cmd>",
+              description: "Command to execute (stdio transport)",
+            },
+            {
+              flag: "--args <arg>",
+              description: "Command argument (repeatable)",
+            },
+            {
+              flag: "--url <url>",
+              description: "Server URL (HTTP transport)",
+            },
+            {
+              flag: "--header <Key:Value>",
+              description: "HTTP header (repeatable, url servers only)",
+            },
+            {
+              flag: "--env <VAR>",
+              description:
+                "Environment variable name to pass through (repeatable)",
+            },
+          ]}
+          examples={[
+            "# Stdio server",
+            "dotagents mcp add github --command npx --args -y --args @modelcontextprotocol/server-github --env GITHUB_TOKEN",
+            "",
+            "# HTTP server with auth header",
+            "dotagents mcp add remote --url https://mcp.example.com/sse --header Authorization:Bearer\\ tok",
+          ]}
+        />
+
+        <CliCommand
+          name="mcp remove"
+          synopsis="dotagents mcp remove <name>"
+          description={
+            <>
+              Remove an MCP server declaration from <code>agents.toml</code> and
+              run <code>install</code> to regenerate agent configs.
+            </>
+          }
+          examples={["dotagents mcp remove github"]}
+        />
+
+        <CliCommand
+          name="mcp list"
+          synopsis="dotagents mcp list [--json]"
+          description={
+            <>
+              Show declared MCP servers. Use <code>--json</code> for
+              machine-readable output.
+            </>
+          }
+          examples={[
+            "dotagents mcp list",
+            "dotagents mcp list --json",
+          ]}
+        />
+
+        <CliCommand
           name="list"
           synopsis="dotagents list [--json]"
           description={

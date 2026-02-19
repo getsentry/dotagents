@@ -7,6 +7,8 @@ import {
   addWildcardToConfig,
   addExcludeToWildcard,
   removeSkillFromConfig,
+  addMcpToConfig,
+  removeMcpFromConfig,
   generateDefaultConfig,
 } from "./writer.js";
 import { loadConfig } from "./loader.js";
@@ -279,6 +281,112 @@ describe("writer", () => {
       const anthropics = config.skills.find((s) => s.source === "anthropics/skills");
       expect(isWildcardDep(getsentry!) && getsentry!.exclude).toContain("my-skill");
       expect(isWildcardDep(anthropics!) && anthropics!.exclude).toEqual([]);
+    });
+  });
+
+  describe("addMcpToConfig", () => {
+    it("adds a stdio server", async () => {
+      await addMcpToConfig(configPath, {
+        name: "github",
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-github"],
+        env: ["GITHUB_TOKEN"],
+      });
+
+      const config = await loadConfig(configPath);
+      expect(config.mcp).toHaveLength(1);
+      const mcp = config.mcp[0]!;
+      expect(mcp.name).toBe("github");
+      expect(mcp.command).toBe("npx");
+      expect(mcp.args).toEqual(["-y", "@modelcontextprotocol/server-github"]);
+      expect(mcp.env).toEqual(["GITHUB_TOKEN"]);
+    });
+
+    it("adds an http server with headers", async () => {
+      await addMcpToConfig(configPath, {
+        name: "remote",
+        url: "https://mcp.example.com/sse",
+        headers: { Authorization: "Bearer tok" },
+        env: [],
+      });
+
+      const config = await loadConfig(configPath);
+      expect(config.mcp).toHaveLength(1);
+      const mcp = config.mcp[0]!;
+      expect(mcp.name).toBe("remote");
+      expect(mcp.url).toBe("https://mcp.example.com/sse");
+      expect(mcp.headers).toEqual({ Authorization: "Bearer tok" });
+    });
+
+    it("adds multiple servers", async () => {
+      await addMcpToConfig(configPath, {
+        name: "a",
+        command: "cmd-a",
+        env: [],
+      });
+      await addMcpToConfig(configPath, {
+        name: "b",
+        url: "https://b.example.com",
+        env: [],
+      });
+
+      const config = await loadConfig(configPath);
+      expect(config.mcp).toHaveLength(2);
+    });
+  });
+
+  describe("removeMcpFromConfig", () => {
+    it("removes an existing server", async () => {
+      await addMcpToConfig(configPath, {
+        name: "github",
+        command: "npx",
+        env: [],
+      });
+      await removeMcpFromConfig(configPath, "github");
+
+      const config = await loadConfig(configPath);
+      expect(config.mcp).toHaveLength(0);
+    });
+
+    it("preserves other servers when removing one", async () => {
+      await addMcpToConfig(configPath, {
+        name: "a",
+        command: "cmd-a",
+        env: [],
+      });
+      await addMcpToConfig(configPath, {
+        name: "b",
+        command: "cmd-b",
+        env: [],
+      });
+      await removeMcpFromConfig(configPath, "a");
+
+      const config = await loadConfig(configPath);
+      expect(config.mcp).toHaveLength(1);
+      expect(config.mcp[0]!.name).toBe("b");
+    });
+
+    it("is a no-op for non-existent server", async () => {
+      const before = await readFile(configPath, "utf-8");
+      await removeMcpFromConfig(configPath, "nope");
+      const after = await readFile(configPath, "utf-8");
+      expect(after).toBe(before);
+    });
+
+    it("does not affect skills with same name", async () => {
+      await addSkillToConfig(configPath, "github", {
+        source: "org/github-skill",
+      });
+      await addMcpToConfig(configPath, {
+        name: "github",
+        command: "npx",
+        env: [],
+      });
+      await removeMcpFromConfig(configPath, "github");
+
+      const config = await loadConfig(configPath);
+      expect(config.mcp).toHaveLength(0);
+      expect(config.skills.find((s) => s.name === "github")).toBeDefined();
     });
   });
 });

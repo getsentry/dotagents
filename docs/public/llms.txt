@@ -284,6 +284,39 @@ dotagents sync
 
 Reconcile project state: adopt orphaned skills (installed but not declared), regenerate `.agents/.gitignore`, check for missing skills, verify integrity hashes, repair symlinks, verify/repair MCP and hook configs. Reports issues as warnings or errors.
 
+### mcp add
+
+```
+dotagents mcp add <name> --command <cmd> [--args <a>...] [--env <VAR>...]
+dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]
+```
+
+Add an MCP server declaration to `agents.toml` and run `install` to generate agent configs. Specify exactly one transport: `--command` for stdio or `--url` for HTTP.
+
+| Flag | Description |
+|------|-------------|
+| `--command <cmd>` | Command to execute (stdio transport) |
+| `--args <arg>` | Command argument (repeatable) |
+| `--url <url>` | Server URL (HTTP transport) |
+| `--header <Key:Value>` | HTTP header (repeatable, url servers only) |
+| `--env <VAR>` | Environment variable name to pass through (repeatable) |
+
+### mcp remove
+
+```
+dotagents mcp remove <name>
+```
+
+Remove an MCP server declaration from `agents.toml` and run `install` to regenerate agent configs.
+
+### mcp list
+
+```
+dotagents mcp list [--json]
+```
+
+Show declared MCP servers. Use `--json` for machine-readable output.
+
 ### list
 
 ```
