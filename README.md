@@ -163,16 +163,16 @@ agents = ["claude", "cursor"]
 
 ### Pi
 
-[Pi](https://github.com/badlogic/pi-mono) discovers skills from `.pi/skills/` rather than from the `agents` field. To set it up, add a symlink target to your `agents.toml`:
+[Pi](https://github.com/badlogic/pi-mono) discovers skills from `.pi/skills/`. It is not listed as an `agents` target, so instead add a symlink target to your `agents.toml`:
 
 ```toml
 [symlinks]
 targets = [".pi"]
 ```
 
-After running `dotagents install`, pi will read skills from `.pi/skills/ -> .agents/skills/`.
+After running `dotagents install`, Pi will read skills from `.pi/skills/ -> .agents/skills/`.
 
-Pi does not use dotagents for MCP configuration. If you use an MCP extension with pi, configure it separately via `.pi/mcp.json`.
+Pi does not use dotagents for MCP configuration. If you use an MCP extension with Pi, configure it separately via `.pi/mcp.json`.
 
 ## MCP Servers
 
