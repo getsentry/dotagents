@@ -4,7 +4,7 @@ import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
 import { addSkillToConfig, addWildcardToConfig } from "../../config/writer.js";
-import { parseSource, resolveSkill } from "../../skills/resolver.js";
+import { parseSource, resolveSkill, sourcesMatch } from "../../skills/resolver.js";
 import { discoverAllSkills } from "../../skills/discovery.js";
 import { ensureCached } from "../../sources/cache.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
@@ -37,14 +37,14 @@ export async function runAdd(opts: AddOptions): Promise<string> {
   // Parse the specifier
   const parsed = parseSource(specifier);
 
-  // Normalize GitHub URLs to owner/repo form for storage
-  const canonicalSource =
-    parsed.type === "github"
-      ? `${parsed.owner}/${parsed.repo}${parsed.ref ? `@${parsed.ref}` : ""}`
+  // Preserve original source form (SSH, HTTPS, or shorthand) — strip inline @ref (stored separately)
+  const sourceForStorage =
+    parsed.type === "github" && parsed.ref
+      ? specifier.replace(/@[^@]+$/, "")
       : specifier;
 
-  // Validate trust against the canonical source (owner/repo form for GitHub)
-  validateTrustedSource(canonicalSource, config.trust);
+  // Validate trust against the source
+  validateTrustedSource(sourceForStorage, config.trust);
 
   // Determine ref (flag overrides inline @ref)
   const effectiveRef = ref ?? parsed.ref;
@@ -55,13 +55,13 @@ export async function runAdd(opts: AddOptions): Promise<string> {
       throw new AddError("Cannot use --all with --name. Use one or the other.");
     }
 
-    if (config.skills.some((s) => isWildcardDep(s) && s.source === canonicalSource)) {
+    if (config.skills.some((s) => isWildcardDep(s) && sourcesMatch(s.source, sourceForStorage))) {
       throw new AddError(
-        `A wildcard entry for "${canonicalSource}" already exists in agents.toml.`,
+        `A wildcard entry for "${sourceForStorage}" already exists in agents.toml.`,
       );
     }
 
-    await addWildcardToConfig(configPath, canonicalSource, {
+    await addWildcardToConfig(configPath, sourceForStorage, {
       ...(effectiveRef ? { ref: effectiveRef } : {}),
       exclude: [],
     });
@@ -89,12 +89,13 @@ export async function runAdd(opts: AddOptions): Promise<string> {
   } else {
     // Git source — clone and discover
     const url = parsed.url!;
+    const cloneUrl = parsed.cloneUrl ?? url;
     const cacheKey =
       parsed.type === "github"
         ? `${parsed.owner}/${parsed.repo}`
         : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
 
-    const cached = await ensureCached({ url, cacheKey, ref: effectiveRef });
+    const cached = await ensureCached({ url: cloneUrl, cacheKey, ref: effectiveRef });
 
     if (nameOverride) {
       // User specified name, verify it exists
@@ -102,8 +103,8 @@ export async function runAdd(opts: AddOptions): Promise<string> {
       const found = await discoverSkill(cached.repoDir, nameOverride);
       if (!found) {
         throw new AddError(
-          `Skill "${nameOverride}" not found in ${canonicalSource}. ` +
-            `Use 'dotagents add ${canonicalSource}' without --name to see available skills.`,
+          `Skill "${nameOverride}" not found in ${sourceForStorage}. ` +
+            `Use 'dotagents add ${sourceForStorage}' without --name to see available skills.`,
         );
       }
       skillName = nameOverride;
@@ -111,7 +112,7 @@ export async function runAdd(opts: AddOptions): Promise<string> {
       // Discover all skills and pick
       const skills = await discoverAllSkills(cached.repoDir);
       if (skills.length === 0) {
-        throw new AddError(`No skills found in ${canonicalSource}.`);
+        throw new AddError(`No skills found in ${sourceForStorage}.`);
       }
       if (skills.length === 1) {
         skillName = skills[0]!.meta.name;
@@ -119,7 +120,7 @@ export async function runAdd(opts: AddOptions): Promise<string> {
         // Multiple skills found — list them and ask user to pick with --name or --all
         const names = skills.map((s) => s.meta.name).sort();
         throw new AddError(
-          `Multiple skills found in ${canonicalSource}: ${names.join(", ")}. ` +
+          `Multiple skills found in ${sourceForStorage}: ${names.join(", ")}. ` +
             `Use --name to specify which one, or --all for all skills.`,
         );
       }
@@ -135,7 +136,7 @@ export async function runAdd(opts: AddOptions): Promise<string> {
 
   // Add to config
   await addSkillToConfig(configPath, skillName, {
-    source: canonicalSource,
+    source: sourceForStorage,
     ...(effectiveRef ? { ref: effectiveRef } : {}),
   });
 

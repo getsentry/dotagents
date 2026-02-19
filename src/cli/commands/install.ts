@@ -9,7 +9,7 @@ import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { isGitLocked } from "../../lockfile/schema.js";
 import type { Lockfile, LockedSkill } from "../../lockfile/schema.js";
-import { resolveSkill, resolveWildcardSkills } from "../../skills/resolver.js";
+import { resolveSkill, resolveWildcardSkills, sourcesMatch } from "../../skills/resolver.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import type { ResolvedSkill } from "../../skills/resolver.js";
 import { hashDirectory } from "../../utils/hash.js";
@@ -88,7 +88,7 @@ async function expandSkills(
       // In frozen mode, expand from lockfile — no network needed
       if (!lockfile) continue;
       for (const [name, locked] of Object.entries(lockfile.skills)) {
-        if (locked.source !== wDep.source) continue;
+        if (!sourcesMatch(locked.source, wDep.source)) continue;
         if (explicitNames.has(name)) continue;
         if (excludeSet.has(name)) continue;
 
@@ -103,7 +103,7 @@ async function expandSkills(
 
         // Check for conflicts between different wildcards
         const existingSource = wildcardNames.get(name);
-        if (existingSource && existingSource !== wDep.source) {
+        if (existingSource && !sourcesMatch(existingSource, wDep.source)) {
           throw new InstallError(
             `Skill "${name}" found in both wildcard sources: "${existingSource}" and "${wDep.source}". ` +
               `Use an explicit [[skills]] entry or add it to one source's exclude list.`,

@@ -9,6 +9,7 @@ import { removeSkillFromConfig, addExcludeToWildcard } from "../../config/writer
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
+import { sourcesMatch } from "../../skills/resolver.js";
 import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
 import type { ScopeRoot } from "../../scope.js";
 
@@ -75,7 +76,7 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
   const locked = lockfile?.skills[skillName];
   if (locked) {
     const wildcardDep = config.skills.find(
-      (s) => isWildcardDep(s) && s.source === locked.source,
+      (s) => isWildcardDep(s) && sourcesMatch(s.source, locked.source),
     );
     if (wildcardDep) {
       throw new WildcardSkillRemoveError(skillName, locked.source);

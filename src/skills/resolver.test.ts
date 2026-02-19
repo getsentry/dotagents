@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSource } from "./resolver.js";
+import { parseSource, normalizeSource, sourcesMatch } from "./resolver.js";
 
 describe("parseSource", () => {
   it("parses owner/repo as github", () => {
@@ -8,6 +8,7 @@ describe("parseSource", () => {
     expect(result.owner).toBe("anthropics");
     expect(result.repo).toBe("skills");
     expect(result.url).toBe("https://github.com/anthropics/skills.git");
+    expect(result.cloneUrl).toBeUndefined();
     expect(result.ref).toBeUndefined();
   });
 
@@ -46,6 +47,7 @@ describe("parseSource", () => {
     expect(result.owner).toBe("getsentry");
     expect(result.repo).toBe("skills");
     expect(result.url).toBe("https://github.com/getsentry/skills.git");
+    expect(result.cloneUrl).toBe("https://github.com/getsentry/skills");
     expect(result.ref).toBeUndefined();
   });
 
@@ -71,6 +73,7 @@ describe("parseSource", () => {
     expect(result.repo).toBe("skills");
     expect(result.ref).toBe("v1.0.0");
     expect(result.url).toBe("https://github.com/getsentry/skills.git");
+    expect(result.cloneUrl).toBe("https://github.com/getsentry/skills");
   });
 
   it("parses SSH GitHub URL", () => {
@@ -79,6 +82,7 @@ describe("parseSource", () => {
     expect(result.owner).toBe("getsentry");
     expect(result.repo).toBe("skills");
     expect(result.url).toBe("https://github.com/getsentry/skills.git");
+    expect(result.cloneUrl).toBe("git@github.com:getsentry/skills");
     expect(result.ref).toBeUndefined();
   });
 
@@ -88,6 +92,7 @@ describe("parseSource", () => {
     expect(result.owner).toBe("getsentry");
     expect(result.repo).toBe("skills");
     expect(result.url).toBe("https://github.com/getsentry/skills.git");
+    expect(result.cloneUrl).toBe("git@github.com:getsentry/skills.git");
   });
 
   it("parses SSH GitHub URL with @ref", () => {
@@ -97,6 +102,7 @@ describe("parseSource", () => {
     expect(result.repo).toBe("skills");
     expect(result.ref).toBe("v2.0");
     expect(result.url).toBe("https://github.com/getsentry/skills.git");
+    expect(result.cloneUrl).toBe("git@github.com:getsentry/skills");
   });
 
   it("parses HTTPS GitHub URL with dotted repo name", () => {
@@ -113,5 +119,65 @@ describe("parseSource", () => {
     expect(result.owner).toBe("vercel");
     expect(result.repo).toBe("next.js");
     expect(result.url).toBe("https://github.com/vercel/next.js.git");
+  });
+
+  it("upgrades http:// to https:// in cloneUrl", () => {
+    const result = parseSource("http://github.com/getsentry/skills");
+    expect(result.type).toBe("github");
+    expect(result.cloneUrl).toBe("https://github.com/getsentry/skills");
+  });
+
+  it("does not set cloneUrl for owner/repo shorthand", () => {
+    const result = parseSource("getsentry/skills@v1.0");
+    expect(result.cloneUrl).toBeUndefined();
+  });
+});
+
+describe("normalizeSource", () => {
+  it("normalizes owner/repo shorthand to itself", () => {
+    expect(normalizeSource("getsentry/skills")).toBe("getsentry/skills");
+  });
+
+  it("normalizes HTTPS URL to owner/repo", () => {
+    expect(normalizeSource("https://github.com/getsentry/skills")).toBe("getsentry/skills");
+  });
+
+  it("normalizes SSH URL to owner/repo", () => {
+    expect(normalizeSource("git@github.com:getsentry/skills.git")).toBe("getsentry/skills");
+  });
+
+  it("normalizes HTTPS URL with .git suffix", () => {
+    expect(normalizeSource("https://github.com/getsentry/skills.git")).toBe("getsentry/skills");
+  });
+
+  it("returns non-github sources unchanged", () => {
+    expect(normalizeSource("path:../my-skill")).toBe("path:../my-skill");
+    expect(normalizeSource("git:https://example.com/repo.git")).toBe("git:https://example.com/repo.git");
+  });
+});
+
+describe("sourcesMatch", () => {
+  it("matches identical shorthand", () => {
+    expect(sourcesMatch("getsentry/skills", "getsentry/skills")).toBe(true);
+  });
+
+  it("matches SSH URL with shorthand", () => {
+    expect(sourcesMatch("git@github.com:getsentry/skills.git", "getsentry/skills")).toBe(true);
+  });
+
+  it("matches HTTPS URL with shorthand", () => {
+    expect(sourcesMatch("https://github.com/getsentry/skills", "getsentry/skills")).toBe(true);
+  });
+
+  it("matches SSH URL with HTTPS URL", () => {
+    expect(sourcesMatch("git@github.com:getsentry/skills.git", "https://github.com/getsentry/skills")).toBe(true);
+  });
+
+  it("does not match different repos", () => {
+    expect(sourcesMatch("getsentry/skills", "getsentry/other")).toBe(false);
+  });
+
+  it("does not match different owners", () => {
+    expect(sourcesMatch("getsentry/skills", "anthropics/skills")).toBe(false);
   });
 });

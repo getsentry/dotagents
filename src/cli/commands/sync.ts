@@ -4,6 +4,7 @@ import { readdir } from "node:fs/promises";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
+import { normalizeSource } from "../../skills/resolver.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { addSkillToConfig } from "../../config/writer.js";
@@ -54,10 +55,10 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   if (lockfile) {
     // Add concrete skill names from wildcard sources
     const wildcardSources = new Set(
-      config.skills.filter(isWildcardDep).map((s) => s.source),
+      config.skills.filter(isWildcardDep).map((s) => normalizeSource(s.source)),
     );
     for (const [name, locked] of Object.entries(lockfile.skills)) {
-      if (wildcardSources.has(locked.source)) {
+      if (wildcardSources.has(normalizeSource(locked.source))) {
         declaredNames.add(name);
       }
     }

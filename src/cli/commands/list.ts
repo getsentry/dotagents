@@ -5,6 +5,7 @@ import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { isGitLocked } from "../../lockfile/schema.js";
+import { sourcesMatch } from "../../skills/resolver.js";
 import { hashDirectory } from "../../utils/hash.js";
 import { existsSync } from "node:fs";
 import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
@@ -47,7 +48,7 @@ export async function runList(opts: ListOptions): Promise<SkillStatus[]> {
     for (const wDep of wildcardDeps) {
       const excludeSet = new Set(wDep.exclude);
       for (const [name, locked] of Object.entries(lockfile.skills)) {
-        if (locked.source !== wDep.source) continue;
+        if (!sourcesMatch(locked.source, wDep.source)) continue;
         if (explicitNames.has(name)) continue;
         if (excludeSet.has(name)) continue;
         if (skillEntries.has(name)) continue;

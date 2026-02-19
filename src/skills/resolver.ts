@@ -44,6 +44,8 @@ export type ResolvedSkill = ResolvedGitSkill | ResolvedLocalSkill;
 export function parseSource(source: string): {
   type: "github" | "git" | "local";
   url?: string;
+  /** Original URL to use for cloning (preserves SSH/HTTPS protocol). Undefined for owner/repo shorthand. */
+  cloneUrl?: string;
   owner?: string;
   repo?: string;
   ref?: string;
@@ -62,16 +64,22 @@ export function parseSource(source: string): {
     source.match(GITHUB_HTTPS_URL) || source.match(GITHUB_SSH_URL);
   if (githubUrlMatch) {
     const [, owner, repo, ref] = githubUrlMatch;
+    // Strip @ref suffix, upgrade http:// to https:// (no-op for SSH URLs)
+    const cloneUrl = (ref ? source.replace(/@[^@]+$/, "") : source).replace(
+      /^http:\/\//i,
+      "https://",
+    );
     return {
       type: "github",
       owner,
       repo,
       ref,
       url: `https://github.com/${owner}/${repo}.git`,
+      cloneUrl,
     };
   }
 
-  // owner/repo or owner/repo@ref
+  // owner/repo or owner/repo@ref — shorthand, no cloneUrl
   const atIdx = source.indexOf("@");
   const base = atIdx !== -1 ? source.slice(0, atIdx) : source;
   const ref = atIdx !== -1 ? source.slice(atIdx + 1) : undefined;
@@ -84,6 +92,18 @@ export function parseSource(source: string): {
     ref,
     url: `https://github.com/${owner}/${repo}.git`,
   };
+}
+
+/** Normalize any GitHub source to owner/repo canonical form for comparison/dedup. */
+export function normalizeSource(source: string): string {
+  const parsed = parseSource(source);
+  if (parsed.type === "github") return `${parsed.owner}/${parsed.repo}`;
+  return source;
+}
+
+/** Compare two source strings for equivalence (normalizes GitHub URLs to owner/repo). */
+export function sourcesMatch(a: string, b: string): boolean {
+  return normalizeSource(a) === normalizeSource(b);
 }
 
 /**
@@ -108,6 +128,7 @@ export async function resolveSkill(
 
   // Git source (GitHub or generic git)
   const url = parsed.url!;
+  const cloneUrl = parsed.cloneUrl ?? url;
   const ref = dep.ref ?? parsed.ref;
   const cacheKey =
     parsed.type === "github"
@@ -115,7 +136,7 @@ export async function resolveSkill(
       : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
 
   const cached = await ensureCached({
-    url,
+    url: cloneUrl,
     cacheKey,
     ref,
     pinnedCommit: opts?.lockedCommit,
@@ -142,7 +163,7 @@ export async function resolveSkill(
   return {
     type: "git",
     source: dep.source,
-    resolvedUrl: url,
+    resolvedUrl: cloneUrl,
     resolvedPath: discovered.path,
     resolvedRef: ref,
     commit: cached.commit,
@@ -186,6 +207,7 @@ export async function resolveWildcardSkills(
 
   // Git source
   const url = parsed.url!;
+  const cloneUrl = parsed.cloneUrl ?? url;
   const ref = dep.ref ?? parsed.ref;
   const cacheKey =
     parsed.type === "github"
@@ -193,7 +215,7 @@ export async function resolveWildcardSkills(
       : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
 
   const cached = await ensureCached({
-    url,
+    url: cloneUrl,
     cacheKey,
     ref,
     pinnedCommit: opts?.lockedCommit,
@@ -208,7 +230,7 @@ export async function resolveWildcardSkills(
       resolved: {
         type: "git" as const,
         source: dep.source,
-        resolvedUrl: url,
+        resolvedUrl: cloneUrl,
         resolvedPath: d.path,
         resolvedRef: ref,
         commit: cached.commit,

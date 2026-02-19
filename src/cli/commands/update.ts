@@ -7,7 +7,7 @@ import { isWildcardDep } from "../../config/schema.js";
 import type { WildcardSkillDependency } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { isGitLocked } from "../../lockfile/schema.js";
-import { resolveSkill, resolveWildcardSkills } from "../../skills/resolver.js";
+import { resolveSkill, resolveWildcardSkills, sourcesMatch } from "../../skills/resolver.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import { hashDirectory } from "../../utils/hash.js";
 import { copyDir } from "../../utils/fs.js";
@@ -75,7 +75,7 @@ export async function runUpdate(opts: UpdateOptions): Promise<UpdateResult> {
       if (!locked) {
         throw new UpdateError(`Skill "${skillName}" not found in agents.toml or lockfile.`);
       }
-      const wDep = wildcardDeps.find((w) => w.source === locked.source);
+      const wDep = wildcardDeps.find((w) => sourcesMatch(w.source, locked.source));
       if (!wDep) {
         throw new UpdateError(`Skill "${skillName}" not found in agents.toml.`);
       }
@@ -180,7 +180,7 @@ async function updateWildcardSource(
 
   // Find lockfile entries that belong to this wildcard source
   const lockedFromSource = Object.entries(lockfile.skills).filter(
-    ([name, locked]) => locked.source === wDep.source && !explicitNames.has(name),
+    ([name, locked]) => sourcesMatch(locked.source, wDep.source) && !explicitNames.has(name),
   );
 
   // Process discovered skills (new + changed)
