@@ -22,14 +22,15 @@ const STDIO_NO_ENV: McpDeclaration = {
 };
 
 describe("allAgentIds", () => {
-  it("returns all 5 agents", () => {
+  it("returns all 6 agents", () => {
     const ids = allAgentIds();
     expect(ids).toContain("claude");
     expect(ids).toContain("cursor");
     expect(ids).toContain("codex");
     expect(ids).toContain("vscode");
     expect(ids).toContain("opencode");
-    expect(ids).toHaveLength(5);
+    expect(ids).toContain("pi");
+    expect(ids).toHaveLength(6);
   });
 });
 
@@ -101,8 +102,8 @@ describe("codex serializer", () => {
   });
 
   it("has toml format and shared flag", () => {
-    expect(agent.mcp.format).toBe("toml");
-    expect(agent.mcp.shared).toBe(true);
+    expect(agent.mcp!.format).toBe("toml");
+    expect(agent.mcp!.shared).toBe(true);
   });
 });
 
@@ -170,7 +171,28 @@ describe("opencode serializer", () => {
   });
 
   it("shares config and reads .agents/ natively", () => {
-    expect(agent.mcp.shared).toBe(true);
+    expect(agent.mcp!.shared).toBe(true);
     expect(agent.skillsParentDir).toBeUndefined();
+  });
+});
+
+describe("pi agent", () => {
+  const agent = getAgent("pi")!;
+
+  it("has no MCP support", () => {
+    expect(agent.mcp).toBeUndefined();
+  });
+
+  it("throws UnsupportedFeature for serializeServer", () => {
+    expect(() => agent.serializeServer(STDIO_SERVER)).toThrow("MCP");
+  });
+
+  it("throws UnsupportedFeature for serializeHooks", () => {
+    expect(() => agent.serializeHooks([])).toThrow("hooks");
+  });
+
+  it("needs project and user symlinks", () => {
+    expect(agent.skillsParentDir).toBe(".pi");
+    expect(agent.userSkillsParentDirs).toBeDefined();
   });
 });

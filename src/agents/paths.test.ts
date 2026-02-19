@@ -77,4 +77,10 @@ describe("skill discovery paths", () => {
     expect(agent.skillsParentDir).toBeUndefined();
     expect(agent.userSkillsParentDirs).toBeUndefined();
   });
+
+  it("pi needs project and user symlinks", () => {
+    const agent = getAgent("pi")!;
+    expect(agent.skillsParentDir).toBe(".pi");
+    expect(agent.userSkillsParentDirs).toEqual([join(home, ".pi", "agent")]);
+  });
 });

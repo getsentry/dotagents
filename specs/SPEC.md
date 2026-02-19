@@ -158,6 +158,7 @@ A server must have either `command` (stdio) or `url` (HTTP), but not both.
 | `codex` | Codex | `.codex` | `.codex/config.toml` | TOML (shared) |
 | `vscode` | VS Code Copilot | `.vscode` | `.vscode/mcp.json` | JSON |
 | `opencode` | OpenCode | `.claude` | `opencode.json` | JSON (shared) |
+| `pi` | Pi | `.pi` | — | — (no MCP) |
 
 Each agent has its own MCP config format. dotagents translates the universal `[[mcp]]` declarations into the format each tool expects during `install` and `sync`.
 

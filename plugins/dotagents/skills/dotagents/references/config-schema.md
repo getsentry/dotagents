@@ -20,7 +20,7 @@ agents = ["claude", "cursor"]   # Optional, agent targets
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | — | Schema version, must be `1` |
 | `gitignore` | boolean | No | `false` | Generate `.agents/.gitignore` for managed skills |
-| `agents` | string[] | No | — | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `opencode` |
+| `agents` | string[] | No | — | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `opencode`, `pi` |
 
 ## Project Section
 

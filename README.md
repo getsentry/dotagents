@@ -77,7 +77,7 @@ The `agents` field tells dotagents which tools to configure. It handles skills s
 agents = ["claude", "cursor"]
 ```
 
-Supported agents: `claude`, `cursor`, `codex`, `vscode`, `opencode`.
+Supported agents: `claude`, `cursor`, `codex`, `vscode`, `opencode`, `pi`.
 
 ## MCP Servers
 

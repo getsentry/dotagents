@@ -249,6 +249,27 @@ describe("writeMcpConfigs", () => {
     await writeMcpConfigs(["cursor"], [STDIO_SERVER], projectMcpResolver(dir));
     expect(existsSync(join(dir, ".cursor", "mcp.json"))).toBe(true);
   });
+
+  it("returns warning for agents without MCP support", async () => {
+    const warnings = await writeMcpConfigs(["pi"], [STDIO_SERVER], projectMcpResolver(dir));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.agent).toBe("pi");
+    expect(warnings[0]!.message).toContain("does not support MCP");
+  });
+
+  it("writes configs for MCP-capable agents alongside no-MCP agents", async () => {
+    const warnings = await writeMcpConfigs(
+      ["claude", "pi", "cursor"],
+      [STDIO_SERVER],
+      projectMcpResolver(dir),
+    );
+
+    // pi warned, claude and cursor written
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.agent).toBe("pi");
+    expect(existsSync(join(dir, ".mcp.json"))).toBe(true);
+    expect(existsSync(join(dir, ".cursor", "mcp.json"))).toBe(true);
+  });
 });
 
 describe("verifyMcpConfigs", () => {
@@ -284,6 +305,12 @@ describe("verifyMcpConfigs", () => {
 
   it("returns empty when no servers declared", async () => {
     const issues = await verifyMcpConfigs(["claude"], [], projectMcpResolver(dir));
+    expect(issues).toEqual([]);
+  });
+
+  it("skips agents without MCP support", async () => {
+    await writeMcpConfigs(["claude"], [STDIO_SERVER], projectMcpResolver(dir));
+    const issues = await verifyMcpConfigs(["claude", "pi"], [STDIO_SERVER], projectMcpResolver(dir));
     expect(issues).toEqual([]);
   });
 });
