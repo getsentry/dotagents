@@ -101,13 +101,13 @@ describe("runInit", () => {
     expect(config.agents).toEqual(["claude", "cursor"]);
   });
 
-  it("creates agent-specific symlinks when --agents is provided", async () => {
+  it("creates agent-specific symlinks when --agents is provided (cursor shares .claude)", async () => {
     await runInit({ scope: resolveScope("project", dir), agents: ["claude", "cursor"] });
 
     const claudeStat = await lstat(join(dir, ".claude", "skills"));
     expect(claudeStat.isSymbolicLink()).toBe(true);
-    const cursorStat = await lstat(join(dir, ".cursor", "skills"));
-    expect(cursorStat.isSymbolicLink()).toBe(true);
+    // Cursor shares .claude/skills — no .cursor/skills symlink created
+    await expect(lstat(join(dir, ".cursor", "skills"))).rejects.toThrow();
   });
 
   it("rejects unknown agent IDs", async () => {

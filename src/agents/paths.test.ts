@@ -59,10 +59,10 @@ describe("skill discovery paths", () => {
     expect(agent.userSkillsParentDirs).toEqual([join(home, ".claude")]);
   });
 
-  it("cursor needs project and user symlinks", () => {
+  it("cursor shares .claude skills symlink", () => {
     const agent = getAgent("cursor")!;
-    expect(agent.skillsParentDir).toBe(".cursor");
-    expect(agent.userSkillsParentDirs).toEqual([join(home, ".cursor")]);
+    expect(agent.skillsParentDir).toBe(".claude");
+    expect(agent.userSkillsParentDirs).toEqual([join(home, ".claude")]);
   });
 
   // Agents that DO read .agents/skills/ natively need no symlinks

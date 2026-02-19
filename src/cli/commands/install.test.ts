@@ -173,7 +173,7 @@ describe("runInstall", () => {
     expect(result.installed).toContain("pdf");
   });
 
-  it("creates agent-specific symlinks", async () => {
+  it("creates agent-specific symlinks (cursor shares .claude)", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\nagents = ["claude", "cursor"]\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
@@ -182,11 +182,11 @@ describe("runInstall", () => {
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const { lstat } = await import("node:fs/promises");
+    const { lstat, access } = await import("node:fs/promises");
     const claudeStat = await lstat(join(projectRoot, ".claude", "skills"));
     expect(claudeStat.isSymbolicLink()).toBe(true);
-    const cursorStat = await lstat(join(projectRoot, ".cursor", "skills"));
-    expect(cursorStat.isSymbolicLink()).toBe(true);
+    // Cursor shares .claude/skills — no .cursor/skills symlink created
+    await expect(access(join(projectRoot, ".cursor", "skills"))).rejects.toThrow();
   });
 
   it("writes MCP configs for declared agents", async () => {
