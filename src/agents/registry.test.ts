@@ -22,15 +22,14 @@ const STDIO_NO_ENV: McpDeclaration = {
 };
 
 describe("allAgentIds", () => {
-  it("returns all 6 agents", () => {
+  it("returns all 5 agents", () => {
     const ids = allAgentIds();
     expect(ids).toContain("claude");
     expect(ids).toContain("cursor");
     expect(ids).toContain("codex");
     expect(ids).toContain("vscode");
     expect(ids).toContain("opencode");
-    expect(ids).toContain("pi");
-    expect(ids).toHaveLength(6);
+    expect(ids).toHaveLength(5);
   });
 });
 
@@ -173,45 +172,5 @@ describe("opencode serializer", () => {
   it("shares config and reads .agents/ natively", () => {
     expect(agent.mcp.shared).toBe(true);
     expect(agent.skillsParentDir).toBeUndefined();
-  });
-});
-
-describe("pi serializer", () => {
-  const agent = getAgent("pi")!;
-
-  it("serializes stdio server", () => {
-    const [name, config] = agent.serializeServer(STDIO_SERVER);
-    expect(name).toBe("github");
-    expect(config).toEqual({
-      command: "npx",
-      args: ["-y", "@modelcontextprotocol/server-github"],
-      env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
-    });
-  });
-
-  it("serializes http server natively", () => {
-    const [name, config] = agent.serializeServer(HTTP_SERVER);
-    expect(name).toBe("remote-api");
-    expect(config).toEqual({
-      url: "https://mcp.example.com/sse",
-      headers: { Authorization: "Bearer tok" },
-    });
-  });
-
-  it("omits env when empty", () => {
-    const [, config] = agent.serializeServer(STDIO_NO_ENV);
-    expect(config).toEqual({ command: "mcp-server", args: [] });
-    expect(config).not.toHaveProperty("env");
-  });
-
-  it("needs project and user symlinks for skills", () => {
-    expect(agent.skillsParentDir).toBe(".pi");
-    expect(agent.userSkillsParentDirs).toHaveLength(1);
-    expect(agent.userSkillsParentDirs![0]).toMatch(/\.pi[/\\]agent$/);
-  });
-
-  it("does not support hooks", () => {
-    expect(agent.hooks).toBeUndefined();
-    expect(() => agent.serializeHooks([])).toThrow();
   });
 });

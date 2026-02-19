@@ -38,12 +38,6 @@ describe("getUserMcpTarget", () => {
     expect(t.shared).toBe(true);
   });
 
-  it("pi targets ~/.pi/agent/mcp.json (not shared)", () => {
-    const t = getUserMcpTarget("pi");
-    expect(t.filePath).toBe(join(home, ".pi", "agent", "mcp.json"));
-    expect(t.shared).toBe(false);
-  });
-
   it("throws for unknown agent", () => {
     expect(() => getUserMcpTarget("emacs")).toThrow("Unknown agent");
   });
@@ -82,11 +76,5 @@ describe("skill discovery paths", () => {
     const agent = getAgent("opencode")!;
     expect(agent.skillsParentDir).toBeUndefined();
     expect(agent.userSkillsParentDirs).toBeUndefined();
-  });
-
-  it("pi needs project and user symlinks", () => {
-    const agent = getAgent("pi")!;
-    expect(agent.skillsParentDir).toBe(".pi");
-    expect(agent.userSkillsParentDirs).toEqual([join(home, ".pi", "agent")]);
   });
 });

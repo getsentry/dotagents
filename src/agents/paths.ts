@@ -25,8 +25,6 @@ export function getUserMcpTarget(agentId: string): UserMcpTarget {
       return { filePath: vscodeMcpPath(), shared: false };
     case "opencode":
       return { filePath: join(home, ".config", "opencode", "opencode.json"), shared: true };
-    case "pi":
-      return { filePath: join(home, ".pi", "agent", "mcp.json"), shared: false };
     default:
       throw new Error(`Unknown agent for user-scope MCP: ${agentId}`);
   }
