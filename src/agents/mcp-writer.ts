@@ -13,6 +13,11 @@ export interface McpResolvedTarget {
 
 export type McpTargetResolver = (agentId: string, spec: McpConfigSpec) => McpResolvedTarget;
 
+export interface McpWriteWarning {
+  agent: string;
+  message: string;
+}
+
 /**
  * Convert McpConfig entries (from agents.toml) to universal McpDeclarations.
  */
@@ -41,13 +46,15 @@ export function projectMcpResolver(projectRoot: string): McpTargetResolver {
  * Write MCP config files for each agent.
  * - Dedicated files (shared=false): written fresh each time.
  * - Shared files (shared=true): read existing, merge dotagents servers under the root key, write back.
+ * - Agents that don't support MCP: collected as warnings.
  */
 export async function writeMcpConfigs(
   agentIds: string[],
   servers: McpDeclaration[],
   resolveTarget: McpTargetResolver,
-): Promise<void> {
-  if (servers.length === 0) return;
+): Promise<McpWriteWarning[]> {
+  const warnings: McpWriteWarning[] = [];
+  if (servers.length === 0) return warnings;
 
   // Deduplicate by resolved filePath so shared files aren't written twice
   const seen = new Set<string>();
@@ -55,6 +62,11 @@ export async function writeMcpConfigs(
   for (const id of agentIds) {
     const agent = getAgent(id);
     if (!agent) continue;
+
+    if (!agent.mcp) {
+      warnings.push({ agent: id, message: `Agent "${agent.displayName}" does not support MCP` });
+      continue;
+    }
 
     const { mcp } = agent;
     const { filePath, shared } = resolveTarget(id, mcp);
@@ -75,6 +87,8 @@ export async function writeMcpConfigs(
       await freshWrite(filePath, mcp, serialized);
     }
   }
+
+  return warnings;
 }
 
 /**
@@ -94,6 +108,9 @@ export async function verifyMcpConfigs(
   for (const id of agentIds) {
     const agent = getAgent(id);
     if (!agent) continue;
+
+    // Skip agents that don't support MCP
+    if (!agent.mcp) continue;
 
     const { mcp } = agent;
     const { filePath } = resolveTarget(id, mcp);

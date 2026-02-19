@@ -44,6 +44,7 @@ export interface InstallOptions {
 export interface InstallResult {
   installed: string[];
   skipped: string[];
+  mcpWarnings: { agent: string; message: string }[];
   hookWarnings: { agent: string; message: string }[];
 }
 
@@ -276,7 +277,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
 
   // 5. Write MCP config files
   const mcpResolver = scope.scope === "user" ? userMcpResolver() : projectMcpResolver(scope.root);
-  await writeMcpConfigs(config.agents, toMcpDeclarations(config.mcp), mcpResolver);
+  const mcpWarnings = await writeMcpConfigs(config.agents, toMcpDeclarations(config.mcp), mcpResolver);
 
   // 6. Write hook config files (skip for user scope)
   let hookWarnings: { agent: string; message: string }[] = [];
@@ -288,7 +289,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     );
   }
 
-  return { installed, skipped, hookWarnings };
+  return { installed, skipped, mcpWarnings, hookWarnings };
 }
 
 export default async function install(args: string[], flags?: { user?: boolean }): Promise<void> {
@@ -314,7 +315,7 @@ export default async function install(args: string[], flags?: { user?: boolean }
         chalk.green(`Installed ${result.installed.length} skill(s): ${result.installed.join(", ")}`),
       );
     }
-    for (const w of result.hookWarnings) {
+    for (const w of [...result.mcpWarnings, ...result.hookWarnings]) {
       console.log(chalk.yellow(`  warn: ${w.message}`));
     }
   } catch (err) {

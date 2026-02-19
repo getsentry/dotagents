@@ -91,8 +91,8 @@ export interface AgentDefinition {
    * Undefined if the agent reads ~/.agents/skills/ natively (no symlink needed).
    */
   userSkillsParentDirs?: string[];
-  /** MCP config file specification */
-  mcp: McpConfigSpec;
+  /** MCP config file specification (undefined if agent doesn't support MCP) */
+  mcp?: McpConfigSpec;
   /** Transforms universal MCP declaration to agent-specific format */
   serializeServer: McpSerializer;
   /** Hook config file specification (undefined if agent doesn't support hooks) */
