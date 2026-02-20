@@ -34,9 +34,8 @@ export async function clone(
           /could not read Username/i.test(stderr))
       ) {
         // Convert https://github.com/org/repo[.git][/] → git@github.com:org/repo.git
-        const sshUrl =
-          "git@github.com:" +
-          url.replace(/^https:\/\/github\.com\//, "").replace(/(?:\.git)?\/*$/, ".git");
+        const path = url.replace(/^https:\/\/github\.com\//, "").replace(/\/+$/, "");
+        const sshUrl = "git@github.com:" + (path.endsWith(".git") ? path : path + ".git");
         throw new GitError(
           `Failed to clone ${url}: authentication required.\n` +
             `Hint: for private repos, use the SSH URL instead:\n` +
