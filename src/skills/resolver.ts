@@ -64,11 +64,9 @@ export function parseSource(source: string): {
     source.match(GITHUB_HTTPS_URL) || source.match(GITHUB_SSH_URL);
   if (githubUrlMatch) {
     const [, owner, repo, ref] = githubUrlMatch;
-    // Strip @ref suffix, upgrade http:// to https:// (no-op for SSH URLs)
-    const cloneUrl = (ref ? source.replace(/@[^@]+$/, "") : source).replace(
-      /^http:\/\//i,
-      "https://",
-    );
+    // Strip @ref suffix using known ref length, upgrade http:// to https:// (no-op for SSH URLs)
+    const withoutRef = ref ? source.slice(0, -(ref.length + 1)) : source;
+    const cloneUrl = withoutRef.replace(/^http:\/\//i, "https://");
     return {
       type: "github",
       owner,

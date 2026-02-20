@@ -131,6 +131,15 @@ describe("parseSource", () => {
     const result = parseSource("getsentry/skills@v1.0");
     expect(result.cloneUrl).toBeUndefined();
   });
+
+  it("strips ref containing @ from cloneUrl correctly", () => {
+    const result = parseSource("git@github.com:org/repo@packages/foo@1.0.0");
+    expect(result.type).toBe("github");
+    expect(result.owner).toBe("org");
+    expect(result.repo).toBe("repo");
+    expect(result.ref).toBe("packages/foo@1.0.0");
+    expect(result.cloneUrl).toBe("git@github.com:org/repo");
+  });
 });
 
 describe("normalizeSource", () => {

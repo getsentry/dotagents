@@ -40,7 +40,7 @@ export async function runAdd(opts: AddOptions): Promise<string> {
   // Preserve original source form (SSH, HTTPS, or shorthand) — strip inline @ref (stored separately)
   const sourceForStorage =
     parsed.type === "github" && parsed.ref
-      ? specifier.replace(/@[^@]+$/, "")
+      ? specifier.slice(0, -(parsed.ref.length + 1))
       : specifier;
 
   // Validate trust against the source
