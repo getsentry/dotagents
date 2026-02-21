@@ -146,6 +146,11 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
 
         if (selected.length === skills.length) {
           // All selected — add wildcard entry
+          if (config.skills.some((s) => isWildcardDep(s) && sourcesMatch(s.source, sourceForStorage))) {
+            throw new AddError(
+              `A wildcard entry for "${sourceForStorage}" already exists in agents.toml.`,
+            );
+          }
           await addWildcardToConfig(configPath, sourceForStorage, {
             ...refOpts,
             exclude: [],
