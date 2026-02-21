@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
+import * as clack from "@clack/prompts";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
@@ -19,16 +20,24 @@ export class AddError extends Error {
   }
 }
 
+export class AddCancelledError extends Error {
+  constructor() {
+    super("Cancelled");
+    this.name = "AddCancelledError";
+  }
+}
+
 export interface AddOptions {
   scope: ScopeRoot;
   specifier: string;
   ref?: string;
   name?: string;
   all?: boolean;
+  interactive?: boolean;
 }
 
-export async function runAdd(opts: AddOptions): Promise<string> {
-  const { scope, specifier, ref, name: nameOverride, all } = opts;
+export async function runAdd(opts: AddOptions): Promise<string | string[]> {
+  const { scope, specifier, ref, name: nameOverride, all, interactive } = opts;
   const { configPath } = scope;
 
   // Load config early so we can check trust before any network work
@@ -48,6 +57,7 @@ export async function runAdd(opts: AddOptions): Promise<string> {
 
   // Determine ref (flag overrides inline @ref)
   const effectiveRef = ref ?? parsed.ref;
+  const refOpts = effectiveRef ? { ref: effectiveRef } : {};
 
   // --all: add a wildcard entry
   if (all) {
@@ -62,7 +72,7 @@ export async function runAdd(opts: AddOptions): Promise<string> {
     }
 
     await addWildcardToConfig(configPath, sourceForStorage, {
-      ...(effectiveRef ? { ref: effectiveRef } : {}),
+      ...refOpts,
       exclude: [],
     });
 
@@ -116,8 +126,50 @@ export async function runAdd(opts: AddOptions): Promise<string> {
       }
       if (skills.length === 1) {
         skillName = skills[0]!.meta.name;
+      } else if (interactive) {
+        // Interactive TTY — let user pick from a list
+        const selected = await clack.multiselect({
+          message: `Multiple skills found in ${sourceForStorage}. Select which to add:`,
+          options: skills
+            .sort((a, b) => a.meta.name.localeCompare(b.meta.name))
+            .map((s) => ({
+              label: s.meta.name,
+              value: s.meta.name,
+              hint: s.meta.description,
+            })),
+          required: true,
+        });
+
+        if (clack.isCancel(selected)) {
+          throw new AddCancelledError();
+        }
+
+        if (selected.length === skills.length) {
+          // All selected — add wildcard entry
+          await addWildcardToConfig(configPath, sourceForStorage, {
+            ...refOpts,
+            exclude: [],
+          });
+          await runInstall({ scope });
+          return "*";
+        }
+
+        if (selected.length === 1) {
+          skillName = selected[0]!;
+        } else {
+          // Multiple (but not all) selected — add each individually
+          for (const name of selected) {
+            if (config.skills.some((s) => s.name === name)) continue;
+            await addSkillToConfig(configPath, name, {
+              source: sourceForStorage,
+              ...refOpts,
+            });
+          }
+          await runInstall({ scope });
+          return selected;
+        }
       } else {
-        // Multiple skills found — list them and ask user to pick with --name or --all
+        // Non-interactive — list them and ask user to re-run with --name or --all
         const names = skills.map((s) => s.meta.name).sort();
         throw new AddError(
           `Multiple skills found in ${sourceForStorage}: ${names.join(", ")}. ` +
@@ -137,7 +189,7 @@ export async function runAdd(opts: AddOptions): Promise<string> {
   // Add to config
   await addSkillToConfig(configPath, skillName, {
     source: sourceForStorage,
-    ...(effectiveRef ? { ref: effectiveRef } : {}),
+    ...refOpts,
   });
 
   // Run install to actually fetch and place the skill
@@ -170,16 +222,24 @@ export default async function add(args: string[], flags?: { user?: boolean }): P
 
   try {
     const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
-    const name = await runAdd({
+    const interactive = process.stdout.isTTY === true && !nameValue && !values["all"];
+    const result = await runAdd({
       scope,
       specifier,
       ref: values["ref"],
       name: nameValue,
       all: values["all"],
+      interactive,
     });
-    const msg = name === "*" ? `Added all skills from ${specifier}` : `Added skill: ${name}`;
-    console.log(chalk.green(msg));
+    if (result === "*") {
+      console.log(chalk.green(`Added all skills from ${specifier}`));
+    } else if (Array.isArray(result)) {
+      console.log(chalk.green(`Added skills: ${result.join(", ")}`));
+    } else {
+      console.log(chalk.green(`Added skill: ${result}`));
+    }
   } catch (err) {
+    if (err instanceof AddCancelledError) return;
     if (err instanceof ScopeError || err instanceof AddError || err instanceof TrustError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
