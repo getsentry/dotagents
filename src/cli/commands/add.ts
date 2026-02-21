@@ -163,15 +163,20 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
           skillName = selected[0]!;
         } else {
           // Multiple (but not all) selected — add each individually
+          const added: string[] = [];
           for (const name of selected) {
             if (config.skills.some((s) => s.name === name)) continue;
             await addSkillToConfig(configPath, name, {
               source: sourceForStorage,
               ...refOpts,
             });
+            added.push(name);
+          }
+          if (added.length === 0) {
+            throw new AddError("All selected skills already exist in agents.toml.");
           }
           await runInstall({ scope });
-          return selected;
+          return added;
         }
       } else {
         // Non-interactive — list them and ask user to re-run with --name or --all
