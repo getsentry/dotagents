@@ -128,10 +128,29 @@ describe("runAdd", () => {
     ).rejects.toThrow(AddError);
   });
 
-  it("throws when one of multiple skills already exists (no partial writes)", async () => {
+  it("skips existing skills and adds the rest when adding multiple", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runAdd({
+      scope,
+      specifier: `git:${repoDir}`,
+      names: ["review", "pdf"],
+    });
+
+    // Only "review" should be added; "pdf" was skipped
+    expect(result).toEqual(["review"]);
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml).toContain('name = "review"');
+  });
+
+  it("throws when all specified skills already exist", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "review"\nsource = "git:${repoDir}"\n`,
     );
 
     const scope = resolveScope("project", projectRoot);
@@ -139,13 +158,9 @@ describe("runAdd", () => {
       runAdd({
         scope,
         specifier: `git:${repoDir}`,
-        names: ["review", "pdf"],
+        names: ["pdf", "review"],
       }),
     ).rejects.toThrow(AddError);
-
-    // "review" should NOT have been partially added
-    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
-    expect(toml).not.toContain('name = "review"');
   });
 
   it("throws when --all is used with names", async () => {
@@ -299,10 +314,29 @@ describe("runAdd (local sources)", () => {
     expect(toml).not.toContain('name = "pdf"');
   });
 
-  it("throws when one of multiple local skills already exists (no partial writes)", async () => {
+  it("skips existing local skills and adds the rest when adding multiple", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "path:local-skills"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runAdd({
+      scope,
+      specifier: "path:local-skills",
+      names: ["review", "pdf"],
+    });
+
+    // Only "review" should be added; "pdf" was skipped
+    expect(result).toEqual(["review"]);
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml).toContain('name = "review"');
+  });
+
+  it("throws when all specified local skills already exist", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "path:local-skills"\n\n[[skills]]\nname = "review"\nsource = "path:local-skills"\n`,
     );
 
     const scope = resolveScope("project", projectRoot);
@@ -310,13 +344,9 @@ describe("runAdd (local sources)", () => {
       runAdd({
         scope,
         specifier: "path:local-skills",
-        names: ["review", "pdf"],
+        names: ["pdf", "review"],
       }),
     ).rejects.toThrow(AddError);
-
-    // "review" should NOT have been partially added
-    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
-    expect(toml).not.toContain('name = "review"');
   });
 });
 
