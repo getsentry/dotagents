@@ -194,6 +194,132 @@ describe("runAdd", () => {
   });
 });
 
+describe("runAdd (local sources)", () => {
+  let tmpDir: string;
+  let stateDir: string;
+  let projectRoot: string;
+  let localSkillsDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "dotagents-add-local-"));
+    stateDir = join(tmpDir, "state");
+    projectRoot = join(tmpDir, "project");
+
+    process.env["DOTAGENTS_STATE_DIR"] = stateDir;
+
+    // Set up project with a local skills directory inside it
+    await mkdir(join(projectRoot, ".agents", "skills"), { recursive: true });
+    await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
+
+    // Create a local directory with multiple skills (inside project root)
+    localSkillsDir = join(projectRoot, "local-skills");
+    await mkdir(join(localSkillsDir, "pdf"), { recursive: true });
+    await writeFile(join(localSkillsDir, "pdf", "SKILL.md"), SKILL_MD("pdf"));
+
+    await mkdir(join(localSkillsDir, "skills", "review"), { recursive: true });
+    await writeFile(join(localSkillsDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+
+    await mkdir(join(localSkillsDir, "skills", "commit"), { recursive: true });
+    await writeFile(join(localSkillsDir, "skills", "commit", "SKILL.md"), SKILL_MD("commit"));
+  });
+
+  afterEach(async () => {
+    delete process.env["DOTAGENTS_STATE_DIR"];
+    await rm(tmpDir, { recursive: true });
+  });
+
+  it("adds a single local skill without names (reads root SKILL.md)", async () => {
+    // Create a single-skill local directory with SKILL.md at root
+    const singleSkillDir = join(projectRoot, "my-skill");
+    await mkdir(singleSkillDir, { recursive: true });
+    await writeFile(join(singleSkillDir, "SKILL.md"), SKILL_MD("my-skill"));
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runAdd({
+      scope,
+      specifier: "path:my-skill",
+    });
+
+    expect(result).toBe("my-skill");
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml).toContain('name = "my-skill"');
+  });
+
+  it("adds a single local skill via names", async () => {
+    const scope = resolveScope("project", projectRoot);
+    const result = await runAdd({
+      scope,
+      specifier: "path:local-skills",
+      names: ["pdf"],
+    });
+
+    expect(result).toBe("pdf");
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml).toContain('name = "pdf"');
+  });
+
+  it("adds multiple local skills via names", async () => {
+    const scope = resolveScope("project", projectRoot);
+    const result = await runAdd({
+      scope,
+      specifier: "path:local-skills",
+      names: ["pdf", "review"],
+    });
+
+    expect(result).toEqual(["pdf", "review"]);
+
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml).toContain('name = "pdf"');
+    expect(toml).toContain('name = "review"');
+  });
+
+  it("throws when a local skill is not found", async () => {
+    const scope = resolveScope("project", projectRoot);
+    await expect(
+      runAdd({
+        scope,
+        specifier: "path:local-skills",
+        names: ["nonexistent"],
+      }),
+    ).rejects.toThrow(AddError);
+  });
+
+  it("throws when one of multiple local skills is not found (fails fast)", async () => {
+    const scope = resolveScope("project", projectRoot);
+    await expect(
+      runAdd({
+        scope,
+        specifier: "path:local-skills",
+        names: ["pdf", "nonexistent"],
+      }),
+    ).rejects.toThrow(AddError);
+
+    // "pdf" should NOT have been partially added
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml).not.toContain('name = "pdf"');
+  });
+
+  it("throws when one of multiple local skills already exists (no partial writes)", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "path:local-skills"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(
+      runAdd({
+        scope,
+        specifier: "path:local-skills",
+        names: ["review", "pdf"],
+      }),
+    ).rejects.toThrow(AddError);
+
+    // "review" should NOT have been partially added
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml).not.toContain('name = "review"');
+  });
+});
+
 describe("add() CLI parsing", () => {
   let tmpDir: string;
   let stateDir: string;
