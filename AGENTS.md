@@ -15,14 +15,17 @@ See `specs/SPEC.md` for the full design.
 ```
 src/
 ├── index.ts              # Library entry point
+├── scope.ts              # Project/user scope resolution
 ├── cli/
 │   ├── index.ts          # CLI entry point, command routing
-│   └── commands/         # init, install, add, remove, update, sync, list
+│   └── commands/         # init, install, add, remove, update, sync, list, mcp
+├── agents/               # Agent definitions, MCP/hook config writers
 ├── config/               # agents.toml schema, loader, writer
 ├── lockfile/             # agents.lock schema, loader, writer
 ├── skills/               # SKILL.md loader, discovery, resolver
 ├── sources/              # git.ts, local.ts, cache.ts
 ├── symlinks/             # Symlink creation/management
+├── trust/                # Trust policy validation
 ├── gitignore/            # .agents/.gitignore generation
 └── utils/                # exec.ts, hash.ts, fs.ts
 ```
@@ -52,6 +55,10 @@ New functionality requires tests, but only tests that are functionally additive.
 - Prefer integration tests over unit tests
 - Add regression tests for bugs
 - Mock external services, use real-world fixtures
+
+## Documentation
+
+When changes affect CLI behavior, command interfaces, or user-facing semantics (flags, error messages, default behavior), update the relevant documentation: `README.md`, `specs/SPEC.md`, and `--help` output. Code and docs ship together.
 
 ## Verifying Changes
 
