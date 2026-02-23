@@ -11,6 +11,7 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ensureSkillsSymlink, verifySymlinks } from "./manager.js";
+import { exec } from "../utils/exec.js";
 
 describe("symlinks", () => {
   let dir: string;
@@ -97,6 +98,52 @@ describe("symlinks", () => {
       // Verify symlink is now in place
       const stat = await lstat(join(targetDir, "skills"));
       expect(stat.isSymbolicLink()).toBe(true);
+    });
+
+    it("removes migrated files from git index", async () => {
+      // Initialize a git repo in the temp dir
+      await exec("git", ["init"], { cwd: dir });
+      await exec("git", ["config", "user.email", "test@test.com"], {
+        cwd: dir,
+      });
+      await exec("git", ["config", "user.name", "Test"], { cwd: dir });
+
+      // Create a real skills directory with a committed file
+      const targetDir = join(dir, ".claude");
+      const realSkillsDir = join(targetDir, "skills");
+      await mkdir(join(realSkillsDir, "my-skill"), { recursive: true });
+      await writeFile(
+        join(realSkillsDir, "my-skill", "SKILL.md"),
+        "---\nname: test\n---\n",
+      );
+
+      await exec("git", ["add", "."], { cwd: dir });
+      await exec("git", ["commit", "-m", "initial"], { cwd: dir });
+
+      // Verify file is tracked before migration
+      const { stdout: before } = await exec(
+        "git",
+        ["ls-files", ".claude/skills/"],
+        { cwd: dir },
+      );
+      expect(before.trim()).toContain("my-skill/SKILL.md");
+
+      // Run the symlink migration
+      const result = await ensureSkillsSymlink(agentsDir, targetDir);
+      expect(result.created).toBe(true);
+      expect(result.migrated).toContain("my-skill");
+
+      // Verify file is no longer in git index
+      const { stdout: after } = await exec(
+        "git",
+        ["ls-files", ".claude/skills/"],
+        { cwd: dir },
+      );
+      expect(after.trim()).toBe("");
+
+      // Verify the skill was moved to .agents/skills/
+      const agentsEntries = await readdir(join(agentsDir, "skills"));
+      expect(agentsEntries).toContain("my-skill");
     });
   });
 
