@@ -117,22 +117,28 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
       if (namesOverride.length === 1) {
         skillName = namesOverride[0]!;
       } else {
-        // Multiple names — check all for duplicates before writing anything
+        // Multiple names — skip existing, add the rest
+        const toAdd: string[] = [];
         for (const name of namesOverride) {
           if (config.skills.some((s) => s.name === name)) {
-            throw new AddError(
-              `Skill "${name}" already exists in agents.toml. Remove it first or use 'dotagents update'.`,
-            );
+            console.warn(chalk.yellow(`Skipping "${name}": already exists in agents.toml`));
+          } else {
+            toAdd.push(name);
           }
         }
-        for (const name of namesOverride) {
+
+        if (toAdd.length === 0) {
+          throw new AddError("All specified skills already exist in agents.toml.");
+        }
+
+        for (const name of toAdd) {
           await addSkillToConfig(configPath, name, {
             source: sourceForStorage,
             ...refOpts,
           });
         }
         await runInstall({ scope });
-        return namesOverride;
+        return toAdd;
       }
     } else {
       // No names — load SKILL.md from root for the name
@@ -169,22 +175,28 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
       if (namesOverride.length === 1) {
         skillName = namesOverride[0]!;
       } else {
-        // Multiple names — check all for duplicates before writing anything
+        // Multiple names — skip existing, add the rest
+        const toAdd: string[] = [];
         for (const name of namesOverride) {
           if (config.skills.some((s) => s.name === name)) {
-            throw new AddError(
-              `Skill "${name}" already exists in agents.toml. Remove it first or use 'dotagents update'.`,
-            );
+            console.warn(chalk.yellow(`Skipping "${name}": already exists in agents.toml`));
+          } else {
+            toAdd.push(name);
           }
         }
-        for (const name of namesOverride) {
+
+        if (toAdd.length === 0) {
+          throw new AddError("All specified skills already exist in agents.toml.");
+        }
+
+        for (const name of toAdd) {
           await addSkillToConfig(configPath, name, {
             source: sourceForStorage,
             ...refOpts,
           });
         }
         await runInstall({ scope });
-        return namesOverride;
+        return toAdd;
       }
     } else {
       // Discover all skills and pick
