@@ -1,5 +1,6 @@
 import { symlink, readlink, unlink, mkdir, lstat, readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { exec } from "../utils/exec.js";
 
 export class SymlinkError extends Error {
   constructor(message: string) {
@@ -48,6 +49,7 @@ export async function ensureSkillsSymlink(
   // Real directory - migrate contents then replace with symlink
   if (stat.isDirectory()) {
     const migrated = await migrateDirectory(skillsLink, skillsSource);
+    await removeFromGitIndex(targetDir, "skills");
     await rmdir(skillsLink);
     await symlink(relativeTarget, skillsLink);
     return { created: true, migrated };
@@ -88,6 +90,21 @@ async function migrateDirectory(
 async function rmdir(dir: string): Promise<void> {
   const { rm } = await import("node:fs/promises");
   await rm(dir, { recursive: true });
+}
+
+/**
+ * Best-effort removal of tracked files from git's index.
+ * Prevents "beyond a symbolic link" errors when a tracked directory
+ * is replaced by a symlink.
+ */
+async function removeFromGitIndex(cwd: string, path: string): Promise<void> {
+  try {
+    await exec("git", ["rm", "-r", "--cached", "--ignore-unmatch", path], {
+      cwd,
+    });
+  } catch {
+    // Silently ignore: not a git repo, git not installed, etc.
+  }
 }
 
 /**
