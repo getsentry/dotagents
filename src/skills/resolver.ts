@@ -175,7 +175,7 @@ export interface NamedResolvedSkill {
 }
 
 /** Skill names must be safe for use in file paths. */
-const VALID_SKILL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+export const VALID_SKILL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
 /**
  * Resolve a wildcard dependency: discover all skills from a source and return them.
