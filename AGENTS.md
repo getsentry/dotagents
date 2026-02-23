@@ -58,7 +58,7 @@ New functionality requires tests, but only tests that are functionally additive.
 
 ## Documentation
 
-When changes affect CLI behavior, command interfaces, or user-facing semantics (flags, error messages, default behavior), update the relevant documentation: `README.md`, `specs/SPEC.md`, and `--help` output. Code and docs ship together.
+When changes affect CLI behavior, command interfaces, or user-facing semantics (flags, error messages, default behavior), update the relevant documentation: `README.md`, `specs/SPEC.md`, `docs/public/llms.txt`, and `--help` output. Code and docs ship together.
 
 ## Verifying Changes
 
