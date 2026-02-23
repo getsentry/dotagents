@@ -10,7 +10,7 @@ A package manager for `.agents` directories. Declare agent skill dependencies in
 
 **Shareable.** Skills are just directories with a `SKILL.md`. Host them in any git repo, discover them automatically, install with one command.
 
-**Multi-agent.** Configure Claude, Cursor, Codex, VS Code, and OpenCode from a single `agents.toml` -- skills, MCP servers, and hooks.
+**Multi-agent.** Configure Claude, Cursor, Codex, VS Code, OpenCode, and Pi from a single `agents.toml` -- skills, MCP servers, and hooks.
 
 ## Quick Start
 
@@ -19,7 +19,10 @@ A package manager for `.agents` directories. Declare agent skill dependencies in
 npx @sentry/dotagents init
 
 # Add a skill from a GitHub repo
-npx @sentry/dotagents add getsentry/skills --name find-bugs
+npx @sentry/dotagents add getsentry/skills find-bugs
+
+# Add multiple skills at once
+npx @sentry/dotagents add getsentry/skills find-bugs code-review commit
 
 # Or add all skills from a repo
 npx @sentry/dotagents add getsentry/skills --all
@@ -47,12 +50,13 @@ And a lockfile (`agents.lock`) pinning the exact commit and integrity hash.
 | Command | Description |
 |---------|-------------|
 | `init` | Create `agents.toml` and `.agents/skills/` |
-| `add <source>` | Add a skill dependency |
+| `add <source> [skills...]` | Add skill dependencies |
 | `remove <name>` | Remove a skill |
 | `install` | Install all dependencies from `agents.toml` |
 | `update [name]` | Update skills to latest versions |
 | `list` | Show installed skills and their status |
 | `sync` | Reconcile gitignore, symlinks, and verify state |
+| `mcp` | Manage MCP server declarations |
 
 All commands accept `--user` to operate on user scope (`~/.agents/`) instead of the current project.
 
@@ -75,10 +79,31 @@ Use `--frozen` in CI to fail if the lockfile is missing or out of sync. Use `--f
 ### add
 
 ```bash
-dotagents add <source> [--name <name>] [--ref <ref>] [--all]
+dotagents add <source> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]
 ```
 
-Add a skill and install it. When a repo has one skill, it's added automatically. When multiple are found, use `--name` to pick one or `--all` to add them all as a wildcard entry.
+Add one or more skills and install them. Specify skill names as positional arguments or with `--skill` flags.
+
+```bash
+# Add a single skill
+dotagents add getsentry/skills find-bugs
+
+# Add multiple skills
+dotagents add getsentry/skills find-bugs code-review commit
+
+# Equivalent using --skill flags
+dotagents add getsentry/skills --skill find-bugs --skill code-review
+
+# Pin to a ref
+dotagents add getsentry/skills find-bugs --ref v1.0.0
+
+# Add all skills as a wildcard entry
+dotagents add getsentry/skills --all
+```
+
+When a repo has one skill, it's added automatically. When multiple are found and no names are given, interactive mode shows a picker.
+
+When adding multiple skills, any that already exist in `agents.toml` are skipped with a warning. The rest are added normally.
 
 ### remove
 
@@ -111,6 +136,24 @@ dotagents sync
 ```
 
 Adopts orphaned skills, regenerates gitignore, verifies integrity, repairs symlinks and configs.
+
+### mcp
+
+Manage MCP server declarations from the CLI.
+
+```bash
+# Add a stdio server
+dotagents mcp add github --command npx --args -y @modelcontextprotocol/server-github --env GITHUB_TOKEN
+
+# Add an HTTP server
+dotagents mcp add remote-api --url https://mcp.example.com/sse
+
+# Remove a server
+dotagents mcp remove github
+
+# List declared servers
+dotagents mcp list [--json]
+```
 
 ## Source Formats
 
@@ -163,16 +206,7 @@ agents = ["claude", "cursor"]
 
 ### Pi
 
-[Pi](https://github.com/badlogic/pi-mono) discovers skills from `.pi/skills/`. It is not listed as an `agents` target, so instead add a symlink target to your `agents.toml`:
-
-```toml
-[symlinks]
-targets = [".pi"]
-```
-
-After running `dotagents install`, Pi will read skills from `.pi/skills/ -> .agents/skills/`.
-
-Pi does not use dotagents for MCP configuration. If you use an MCP extension with Pi, configure it separately via `.pi/mcp.json`.
+[Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively. No agent target or symlink configuration is needed -- install skills with dotagents and Pi picks them up automatically.
 
 ## MCP Servers
 
@@ -186,13 +220,15 @@ command = "npx"
 args = ["-y", "@modelcontextprotocol/server-github"]
 env = ["GITHUB_TOKEN"]
 
-# HTTP transport (OAuth)
+# HTTP transport
 [[mcp]]
 name = "remote-api"
 url = "https://mcp.example.com/sse"
 ```
 
 Each server uses either `command` (stdio) or `url` (HTTP), not both.
+
+You can also manage MCP servers from the CLI with `dotagents mcp add` and `dotagents mcp remove`.
 
 ## Hooks
 

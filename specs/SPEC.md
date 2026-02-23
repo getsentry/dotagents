@@ -149,6 +149,16 @@ MCP server declarations. Each entry defines an MCP server that dotagents will co
 
 A server must have either `command` (stdio) or `url` (HTTP), but not both.
 
+#### `[[hooks]]`
+
+Hook declarations. Each entry defines a hook that dotagents will configure for agents that support hooks (Claude, Cursor, VS Code).
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `event` | Yes | Hook event: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, or `Stop`. |
+| `matcher` | No | Tool name to match (e.g. `Bash`). Only for `PreToolUse` and `PostToolUse`. |
+| `command` | Yes | Shell command to execute when the hook fires. |
+
 #### Supported Agents
 
 | ID | Tool | Config Dir | MCP File | MCP Format |
@@ -344,34 +354,43 @@ dotagents install [--frozen] [--force]
 
 ### `dotagents add <specifier>`
 
-Add a skill dependency.
+Add one or more skill dependencies.
 
 ```
-dotagents add <specifier> [--ref <ref>] [--name <name>]
+dotagents add <specifier> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]
 ```
 
 **Examples:**
 ```bash
-dotagents add getsentry/skills --name find-bugs
-dotagents add getsentry/warden --name warden-skill --ref v1.0.0
+dotagents add getsentry/skills find-bugs
+dotagents add getsentry/skills find-bugs code-review commit
+dotagents add getsentry/skills --skill find-bugs --skill code-review
+dotagents add getsentry/warden warden-skill --ref v1.0.0
+dotagents add getsentry/skills --all
 dotagents add path:../shared-skills/my-skill
 dotagents add myorg/single-skill-repo   # auto-detects if repo has one skill
 ```
 
 **Behavior:**
-1. Parse specifier to determine source type
-2. Clone/fetch repo to cache
-3. Discover skill(s) in the repo
-   - If `--name` is given, look for that specific skill
+1. Validate source against trust policy before any network operations
+2. Parse specifier to determine source type
+3. Clone/fetch repo to cache
+4. Discover skill(s) in the repo
+   - If skill names are given (positional or `--skill`), verify each exists in the source
+   - If `--all`, add a wildcard entry for the entire source
    - If repo has exactly one skill, use it automatically
-   - If repo has multiple skills and no `--name`, list them and ask user to pick
-4. Add `[[skills]]` entry to `agents.toml`
-5. Run install to fetch and place the skill
-6. Update `agents.lock`
+   - If repo has multiple skills and no names given, show interactive picker (TTY) or list them (non-TTY)
+5. When adding multiple skills, skip any that already exist in `agents.toml` (with a warning). Error only if all specified skills already exist.
+6. Add `[[skills]]` entry to `agents.toml` for each new skill
+7. Run install to fetch and place the skills
+8. Update `agents.lock`
 
 **Flags:**
 - `--ref <ref>`: Pin to a specific tag/branch/commit
-- `--name <name>`: Specify which skill to add from a multi-skill repo
+- `--skill <name>` (repeatable): Specify which skill(s) to add. Alternative to positional arguments.
+- `--all`: Add all skills from the source as a wildcard entry
+
+Positional skill names and `--skill` flags cannot be mixed.
 
 ### `dotagents remove <name>`
 
@@ -414,12 +433,29 @@ dotagents sync
 ```
 
 **Behavior:**
-1. Regenerate `.agents/.gitignore`
-2. Create/verify/repair symlinks (legacy and agent-specific)
-3. Warn if orphaned skills exist (installed but not in agents.toml)
-4. Warn if declared skills are missing (in agents.toml but not installed)
-5. Verify integrity hashes, warn on local modifications
+1. Adopt orphaned skills (installed but not in `agents.toml`) into config
+2. Regenerate `.agents/.gitignore`
+3. Check for missing skills (in `agents.toml` but not installed)
+4. Verify integrity hashes, warn on local modifications
+5. Create/verify/repair symlinks
 6. Verify and repair MCP config files for declared agents
+7. Verify and repair hook config files for declared agents
+
+### `dotagents mcp`
+
+Manage MCP server declarations.
+
+```
+dotagents mcp add <name> --command <cmd> [--args <a>...] [--env <VAR>...]
+dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]
+dotagents mcp remove <name>
+dotagents mcp list [--json]
+```
+
+**Behavior:**
+- `add`: Append an `[[mcp]]` entry to `agents.toml` and run install to generate agent configs. Each server uses either `--command` (stdio) or `--url` (HTTP), not both.
+- `remove`: Remove the named `[[mcp]]` entry from `agents.toml` and run install.
+- `list`: Show declared MCP servers with transport type, target, and environment variables.
 
 ### `dotagents list`
 
@@ -588,6 +624,7 @@ dotagents/
     SPEC.md                # This file
   src/
     index.ts               # Library entry point (re-exports all modules)
+    scope.ts               # Project/user scope resolution
     cli/
       index.ts             # CLI entry point, command routing
       commands/
@@ -598,15 +635,20 @@ dotagents/
         update.ts
         sync.ts
         list.ts
+        mcp.ts
     agents/
       types.ts             # McpDeclaration, AgentDefinition interfaces
       registry.ts          # Agent registry (claude, cursor, codex, vscode, opencode)
+      definitions/         # Per-agent definitions (claude.ts, cursor.ts, etc.)
       mcp-writer.ts        # MCP config file generation per agent
+      hook-writer.ts       # Hook config file generation per agent
+      paths.ts             # Agent config path resolution
+      errors.ts            # Agent-specific error types
       index.ts             # Re-exports
     config/
       schema.ts            # Zod schemas for agents.toml
       loader.ts            # TOML parse + validate
-      writer.ts            # TOML modification (add/remove skills)
+      writer.ts            # TOML modification (add/remove skills, MCP, hooks)
       index.ts             # Re-exports
     lockfile/
       schema.ts            # Zod schemas for agents.lock
@@ -625,6 +667,9 @@ dotagents/
       index.ts             # Re-exports
     symlinks/
       manager.ts           # Create/verify/repair symlinks, directory migration
+      index.ts             # Re-exports
+    trust/
+      validator.ts         # Trust policy enforcement
       index.ts             # Re-exports
     gitignore/
       writer.ts            # Generate .agents/.gitignore
@@ -645,6 +690,7 @@ dotagents/
 | `smol-toml` | TOML parsing and serialization |
 | `zod` | Runtime schema validation (v4, imported as `zod/v4`) |
 | `chalk` | Terminal colors |
+| `@clack/prompts` | Interactive CLI prompts |
 
 ### Dev
 

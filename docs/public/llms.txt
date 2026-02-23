@@ -14,7 +14,10 @@ Run without installing: `npx @sentry/dotagents <command>`
 npx @sentry/dotagents init
 
 # Add a single skill from GitHub
-npx @sentry/dotagents add getsentry/skills --name find-bugs
+npx @sentry/dotagents add getsentry/skills find-bugs
+
+# Add multiple skills at once
+npx @sentry/dotagents add getsentry/skills find-bugs code-review commit
 
 # Add all skills from a repo
 npx @sentry/dotagents add getsentry/skills --all
@@ -247,18 +250,21 @@ Install all dependencies from `agents.toml`. Resolves sources, copies skills, wr
 ### add
 
 ```
-dotagents add <source> [--name <name>] [--ref <ref>] [--all]
+dotagents add <source> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]
 ```
 
-Add a skill dependency and install it. Auto-discovers skills in the repo.
+Add one or more skill dependencies and install them. Specify skill names as positional arguments or with `--skill` flags.
 
 | Flag | Description |
 |------|-------------|
-| `--name <name>` | Specify which skill to add (alias: `--skill`) |
+| `<skill>...` | Positional skill names to add |
+| `--skill <name>` | Specify which skill(s) to add (repeatable, alias: `--name`) |
 | `--ref <ref>` | Pin to a specific tag, branch, or commit |
 | `--all` | Add all skills from the source as a wildcard entry (`name = "*"`) |
 
-When a repo has one skill, it is added automatically. When multiple skills are found without `--name` or `--all`, they are listed with instructions to pick one.
+When a repo has one skill, it is added automatically. When multiple skills are found without names or `--all`, interactive mode shows a picker (TTY) or lists them (non-TTY).
+
+When adding multiple skills, any that already exist in `agents.toml` are skipped with a warning. The command only fails if all specified skills already exist. Positional names and `--skill` flags cannot be mixed.
 
 ### remove
 
@@ -344,7 +350,9 @@ Skills from wildcard entries are marked with a wildcard indicator.
 | `vscode` | VS Code Copilot | `.vscode` | (reads `.agents/skills/` natively) | `.vscode/mcp.json` | `.claude/settings.json` |
 | `opencode` | OpenCode | `.claude` | (reads `.agents/skills/` natively) | `opencode.json` | Not supported |
 
-Claude and Cursor use symlinks from their config directory to `.agents/skills/`. Codex, VS Code, and OpenCode read `.agents/skills/` directly.
+Claude and Cursor use symlinks from their config directory to `.agents/skills/`. Codex, VS Code, OpenCode, and Pi read `.agents/skills/` directly.
+
+[Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively. No agent target or symlink configuration needed.
 
 ## Scopes
 
