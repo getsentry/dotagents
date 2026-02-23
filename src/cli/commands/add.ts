@@ -37,7 +37,9 @@ export interface AddOptions {
 }
 
 export async function runAdd(opts: AddOptions): Promise<string | string[]> {
-  const { scope, specifier, ref, names: namesOverride, all, interactive } = opts;
+  const { scope, specifier, ref, names: rawNames, all, interactive } = opts;
+  // Deduplicate names to prevent writing duplicate config entries
+  const namesOverride = rawNames ? [...new Set(rawNames)] : rawNames;
   const { configPath } = scope;
 
   // Load config early so we can check trust before any network work
