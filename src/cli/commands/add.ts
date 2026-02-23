@@ -125,13 +125,15 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
       if (namesOverride.length === 1) {
         skillName = namesOverride[0]!;
       } else {
-        // Multiple names — check for duplicates, add each, install once
+        // Multiple names — check all for duplicates before writing anything
         for (const name of namesOverride) {
           if (config.skills.some((s) => s.name === name)) {
             throw new AddError(
               `Skill "${name}" already exists in agents.toml. Remove it first or use 'dotagents update'.`,
             );
           }
+        }
+        for (const name of namesOverride) {
           await addSkillToConfig(configPath, name, {
             source: sourceForStorage,
             ...refOpts,

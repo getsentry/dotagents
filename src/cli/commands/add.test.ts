@@ -128,7 +128,7 @@ describe("runAdd", () => {
     ).rejects.toThrow(AddError);
   });
 
-  it("throws when one of multiple skills already exists", async () => {
+  it("throws when one of multiple skills already exists (no partial writes)", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
@@ -142,6 +142,10 @@ describe("runAdd", () => {
         names: ["review", "pdf"],
       }),
     ).rejects.toThrow(AddError);
+
+    // "review" should NOT have been partially added
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml).not.toContain('name = "review"');
   });
 
   it("throws when --all is used with names", async () => {
