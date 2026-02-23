@@ -5,7 +5,7 @@ import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
 import { addSkillToConfig, addWildcardToConfig } from "../../config/writer.js";
-import { parseSource, resolveSkill, sourcesMatch } from "../../skills/resolver.js";
+import { parseSource, sourcesMatch, VALID_SKILL_NAME } from "../../skills/resolver.js";
 import { discoverAllSkills } from "../../skills/discovery.js";
 import { ensureCached } from "../../sources/cache.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
@@ -31,13 +31,15 @@ export interface AddOptions {
   scope: ScopeRoot;
   specifier: string;
   ref?: string;
-  name?: string;
+  names?: string[];
   all?: boolean;
   interactive?: boolean;
 }
 
 export async function runAdd(opts: AddOptions): Promise<string | string[]> {
-  const { scope, specifier, ref, name: nameOverride, all, interactive } = opts;
+  const { scope, specifier, ref, names: rawNames, all, interactive } = opts;
+  // Deduplicate names to prevent writing duplicate config entries
+  const namesOverride = rawNames ? [...new Set(rawNames)] : rawNames;
   const { configPath } = scope;
 
   // Load config early so we can check trust before any network work
@@ -61,7 +63,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
 
   // --all: add a wildcard entry
   if (all) {
-    if (nameOverride) {
+    if (namesOverride?.length) {
       throw new AddError("Cannot use --all with --name. Use one or the other.");
     }
 
@@ -80,22 +82,65 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
     return "*";
   }
 
-  // For git sources, resolve to discover the skill name
+  // Validate user-provided skill names before any filesystem operations
+  if (namesOverride?.length) {
+    for (const name of namesOverride) {
+      if (!VALID_SKILL_NAME.test(name)) {
+        throw new AddError(
+          `Invalid skill name "${name}". Names must start with alphanumeric and contain only alphanumeric, dots, underscores, or hyphens.`,
+        );
+      }
+    }
+  }
+
   let skillName: string;
 
   if (parsed.type === "local") {
-    // Local source — resolve and read SKILL.md for the name
-    const resolved = await resolveSkill(
-      nameOverride ?? "unknown",
-      { source: specifier },
-      { projectRoot: scope.root },
-    );
-    if (resolved.type !== "local") throw new AddError("Unexpected resolve type for local source");
+    // Local source — resolve the path
+    const { resolveLocalSource } = await import("../../sources/local.js");
+    const localDir = await resolveLocalSource(scope.root, parsed.path!);
 
-    const { loadSkillMd } = await import("../../skills/loader.js");
-    const { join: pathJoin } = await import("node:path");
-    const meta = await loadSkillMd(pathJoin(resolved.skillDir, "SKILL.md"));
-    skillName = nameOverride ?? meta.name;
+    if (namesOverride?.length) {
+      // User specified name(s), verify each exists in the local directory
+      const { discoverSkill } = await import("../../skills/discovery.js");
+
+      for (const name of namesOverride) {
+        const found = await discoverSkill(localDir, name);
+        if (!found) {
+          throw new AddError(
+            `Skill "${name}" not found in ${sourceForStorage}. ` +
+              `Use 'dotagents add ${sourceForStorage}' without --name to see available skills.`,
+          );
+        }
+      }
+
+      if (namesOverride.length === 1) {
+        skillName = namesOverride[0]!;
+      } else {
+        // Multiple names — check all for duplicates before writing anything
+        for (const name of namesOverride) {
+          if (config.skills.some((s) => s.name === name)) {
+            throw new AddError(
+              `Skill "${name}" already exists in agents.toml. Remove it first or use 'dotagents update'.`,
+            );
+          }
+        }
+        for (const name of namesOverride) {
+          await addSkillToConfig(configPath, name, {
+            source: sourceForStorage,
+            ...refOpts,
+          });
+        }
+        await runInstall({ scope });
+        return namesOverride;
+      }
+    } else {
+      // No names — load SKILL.md from root for the name
+      const { loadSkillMd } = await import("../../skills/loader.js");
+      const { join: pathJoin } = await import("node:path");
+      const meta = await loadSkillMd(pathJoin(localDir, "SKILL.md"));
+      skillName = meta.name;
+    }
   } else {
     // Git source — clone and discover
     const url = parsed.url!;
@@ -107,17 +152,40 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
 
     const cached = await ensureCached({ url: cloneUrl, cacheKey, ref: effectiveRef });
 
-    if (nameOverride) {
-      // User specified name, verify it exists
+    if (namesOverride?.length) {
+      // User specified name(s), verify each exists
       const { discoverSkill } = await import("../../skills/discovery.js");
-      const found = await discoverSkill(cached.repoDir, nameOverride);
-      if (!found) {
-        throw new AddError(
-          `Skill "${nameOverride}" not found in ${sourceForStorage}. ` +
-            `Use 'dotagents add ${sourceForStorage}' without --name to see available skills.`,
-        );
+
+      for (const name of namesOverride) {
+        const found = await discoverSkill(cached.repoDir, name);
+        if (!found) {
+          throw new AddError(
+            `Skill "${name}" not found in ${sourceForStorage}. ` +
+              `Use 'dotagents add ${sourceForStorage}' without --name to see available skills.`,
+          );
+        }
       }
-      skillName = nameOverride;
+
+      if (namesOverride.length === 1) {
+        skillName = namesOverride[0]!;
+      } else {
+        // Multiple names — check all for duplicates before writing anything
+        for (const name of namesOverride) {
+          if (config.skills.some((s) => s.name === name)) {
+            throw new AddError(
+              `Skill "${name}" already exists in agents.toml. Remove it first or use 'dotagents update'.`,
+            );
+          }
+        }
+        for (const name of namesOverride) {
+          await addSkillToConfig(configPath, name, {
+            source: sourceForStorage,
+            ...refOpts,
+          });
+        }
+        await runInstall({ scope });
+        return namesOverride;
+      }
     } else {
       // Discover all skills and pick
       const skills = await discoverAllSkills(cached.repoDir);
@@ -179,11 +247,11 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
           return added;
         }
       } else {
-        // Non-interactive — list them and ask user to re-run with --name or --all
+        // Non-interactive — list them and ask user to re-run with skill names or --all
         const names = skills.map((s) => s.meta.name).sort();
         throw new AddError(
           `Multiple skills found in ${sourceForStorage}: ${names.join(", ")}. ` +
-            `Use --name to specify which one, or --all for all skills.`,
+            `Specify skill names as arguments, use --skill to specify which ones, or --all for all skills.`,
         );
       }
     }
@@ -214,30 +282,45 @@ export default async function add(args: string[], flags?: { user?: boolean }): P
     allowPositionals: true,
     options: {
       ref: { type: "string" },
-      name: { type: "string" },
-      skill: { type: "string" },
+      name: { type: "string", multiple: true },
+      skill: { type: "string", multiple: true },
       all: { type: "boolean" },
     },
     strict: true,
   });
 
-  const nameValue = values["name"] ?? values["skill"];
-
   const specifier = positionals[0];
   if (!specifier) {
-    console.error(chalk.red("Usage: dotagents add <specifier> [--ref <ref>] [--name <name>] [--all]"));
+    console.error(
+      chalk.red("Usage: dotagents add <specifier> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]"),
+    );
     process.exitCode = 1;
     return;
   }
 
+  // Collect skill names from positional args and flags
+  const positionalNames = positionals.slice(1);
+  const flagNames = [...(values["name"] ?? []), ...(values["skill"] ?? [])];
+
+  if (positionalNames.length > 0 && flagNames.length > 0) {
+    console.error(
+      chalk.red("Cannot mix positional skill names with --skill/--name flags. Use one or the other."),
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const rawNames = [...positionalNames, ...flagNames];
+  const names = rawNames.length > 0 ? [...new Set(rawNames)] : undefined;
+
   try {
     const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
-    const interactive = process.stdout.isTTY === true && !nameValue && !values["all"];
+    const interactive = process.stdout.isTTY === true && !names && !values["all"];
     const result = await runAdd({
       scope,
       specifier,
       ref: values["ref"],
-      name: nameValue,
+      names,
       all: values["all"],
       interactive,
     });
