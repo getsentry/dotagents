@@ -107,7 +107,10 @@ export async function runInit(opts: InitOptions): Promise<void> {
     try {
       const { runInstall } = await import("./install.js");
       await runInstall({ scope });
-    } catch {
+    } catch (err) {
+      // Re-throw trust errors — these are policy violations, not transient failures
+      const { TrustError } = await import("../../trust/index.js");
+      if (err instanceof TrustError) throw err;
       console.log(chalk.yellow("Could not install skills. Run `dotagents install` to install them later."));
     }
   }
