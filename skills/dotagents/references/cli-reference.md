@@ -51,7 +51,7 @@ dotagents install --force
 | Flag | Description |
 |------|-------------|
 | `--frozen` | Fail if lockfile is missing or out of sync; do not modify lockfile |
-| `--force` | Re-install all skills even if already present |
+| `--force` | Ignore locked commits and resolve all skills to latest refs |
 
 **Workflow:**
 1. Load config and lockfile
@@ -64,35 +64,43 @@ dotagents install --force
 8. Create/verify agent symlinks
 9. Write MCP and hook configs
 
-### `add <specifier>`
+### `add <specifier> [skill...]`
 
-Add a skill dependency and install it.
+Add one or more skill dependencies and install them.
 
 ```bash
-dotagents add getsentry/skills
-dotagents add getsentry/skills --name find-bugs
-dotagents add getsentry/skills --all
-dotagents add getsentry/warden@v1.0.0
-dotagents add git:https://git.corp.dev/team/skills
-dotagents add path:./my-skills/custom
-dotagents add getsentry/skills --ref v2.0.0
+dotagents add getsentry/skills                          # Interactive selection if multiple skills
+dotagents add getsentry/skills find-bugs                # Add by positional name
+dotagents add getsentry/skills find-bugs code-review    # Add multiple skills at once
+dotagents add getsentry/skills --name find-bugs         # Add by --name flag
+dotagents add getsentry/skills --skill find-bugs        # --skill is an alias for --name
+dotagents add getsentry/skills --all                    # Add all as wildcard
+dotagents add getsentry/warden@v1.0.0                   # Pinned ref (inline)
+dotagents add getsentry/skills --ref v2.0.0             # Pinned ref (flag)
+dotagents add git:https://git.corp.dev/team/skills      # Non-GitHub git URL
+dotagents add path:./my-skills/custom                   # Local path
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--name <name>` | Specify which skill to add (alias: `--skill`) |
+| `--name <name>` | Specify which skill to add (repeatable; alias: `--skill`) |
+| `--skill <name>` | Alias for `--name` (repeatable) |
 | `--ref <ref>` | Pin to a specific tag, branch, or commit |
 | `--all` | Add all skills from the source as a wildcard entry (`name = "*"`) |
 
 **Specifier formats:**
 - `owner/repo` -- GitHub shorthand
 - `owner/repo@ref` -- GitHub with pinned ref
+- `https://github.com/owner/repo` -- GitHub HTTPS URL
+- `git@github.com:owner/repo.git` -- GitHub SSH URL
 - `git:https://...` -- Non-GitHub git URL
 - `path:../relative` -- Local filesystem path
 
-When a repo contains multiple skills, dotagents auto-discovers them. If only one skill is found, it's added automatically. If multiple are found, they're listed for selection. Use `--all` to add a wildcard entry for the entire repo.
+When a repo contains multiple skills, dotagents auto-discovers them. If only one skill is found, it's added automatically. If multiple are found and no names are given, an interactive picker is shown (TTY) or skills are listed (non-TTY).
 
-`--all` and `--name` are mutually exclusive.
+When adding multiple skills, already-existing entries are skipped with a warning. An error is only raised if all specified skills already exist.
+
+`--all` and `--name`/positional args are mutually exclusive.
 
 ### `remove <name>`
 
@@ -104,7 +112,7 @@ dotagents remove find-bugs
 
 Removes from `agents.toml`, deletes `.agents/skills/<name>/`, updates lockfile, and regenerates `.gitignore`.
 
-For skills sourced from a wildcard entry (`name = "*"`), prompts to add the skill to the wildcard's `exclude` list instead of removing the whole entry.
+For skills sourced from a wildcard entry (`name = "*"`), interactively prompts whether to add the skill to the wildcard's `exclude` list. If declined, the removal is cancelled.
 
 ### `update [name]`
 
@@ -156,3 +164,47 @@ dotagents list --json
 - `?` unlocked -- installed but not in lockfile
 
 Skills from wildcard entries are marked with a wildcard indicator.
+
+### `mcp`
+
+Manage MCP (Model Context Protocol) server declarations in `agents.toml`.
+
+#### `mcp add <name>`
+
+Add an MCP server declaration.
+
+```bash
+dotagents mcp add github --command npx --args -y --args @modelcontextprotocol/server-github --env GITHUB_TOKEN
+dotagents mcp add remote-api --url https://mcp.example.com/sse --header "Authorization:Bearer token"
+```
+
+| Flag | Description |
+|------|-------------|
+| `--command <cmd>` | Command to run (stdio transport) |
+| `--args <arg>` | Command arguments (repeatable) |
+| `--url <url>` | HTTP endpoint URL (HTTP transport) |
+| `--header <Key:Value>` | HTTP headers (repeatable) |
+| `--env <VAR>` | Environment variable names to pass through (repeatable) |
+
+Either `--command` or `--url` is required (mutually exclusive).
+
+#### `mcp remove <name>`
+
+Remove an MCP server declaration.
+
+```bash
+dotagents mcp remove github
+```
+
+#### `mcp list`
+
+Show declared MCP servers.
+
+```bash
+dotagents mcp list
+dotagents mcp list --json
+```
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output as JSON |

@@ -29,9 +29,11 @@ path = "plugins/sentry-skills/skills/find-bugs"
 
 | Format | Example | Resolves to |
 |--------|---------|-------------|
-| GitHub | `getsentry/skills` | `https://github.com/getsentry/skills.git` |
+| GitHub shorthand | `getsentry/skills` | `https://github.com/getsentry/skills.git` |
 | GitHub pinned | `getsentry/skills@v1.0.0` | Same, checked out at `v1.0.0` |
-| Git URL | `git:https://git.corp.dev/team/skills` | URL used directly |
+| GitHub HTTPS | `https://github.com/owner/repo` | URL used directly |
+| GitHub SSH | `git@github.com:owner/repo.git` | SSH clone |
+| Git URL | `git:https://git.corp.dev/team/skills` | Any non-GitHub git remote |
 | Local | `path:./my-skills/custom` | Relative to project root |
 
 **Skill name rules:** Must start with alphanumeric, contain only `[a-zA-Z0-9._-]`.
@@ -86,10 +88,11 @@ command = "npx"
 args = ["-y", "@modelcontextprotocol/server-github"]
 env = ["GITHUB_TOKEN"]
 
-# HTTP transport (OAuth)
+# HTTP transport
 [[mcp]]
 name = "remote-api"
 url = "https://mcp.example.com/sse"
+headers = { Authorization = "Bearer token" }
 ```
 
 MCP configs are written per-agent in the appropriate format:

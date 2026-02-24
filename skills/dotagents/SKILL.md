@@ -22,7 +22,10 @@ Read the relevant reference when the task requires deeper detail:
 dotagents init
 
 # Add a skill from GitHub
-dotagents add getsentry/skills --name find-bugs
+dotagents add getsentry/skills find-bugs
+
+# Add multiple skills at once
+dotagents add getsentry/skills find-bugs code-review commit
 
 # Add all skills from a repo
 dotagents add getsentry/skills --all
@@ -48,6 +51,7 @@ dotagents list
 | `dotagents update [name]` | Update skills to latest versions |
 | `dotagents sync` | Reconcile state (adopt orphans, repair symlinks, verify integrity) |
 | `dotagents list` | Show installed skills and their status |
+| `dotagents mcp` | Add, remove, or list MCP server declarations |
 
 All commands accept `--user` to operate on user scope (`~/.agents/`) instead of the current project.
 
@@ -57,9 +61,11 @@ For full options and flags, read [references/cli-reference.md](references/cli-re
 
 | Format | Example | Description |
 |--------|---------|-------------|
-| GitHub | `getsentry/skills` | GitHub owner/repo |
+| GitHub shorthand | `getsentry/skills` | Owner/repo (resolves to GitHub HTTPS) |
 | GitHub pinned | `getsentry/warden@v1.0.0` | With tag, branch, or commit |
-| Git URL | `git:https://git.corp.dev/team/skills` | Any git remote |
+| GitHub SSH | `git@github.com:owner/repo.git` | SSH clone URL |
+| GitHub HTTPS | `https://github.com/owner/repo` | Full HTTPS URL |
+| Git URL | `git:https://git.corp.dev/team/skills` | Any non-GitHub git remote |
 | Local path | `path:./my-skills/custom` | Relative to project root |
 
 ## Key Concepts
@@ -69,5 +75,6 @@ For full options and flags, read [references/cli-reference.md](references/cli-re
 - **Symlinks**: `.claude/skills/`, `.cursor/skills/` point to `.agents/skills/`
 - **Wildcards**: `name = "*"` installs all skills from a source, with optional `exclude` list
 - **Trust**: Optional `[trust]` section restricts which sources are allowed
+- **Hooks**: `[[hooks]]` declarations write tool-event hooks to each agent's config
 - **Gitignore**: When `gitignore = true`, managed skills are gitignored; custom in-place skills are tracked
 - **User scope**: `--user` flag manages skills in `~/.agents/` shared across all projects
