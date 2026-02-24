@@ -495,6 +495,30 @@ describe("runInstall", () => {
     expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
   });
 
+  it("does not prune in frozen mode", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+
+    // First install — gets both "pdf" and "review"
+    await runInstall({ scope });
+
+    // Add "review" to the exclude list
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\nexclude = ["review"]\n`,
+    );
+
+    // Frozen install should NOT prune (would create disk/lockfile inconsistency)
+    const result = await runInstall({ scope, frozen: true });
+    expect(result.pruned).toHaveLength(0);
+    // Directory should still exist
+    expect(existsSync(join(projectRoot, ".agents", "skills", "review", "SKILL.md"))).toBe(true);
+  });
+
   it("wildcard with all skills excluded installs nothing from that source", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

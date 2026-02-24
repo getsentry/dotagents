@@ -231,8 +231,8 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       installed.push(name);
     }
 
-    // Prune stale wildcard-sourced skills
-    if (lockfile) {
+    // Prune stale wildcard-sourced skills (skip in frozen mode to avoid disk/lockfile inconsistency)
+    if (!frozen && lockfile) {
       const wildcardDeps = config.skills.filter(isWildcardDep);
       for (const [name, locked] of Object.entries(lockfile.skills)) {
         if (newLock.skills[name]) continue; // still tracked
