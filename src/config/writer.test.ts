@@ -104,6 +104,49 @@ describe("writer", () => {
       expect(config.agents).toEqual(["claude"]);
       expect(config.trust?.github_orgs).toEqual(["my-org"]);
     });
+
+    it("includes [[skills]] when skills are provided", () => {
+      const content = generateDefaultConfig({
+        skills: [{ name: "dotagents", source: "getsentry/dotagents" }],
+      });
+      expect(content).toContain("[[skills]]");
+      expect(content).toContain('name = "dotagents"');
+      expect(content).toContain('source = "getsentry/dotagents"');
+    });
+
+    it("includes ref and path in skills when provided", () => {
+      const content = generateDefaultConfig({
+        skills: [{ name: "my-skill", source: "org/repo", ref: "v1.0.0", path: "skills/my-skill" }],
+      });
+      expect(content).toContain('ref = "v1.0.0"');
+      expect(content).toContain('path = "skills/my-skill"');
+    });
+
+    it("has no skills when skills option is omitted", () => {
+      const content = generateDefaultConfig();
+      expect(content).not.toContain("[[skills]]");
+    });
+
+    it("has no skills when skills array is empty", () => {
+      const content = generateDefaultConfig({ skills: [] });
+      expect(content).not.toContain("[[skills]]");
+    });
+
+    it("round-trips skills through loadConfig", async () => {
+      const content = generateDefaultConfig({
+        skills: [
+          { name: "dotagents", source: "getsentry/dotagents" },
+          { name: "find-bugs", source: "getsentry/skills", ref: "v2.0.0" },
+        ],
+      });
+      await writeFile(configPath, content);
+      const config = await loadConfig(configPath);
+      expect(config.skills).toHaveLength(2);
+      expect(config.skills[0]!.name).toBe("dotagents");
+      expect(config.skills[0]!.source).toBe("getsentry/dotagents");
+      expect(config.skills[1]!.name).toBe("find-bugs");
+      expect(config.skills[1]!.ref).toBe("v2.0.0");
+    });
   });
 
   describe("addSkillToConfig", () => {

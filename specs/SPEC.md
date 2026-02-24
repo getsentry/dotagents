@@ -315,11 +315,12 @@ dotagents init [--force] [--agents claude,cursor]
 ```
 
 **Behavior:**
-1. Create `agents.toml` with `version = 1`
+1. Create `agents.toml` with `version = 1` and a bootstrap `dotagents` skill from `getsentry/dotagents`
 2. Create `.agents/skills/` directory
 3. Generate `.agents/.gitignore`
 4. If symlink targets or agents are configured, set up symlinks
-5. Print next steps
+5. Attempt to install the bootstrap skill (best-effort — warns on failure)
+6. Print next steps
 
 **Flags:**
 - `--force`: Overwrite existing `agents.toml`
