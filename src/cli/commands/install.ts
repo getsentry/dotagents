@@ -1,5 +1,5 @@
 import { join, resolve } from "node:path";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
@@ -44,6 +44,7 @@ export interface InstallOptions {
 export interface InstallResult {
   installed: string[];
   skipped: string[];
+  pruned: string[];
   hookWarnings: { agent: string; message: string }[];
 }
 
@@ -130,6 +131,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   const config = await loadConfig(configPath);
   const installed: string[] = [];
   const skipped: string[] = [];
+  const pruned: string[] = [];
 
   // Ensure skills/ exists (needed for symlinks even without skills)
   await mkdir(skillsDir, { recursive: true });
@@ -229,6 +231,19 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       installed.push(name);
     }
 
+    // Prune stale wildcard-sourced skills
+    if (lockfile) {
+      const wildcardDeps = config.skills.filter(isWildcardDep);
+      for (const [name, locked] of Object.entries(lockfile.skills)) {
+        if (newLock.skills[name]) continue; // still tracked
+        const fromWildcard = wildcardDeps.some((w) => sourcesMatch(locked.source, w.source));
+        if (fromWildcard) {
+          await rm(join(skillsDir, name), { recursive: true, force: true });
+          pruned.push(name);
+        }
+      }
+    }
+
     if (!frozen) {
       await writeLockfile(lockPath, newLock);
     }
@@ -288,7 +303,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     );
   }
 
-  return { installed, skipped, hookWarnings };
+  return { installed, skipped, pruned, hookWarnings };
 }
 
 export default async function install(args: string[], flags?: { user?: boolean }): Promise<void> {
@@ -312,6 +327,11 @@ export default async function install(args: string[], flags?: { user?: boolean }
     if (result.installed.length > 0) {
       console.log(
         chalk.green(`Installed ${result.installed.length} skill(s): ${result.installed.join(", ")}`),
+      );
+    }
+    if (result.pruned.length > 0) {
+      console.log(
+        chalk.yellow(`Pruned ${result.pruned.length} stale skill(s): ${result.pruned.join(", ")}`),
       );
     }
     for (const w of result.hookWarnings) {
