@@ -19,5 +19,5 @@ export async function writeLockfile(
   }
 
   const toml = stringify({ version: lockfile.version, skills: sortedSkills });
-  await writeFile(filePath, HEADER + toml + "\n", "utf-8");
+  await writeFile(filePath, (HEADER + toml).trimEnd() + "\n", "utf-8");
 }
