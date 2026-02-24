@@ -43,6 +43,7 @@ export interface UpdatedSkill {
 export interface UpdateResult {
   updated: UpdatedSkill[];
   removed: string[];
+  unpinned?: boolean;
 }
 
 export async function runUpdate(opts: UpdateOptions): Promise<UpdateResult> {
@@ -50,6 +51,11 @@ export async function runUpdate(opts: UpdateOptions): Promise<UpdateResult> {
   const { configPath, lockPath, agentsDir, skillsDir } = scope;
 
   const config = await loadConfig(configPath);
+
+  if (!config.pin) {
+    return { updated: [], removed: [], unpinned: true };
+  }
+
   const lockfile = await loadLockfile(lockPath);
 
   if (!lockfile) {
@@ -134,7 +140,7 @@ async function updateRegularSkill(
   const resolved = await resolveSkill(name, dep, { projectRoot: scope.root });
   if (resolved.type !== "git") return null;
 
-  const oldCommit = locked.commit;
+  const oldCommit = locked.commit ?? "";
   const newCommit = resolved.commit;
   if (oldCommit === newCommit) return null;
 
@@ -250,6 +256,14 @@ export default async function update(args: string[], flags?: { user?: boolean })
       scope,
       skillName: positionals[0],
     });
+
+    if (result.unpinned) {
+      console.log(
+        chalk.dim("Pinning is disabled (pin = false). Skills always fetch the latest version."),
+      );
+      console.log(chalk.dim("Run 'dotagents install' to refresh all skills."));
+      return;
+    }
 
     if (result.updated.length === 0 && result.removed.length === 0) {
       console.log(chalk.dim("All skills are up to date."));

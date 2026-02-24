@@ -222,4 +222,18 @@ describe("runInit", () => {
     const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.trust?.github_repos).not.toContain("getsentry/dotagents");
   });
+
+  it("generates config with pin = false when requested", async () => {
+    await runInit({ scope: resolveScope("project", dir), pin: false, skills: [] });
+
+    const config = await loadConfig(join(dir, "agents.toml"));
+    expect(config.pin).toBe(false);
+  });
+
+  it("defaults pin to true in generated config", async () => {
+    await runInit({ scope: resolveScope("project", dir), skills: [] });
+
+    const config = await loadConfig(join(dir, "agents.toml"));
+    expect(config.pin).toBe(true);
+  });
 });

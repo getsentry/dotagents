@@ -38,7 +38,7 @@ name = "find-bugs"
 source = "getsentry/skills"
 ```
 
-And a lockfile (`agents.lock`) pinning the exact commit and SHA-256 integrity hash.
+And a lockfile (`agents.lock`) pinning the exact commit and SHA-256 integrity hash. Set `pin = false` to always fetch the latest version instead of locking commits.
 
 ## How It Works
 
@@ -122,6 +122,7 @@ command = "notify-done"
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version. Always `1`. |
 | `gitignore` | boolean | No | `true` | When `true`, generates `.agents/.gitignore` to exclude managed skills. When `false`, skills are checked into git. `init` sets this to `false`. |
+| `pin` | boolean | No | `true` | When `true`, lockfile pins exact commit SHAs and integrity hashes. When `false`, lockfile tracks skill names only; `install` always fetches latest. Skills with explicit `ref` still respect that ref. |
 | `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Creates symlinks and config files for each. |
 
 ### Skills
@@ -424,8 +425,8 @@ integrity = "sha256-FWmCLdOj+x+XffiEg7Bx19drylVypeKz8me9OA757js="
 | `resolved_url` | Git sources | Resolved git clone URL |
 | `resolved_path` | Git sources | Subdirectory within repo where skill was found |
 | `resolved_ref` | Git sources (optional) | Resolved ref name (omitted for default branch) |
-| `commit` | Git sources | Full 40-char SHA |
-| `integrity` | All | `sha256-` prefixed base64 content hash |
+| `commit` | Git sources (when `pin = true`) | Full 40-char SHA. Omitted when `pin = false`. |
+| `integrity` | All (when `pin = true`) | `sha256-` prefixed base64 content hash. Omitted when `pin = false`. |
 
 Local `path:` skills have `source` and `integrity` only.
 
@@ -442,8 +443,10 @@ Local `path:` skills have `source` and `integrity` only.
 `dotagents install --frozen` (for CI):
 - Fails if `agents.lock` does not exist
 - Fails if any skill in `agents.toml` is missing from the lockfile
-- Fails if integrity hashes don't match after install
+- Fails if integrity hashes don't match after install (when `pin = true`)
 - Does not modify the lockfile
+
+When `pin = false`, frozen mode validates the skill list but fetches latest content.
 
 ## Caching
 

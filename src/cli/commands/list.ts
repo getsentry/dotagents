@@ -75,15 +75,11 @@ export async function runList(opts: ListOptions): Promise<SkillStatus[]> {
       continue;
     }
 
-    // Check integrity
-    const integrity = await hashDirectory(installed);
-    const commit = isGitLocked(locked) ? locked.commit.slice(0, 8) : undefined;
+    // Check integrity (skip when not available, e.g. pin = false)
+    const commit = isGitLocked(locked) && locked.commit ? locked.commit.slice(0, 8) : undefined;
 
-    if (integrity !== locked.integrity) {
-      results.push({ name, source: entry.source, commit, status: "modified", wildcard: entry.wildcard });
-    } else {
-      results.push({ name, source: entry.source, commit, status: "ok", wildcard: entry.wildcard });
-    }
+    const modified = locked.integrity && (await hashDirectory(installed)) !== locked.integrity;
+    results.push({ name, source: entry.source, commit, status: modified ? "modified" : "ok", wildcard: entry.wildcard });
   }
 
   return results;

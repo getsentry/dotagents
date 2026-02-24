@@ -61,10 +61,11 @@ interface ExpandedSkill {
  * Explicit entries always win over wildcard-discovered skills.
  */
 async function expandSkills(
-  config: { skills: SkillDependency[]; trust?: Parameters<typeof validateTrustedSource>[1] },
+  config: { skills: SkillDependency[]; trust?: Parameters<typeof validateTrustedSource>[1]; pin: boolean },
   lockfile: Lockfile | null,
   opts: { frozen?: boolean; force?: boolean; projectRoot: string },
 ): Promise<ExpandedSkill[]> {
+  const { pin } = config;
   const regularDeps = config.skills.filter((d) => !isWildcardDep(d));
   const wildcardDeps = config.skills.filter(isWildcardDep);
   const explicitNames = new Set(regularDeps.map((d) => d.name));
@@ -75,7 +76,9 @@ async function expandSkills(
   for (const dep of regularDeps) {
     const locked = lockfile?.skills[dep.name];
     const lockedCommit =
-      !opts.force && locked && isGitLocked(locked) ? locked.commit : undefined;
+      pin && !opts.force && locked && isGitLocked(locked) && locked.commit
+        ? locked.commit
+        : undefined;
     expanded.push({ name: dep.name, dep, lockedCommit });
   }
 
@@ -93,12 +96,16 @@ async function expandSkills(
         if (explicitNames.has(name)) continue;
         if (excludeSet.has(name)) continue;
 
-        const lockedCommit = isGitLocked(locked) ? locked.commit : undefined;
+        const lockedCommit =
+          pin && isGitLocked(locked) && locked.commit ? locked.commit : undefined;
         expanded.push({ name, dep: wDep, lockedCommit });
       }
     } else {
       // resolveWildcardSkills already filters by exclude list
-      const named = await resolveWildcardSkills(wDep, { projectRoot: opts.projectRoot });
+      const named = await resolveWildcardSkills(wDep, {
+        projectRoot: opts.projectRoot,
+        ttlMs: pin ? undefined : 0,
+      });
       for (const { name, resolved } of named) {
         if (explicitNames.has(name)) continue; // explicit wins
 
@@ -114,7 +121,9 @@ async function expandSkills(
 
         const locked = lockfile?.skills[name];
         const lockedCommit =
-          !opts.force && locked && isGitLocked(locked) ? locked.commit : undefined;
+          pin && !opts.force && locked && isGitLocked(locked) && locked.commit
+            ? locked.commit
+            : undefined;
         expanded.push({ name, dep: wDep, lockedCommit, resolved });
       }
     }
@@ -129,6 +138,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
 
   // 1. Read config
   const config = await loadConfig(configPath);
+  const { pin } = config;
   const installed: string[] = [];
   const skipped: string[] = [];
   const pruned: string[] = [];
@@ -144,11 +154,11 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       throw new InstallError("--frozen requires agents.lock to exist.");
     }
 
-    const expanded = await expandSkills(config, lockfile, {
-      frozen,
-      force,
-      projectRoot: scope.root,
-    });
+    const expanded = await expandSkills(
+      { skills: config.skills, trust: config.trust, pin },
+      lockfile,
+      { frozen, force, projectRoot: scope.root },
+    );
 
     if (frozen) {
       for (const { name } of expanded) {
@@ -170,24 +180,24 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
 
       const locked = lockfile?.skills[name];
 
+      const resolveOpts = {
+        projectRoot: scope.root,
+        lockedCommit,
+        ttlMs: pin ? undefined : 0,
+      };
+
       let resolved: ResolvedSkill;
       if (item.resolved) {
         // Already resolved during wildcard expansion (use locked commit if available and unchanged)
         if (lockedCommit && item.resolved.type === "git" && item.resolved.commit !== lockedCommit) {
           // Re-resolve with locked commit for cache hit
-          resolved = await resolveSkill(name, dep, {
-            projectRoot: scope.root,
-            lockedCommit,
-          });
+          resolved = await resolveSkill(name, dep, resolveOpts);
         } else {
           resolved = item.resolved;
         }
       } else {
         try {
-          resolved = await resolveSkill(name, dep, {
-            projectRoot: scope.root,
-            lockedCommit,
-          });
+          resolved = await resolveSkill(name, dep, resolveOpts);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           throw new InstallError(`Failed to resolve skill "${name}": ${msg}`);
@@ -201,9 +211,9 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
         await copyDir(resolved.skillDir, destDir);
       }
 
-      const integrity = await hashDirectory(destDir);
+      const integrity = pin ? await hashDirectory(destDir) : undefined;
 
-      if (frozen && locked) {
+      if (frozen && pin && locked && locked.integrity) {
         if (locked.integrity !== integrity) {
           throw new InstallError(
             `--frozen: integrity mismatch for "${name}". ` +
@@ -219,12 +229,11 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
               resolved_url: resolved.resolvedUrl,
               resolved_path: resolved.resolvedPath,
               ...(resolved.resolvedRef ? { resolved_ref: resolved.resolvedRef } : {}),
-              commit: resolved.commit,
-              integrity,
+              ...(pin ? { commit: resolved.commit, integrity } : {}),
             }
           : {
               source: dep.source,
-              integrity,
+              ...(pin ? { integrity } : {}),
             };
 
       newLock.skills[name] = lockEntry;

@@ -247,4 +247,16 @@ describe("runUpdate", () => {
     expect(result.updated.some((u) => u.name === "pdf")).toBe(true);
     expect(result.updated.some((u) => u.name === "review")).toBe(true);
   });
+
+  it("returns unpinned=true when pin=false", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\npin = false\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    const result = await runUpdate({ scope: resolveScope("project", projectRoot) });
+    expect(result.unpinned).toBe(true);
+    expect(result.updated).toHaveLength(0);
+  });
 });

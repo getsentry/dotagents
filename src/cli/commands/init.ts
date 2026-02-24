@@ -19,6 +19,7 @@ export interface InitOptions {
   force?: boolean;
   agents?: string[];
   gitignore?: boolean;
+  pin?: boolean;
   trust?: TrustConfig;
   skills?: Array<{ name: string; source: string }>;
   scope: ScopeRoot;
@@ -58,7 +59,7 @@ export async function runInit(opts: InitOptions): Promise<void> {
   // For user scope, default gitignore to false and skip gitignore comments
   const effectiveGitignore = scope.scope === "user" ? false : gitignore;
   await mkdir(agentsDir, { recursive: true });
-  await writeFile(configPath, generateDefaultConfig({ agents, gitignore: effectiveGitignore, trust, skills }), "utf-8");
+  await writeFile(configPath, generateDefaultConfig({ agents, gitignore: effectiveGitignore, pin: opts.pin, trust, skills }), "utf-8");
   await mkdir(skillsDir, { recursive: true });
 
   // Set up gitignore and symlinks based on config
@@ -234,11 +235,19 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
     trust = { allow_all: false, github_orgs, github_repos, git_domains: [] };
   }
 
+  const pinSkills = prompt(
+    await clack.confirm({
+      message: "Pin skill versions in the lockfile? (Recommended for teams)",
+      initialValue: true,
+    }),
+  );
+
   await runInit({
     scope,
     force,
     agents: selectedAgents,
     gitignore,
+    pin: pinSkills,
     trust,
   });
 
