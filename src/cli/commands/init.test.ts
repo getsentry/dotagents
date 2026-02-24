@@ -1,11 +1,15 @@
 import { resolveScope } from "../../scope.js";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, rm, writeFile, lstat, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
 import { runInit, InitError } from "./init.js";
 import { loadConfig } from "../../config/loader.js";
+
+vi.mock("./install.js", () => ({
+  runInstall: vi.fn().mockResolvedValue({ installed: [], skipped: [], hookWarnings: [] }),
+}));
 
 describe("runInit", () => {
   let dir: string;
@@ -23,6 +27,22 @@ describe("runInit", () => {
 
     const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.version).toBe(1);
+  });
+
+  it("includes bootstrap dotagents skill by default", async () => {
+    await runInit({ scope: resolveScope("project", dir) });
+
+    const config = await loadConfig(join(dir, "agents.toml"));
+    expect(config.skills).toHaveLength(1);
+    const skill = config.skills[0]!;
+    expect(skill.name).toBe("dotagents");
+    expect(skill.source).toBe("getsentry/dotagents");
+  });
+
+  it("omits bootstrap skill when skills: [] is passed", async () => {
+    await runInit({ scope: resolveScope("project", dir), skills: [] });
+
+    const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.skills).toEqual([]);
   });
 
@@ -145,5 +165,61 @@ describe("runInit", () => {
 
     const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.trust?.allow_all).toBe(true);
+  });
+
+  it("auto-whitelists getsentry/dotagents in restricted trust", async () => {
+    await runInit({
+      scope: resolveScope("project", dir),
+      trust: { allow_all: false, github_orgs: ["my-org"], github_repos: [], git_domains: [] },
+    });
+
+    const config = await loadConfig(join(dir, "agents.toml"));
+    expect(config.trust?.github_repos).toContain("getsentry/dotagents");
+  });
+
+  it("does not duplicate whitelist when getsentry org already trusted", async () => {
+    await runInit({
+      scope: resolveScope("project", dir),
+      trust: { allow_all: false, github_orgs: ["getsentry"], github_repos: [], git_domains: [] },
+    });
+
+    const config = await loadConfig(join(dir, "agents.toml"));
+    expect(config.trust?.github_repos).not.toContain("getsentry/dotagents");
+  });
+
+  it("does not duplicate whitelist when repo already listed", async () => {
+    await runInit({
+      scope: resolveScope("project", dir),
+      trust: {
+        allow_all: false,
+        github_orgs: [],
+        github_repos: ["getsentry/dotagents"],
+        git_domains: [],
+      },
+    });
+
+    const config = await loadConfig(join(dir, "agents.toml"));
+    expect(config.trust?.github_repos).toEqual(["getsentry/dotagents"]);
+  });
+
+  it("does not whitelist when trust is allow_all", async () => {
+    await runInit({
+      scope: resolveScope("project", dir),
+      trust: { allow_all: true, github_orgs: [], github_repos: [], git_domains: [] },
+    });
+
+    const config = await loadConfig(join(dir, "agents.toml"));
+    expect(config.trust?.github_repos).toEqual([]);
+  });
+
+  it("does not whitelist when skills opt out of bootstrap", async () => {
+    await runInit({
+      scope: resolveScope("project", dir),
+      skills: [],
+      trust: { allow_all: false, github_orgs: ["my-org"], github_repos: [], git_domains: [] },
+    });
+
+    const config = await loadConfig(join(dir, "agents.toml"));
+    expect(config.trust?.github_repos).not.toContain("getsentry/dotagents");
   });
 });

@@ -12,17 +12,22 @@ import { resolveScope, isInsideGitRepo } from "../../scope.js";
 import type { ScopeRoot } from "../../scope.js";
 import type { TrustConfig } from "../../config/schema.js";
 
+const BOOTSTRAP_SKILL = { name: "dotagents", source: "getsentry/dotagents" } as const;
+
 export interface InitOptions {
   force?: boolean;
   agents?: string[];
   gitignore?: boolean;
   trust?: TrustConfig;
+  skills?: Array<{ name: string; source: string }>;
   scope: ScopeRoot;
 }
 
 export async function runInit(opts: InitOptions): Promise<void> {
-  const { scope, force, agents, gitignore, trust } = opts;
+  const { scope, force, agents, gitignore } = opts;
+  let { trust } = opts;
   const { configPath, agentsDir, skillsDir } = scope;
+  const skills = opts.skills ?? [BOOTSTRAP_SKILL];
 
   if (existsSync(configPath) && !force) {
     throw new InitError("agents.toml already exists. Use --force to overwrite.");
@@ -39,10 +44,20 @@ export async function runInit(opts: InitOptions): Promise<void> {
     }
   }
 
+  // Auto-whitelist bootstrap skill source in restricted trust
+  if (trust && !trust.allow_all && skills.some((s) => s.source === "getsentry/dotagents")) {
+    const alreadyCovered =
+      trust.github_orgs.includes("getsentry") ||
+      trust.github_repos.includes("getsentry/dotagents");
+    if (!alreadyCovered) {
+      trust = { ...trust, github_repos: [...trust.github_repos, "getsentry/dotagents"] };
+    }
+  }
+
   // For user scope, default gitignore to false and skip gitignore comments
   const effectiveGitignore = scope.scope === "user" ? false : gitignore;
   await mkdir(agentsDir, { recursive: true });
-  await writeFile(configPath, generateDefaultConfig({ agents, gitignore: effectiveGitignore, trust }), "utf-8");
+  await writeFile(configPath, generateDefaultConfig({ agents, gitignore: effectiveGitignore, trust, skills }), "utf-8");
   await mkdir(skillsDir, { recursive: true });
 
   // Set up gitignore and symlinks based on config
@@ -87,6 +102,16 @@ export async function runInit(opts: InitOptions): Promise<void> {
     }
   }
 
+  // Auto-install declared skills (best-effort — may fail offline)
+  if (config.skills.length > 0) {
+    try {
+      const { runInstall } = await import("./install.js");
+      await runInstall({ scope });
+    } catch {
+      console.log(chalk.yellow("Could not install skills. Run `dotagents install` to install them later."));
+    }
+  }
+
   return printSummary(scope, scope.scope === "project" ? config.gitignore : false, symlinkResults);
 }
 
@@ -119,7 +144,7 @@ function printSummary(
 
   const cmd = scope.scope === "user" ? "dotagents --user" : "dotagents";
   console.log(
-    `\n${chalk.bold("Next steps:")}\n  1. Add skills: ${cmd} add @anthropics/pdf-processing\n  2. Install: ${cmd} install`,
+    `\n${chalk.bold("Next steps:")}\n  1. Add more skills: ${cmd} add @anthropics/pdf-processing\n  2. Install: ${cmd} install`,
   );
 }
 

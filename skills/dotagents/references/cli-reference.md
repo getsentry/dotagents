@@ -18,7 +18,7 @@ dotagents [--user] <command> [options]
 
 ### `init`
 
-Initialize a new project with `agents.toml` and `.agents/` directory.
+Initialize a new project with `agents.toml` and `.agents/` directory. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance, and attempts to install it.
 
 ```bash
 dotagents init

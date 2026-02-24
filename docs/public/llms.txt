@@ -227,7 +227,7 @@ Global flags (before command name):
 dotagents init [--force] [--agents claude,cursor]
 ```
 
-Create `agents.toml` and `.agents/skills/` directory. Interactive mode (when TTY is available) prompts for agent targets, gitignore preference, and trust policy.
+Create `agents.toml` and `.agents/skills/` directory. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance. Interactive mode (when TTY is available) prompts for agent targets, gitignore preference, and trust policy.
 
 | Flag | Description |
 |------|-------------|

@@ -7,6 +7,7 @@ export interface DefaultConfigOptions {
   agents?: string[];
   gitignore?: boolean;
   trust?: TrustConfig;
+  skills?: Array<{ name: string; source: string; ref?: string; path?: string }>;
 }
 
 /**
@@ -245,6 +246,15 @@ export function generateDefaultConfig(opts?: DefaultConfigOptions | string[]): s
           config += `${key} = ${tomlArray(t[key])}\n`;
         }
       }
+    }
+  }
+
+  if (options.skills && options.skills.length > 0) {
+    for (const skill of options.skills) {
+      const entry: Record<string, string> = { name: skill.name, source: skill.source };
+      if (skill.ref) entry["ref"] = skill.ref;
+      if (skill.path) entry["path"] = skill.path;
+      config += "\n" + stringify({ skills: [entry] }).trimEnd() + "\n";
     }
   }
 
