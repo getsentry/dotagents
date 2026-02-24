@@ -68,7 +68,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 
   // 1. Adopt orphaned skills (installed but not in agents.toml)
   if (existsSync(skillsDir)) {
-    const adoptedLockEntries: Record<string, { source: string; integrity: string }> = {};
+    const adoptedLockEntries: Record<string, { source: string; integrity?: string }> = {};
     const entries = await readdir(skillsDir, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
@@ -79,8 +79,11 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       await addSkillToConfig(configPath, entry.name, { source });
       declaredNames.add(entry.name);
 
-      const integrity = await hashDirectory(join(skillsDir, entry.name));
-      adoptedLockEntries[entry.name] = { source, integrity };
+      const integrity = config.pin ? await hashDirectory(join(skillsDir, entry.name)) : undefined;
+      adoptedLockEntries[entry.name] = {
+        source,
+        ...(integrity !== undefined ? { integrity } : {}),
+      };
       adopted.push(entry.name);
     }
 
@@ -122,11 +125,12 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
-  // 4. Verify integrity hashes against lockfile
+  // 4. Verify integrity hashes against lockfile (skip entries without integrity, e.g. pin = false)
   if (lockfile) {
     for (const [name, locked] of Object.entries(lockfile.skills)) {
       const installed = join(skillsDir, name);
       if (!existsSync(installed)) continue;
+      if (!locked.integrity) continue;
 
       const integrity = await hashDirectory(installed);
       if (integrity !== locked.integrity) {

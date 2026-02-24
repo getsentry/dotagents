@@ -74,6 +74,7 @@ headers = { Authorization = "Bearer tok" }
 |-------|----------|-------------|
 | `version` | Yes | Schema version. Always `1`. |
 | `gitignore` | No | When `true` (default), generates `.agents/.gitignore` to exclude managed skills. When `false`, skills are checked into git. `dotagents init` sets this to `false`. |
+| `pin` | No | When `true` (default), lockfile pins exact commit SHAs and integrity hashes for reproducible installs. When `false`, lockfile tracks skill names and sources only; `install` always fetches latest. Skills with an explicit `ref` still respect that ref. |
 | `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Defaults to `[]`. When set, dotagents creates skills symlinks and MCP config files for each agent. |
 | `project` | No | Project metadata. |
 | `symlinks` | No | Symlink configuration (legacy — prefer `agents` for new projects). |
@@ -278,8 +279,8 @@ integrity = "sha256-No6eAmT2pIsOz0uQ1yBcWj=="
 | `resolved_url` | Git sources | Resolved git clone URL. |
 | `resolved_path` | Git sources | Subdirectory within the repo where the skill was discovered. |
 | `resolved_ref` | Git sources (optional) | The ref that was resolved (tag/branch name). Omitted when using default branch. |
-| `commit` | Git sources | Full 40-char SHA of the resolved commit. This is the reproducibility guarantee. |
-| `integrity` | All | SHA-256 content hash of the installed skill directory. |
+| `commit` | Git sources (when `pin = true`) | Full 40-char SHA of the resolved commit. Omitted when `pin = false`. |
+| `integrity` | All (when `pin = true`) | SHA-256 content hash of the installed skill directory. Omitted when `pin = false`. |
 
 ### Integrity Hashing
 
@@ -297,8 +298,10 @@ The integrity hash is computed deterministically:
 
 - Fails if `agents.lock` does not exist
 - Fails if any skill in `agents.toml` is missing from the lockfile
-- Fails if integrity hashes don't match after install
+- Fails if integrity hashes don't match after install (when `pin = true`)
 - Does NOT modify the lockfile
+
+When `pin = false`, frozen mode validates the skill list matches the lockfile but fetches latest content (no integrity check).
 
 ---
 
@@ -417,13 +420,14 @@ dotagents update find-bugs    # one skill
 ```
 
 **Behavior:**
-1. For each skill:
+1. If `pin = false`: no-op (skills always fetch latest on `install`)
+2. For each skill:
    - Re-resolve from source (ignoring locked commit)
    - If ref is a 40-char SHA: skip (immutable)
    - Otherwise: fetch latest and compare commits
-2. Copy updated skill directories
-3. Update `agents.lock` with new commits and integrity hashes
-4. Print changelog (old commit -> new commit)
+3. Copy updated skill directories
+4. Update `agents.lock` with new commits and integrity hashes
+5. Print changelog (old commit -> new commit)
 
 ### `dotagents sync`
 

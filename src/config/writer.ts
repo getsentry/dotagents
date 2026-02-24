@@ -6,6 +6,7 @@ import { sourcesMatch } from "../skills/resolver.js";
 export interface DefaultConfigOptions {
   agents?: string[];
   gitignore?: boolean;
+  pin?: boolean;
   trust?: TrustConfig;
   skills?: Array<{ name: string; source: string; ref?: string; path?: string }>;
 }
@@ -225,6 +226,10 @@ export function generateDefaultConfig(opts?: DefaultConfigOptions | string[]): s
     config += `# Managed skills are gitignored; collaborators must run 'dotagents install'.\ngitignore = true\n`;
   } else {
     config += `# Check skills into git so collaborators get them without running 'dotagents install'.\n# Set to true (or remove) to gitignore managed skills instead.\ngitignore = false\n`;
+  }
+
+  if (options.pin === false) {
+    config += `# Skills always fetch the latest version; lockfile tracks names only.\npin = false\n`;
   }
 
   if (options.agents && options.agents.length > 0) {

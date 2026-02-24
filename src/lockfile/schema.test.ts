@@ -43,6 +43,32 @@ describe("lockfileSchema", () => {
   it("rejects invalid version", () => {
     expect(lockfileSchema.safeParse({ version: 2 }).success).toBe(false);
   });
+
+  it("parses unpinned git skills (no commit/integrity)", () => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        "my-skill": {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "my-skill",
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("parses unpinned local skills (no integrity)", () => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        local: {
+          source: "path:../local",
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe("isGitLocked", () => {
@@ -58,11 +84,29 @@ describe("isGitLocked", () => {
     ).toBe(true);
   });
 
+  it("returns true for unpinned git-locked skills (no commit)", () => {
+    expect(
+      isGitLocked({
+        source: "org/repo",
+        resolved_url: "https://github.com/org/repo.git",
+        resolved_path: "my-skill",
+      }),
+    ).toBe(true);
+  });
+
   it("returns false for local-locked skills", () => {
     expect(
       isGitLocked({
         source: "path:../shared/my-skill",
         integrity: "sha256-test",
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false for unpinned local-locked skills", () => {
+    expect(
+      isGitLocked({
+        source: "path:../shared/my-skill",
       }),
     ).toBe(false);
   });

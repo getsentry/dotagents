@@ -50,6 +50,23 @@ describe("writer", () => {
       expect(content).toContain("gitignore = true");
     });
 
+    it("does not contain pin when using defaults", () => {
+      const content = generateDefaultConfig();
+      expect(content).not.toContain("pin");
+    });
+
+    it("contains pin = false when requested", () => {
+      const content = generateDefaultConfig({ pin: false });
+      expect(content).toContain("pin = false");
+    });
+
+    it("round-trips pin = false through loadConfig", async () => {
+      const content = generateDefaultConfig({ pin: false });
+      await writeFile(configPath, content);
+      const config = await loadConfig(configPath);
+      expect(config.pin).toBe(false);
+    });
+
     it("includes agents when provided via options object", () => {
       const content = generateDefaultConfig({ agents: ["claude", "cursor"] });
       expect(content).toContain('agents = ["claude", "cursor"]');

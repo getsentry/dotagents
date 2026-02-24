@@ -5,13 +5,13 @@ const lockedGitSkillSchema = z.object({
   resolved_url: z.string(),
   resolved_path: z.string(),
   resolved_ref: z.string().optional(),
-  commit: z.string(),
-  integrity: z.string(),
+  commit: z.string().optional(),
+  integrity: z.string().optional(),
 });
 
 const lockedLocalSkillSchema = z.object({
   source: z.string(),
-  integrity: z.string(),
+  integrity: z.string().optional(),
 });
 
 const lockedSkillSchema = z.union([lockedGitSkillSchema, lockedLocalSkillSchema]);
@@ -29,5 +29,5 @@ export type Lockfile = z.infer<typeof lockfileSchema>;
  * Type guard: is this a git-based locked skill?
  */
 export function isGitLocked(skill: LockedSkill): skill is z.infer<typeof lockedGitSkillSchema> {
-  return "commit" in skill && "resolved_url" in skill;
+  return "resolved_url" in skill;
 }

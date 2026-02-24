@@ -114,6 +114,8 @@ export async function resolveSkill(
     projectRoot?: string;
     /** Locked commit from agents.lock — skip resolution, use this exact commit */
     lockedCommit?: string;
+    /** Override cache TTL (pass 0 to force refresh) */
+    ttlMs?: number;
   },
 ): Promise<ResolvedSkill> {
   const parsed = parseSource(dep.source);
@@ -138,6 +140,7 @@ export async function resolveSkill(
     cacheKey,
     ref,
     pinnedCommit: opts?.lockedCommit,
+    ttlMs: opts?.ttlMs,
   });
 
   // Discover the skill within the repo
@@ -186,6 +189,8 @@ export async function resolveWildcardSkills(
   opts?: {
     projectRoot?: string;
     lockedCommit?: string;
+    /** Override cache TTL (pass 0 to force refresh) */
+    ttlMs?: number;
   },
 ): Promise<NamedResolvedSkill[]> {
   const parsed = parseSource(dep.source);
@@ -217,6 +222,7 @@ export async function resolveWildcardSkills(
     cacheKey,
     ref,
     pinnedCommit: opts?.lockedCommit,
+    ttlMs: opts?.ttlMs,
   });
 
   const discovered = await discoverAllSkills(cached.repoDir);

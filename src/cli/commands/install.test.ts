@@ -529,4 +529,74 @@ describe("runInstall", () => {
     const result = await runInstall({ scope });
     expect(result.installed).toHaveLength(0);
   });
+
+  it("pin=false omits commit and integrity from lockfile", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\npin = false\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+    expect(result.installed).toContain("pdf");
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile).not.toBeNull();
+    const pdfLock = lockfile!.skills["pdf"]!;
+    expect(pdfLock.source).toBeDefined();
+    expect("resolved_url" in pdfLock).toBe(true);
+    expect("commit" in pdfLock).toBe(false);
+    expect("integrity" in pdfLock).toBe(false);
+  });
+
+  it("pin=false frozen mode validates skill list but not integrity", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\npin = false\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    // Frozen install should succeed (no integrity to check)
+    const result = await runInstall({ scope, frozen: true });
+    expect(result.installed).toContain("pdf");
+  });
+
+  it("pin=false frozen mode fails when skill missing from lockfile", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\npin = false\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    // Add review to config but lockfile still has only pdf
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\npin = false\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "review"\nsource = "git:${repoDir}"\n`,
+    );
+
+    await expect(runInstall({ scope, frozen: true })).rejects.toThrow(InstallError);
+  });
+
+  it("pin=false with wildcard still prunes stale skills", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\npin = false\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const first = await runInstall({ scope });
+    expect(first.installed).toContain("pdf");
+    expect(first.installed).toContain("review");
+
+    // Remove "review" from upstream
+    await exec("git", ["rm", "-rf", "skills/review"], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "remove review"], { cwd: repoDir });
+    await rm(stateDir, { recursive: true });
+
+    const second = await runInstall({ scope });
+    expect(second.pruned).toContain("review");
+  });
 });
