@@ -11,6 +11,7 @@ import { parseArgs } from "node:util";
 import { resolveScope, isInsideGitRepo } from "../../scope.js";
 import type { ScopeRoot } from "../../scope.js";
 import type { TrustConfig } from "../../config/schema.js";
+import { TrustError } from "../../trust/index.js";
 
 const BOOTSTRAP_SKILL = { name: "dotagents", source: "getsentry/dotagents" } as const;
 
@@ -241,7 +242,7 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
     trust,
   });
 
-  clack.outro("You're all set! Run `dotagents add` to install your first skill.");
+  clack.outro("You're all set! Run `dotagents add` to add more skills.");
 }
 
 export default async function init(args: string[], flags?: { user?: boolean }): Promise<void> {
@@ -278,7 +279,7 @@ export default async function init(args: string[], flags?: { user?: boolean }): 
     await runInit({ scope, force: values["force"], agents });
   } catch (err) {
     if (err instanceof CancelledError) return;
-    if (err instanceof InitError) {
+    if (err instanceof InitError || err instanceof TrustError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;
