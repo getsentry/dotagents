@@ -260,6 +260,7 @@ export default async function init(args: string[], flags?: { user?: boolean }): 
     options: {
       force: { type: "boolean" },
       agents: { type: "string" },
+      pin: { type: "boolean" },
     },
     strict: true,
   });
@@ -285,7 +286,7 @@ export default async function init(args: string[], flags?: { user?: boolean }): 
       ? values["agents"].split(",").map((s) => s.trim()).filter(Boolean)
       : undefined;
 
-    await runInit({ scope, force: values["force"], agents });
+    await runInit({ scope, force: values["force"], agents, pin: values["pin"] });
   } catch (err) {
     if (err instanceof CancelledError) return;
     if (err instanceof InitError || err instanceof TrustError) {

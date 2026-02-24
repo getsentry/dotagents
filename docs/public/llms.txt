@@ -44,7 +44,7 @@ And a lockfile (`agents.lock`) pinning the exact commit and SHA-256 integrity ha
 
 1. Declare skill dependencies in `agents.toml` at the project root (or `~/.agents/agents.toml` for user scope)
 2. `install` clones repos, discovers skills by convention, and copies them into `.agents/skills/`
-3. `agents.lock` records the resolved commit and a SHA-256 integrity hash for each skill
+3. `agents.lock` records the resolved commit and a SHA-256 integrity hash for each skill (when `pin = false`, commits and hashes are omitted)
 4. Symlinks connect `.agents/skills/` to each agent's expected location (`.claude/skills/`, `.cursor/skills/`, etc.)
 5. MCP and hook configs are generated for each declared agent
 6. By default (`gitignore = false`), skills are checked into git. Set `gitignore = true` to exclude managed skills via `.agents/.gitignore`.
@@ -225,15 +225,16 @@ Global flags (before command name):
 ### init
 
 ```
-dotagents init [--force] [--agents claude,cursor]
+dotagents init [--force] [--agents claude,cursor] [--pin]
 ```
 
-Create `agents.toml` and `.agents/skills/` directory. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance. Interactive mode (when TTY is available) prompts for agent targets, gitignore preference, and trust policy.
+Create `agents.toml` and `.agents/skills/` directory. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance. Interactive mode (when TTY is available) prompts for agent targets, gitignore preference, trust policy, and version pinning.
 
 | Flag | Description |
 |------|-------------|
 | `--agents <list>` | Comma-separated agent targets |
 | `--force` | Overwrite existing `agents.toml` |
+| `--pin` | Set `pin` in config (default: `true`). Use `--no-pin` to disable version pinning. |
 
 ### install
 
@@ -281,7 +282,7 @@ Remove a skill from `agents.toml`, delete from disk, and update the lockfile. Fo
 dotagents update [name]
 ```
 
-Update all or one skill to latest version. Skips skills pinned to immutable refs (40-char SHAs). For wildcard entries, re-discovers all skills in the source, adds new ones, and removes deleted ones. Prints a changelog with old and new commits.
+Update all or one skill to latest version. Skips skills pinned to immutable refs (40-char SHAs). For wildcard entries, re-discovers all skills in the source, adds new ones, and removes deleted ones. Prints a changelog with old and new commits. No-op when `pin = false` (skills already fetch latest on every `install`).
 
 ### sync
 

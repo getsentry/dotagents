@@ -314,7 +314,7 @@ The CLI binary is `dotagents`. Currently runs via `tsx` during development; will
 Initialize a new project.
 
 ```
-dotagents init [--force] [--agents claude,cursor]
+dotagents init [--force] [--agents claude,cursor] [--pin]
 ```
 
 **Behavior:**
@@ -328,6 +328,7 @@ dotagents init [--force] [--agents claude,cursor]
 **Flags:**
 - `--force`: Overwrite existing `agents.toml`
 - `--agents <list>`: Comma-separated list of agent IDs to include in config (e.g. `claude,cursor`)
+- `--pin`: Set `pin` in config (default: `true`). Use `--no-pin` to disable version pinning.
 
 ### `dotagents install`
 

@@ -43,7 +43,7 @@ name = "find-bugs"
 source = "getsentry/skills"
 ```
 
-And a lockfile (`agents.lock`) pinning the exact commit and integrity hash.
+And a lockfile (`agents.lock`) pinning the exact commit and integrity hash. When `pin = false`, the lockfile tracks skills without pinning commits.
 
 ## Commands
 
@@ -63,10 +63,10 @@ All commands accept `--user` to operate on user scope (`~/.agents/`) instead of 
 ### init
 
 ```bash
-dotagents init [--agents claude,cursor] [--force]
+dotagents init [--agents claude,cursor] [--force] [--pin]
 ```
 
-Interactive mode prompts for agent targets, gitignore preference, and trust policy. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance.
+Interactive mode prompts for agent targets, gitignore preference, trust policy, and version pinning. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance.
 
 ### install
 
@@ -74,7 +74,7 @@ Interactive mode prompts for agent targets, gitignore preference, and trust poli
 dotagents install [--frozen] [--force]
 ```
 
-Use `--frozen` in CI to fail if the lockfile is missing or out of sync. Use `--force` to re-resolve everything from scratch.
+Use `--frozen` in CI to fail if the lockfile is missing or out of sync (integrity checks are skipped when `pin = false`). Use `--force` to re-resolve everything from scratch.
 
 ### add
 
@@ -119,7 +119,7 @@ For wildcard-sourced skills, adds the skill to the `exclude` list instead of rem
 dotagents update [name]
 ```
 
-Fetches latest versions. Skips SHA-pinned refs. For wildcards, re-discovers all skills and adds or removes as needed. Prints a changelog.
+Fetches latest versions. Skips SHA-pinned refs. For wildcards, re-discovers all skills and adds or removes as needed. Prints a changelog. No-op when `pin = false` (skills already fetch latest on every `install`).
 
 ### list
 
@@ -275,7 +275,7 @@ User-scope files live in `~/.agents/` (override with `DOTAGENTS_HOME`).
 
 1. Skills are declared in `agents.toml` at the project root
 2. `install` clones repos, discovers skills by convention, and copies them into `.agents/skills/`
-3. `agents.lock` records the resolved commit and a SHA-256 integrity hash
+3. `agents.lock` records the resolved commit and a SHA-256 integrity hash (when `pin = false`, commits and hashes are omitted)
 4. By default (`gitignore = false`), skills are checked into git so collaborators get them immediately. Set `gitignore = true` to auto-generate `.agents/.gitignore` and exclude managed skills instead.
 5. Symlinks connect `.agents/skills/` to wherever your tools look (configured via the `agents` field)
 6. MCP and hook configs are generated for each declared agent
