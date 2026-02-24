@@ -388,6 +388,137 @@ describe("runInstall", () => {
     await expect(runInstall({ scope })).rejects.toThrow(/found in both wildcard sources/);
   });
 
+  it("prunes stale wildcard skills on re-install", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+
+    // First install — gets both "pdf" and "review"
+    const first = await runInstall({ scope });
+    expect(first.installed).toContain("pdf");
+    expect(first.installed).toContain("review");
+    expect(first.pruned).toHaveLength(0);
+
+    // Remove "review" from upstream repo
+    await exec("git", ["rm", "-rf", "skills/review"], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "remove review"], { cwd: repoDir });
+
+    // Clear state dir so the git cache is busted
+    await rm(stateDir, { recursive: true });
+
+    // Re-install
+    const second = await runInstall({ scope });
+    expect(second.installed).toContain("pdf");
+    expect(second.installed).not.toContain("review");
+    expect(second.pruned).toContain("review");
+
+    // Skill directory should be gone
+    expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
+    // pdf should still be intact
+    expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
+
+    // Lockfile should not contain review
+    const lock = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lock!.skills["review"]).toBeUndefined();
+    expect(lock!.skills["pdf"]).toBeDefined();
+  });
+
+  it("does not prune skills whose source does not match a wildcard", async () => {
+    // Create a second repo with a "helper" skill
+    const repoDir2 = join(tmpDir, "repo2");
+    await mkdir(repoDir2, { recursive: true });
+    await exec("git", ["init"], { cwd: repoDir2 });
+    await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir2 });
+    await exec("git", ["config", "user.name", "Test"], { cwd: repoDir2 });
+    await mkdir(join(repoDir2, "helper"), { recursive: true });
+    await writeFile(join(repoDir2, "helper", "SKILL.md"), SKILL_MD("helper"));
+    await exec("git", ["add", "."], { cwd: repoDir2 });
+    await exec("git", ["commit", "-m", "initial"], { cwd: repoDir2 });
+
+    // Install explicit "helper" from repo2 + wildcard from repo1
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "helper"\nsource = "git:${repoDir2}"\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    // Remove "helper" from agents.toml (keep wildcard only)
+    // Also remove "review" from upstream so it gets pruned
+    await exec("git", ["rm", "-rf", "skills/review"], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "remove review"], { cwd: repoDir });
+    await rm(stateDir, { recursive: true });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const result = await runInstall({ scope });
+
+    // "review" was from the wildcard source and was removed upstream — should be pruned
+    expect(result.pruned).toContain("review");
+    // "helper" was explicit from a different source — should NOT be pruned
+    expect(result.pruned).not.toContain("helper");
+    // helper's directory should still exist on disk
+    expect(existsSync(join(projectRoot, ".agents", "skills", "helper", "SKILL.md"))).toBe(true);
+  });
+
+  it("prunes skills added to wildcard exclude list", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+
+    // First install — gets both
+    await runInstall({ scope });
+    expect(existsSync(join(projectRoot, ".agents", "skills", "review", "SKILL.md"))).toBe(true);
+
+    // Add "review" to the exclude list
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\nexclude = ["review"]\n`,
+    );
+
+    const result = await runInstall({ scope });
+    expect(result.installed).toContain("pdf");
+    expect(result.installed).not.toContain("review");
+    expect(result.pruned).toContain("review");
+
+    // Directory should be gone
+    expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
+  });
+
+  it("does not prune in frozen mode", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+
+    // First install — gets both "pdf" and "review"
+    await runInstall({ scope });
+
+    // Add "review" to the exclude list
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\nexclude = ["review"]\n`,
+    );
+
+    // Frozen install should NOT prune (would create disk/lockfile inconsistency)
+    const result = await runInstall({ scope, frozen: true });
+    expect(result.pruned).toHaveLength(0);
+    // Directory should still exist
+    expect(existsSync(join(projectRoot, ".agents", "skills", "review", "SKILL.md"))).toBe(true);
+  });
+
   it("wildcard with all skills excluded installs nothing from that source", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
