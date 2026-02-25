@@ -30,7 +30,7 @@ This creates an `agents.toml`:
 
 ```toml
 version = 1
-gitignore = false
+gitignore = true
 agents = ["claude"]
 
 [[skills]]
@@ -47,7 +47,7 @@ And a lockfile (`agents.lock`) pinning the exact commit and SHA-256 integrity ha
 3. `agents.lock` records the resolved commit and a SHA-256 integrity hash for each skill (when `pin = false`, commits and hashes are omitted)
 4. Symlinks connect `.agents/skills/` to each agent's expected location (`.claude/skills/`, `.cursor/skills/`, etc.)
 5. MCP and hook configs are generated for each declared agent
-6. By default (`gitignore = false`), skills are checked into git. Set `gitignore = true` to exclude managed skills via `.agents/.gitignore`.
+6. By default (`gitignore = true`), managed skills are gitignored. Set `gitignore = false` to check skills into git instead.
 
 ## Configuration (agents.toml)
 
@@ -55,7 +55,7 @@ Full example with all sections:
 
 ```toml
 version = 1
-gitignore = false
+gitignore = true
 agents = ["claude", "cursor"]
 
 [project]
@@ -121,7 +121,7 @@ command = "notify-done"
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version. Always `1`. |
-| `gitignore` | boolean | No | `true` | When `true`, generates `.agents/.gitignore` to exclude managed skills. When `false`, skills are checked into git. `init` sets this to `false`. |
+| `gitignore` | boolean | No | `true` | When `true`, generates `.agents/.gitignore` to exclude managed skills. When `false`, skills are checked into git. |
 | `pin` | boolean | No | `true` | When `true`, lockfile pins exact commit SHAs and integrity hashes. When `false`, lockfile tracks skill names only; `install` always fetches latest. Skills with explicit `ref` still respect that ref. |
 | `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Creates symlinks and config files for each. |
 
@@ -467,9 +467,16 @@ Location: `~/.local/dotagents/` (override: `DOTAGENTS_STATE_DIR`)
 
 ## Gitignore Strategy
 
-- `gitignore = false` (set by `init`): Skills are checked into git. No `.agents/.gitignore` is created. Anyone cloning the repo gets skills without running `install`.
-- `gitignore = true` (schema default when field is absent): Generates `.agents/.gitignore` listing managed skills. Custom skills in `.agents/skills/` are not gitignored.
+- `gitignore = true` (default): Generates `.agents/.gitignore` listing managed skills. Custom skills in `.agents/skills/` are not gitignored. Collaborators run `dotagents install` after cloning.
+- `gitignore = false`: Skills are checked into git. No `.agents/.gitignore` is created. Anyone cloning the repo gets skills without running `install`.
 - `.agents/.gitignore` is regenerated on every `install`, `add`, `remove`, and `sync`.
+
+## Update Strategies
+
+Two approaches to managing skill versions:
+
+- **Controlled (default):** `pin = true`, commit `agents.lock`. Skills only change on explicit `dotagents update`. Use `--frozen` in CI for reproducibility.
+- **Always latest:** `pin = false`, gitignore `agents.lock` and `.agents/.gitignore`. Every `dotagents install` fetches the latest. Add a git post-merge hook to auto-install after pulls. Convenient but less predictable.
 
 ## Links
 

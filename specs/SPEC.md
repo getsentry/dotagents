@@ -28,7 +28,7 @@ The manifest file. Lives at the project root.
 
 ```toml
 version = 1
-gitignore = false
+gitignore = true
 agents = ["claude", "cursor"]
 
 [project]
@@ -73,7 +73,7 @@ headers = { Authorization = "Bearer tok" }
 | Field | Required | Description |
 |-------|----------|-------------|
 | `version` | Yes | Schema version. Always `1`. |
-| `gitignore` | No | When `true` (default), generates `.agents/.gitignore` to exclude managed skills. When `false`, skills are checked into git. `dotagents init` sets this to `false`. |
+| `gitignore` | No | When `true` (default), generates `.agents/.gitignore` to exclude managed skills. When `false`, skills are checked into git. |
 | `pin` | No | When `true` (default), lockfile pins exact commit SHAs and integrity hashes for reproducible installs. When `false`, lockfile tracks skill names and sources only; `install` always fetches latest. Skills with an explicit `ref` still respect that ref. |
 | `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Defaults to `[]`. When set, dotagents creates skills symlinks and MCP config files for each agent. |
 | `project` | No | Project metadata. |
@@ -535,13 +535,7 @@ The YAML frontmatter is parsed with a minimal key-value parser (no external YAML
 
 Controlled by the `gitignore` option in `agents.toml`.
 
-### `gitignore = false` (default for new projects)
-
-Skills are checked into git so collaborators get them immediately without running `dotagents install`. No `.agents/.gitignore` is created. If one exists from a previous configuration, it is deleted.
-
-This is the default set by `dotagents init`. It optimizes for simpler adoption — anyone cloning the repo gets skills out of the box and only needs dotagents when adding or updating skills.
-
-### `gitignore = true` (default when field is absent)
+### `gitignore = true` (default)
 
 Managed (external) skills are gitignored. Custom (local) skills are tracked. dotagents generates `.agents/.gitignore` listing every managed skill:
 
@@ -554,7 +548,9 @@ Managed (external) skills are gitignored. Custom (local) skills are tracked. dot
 
 Custom skills in `.agents/skills/my-local-skill/` are NOT listed, so git tracks them normally.
 
-For backward compatibility, `gitignore` defaults to `true` when absent from `agents.toml`.
+### `gitignore = false`
+
+Skills are checked into git so collaborators get them immediately without running `dotagents install`. No `.agents/.gitignore` is created. If one exists from a previous configuration, it is deleted.
 
 ### Regeneration
 

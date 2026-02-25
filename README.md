@@ -35,7 +35,7 @@ This creates an `agents.toml`:
 
 ```toml
 version = 1
-gitignore = false
+gitignore = true
 agents = ["claude"]
 
 [[skills]]
@@ -276,15 +276,17 @@ User-scope files live in `~/.agents/` (override with `DOTAGENTS_HOME`).
 1. Skills are declared in `agents.toml` at the project root
 2. `install` clones repos, discovers skills by convention, and copies them into `.agents/skills/`
 3. `agents.lock` records the resolved commit and a SHA-256 integrity hash (when `pin = false`, commits and hashes are omitted)
-4. By default (`gitignore = false`), skills are checked into git so collaborators get them immediately. Set `gitignore = true` to auto-generate `.agents/.gitignore` and exclude managed skills instead.
+4. By default (`gitignore = true`), managed skills are gitignored and collaborators run `dotagents install` after cloning. Set `gitignore = false` to check skills into git instead.
 5. Symlinks connect `.agents/skills/` to wherever your tools look (configured via the `agents` field)
 6. MCP and hook configs are generated for each declared agent
 
-## Checking In Skills
+## Update Strategies
 
-By default, `init` sets `gitignore = false` so installed skills are committed to git. Anyone cloning the repo gets skills immediately -- they only need dotagents when adding or updating skills.
+By default, `init` sets `gitignore = true` so managed skills are gitignored and `agents.lock` pins exact commits. Collaborators run `dotagents install` after cloning and `dotagents update` to get newer versions.
 
-To gitignore managed skills instead, set `gitignore = true` in `agents.toml`. Collaborators must run `dotagents install` after cloning.
+To check skills into git instead, set `gitignore = false` in `agents.toml`. Collaborators get skills immediately without running install.
+
+For teams that want skills to always stay current, set `pin = false` and gitignore `agents.lock`. See the [update strategies guide](https://dotagents.dev/strategies) for setup details.
 
 ## Contributing
 

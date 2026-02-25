@@ -263,7 +263,7 @@ dotagents add path:./my-skills/custom`}</code>
         </p>
         <pre>
           <code>{`version = 1
-gitignore = false
+gitignore = true
 agents = ["claude", "cursor"]
 
 [trust]

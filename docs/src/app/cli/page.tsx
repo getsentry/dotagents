@@ -333,8 +333,7 @@ dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"
                 <code>true</code>
               </td>
               <td>
-                Generate <code>.agents/.gitignore</code> for managed skills.{" "}
-                <code>init</code> sets this to <code>false</code>.
+                Generate <code>.agents/.gitignore</code> for managed skills.
               </td>
             </tr>
             <tr>

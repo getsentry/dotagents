@@ -164,7 +164,7 @@ When no `agents.toml` exists and you're not inside a git repo, dotagents falls b
 
 When `gitignore = true` (schema default), dotagents generates `.agents/.gitignore` listing managed (remote) skills. In-place skills (`path:.agents/skills/...`) are never gitignored since they must be tracked in git.
 
-When `gitignore = false` (set by `init`), no gitignore is created -- skills are checked into the repository. Anyone cloning gets skills without running `install`.
+When `gitignore = false`, no gitignore is created -- skills are checked into the repository. Anyone cloning gets skills without running `install`.
 
 ## Caching
 

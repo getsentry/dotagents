@@ -4,7 +4,7 @@
 
 ```toml
 version = 1                     # Required, must be 1
-gitignore = false               # Optional, default true
+gitignore = true                # Optional, default true
 agents = ["claude", "cursor"]   # Optional, agent targets
 
 [project]                       # Optional
@@ -19,7 +19,7 @@ agents = ["claude", "cursor"]   # Optional, agent targets
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version, must be `1` |
-| `gitignore` | boolean | No | `true` | Generate `.agents/.gitignore` for managed skills. `init` sets this to `false`. |
+| `gitignore` | boolean | No | `true` | Generate `.agents/.gitignore` for managed skills. |
 | `agents` | string[] | No | `[]` | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `opencode` |
 
 ## Project Section
