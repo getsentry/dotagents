@@ -70,6 +70,27 @@ async function buildChanges(scope: ScopeRoot): Promise<ChangeItem[]> {
     apply: async () => { await bootstrapPostMergeHook(scope.root); },
   });
 
+  // 5. Untrack .agents/.gitignore if it's committed
+  let isTracked = false;
+  try {
+    const result = execSync("git ls-files .agents/.gitignore", {
+      cwd: scope.root,
+      encoding: "utf-8",
+    }).trim();
+    isTracked = result.length > 0;
+  } catch {
+    // git not available — skip
+  }
+
+  changes.push({
+    label: "Untrack .agents/.gitignore from git",
+    status: isTracked ? "(currently tracked)" : "(not tracked)",
+    skip: !isTracked,
+    apply: async () => {
+      execSync("git rm --cached .agents/.gitignore", { cwd: scope.root });
+    },
+  });
+
   return changes;
 }
 
@@ -133,20 +154,5 @@ export default async function autoupdate(
     clack.log.success(change.label);
   }
 
-  const hints = ["Run `dotagents install` to regenerate .agents/.gitignore."];
-
-  // Check if .agents/.gitignore is tracked by git
-  try {
-    const result = execSync("git ls-files .agents/.gitignore", {
-      cwd: scope.root,
-      encoding: "utf-8",
-    }).trim();
-    if (result) {
-      hints.push("Run `git rm --cached .agents/.gitignore` to untrack the old gitignore.");
-    }
-  } catch {
-    // Not in a git repo or git not available — skip hint
-  }
-
-  clack.outro(hints.join("\n"));
+  clack.outro("Run `dotagents install` to regenerate .agents/.gitignore.");
 }
