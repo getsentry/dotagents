@@ -26,8 +26,12 @@ export async function discoverSkill(
     const relPath = scanDir === "." ? skillName : `${scanDir}/${skillName}`;
     const skillMdPath = join(repoDir, relPath, "SKILL.md");
     if (existsSync(skillMdPath)) {
-      const meta = await loadSkillMd(skillMdPath);
-      return { path: relPath, meta };
+      try {
+        const meta = await loadSkillMd(skillMdPath);
+        return { path: relPath, meta };
+      } catch {
+        // Skip skills with invalid SKILL.md
+      }
     }
   }
 
@@ -191,8 +195,12 @@ async function tryMarketplaceFormat(
     const skillMdPath = join(pluginsDirPath, plugin.name, "skills", skillName, "SKILL.md");
     if (!existsSync(skillMdPath)) continue;
 
-    const meta = await loadSkillMd(skillMdPath);
-    return { path: `plugins/${plugin.name}/skills/${skillName}`, meta };
+    try {
+      const meta = await loadSkillMd(skillMdPath);
+      return { path: `plugins/${plugin.name}/skills/${skillName}`, meta };
+    } catch {
+      // Skip skills with invalid SKILL.md
+    }
   }
 
   return null;
