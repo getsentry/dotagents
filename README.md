@@ -155,6 +155,14 @@ dotagents mcp remove github
 dotagents mcp list [--json]
 ```
 
+### autoupdate
+
+```bash
+dotagents autoupdate
+```
+
+One-time setup for auto-updating skills. Sets `gitignore = true` and `pin = false`, adds `.agents/.gitignore` to root `.gitignore`, and creates a post-merge hook to run `dotagents install` after pulls.
+
 ## Source Formats
 
 ```toml

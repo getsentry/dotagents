@@ -3,6 +3,38 @@ import { stringify } from "smol-toml";
 import type { WildcardSkillDependency, TrustConfig, McpConfig } from "./schema.js";
 import { sourcesMatch } from "../skills/resolver.js";
 
+/**
+ * Set a top-level config value in agents.toml.
+ * If the key exists, replaces its value in-place. Otherwise inserts after the `version` line.
+ */
+export async function setConfigValue(
+  filePath: string,
+  key: string,
+  value: boolean,
+): Promise<void> {
+  const content = await readFile(filePath, "utf-8");
+  const lines = content.split("\n");
+  const pattern = new RegExp(`^${key}\\s*=`);
+  const formattedValue = stringify({ [key]: value }).trim();
+
+  const existingIdx = lines.findIndex((l) => pattern.test(l.trim()));
+  if (existingIdx >= 0) {
+    // Strip preceding comment lines that belong to this key
+    let commentStart = existingIdx;
+    while (commentStart > 0 && lines[commentStart - 1]!.trim().startsWith("#")) {
+      commentStart--;
+    }
+    lines.splice(commentStart, existingIdx - commentStart + 1, formattedValue);
+  } else {
+    // Insert after the version line
+    const versionIdx = lines.findIndex((l) => /^version\s*=/.test(l.trim()));
+    const insertIdx = versionIdx >= 0 ? versionIdx + 1 : 0;
+    lines.splice(insertIdx, 0, formattedValue);
+  }
+
+  await writeFile(filePath, lines.join("\n"), "utf-8");
+}
+
 export interface DefaultConfigOptions {
   agents?: string[];
   gitignore?: boolean;

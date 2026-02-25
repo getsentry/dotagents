@@ -10,6 +10,7 @@ import {
   addMcpToConfig,
   removeMcpFromConfig,
   generateDefaultConfig,
+  setConfigValue,
 } from "./writer.js";
 import { loadConfig } from "./loader.js";
 import { isWildcardDep } from "./schema.js";
@@ -447,6 +448,45 @@ describe("writer", () => {
       const config = await loadConfig(configPath);
       expect(config.mcp).toHaveLength(0);
       expect(config.skills.find((s) => s.name === "github")).toBeDefined();
+    });
+  });
+
+  describe("setConfigValue", () => {
+    it("replaces an existing value", async () => {
+      await setConfigValue(configPath, "gitignore", true);
+
+      const config = await loadConfig(configPath);
+      expect(config.gitignore).toBe(true);
+    });
+
+    it("inserts a new key after version line", async () => {
+      // Default config has no pin key
+      await setConfigValue(configPath, "pin", false);
+
+      const config = await loadConfig(configPath);
+      expect(config.pin).toBe(false);
+    });
+
+    it("strips preceding comment lines when replacing", async () => {
+      // The default config has comment lines before gitignore
+      const before = await readFile(configPath, "utf-8");
+      expect(before).toContain("# Check skills into git");
+
+      await setConfigValue(configPath, "gitignore", true);
+
+      const after = await readFile(configPath, "utf-8");
+      expect(after).not.toContain("# Check skills into git");
+      expect(after).toContain("gitignore = true");
+    });
+
+    it("round-trips through loadConfig", async () => {
+      await setConfigValue(configPath, "gitignore", true);
+      await setConfigValue(configPath, "pin", false);
+
+      const config = await loadConfig(configPath);
+      expect(config.gitignore).toBe(true);
+      expect(config.pin).toBe(false);
+      expect(config.version).toBe(1);
     });
   });
 });

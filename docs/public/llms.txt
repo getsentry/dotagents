@@ -342,6 +342,20 @@ Show installed skills and status.
 
 Skills from wildcard entries are marked with a wildcard indicator.
 
+### autoupdate
+
+```
+dotagents autoupdate
+```
+
+One-time interactive setup for auto-updating skills. Configures:
+- `gitignore = true` — `.agents/.gitignore` is generated locally, not committed
+- `pin = false` — skills fetch latest on every install
+- Adds `.agents/.gitignore` to root `.gitignore`
+- Creates `.git/hooks/post-merge` to run `dotagents install` after pulls
+
+Project-scope only. Requires existing `agents.toml`.
+
 ## Agent Targets
 
 | ID | Tool | Config Dir | Skills Symlink | MCP Config | Hooks |

@@ -479,6 +479,24 @@ dotagents list [--json]
 
 **Output:** name, short commit SHA, source, status
 
+### `dotagents autoupdate`
+
+One-time interactive setup for auto-updating skills. Configures the project so managed skills are locally generated (not committed) and stay current after every pull.
+
+```
+dotagents autoupdate
+```
+
+**Changes applied:**
+- Sets `gitignore = true` in `agents.toml` — `.agents/.gitignore` is generated locally
+- Sets `pin = false` in `agents.toml` — skills fetch latest on every install
+- Adds `.agents/.gitignore` to the project root `.gitignore` — prevents committing the generated gitignore
+- Creates `.git/hooks/post-merge` — runs `dotagents install` after every `git pull`
+
+Items already in the desired state are skipped. The command shows all changes and asks for confirmation before applying.
+
+Project-scope only. Requires an existing `agents.toml`.
+
 ---
 
 ## Skill Resolution
