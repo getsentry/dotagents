@@ -219,7 +219,7 @@ function tomlArray(values: string[]): string {
 export function generateDefaultConfig(opts?: DefaultConfigOptions | string[]): string {
   // Backwards compat: bare string[] treated as agents list
   const options: DefaultConfigOptions = Array.isArray(opts) ? { agents: opts } : (opts ?? {});
-  const gitignore = options.gitignore ?? false;
+  const gitignore = options.gitignore ?? true;
 
   let config = `version = 1\n`;
   if (gitignore) {
