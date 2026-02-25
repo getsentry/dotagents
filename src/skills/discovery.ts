@@ -10,16 +10,8 @@ export interface DiscoveredSkill {
   meta: SkillMeta;
 }
 
-/**
- * Conventional directories to scan for skills, in priority order.
- * Each pattern is a function that takes the skill name and returns a relative path.
- */
-const SKILL_PATTERNS = [
-  (name: string) => name,
-  (name: string) => `skills/${name}`,
-  (name: string) => `.agents/skills/${name}`,
-  (name: string) => `.claude/skills/${name}`,
-];
+/** Conventional directories to scan for skills, in priority order. */
+const SCAN_DIRS = [".", "skills", ".agents/skills", ".claude/skills"];
 
 /**
  * Discover a specific skill by name within a repo directory.
@@ -29,13 +21,48 @@ export async function discoverSkill(
   repoDir: string,
   skillName: string,
 ): Promise<DiscoveredSkill | null> {
-  // Try each conventional pattern
-  for (const pattern of SKILL_PATTERNS) {
-    const relPath = pattern(skillName);
+  // Try each conventional directory by name match first (fast path)
+  for (const scanDir of SCAN_DIRS) {
+    const relPath = scanDir === "." ? skillName : `${scanDir}/${skillName}`;
     const skillMdPath = join(repoDir, relPath, "SKILL.md");
     if (existsSync(skillMdPath)) {
-      const meta = await loadSkillMd(skillMdPath);
-      return { path: relPath, meta };
+      try {
+        const meta = await loadSkillMd(skillMdPath);
+        return { path: relPath, meta };
+      } catch {
+        // Skip skills with invalid SKILL.md
+      }
+    }
+  }
+
+  // Fallback: scan conventional directories and match by frontmatter name.
+  // This handles repos where the directory name differs from the skill name
+  // (e.g. skills/chat/SKILL.md with name: "chat-sdk").
+  for (const scanDir of SCAN_DIRS) {
+    const absDir = join(repoDir, scanDir);
+    if (!existsSync(absDir)) continue;
+
+    let entries;
+    try {
+      entries = await readdir(absDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const skillMdPath = join(absDir, entry.name, "SKILL.md");
+      if (!existsSync(skillMdPath)) continue;
+
+      try {
+        const meta = await loadSkillMd(skillMdPath);
+        if (meta.name === skillName) {
+          const relPath = scanDir === "." ? entry.name : `${scanDir}/${entry.name}`;
+          return { path: relPath, meta };
+        }
+      } catch {
+        // Skip skills with invalid SKILL.md
+      }
     }
   }
 
@@ -55,9 +82,8 @@ export async function discoverAllSkills(
 ): Promise<DiscoveredSkill[]> {
   const found = new Map<string, DiscoveredSkill>();
 
-  // Scan each pattern location for directories containing SKILL.md
-  const scanDirs = [".", "skills", ".agents/skills", ".claude/skills"];
-  for (const scanDir of scanDirs) {
+  // Scan each conventional directory for directories containing SKILL.md
+  for (const scanDir of SCAN_DIRS) {
     const absDir = join(repoDir, scanDir);
     if (!existsSync(absDir)) continue;
 
@@ -169,8 +195,12 @@ async function tryMarketplaceFormat(
     const skillMdPath = join(pluginsDirPath, plugin.name, "skills", skillName, "SKILL.md");
     if (!existsSync(skillMdPath)) continue;
 
-    const meta = await loadSkillMd(skillMdPath);
-    return { path: `plugins/${plugin.name}/skills/${skillName}`, meta };
+    try {
+      const meta = await loadSkillMd(skillMdPath);
+      return { path: `plugins/${plugin.name}/skills/${skillName}`, meta };
+    } catch {
+      // Skip skills with invalid SKILL.md
+    }
   }
 
   return null;

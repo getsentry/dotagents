@@ -84,6 +84,38 @@ describe("discoverSkill", () => {
     expect(result!.path).toBe("pdf");
   });
 
+  it("finds skill by frontmatter name when directory name differs", async () => {
+    // e.g. vercel/chat has skills/chat/SKILL.md with name: "chat-sdk"
+    await mkdir(join(repoDir, "skills", "chat"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "chat", "SKILL.md"),
+      SKILL_MD("chat-sdk"),
+    );
+
+    const result = await discoverSkill(repoDir, "chat-sdk");
+    expect(result).not.toBeNull();
+    expect(result!.path).toBe("skills/chat");
+    expect(result!.meta.name).toBe("chat-sdk");
+  });
+
+  it("prefers directory name match over frontmatter name match", async () => {
+    // Direct directory match should win over scanning
+    await mkdir(join(repoDir, "skills", "my-skill"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "my-skill", "SKILL.md"),
+      SKILL_MD("my-skill"),
+    );
+    // Another dir with frontmatter name matching but different dir name
+    await mkdir(join(repoDir, "skills", "other"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "other", "SKILL.md"),
+      SKILL_MD("my-skill"),
+    );
+
+    const result = await discoverSkill(repoDir, "my-skill");
+    expect(result!.path).toBe("skills/my-skill");
+  });
+
   it("returns null when skill not found", async () => {
     const result = await discoverSkill(repoDir, "nonexistent");
     expect(result).toBeNull();
