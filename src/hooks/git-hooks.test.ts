@@ -90,6 +90,15 @@ describe("bootstrapPostMergeHook", () => {
     expect(existsSync(join(dir, ".git", "hooks", "post-merge"))).toBe(true);
   });
 
+  it("generates a failure-resilient hook", async () => {
+    await bootstrapPostMergeHook(dir);
+
+    const hookPath = join(dir, ".git", "hooks", "post-merge");
+    const content = await readFile(hookPath, "utf-8");
+    // The hook should catch failures so it never blocks pulls
+    expect(content).toContain("|| echo");
+  });
+
   it("returns false when no .git directory", async () => {
     const noGitDir = await mkdtemp(join(tmpdir(), "dotagents-test-"));
     try {

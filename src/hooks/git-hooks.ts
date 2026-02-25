@@ -4,7 +4,8 @@ import { join, resolve } from "node:path";
 
 const HOOK_CONTENT = `#!/bin/sh
 # Installed by dotagents. Modify this to match your project setup.
-npx @sentry/dotagents install
+# Failures are non-fatal — a broken hook should never block pulls.
+npx @sentry/dotagents install 2>&1 || echo "warning: dotagents install failed (post-merge hook). Run it manually."
 `;
 
 /**
