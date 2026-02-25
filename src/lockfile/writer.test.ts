@@ -75,6 +75,23 @@ describe("writeLockfile + loadLockfile", () => {
     expect(keys).toEqual(["a-skill", "z-skill"]);
   });
 
+  it("ends with exactly one trailing newline", async () => {
+    const lockPath = join(dir, "agents.lock");
+    await writeLockfile(lockPath, {
+      version: 1,
+      skills: {
+        "test-skill": {
+          source: "org/repo",
+          integrity: "sha256-abc",
+        },
+      },
+    });
+
+    const { readFile } = await import("node:fs/promises");
+    const content = await readFile(lockPath, "utf-8");
+    expect(content).toMatch(/[^\n]\n$/);
+  });
+
   it("returns null for missing lockfile", async () => {
     const result = await loadLockfile(join(dir, "nope.lock"));
     expect(result).toBeNull();
