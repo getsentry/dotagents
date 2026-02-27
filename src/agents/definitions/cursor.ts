@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import type { AgentDefinition, HookDeclaration } from "../types.js";
 import type { HookEvent } from "../../config/schema.js";
 import claude from "./claude.js";
+import { envRecord, httpServer } from "./helpers.js";
 
 /**
  * Maps universal hook events to Cursor event names.
@@ -34,6 +35,11 @@ const cursor: AgentDefinition = {
     format: "json",
     shared: false,
     extraFields: { version: 1 },
+  },
+  serializeServer(s) {
+    if (s.url) return httpServer(s);
+    const env = envRecord(s.env, (k) => `\${${k}}`);
+    return [s.name, { command: s.command, args: s.args ?? [], ...(env && { env }) }];
   },
   serializeHooks(hooks: HookDeclaration[]) {
     const result: Record<string, unknown[]> = {};
