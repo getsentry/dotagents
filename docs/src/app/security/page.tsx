@@ -94,6 +94,16 @@ git_domains = ["git.corp.example.com"]`}</code>
           Local <code>path:</code> sources are always allowed regardless of
           trust configuration.
         </p>
+        <p>
+          You can also manage trusted sources from the CLI instead of editing
+          TOML directly:
+        </p>
+        <pre>
+          <code>{`dotagents trust add getsentry                    # trust a GitHub org
+dotagents trust add external-org/specific-repo   # trust a specific repo
+dotagents trust add git.corp.example.com         # trust a git domain
+dotagents trust list                             # show trusted sources`}</code>
+        </pre>
 
         <h3>Explicit Allow All</h3>
         <p>

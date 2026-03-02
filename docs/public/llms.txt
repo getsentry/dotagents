@@ -325,6 +325,30 @@ dotagents mcp list [--json]
 
 Show declared MCP servers. Use `--json` for machine-readable output.
 
+### trust add
+
+```
+dotagents trust add <source>
+```
+
+Add a trusted source to `[trust]` in `agents.toml`. The source type is inferred automatically: contains `/` → `github_repos`, contains `.` → `git_domains`, otherwise → `github_orgs`. Creates the `[trust]` section if absent. Duplicates (case-insensitive) are rejected.
+
+### trust remove
+
+```
+dotagents trust remove <source>
+```
+
+Remove a trusted source from `[trust]` in `agents.toml`. Matching is case-insensitive. Removes the field line if the array becomes empty.
+
+### trust list
+
+```
+dotagents trust list [--json]
+```
+
+Show trusted sources with their type. Use `--json` for machine-readable output. When `allow_all = true`, reports that all sources are trusted.
+
 ### list
 
 ```

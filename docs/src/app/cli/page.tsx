@@ -271,6 +271,51 @@ dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"
         />
 
         <CliCommand
+          name="trust add"
+          synopsis="dotagents trust add <source>"
+          description={
+            <>
+              Add a trusted source to <code>[trust]</code> in{" "}
+              <code>agents.toml</code>. The type is inferred automatically:{" "}
+              <code>owner/repo</code> for repos, names with <code>.</code> for
+              domains, and bare names for GitHub orgs.
+            </>
+          }
+          examples={[
+            "dotagents trust add getsentry",
+            "dotagents trust add external-org/specific-repo",
+            "dotagents trust add git.corp.example.com",
+          ]}
+        />
+
+        <CliCommand
+          name="trust remove"
+          synopsis="dotagents trust remove <source>"
+          description={
+            <>
+              Remove a trusted source from <code>[trust]</code> in{" "}
+              <code>agents.toml</code>. Matching is case-insensitive.
+            </>
+          }
+          examples={["dotagents trust remove getsentry"]}
+        />
+
+        <CliCommand
+          name="trust list"
+          synopsis="dotagents trust list [--json]"
+          description={
+            <>
+              Show trusted sources with their type. Use <code>--json</code> for
+              machine-readable output.
+            </>
+          }
+          examples={[
+            "dotagents trust list",
+            "dotagents trust list --json",
+          ]}
+        />
+
+        <CliCommand
           name="list"
           synopsis="dotagents list [--json]"
           description={

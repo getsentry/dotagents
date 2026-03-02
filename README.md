@@ -155,6 +155,29 @@ dotagents mcp remove github
 dotagents mcp list [--json]
 ```
 
+### trust
+
+Manage trusted sources from the CLI.
+
+```bash
+# Trust a GitHub org (all repos)
+dotagents trust add getsentry
+
+# Trust a specific repo
+dotagents trust add external-org/specific-repo
+
+# Trust a git domain
+dotagents trust add git.corp.example.com
+
+# Remove a trusted source
+dotagents trust remove getsentry
+
+# List trusted sources
+dotagents trust list [--json]
+```
+
+The source type is inferred automatically: `owner/repo` for repos, names with `.` for domains, and bare names for GitHub orgs.
+
 ## Source Formats
 
 ```toml
@@ -256,6 +279,14 @@ Restrict which skill sources are allowed by adding a `[trust]` section. Without 
 github_orgs = ["getsentry"]
 github_repos = ["external-org/specific-repo"]
 git_domains = ["git.corp.example.com"]
+```
+
+You can also manage trust from the CLI:
+
+```bash
+dotagents trust add getsentry
+dotagents trust add external-org/specific-repo
+dotagents trust add git.corp.example.com
 ```
 
 Local `path:` sources are always allowed.

@@ -463,6 +463,26 @@ dotagents mcp list [--json]
 - `remove`: Remove the named `[[mcp]]` entry from `agents.toml` and run install.
 - `list`: Show declared MCP servers with transport type, target, and environment variables.
 
+### `dotagents trust`
+
+Manage trusted sources.
+
+```
+dotagents trust add <source>
+dotagents trust remove <source>
+dotagents trust list [--json]
+```
+
+**Source classification** (automatic, no flags needed):
+- Contains `/` → `github_repos` (e.g., `external-org/specific-repo`)
+- Contains `.` (no `/`) → `git_domains` (e.g., `git.corp.example.com`)
+- Otherwise → `github_orgs` (e.g., `getsentry`)
+
+**Behavior:**
+- `add`: Classify the source, check for duplicates (case-insensitive), and append it to the appropriate field in `[trust]`. Creates the section if absent.
+- `remove`: Remove the source from the appropriate field (case-insensitive). Removes the field line if the array becomes empty.
+- `list`: Show trusted sources with their type. Use `--json` for machine-readable output.
+
 ### `dotagents list`
 
 Show installed skills and status.

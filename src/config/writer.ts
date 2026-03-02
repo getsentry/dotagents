@@ -214,6 +214,124 @@ function tomlArray(values: string[]): string {
 }
 
 /**
+ * Add a value to a trust field array in agents.toml.
+ * Creates the [trust] section and field line if they don't exist.
+ */
+export async function addTrustSource(
+  filePath: string,
+  field: "github_orgs" | "github_repos" | "git_domains",
+  value: string,
+): Promise<void> {
+  const content = await readFile(filePath, "utf-8");
+  const lines = content.split("\n");
+  let trustSectionIdx = -1;
+  let fieldLineIdx = -1;
+
+  // First pass: find [trust] section and target field
+  for (let j = 0; j < lines.length; j++) {
+    if (lines[j]!.trim() === "[trust]") {
+      trustSectionIdx = j;
+    } else if (trustSectionIdx >= 0 && fieldLineIdx < 0) {
+      const trimmed = lines[j]!.trim();
+      if (trimmed.startsWith("[")) break;
+      if (trimmed.startsWith(`${field} `)) {
+        fieldLineIdx = j;
+      }
+    }
+  }
+
+  if (trustSectionIdx >= 0 && fieldLineIdx >= 0) {
+    // Field exists — parse and append
+    const line = lines[fieldLineIdx]!;
+    const match = line.match(new RegExp(`^(${field}\\s*=\\s*)\\[([^\\]]*)\\]`));
+    if (match) {
+      const existing = match[2]!.trim();
+      const newVal = stringify({ v: value }).replace("v = ", "");
+      const updated = existing
+        ? `${match[1]}[${existing}, ${newVal}]`
+        : `${match[1]}[${newVal}]`;
+      lines[fieldLineIdx] = updated;
+    }
+    await writeFile(filePath, lines.join("\n"), "utf-8");
+    return;
+  }
+
+  if (trustSectionIdx >= 0) {
+    // [trust] exists but field doesn't — insert at end of trust section
+    let insertIdx = trustSectionIdx + 1;
+    while (insertIdx < lines.length) {
+      const trimmed = lines[insertIdx]!.trim();
+      if (trimmed.startsWith("[")) break;
+      if (trimmed === "" && insertIdx + 1 < lines.length && lines[insertIdx + 1]!.trim().startsWith("[")) break;
+      insertIdx++;
+    }
+    lines.splice(insertIdx, 0, `${field} = ${tomlArray([value])}`);
+    await writeFile(filePath, lines.join("\n"), "utf-8");
+    return;
+  }
+
+  // No [trust] section — create one before [[skills]]/[[mcp]]/[[hooks]], or at end
+  const arrayTableIdx = lines.findIndex((l) => {
+    const t = l.trim();
+    return t === "[[skills]]" || t === "[[mcp]]" || t === "[[hooks]]";
+  });
+
+  if (arrayTableIdx >= 0) {
+    lines.splice(arrayTableIdx, 0, `[trust]`, `${field} = ${tomlArray([value])}`, "");
+    await writeFile(filePath, lines.join("\n"), "utf-8");
+    return;
+  }
+
+  const newContent = content.trimEnd() + `\n\n[trust]\n${field} = ${tomlArray([value])}\n`;
+  await writeFile(filePath, newContent, "utf-8");
+}
+
+/**
+ * Remove a value from a trust field array in agents.toml.
+ * If the array becomes empty, removes the field line.
+ */
+export async function removeTrustSource(
+  filePath: string,
+  field: "github_orgs" | "github_repos" | "git_domains",
+  value: string,
+): Promise<void> {
+  const content = await readFile(filePath, "utf-8");
+  const lines = content.split("\n");
+  let trustSectionIdx = -1;
+
+  for (let j = 0; j < lines.length; j++) {
+    if (lines[j]!.trim() === "[trust]") {
+      trustSectionIdx = j;
+    } else if (trustSectionIdx >= 0) {
+      const trimmed = lines[j]!.trim();
+      if (trimmed.startsWith("[")) break;
+
+      if (trimmed.startsWith(`${field} `)) {
+        const match = trimmed.match(new RegExp(`^${field}\\s*=\\s*\\[([^\\]]*)\\]`));
+        if (!match) break;
+
+        const items = match[1]!
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+        const filtered = items.filter(
+          (s) => s.replace(/^"|"$/g, "").toLowerCase() !== value.toLowerCase(),
+        );
+
+        if (filtered.length === 0) {
+          lines.splice(j, 1);
+        } else {
+          lines[j] = `${field} = [${filtered.join(", ")}]`;
+        }
+
+        await writeFile(filePath, lines.join("\n"), "utf-8");
+        return;
+      }
+    }
+  }
+}
+
+/**
  * Generate a minimal agents.toml scaffold.
  */
 export function generateDefaultConfig(opts?: DefaultConfigOptions | string[]): string {

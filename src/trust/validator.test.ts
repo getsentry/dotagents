@@ -161,6 +161,23 @@ describe("validateTrustedSource", () => {
       expect(() => validateTrustedSource("evil/repo", trust)).toThrow(/getsentry/);
       expect(() => validateTrustedSource("evil/repo", trust)).toThrow(/ext\/one/);
     });
+
+    it("suggests dotagents trust add for GitHub sources", () => {
+      const trust = makeTrust({ github_orgs: ["getsentry"] });
+      expect(() => validateTrustedSource("evil/repo", trust)).toThrow(
+        /dotagents trust add evil/,
+      );
+      expect(() => validateTrustedSource("evil/repo", trust)).toThrow(
+        /dotagents trust add evil\/repo/,
+      );
+    });
+
+    it("suggests dotagents trust add for git domain sources", () => {
+      const trust = makeTrust({ git_domains: ["git.corp.com"] });
+      expect(() =>
+        validateTrustedSource("git:https://evil.com/repo.git", trust),
+      ).toThrow(/dotagents trust add evil\.com/);
+    });
   });
 });
 
