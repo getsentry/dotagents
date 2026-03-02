@@ -234,7 +234,7 @@ export async function addTrustSource(
     } else if (trustSectionIdx >= 0 && fieldLineIdx < 0) {
       const trimmed = lines[j]!.trim();
       if (trimmed.startsWith("[")) break;
-      if (trimmed.startsWith(`${field} `)) {
+      if (trimmed.startsWith(`${field} `) || trimmed.startsWith(`${field}=`)) {
         fieldLineIdx = j;
       }
     }
@@ -308,7 +308,7 @@ export async function removeTrustSource(
       const trimmed = lines[j]!.trim();
       if (trimmed.startsWith("[")) break;
 
-      if (trimmed.startsWith(`${field} `)) {
+      if (trimmed.startsWith(`${field} `) || trimmed.startsWith(`${field}=`)) {
         const match = trimmed.match(new RegExp(`^${field}\\s*=\\s*\\[([^\\]]*)\\]`));
         if (!match) break;
 
@@ -322,14 +322,44 @@ export async function removeTrustSource(
 
         if (filtered.length === 0) {
           lines.splice(j, 1);
+          // If [trust] section is now empty, remove the header too
+          if (isTrustSectionEmpty(lines, trustSectionIdx)) {
+            removeTrustHeader(lines, trustSectionIdx);
+          }
         } else {
-          lines[j] = `${field} = [${filtered.join(", ")}]`;
+          const indent = lines[j]!.match(/^(\s*)/)?.[1] ?? "";
+          lines[j] = `${indent}${field} = [${filtered.join(", ")}]`;
         }
 
         await writeFile(filePath, lines.join("\n"), "utf-8");
         return;
       }
     }
+  }
+}
+
+/** Check if a [trust] section has no remaining field lines. */
+function isTrustSectionEmpty(lines: string[], headerIdx: number): boolean {
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const trimmed = lines[i]!.trim();
+    if (trimmed.startsWith("[")) return true;
+    if (trimmed !== "") return false;
+  }
+  return true;
+}
+
+/** Remove the [trust] header and any trailing blank lines. */
+function removeTrustHeader(lines: string[], headerIdx: number): void {
+  let removeCount = 1;
+  // Also remove trailing blank lines after the header
+  while (headerIdx + removeCount < lines.length && lines[headerIdx + removeCount]!.trim() === "") {
+    removeCount++;
+  }
+  // Also remove leading blank line before the header if present
+  if (headerIdx > 0 && lines[headerIdx - 1]!.trim() === "") {
+    lines.splice(headerIdx - 1, removeCount + 1);
+  } else {
+    lines.splice(headerIdx, removeCount);
   }
 }
 

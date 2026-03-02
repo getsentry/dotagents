@@ -161,6 +161,21 @@ describe("trust", () => {
       expect(raw).not.toContain("github_orgs");
     });
 
+    it("removes [trust] section header when last field is removed", async () => {
+      await writeFile(
+        scope.configPath,
+        `version = 1\n\n[trust]\ngithub_orgs = ["getsentry"]\n`,
+      );
+
+      await runTrustRemove({ scope, source: "getsentry" });
+
+      const raw = await readFile(scope.configPath, "utf-8");
+      expect(raw).not.toContain("[trust]");
+      // Trust should now be undefined (not an empty allowlist that blocks everything)
+      const config = await loadConfig(scope.configPath);
+      expect(config.trust).toBeUndefined();
+    });
+
     it("throws for non-existent source", async () => {
       await writeFile(
         scope.configPath,
