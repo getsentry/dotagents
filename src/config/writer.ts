@@ -243,14 +243,16 @@ export async function addTrustSource(
   if (trustSectionIdx >= 0 && fieldLineIdx >= 0) {
     // Field exists — parse and append
     const line = lines[fieldLineIdx]!;
-    const match = line.match(new RegExp(`^(${field}\\s*=\\s*)\\[([^\\]]*)\\]`));
+    const indent = line.match(/^(\s*)/)?.[1] ?? "";
+    const trimmedLine = line.trim();
+    const match = trimmedLine.match(new RegExp(`^(${field}\\s*=\\s*)\\[([^\\]]*)\\]`));
     if (match) {
       const existing = match[2]!.trim();
       const newVal = stringify({ v: value }).replace("v = ", "");
       const updated = existing
         ? `${match[1]}[${existing}, ${newVal}]`
         : `${match[1]}[${newVal}]`;
-      lines[fieldLineIdx] = updated;
+      lines[fieldLineIdx] = indent + updated;
     }
     await writeFile(filePath, lines.join("\n"), "utf-8");
     return;
