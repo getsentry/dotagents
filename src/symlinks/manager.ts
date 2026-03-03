@@ -50,7 +50,7 @@ export async function ensureSkillsSymlink(
   if (stat.isDirectory()) {
     const migrated = await migrateDirectory(skillsLink, skillsSource);
     await removeFromGitIndex(targetDir, "skills");
-    await rmdir(skillsLink);
+    await rm(skillsLink, { recursive: true });
     await symlink(relativeTarget, skillsLink);
     return { created: true, migrated };
   }
@@ -84,10 +84,6 @@ async function migrateDirectory(
   }
 
   return migrated;
-}
-
-async function rmdir(dir: string): Promise<void> {
-  await rm(dir, { recursive: true });
 }
 
 /**
