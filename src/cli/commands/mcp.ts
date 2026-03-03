@@ -122,7 +122,6 @@ async function mcpAdd(args: string[], scope: ScopeRoot): Promise<void> {
     allowPositionals: true,
     options: {
       command: { type: "string" },
-      args: { type: "string", multiple: true },
       url: { type: "string" },
       header: { type: "string", multiple: true },
       env: { type: "string", multiple: true },
@@ -133,7 +132,7 @@ async function mcpAdd(args: string[], scope: ScopeRoot): Promise<void> {
   const name = positionals[0];
   if (!name) {
     console.error(
-      chalk.red("Usage: dotagents mcp add <name> --command <cmd> [--args <a>...] [--env <VAR>...]"),
+      chalk.red("Usage: dotagents mcp add <name> --command <cmd> [--env <VAR>...]"),
     );
     console.error(
       chalk.red("       dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"),
@@ -142,11 +141,19 @@ async function mcpAdd(args: string[], scope: ScopeRoot): Promise<void> {
     return;
   }
 
+  let command: string | undefined;
+  let commandArgs: string[] | undefined;
+  if (values["command"]) {
+    const parts = values["command"].trim().split(/\s+/).filter(Boolean);
+    command = parts[0];
+    commandArgs = parts.length > 1 ? parts.slice(1) : undefined;
+  }
+
   await runMcpAdd({
     scope,
     name,
-    command: values["command"],
-    args: values["args"],
+    command,
+    args: commandArgs,
     url: values["url"],
     headers: values["header"],
     env: values["env"],
