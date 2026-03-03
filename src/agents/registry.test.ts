@@ -70,11 +70,20 @@ describe("claude serializer", () => {
 });
 
 describe("cursor serializer", () => {
-  it("produces same shape as claude", () => {
+  const agent = getAgent("cursor")!;
+
+  it("serializes stdio server same as claude", () => {
     const claude = getAgent("claude")!;
-    const cursor = getAgent("cursor")!;
-    expect(cursor.serializeServer(STDIO_SERVER)).toEqual(claude.serializeServer(STDIO_SERVER));
-    expect(cursor.serializeServer(HTTP_SERVER)).toEqual(claude.serializeServer(HTTP_SERVER));
+    expect(agent.serializeServer(STDIO_SERVER)).toEqual(claude.serializeServer(STDIO_SERVER));
+  });
+
+  it("serializes http server without type field", () => {
+    const [name, config] = agent.serializeServer(HTTP_SERVER);
+    expect(name).toBe("remote-api");
+    expect(config).toEqual({
+      url: "https://mcp.example.com/sse",
+      headers: { Authorization: "Bearer tok" },
+    });
   });
 });
 

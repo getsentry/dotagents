@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import type { AgentDefinition, HookDeclaration } from "../types.js";
 import type { HookEvent } from "../../config/schema.js";
 import claude from "./claude.js";
+import { httpServer } from "./helpers.js";
 
 /**
  * Maps universal hook events to Cursor event names.
@@ -34,6 +35,11 @@ const cursor: AgentDefinition = {
     format: "json",
     shared: false,
     extraFields: { version: 1 },
+  },
+  serializeServer(s) {
+    // Cursor auto-detects transport from url presence; no type field needed
+    if (s.url) {return httpServer(s);}
+    return claude.serializeServer(s);
   },
   serializeHooks(hooks: HookDeclaration[]) {
     const result: Record<string, unknown[]> = {};

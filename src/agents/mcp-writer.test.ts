@@ -113,12 +113,11 @@ describe("writeMcpConfigs", () => {
     });
   });
 
-  it("writes cursor HTTP server with type: http", async () => {
+  it("writes cursor HTTP server without type field", async () => {
     await writeMcpConfigs(["cursor"], [HTTP_SERVER], projectMcpResolver(dir));
 
     const content = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf-8"));
     expect(content.mcpServers.remote).toEqual({
-      type: "http",
       url: "https://mcp.example.com/sse",
       headers: { Authorization: "Bearer tok" },
     });
@@ -172,7 +171,6 @@ describe("writeMcpConfigs", () => {
     // Cursor
     const cursor = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf-8"));
     expect(cursor.mcpServers.remote).toEqual({
-      type: "http",
       url: "https://mcp.example.com/sse",
       headers: { Authorization: "Bearer tok" },
     });
