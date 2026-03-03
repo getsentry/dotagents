@@ -64,13 +64,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  const command = COMMANDS[first as Command];
-  if (!command) {
+  if (!Object.hasOwn(COMMANDS, first)) {
     console.error(`Unknown command: ${first}`);
     printUsage();
     process.exitCode = 1;
     return;
   }
+
+  const command = COMMANDS[first as Command];
 
   // Start update check in background (only for actual commands)
   const updateMessage = checkForUpdate(version);
