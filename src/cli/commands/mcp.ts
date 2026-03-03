@@ -144,7 +144,7 @@ async function mcpAdd(args: string[], scope: ScopeRoot): Promise<void> {
   let command: string | undefined;
   let commandArgs: string[] | undefined;
   if (values["command"]) {
-    const parts = values["command"].split(/\s+/);
+    const parts = values["command"].trim().split(/\s+/).filter(Boolean);
     command = parts[0];
     commandArgs = parts.length > 1 ? parts.slice(1) : undefined;
   }
