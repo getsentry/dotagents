@@ -8,10 +8,12 @@ import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { loadConfig } from "../../config/loader.js";
 import { getAgent, allAgentIds, allAgents } from "../../agents/registry.js";
 import { parseArgs } from "node:util";
+import * as clack from "@clack/prompts";
 import { resolveScope, isInsideGitRepo } from "../../scope.js";
 import type { ScopeRoot } from "../../scope.js";
 import type { TrustConfig } from "../../config/schema.js";
 import { TrustError } from "../../trust/index.js";
+import { runInstall } from "./install.js";
 
 const BOOTSTRAP_SKILL = { name: "dotagents", source: "getsentry/dotagents" } as const;
 
@@ -113,11 +115,9 @@ export async function runInit(opts: InitOptions): Promise<void> {
   // Auto-install declared skills (best-effort — may fail offline)
   if (config.skills.length > 0) {
     try {
-      const { runInstall } = await import("./install.js");
       await runInstall({ scope });
     } catch (err) {
       // Re-throw trust errors — these are policy violations, not transient failures
-      const { TrustError } = await import("../../trust/index.js");
       if (err instanceof TrustError) throw err;
       console.log(chalk.yellow("Could not install skills. Run `dotagents install` to install them later."));
     }
@@ -200,8 +200,6 @@ const BANNER = `
 `;
 
 async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<void> {
-  const clack = await import("@clack/prompts");
-
   function cancelled(): never {
     clack.outro("Setup cancelled.");
     // eslint-disable-next-line no-restricted-syntax

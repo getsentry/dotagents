@@ -1,4 +1,4 @@
-import { symlink, readlink, unlink, mkdir, lstat, readdir } from "node:fs/promises";
+import { symlink, readlink, unlink, mkdir, lstat, readdir, rename, rm } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { exec } from "../utils/exec.js";
 
@@ -50,7 +50,7 @@ export async function ensureSkillsSymlink(
   if (stat.isDirectory()) {
     const migrated = await migrateDirectory(skillsLink, skillsSource);
     await removeFromGitIndex(targetDir, "skills");
-    await rmdir(skillsLink);
+    await rm(skillsLink, { recursive: true });
     await symlink(relativeTarget, skillsLink);
     return { created: true, migrated };
   }
@@ -79,17 +79,11 @@ async function migrateDirectory(
       // Doesn't exist, proceed with migration
     }
 
-    const { rename } = await import("node:fs/promises");
     await rename(srcPath, destPath);
     migrated.push(entry.name);
   }
 
   return migrated;
-}
-
-async function rmdir(dir: string): Promise<void> {
-  const { rm } = await import("node:fs/promises");
-  await rm(dir, { recursive: true });
 }
 
 /**

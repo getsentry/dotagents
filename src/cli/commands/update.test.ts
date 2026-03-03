@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runUpdate, UpdateError } from "./update.js";
@@ -213,7 +214,6 @@ describe("runUpdate", () => {
     expect(lockfile!.skills["pdf"]).toBeDefined();
 
     // Directory should be cleaned up
-    const { existsSync } = await import("node:fs");
     expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
   });
 

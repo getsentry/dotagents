@@ -1,13 +1,24 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
 import { checkForUpdate } from "./update-notifier.js";
+import init from "./commands/init.js";
+import install from "./commands/install.js";
+import add from "./commands/add.js";
+import remove from "./commands/remove.js";
+import update from "./commands/update.js";
+import sync from "./commands/sync.js";
+import list from "./commands/list.js";
+import mcp from "./commands/mcp.js";
+import trust from "./commands/trust.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../../package.json") as { version: string };
 export { version };
 
-const COMMANDS = ["init", "install", "add", "remove", "update", "sync", "list", "mcp", "trust"] as const;
-type Command = (typeof COMMANDS)[number];
+const COMMANDS = {
+  init, install, add, remove, update, sync, list, mcp, trust,
+} as const;
+type Command = keyof typeof COMMANDS;
 
 function printUsage(): void {
   // eslint-disable-next-line no-console
@@ -53,19 +64,20 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!COMMANDS.includes(first as Command)) {
+  if (!Object.hasOwn(COMMANDS, first)) {
     console.error(`Unknown command: ${first}`);
     printUsage();
     process.exitCode = 1;
     return;
   }
 
+  const command = COMMANDS[first as Command];
+
   // Start update check in background (only for actual commands)
   const updateMessage = checkForUpdate(version);
 
   // Pass remaining args (after command name) to the subcommand
-  const mod = await import(`./commands/${first}.js`);
-  await mod.default(args.slice(1), { user: isUser });
+  await command(args.slice(1), { user: isUser });
 
   const message = await updateMessage;
   if (message) {

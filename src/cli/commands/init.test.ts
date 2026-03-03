@@ -1,6 +1,6 @@
 import { resolveScope } from "../../scope.js";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, rm, writeFile, readFile, lstat, readdir } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile, readFile, lstat, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
@@ -104,9 +104,8 @@ describe("runInit", () => {
   });
 
   it("preserves existing .agents/skills/ contents", async () => {
-    const { mkdir, writeFile: wf } = await import("node:fs/promises");
     await mkdir(join(dir, ".agents", "skills", "my-skill"), { recursive: true });
-    await wf(join(dir, ".agents", "skills", "my-skill", "SKILL.md"), "# test");
+    await writeFile(join(dir, ".agents", "skills", "my-skill", "SKILL.md"), "# test");
 
     await runInit({ scope: resolveScope("project", dir) });
 

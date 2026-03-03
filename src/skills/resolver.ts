@@ -4,6 +4,7 @@ import { GITHUB_HTTPS_URL, GITHUB_SSH_URL } from "../config/schema.js";
 import { ensureCached } from "../sources/cache.js";
 import { resolveLocalSource } from "../sources/local.js";
 import { discoverSkill, discoverAllSkills } from "./discovery.js";
+import { loadSkillMd } from "./loader.js";
 import type { DiscoveredSkill } from "./discovery.js";
 
 export class ResolveError extends Error {
@@ -147,7 +148,6 @@ export async function resolveSkill(
   let discovered: DiscoveredSkill | null;
   if (dep.path) {
     // Explicit path override — load directly
-    const { loadSkillMd } = await import("./loader.js");
     const meta = await loadSkillMd(join(cached.repoDir, dep.path, "SKILL.md"));
     discovered = { path: dep.path, meta };
   } else {
