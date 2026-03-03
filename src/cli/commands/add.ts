@@ -61,25 +61,26 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
   const effectiveRef = ref ?? parsed.ref;
   const refOpts = effectiveRef ? { ref: effectiveRef } : {};
 
-  // --all: add a wildcard entry
-  if (all) {
-    if (namesOverride?.length) {
-      throw new AddError("Cannot use --all with --name. Use one or the other.");
-    }
-
+  async function addWildcard(): Promise<"*"> {
     if (config.skills.some((s) => isWildcardDep(s) && sourcesMatch(s.source, sourceForStorage))) {
       throw new AddError(
         `A wildcard entry for "${sourceForStorage}" already exists in agents.toml.`,
       );
     }
-
     await addWildcardToConfig(configPath, sourceForStorage, {
       ...refOpts,
       exclude: [],
     });
-
     await runInstall({ scope });
     return "*";
+  }
+
+  // --all: add a wildcard entry
+  if (all) {
+    if (namesOverride?.length) {
+      throw new AddError("Cannot use --all with --name. Use one or the other.");
+    }
+    return addWildcard();
   }
 
   // Validate user-provided skill names before any filesystem operations
@@ -207,9 +208,33 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
       if (skills.length === 1) {
         skillName = skills[0]!.meta.name;
       } else if (interactive) {
-        // Interactive TTY — let user pick from a list
+        // Interactive TTY — ask whether to add all or select specific skills
+        const mode = await clack.select({
+          message: `Multiple skills found in ${sourceForStorage}. How would you like to add them?`,
+          options: [
+            {
+              label: "All",
+              value: "all" as const,
+              hint: "Wildcard entry — automatically includes new skills added upstream",
+            },
+            {
+              label: "Select specific skills",
+              value: "pick" as const,
+              hint: "Choose individual skills to add",
+            },
+          ],
+        });
+
+        if (clack.isCancel(mode)) {
+          throw new AddCancelledError();
+        }
+
+        if (mode === "all") {
+          return addWildcard();
+        }
+
         const selected = await clack.multiselect({
-          message: `Multiple skills found in ${sourceForStorage}. Select which to add:`,
+          message: "Select which skills to add:",
           options: skills
             .sort((a, b) => a.meta.name.localeCompare(b.meta.name))
             .map((s) => ({
@@ -224,25 +249,10 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
           throw new AddCancelledError();
         }
 
-        if (selected.length === skills.length) {
-          // All selected — add wildcard entry
-          if (config.skills.some((s) => isWildcardDep(s) && sourcesMatch(s.source, sourceForStorage))) {
-            throw new AddError(
-              `A wildcard entry for "${sourceForStorage}" already exists in agents.toml.`,
-            );
-          }
-          await addWildcardToConfig(configPath, sourceForStorage, {
-            ...refOpts,
-            exclude: [],
-          });
-          await runInstall({ scope });
-          return "*";
-        }
-
         if (selected.length === 1) {
           skillName = selected[0]!;
         } else {
-          // Multiple (but not all) selected — add each individually
+          // Multiple selected — add each individually
           const added: string[] = [];
           for (const name of selected) {
             if (config.skills.some((s) => s.name === name)) continue;
