@@ -4,8 +4,7 @@ import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import type { AgentsConfig } from "../../config/schema.js";
 import { addTrustSource, removeTrustSource } from "../../config/writer.js";
-import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
-import type { ScopeRoot } from "../../scope.js";
+import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 
 export class TrustCommandError extends Error {
   constructor(message: string) {
@@ -69,8 +68,8 @@ export interface TrustListEntry {
 }
 
 export function getTrustList(config: AgentsConfig): TrustListEntry[] | "allow_all" {
-  if (!config.trust) return [];
-  if (config.trust.allow_all) return "allow_all";
+  if (!config.trust) {return [];}
+  if (config.trust.allow_all) {return "allow_all";}
 
   const entries: TrustListEntry[] = [];
   for (const org of config.trust.github_orgs) {

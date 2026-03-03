@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   // Extract --user flag before command dispatch
   const userIndex = args.indexOf("--user");
   const isUser = userIndex !== -1;
-  if (isUser) args.splice(userIndex, 1);
+  if (isUser) {args.splice(userIndex, 1);}
 
   const first = args[0];
 

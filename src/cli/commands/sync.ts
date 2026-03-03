@@ -15,8 +15,7 @@ import { getAgent } from "../../agents/registry.js";
 import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
 import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
 import { userMcpResolver } from "../../agents/paths.js";
-import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
-import type { ScopeRoot } from "../../scope.js";
+import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 
 /** A skill whose source points to its own install location (adopted orphan). */
 function isInPlaceSkill(source: string): boolean {
@@ -71,8 +70,8 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     const adoptedLockEntries: Record<string, { source: string; integrity?: string }> = {};
     const entries = await readdir(skillsDir, { withFileTypes: true });
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      if (declaredNames.has(entry.name)) continue;
+      if (!entry.isDirectory()) {continue;}
+      if (declaredNames.has(entry.name)) {continue;}
 
       const sourcePrefix = scope.scope === "user" ? "path:skills/" : "path:.agents/skills/";
       const source = `${sourcePrefix}${entry.name}`;
@@ -82,7 +81,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       const integrity = config.pin ? await hashDirectory(join(skillsDir, entry.name)) : undefined;
       adoptedLockEntries[entry.name] = {
         source,
-        ...(integrity !== undefined ? { integrity } : {}),
+        ...(integrity === undefined ? {} : { integrity }),
       };
       adopted.push(entry.name);
     }
@@ -107,7 +106,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       : config.skills.filter((s) => !isWildcardDep(s)).map((s) => s.name);
     const managedNames = allNames.filter((name) => {
       const dep = config.skills.find((s) => s.name === name);
-      if (!dep || isWildcardDep(dep)) return true; // wildcard-sourced skills are always managed
+      if (!dep || isWildcardDep(dep)) {return true;} // wildcard-sourced skills are always managed
       return !isInPlaceSkill(dep.source);
     });
     await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
@@ -129,8 +128,8 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   if (lockfile) {
     for (const [name, locked] of Object.entries(lockfile.skills)) {
       const installed = join(skillsDir, name);
-      if (!existsSync(installed)) continue;
-      if (!locked.integrity) continue;
+      if (!existsSync(installed)) {continue;}
+      if (!locked.integrity) {continue;}
 
       const integrity = await hashDirectory(installed);
       if (integrity !== locked.integrity) {
@@ -151,9 +150,9 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     const targets: string[] = [];
     for (const agentId of config.agents) {
       const agent = getAgent(agentId);
-      if (!agent?.userSkillsParentDirs) continue;
+      if (!agent?.userSkillsParentDirs) {continue;}
       for (const dir of agent.userSkillsParentDirs) {
-        if (seen.has(dir)) continue;
+        if (seen.has(dir)) {continue;}
         seen.add(dir);
         targets.push(dir);
       }
@@ -179,8 +178,8 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     const agentTargets: string[] = [];
     for (const agentId of config.agents) {
       const agent = getAgent(agentId);
-      if (!agent?.skillsParentDir) continue;
-      if (seenParentDirs.has(agent.skillsParentDir)) continue;
+      if (!agent?.skillsParentDir) {continue;}
+      if (seenParentDirs.has(agent.skillsParentDir)) {continue;}
       seenParentDirs.add(agent.skillsParentDir);
       agentTargets.push(join(scope.root, agent.skillsParentDir));
     }

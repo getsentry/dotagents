@@ -1,11 +1,9 @@
 import { join } from "node:path";
-import type { WildcardSkillDependency } from "../config/schema.js";
-import { GITHUB_HTTPS_URL, GITHUB_SSH_URL } from "../config/schema.js";
+import { GITHUB_HTTPS_URL, GITHUB_SSH_URL, type WildcardSkillDependency } from "../config/schema.js";
 import { ensureCached } from "../sources/cache.js";
 import { resolveLocalSource } from "../sources/local.js";
-import { discoverSkill, discoverAllSkills } from "./discovery.js";
+import { discoverSkill, discoverAllSkills, type DiscoveredSkill } from "./discovery.js";
 import { loadSkillMd } from "./loader.js";
-import type { DiscoveredSkill } from "./discovery.js";
 
 export class ResolveError extends Error {
   constructor(message: string) {
@@ -80,8 +78,8 @@ export function parseSource(source: string): {
 
   // owner/repo or owner/repo@ref — shorthand, no cloneUrl
   const atIdx = source.indexOf("@");
-  const base = atIdx !== -1 ? source.slice(0, atIdx) : source;
-  const ref = atIdx !== -1 ? source.slice(atIdx + 1) : undefined;
+  const base = atIdx === -1 ? source : source.slice(0, atIdx);
+  const ref = atIdx === -1 ? undefined : source.slice(atIdx + 1);
   const [owner, repo] = base.split("/");
 
   return {
@@ -96,7 +94,7 @@ export function parseSource(source: string): {
 /** Normalize any GitHub source to owner/repo canonical form for comparison/dedup. */
 export function normalizeSource(source: string): string {
   const parsed = parseSource(source);
-  if (parsed.type === "github") return `${parsed.owner}/${parsed.repo}`;
+  if (parsed.type === "github") {return `${parsed.owner}/${parsed.repo}`;}
   return source;
 }
 

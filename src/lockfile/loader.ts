@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
-import { lockfileSchema } from "./schema.js";
-import type { Lockfile } from "./schema.js";
+import { lockfileSchema, type Lockfile } from "./schema.js";
 
 export class LockfileError extends Error {
   constructor(message: string) {

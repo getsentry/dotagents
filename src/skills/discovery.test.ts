@@ -146,7 +146,7 @@ describe("discoverAllSkills", () => {
 
     const results = await discoverAllSkills(repoDir);
     expect(results).toHaveLength(2);
-    const names = results.map((r) => r.meta.name).sort();
+    const names = results.map((r) => r.meta.name).toSorted();
     expect(names).toEqual(["pdf", "review"]);
   });
 
@@ -186,7 +186,7 @@ describe("discoverAllSkills", () => {
 
     const results = await discoverAllSkills(repoDir);
     expect(results).toHaveLength(2);
-    const names = results.map((r) => r.meta.name).sort();
+    const names = results.map((r) => r.meta.name).toSorted();
     expect(names).toEqual(["code-review", "find-bugs"]);
     expect(results.find((r) => r.meta.name === "find-bugs")!.path).toBe(
       "plugins/my-plugin/skills/find-bugs",

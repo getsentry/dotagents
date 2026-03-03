@@ -12,8 +12,7 @@ import { loadSkillMd } from "../../skills/loader.js";
 import { ensureCached } from "../../sources/cache.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import { runInstall } from "./install.js";
-import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
-import type { ScopeRoot } from "../../scope.js";
+import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 
 export class AddError extends Error {
   constructor(message: string) {
@@ -231,7 +230,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
         const selected = await clack.multiselect({
           message: "Select which skills to add:",
           options: skills
-            .sort((a, b) => a.meta.name.localeCompare(b.meta.name))
+            .toSorted((a, b) => a.meta.name.localeCompare(b.meta.name))
             .map((s) => ({
               label: s.meta.name,
               value: s.meta.name,
@@ -250,7 +249,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
           // Multiple selected — add each individually
           const added: string[] = [];
           for (const name of selected) {
-            if (config.skills.some((s) => s.name === name)) continue;
+            if (config.skills.some((s) => s.name === name)) {continue;}
             await addSkillToConfig(configPath, name, {
               source: sourceForStorage,
               ...refOpts,
@@ -265,7 +264,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
         }
       } else {
         // Non-interactive — list them and ask user to re-run with skill names or --all
-        const names = skills.map((s) => s.meta.name).sort();
+        const names = skills.map((s) => s.meta.name).toSorted();
         throw new AddError(
           `Multiple skills found in ${sourceForStorage}: ${names.join(", ")}. ` +
             `Specify skill names as arguments, use --skill to specify which ones, or --all for all skills.`,
@@ -349,7 +348,7 @@ export default async function add(args: string[], flags?: { user?: boolean }): P
       console.log(chalk.green(`Added skill: ${result}`));
     }
   } catch (err) {
-    if (err instanceof AddCancelledError) return;
+    if (err instanceof AddCancelledError) {return;}
     if (err instanceof ScopeError || err instanceof AddError || err instanceof TrustError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;

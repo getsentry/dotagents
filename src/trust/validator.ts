@@ -21,12 +21,12 @@ export class TrustError extends Error {
 export function extractDomain(url: string): string | undefined {
   // git@host.com:owner/repo.git
   const scpMatch = url.match(/^[a-z]+@([^:]+):/);
-  if (scpMatch) return scpMatch[1];
+  if (scpMatch) {return scpMatch[1];}
 
   // https://host.com/..., ssh://host.com/..., git://host.com/...
   try {
     const parsed = new URL(url);
-    if (parsed.hostname) return parsed.hostname;
+    if (parsed.hostname) {return parsed.hostname;}
   } catch {
     // Not a valid URL — no domain
   }
@@ -61,22 +61,22 @@ export function validateTrustedSource(
   trust?: TrustConfig,
 ): void {
   // No trust config → allow everything
-  if (!trust) return;
+  if (!trust) {return;}
 
   // Explicit opt-out
-  if (trust.allow_all) return;
+  if (trust.allow_all) {return;}
 
   const parsed = parseSource(source);
 
   // Local sources are always allowed
-  if (parsed.type === "local") return;
+  if (parsed.type === "local") {return;}
 
   if (parsed.type === "github") {
     const owner = parsed.owner!.toLowerCase();
     const repo = `${owner}/${parsed.repo!.toLowerCase()}`;
 
-    if (trust.github_orgs.some((o) => o.toLowerCase() === owner)) return;
-    if (trust.github_repos.some((r) => r.toLowerCase() === repo)) return;
+    if (trust.github_orgs.some((o) => o.toLowerCase() === owner)) {return;}
+    if (trust.github_repos.some((r) => r.toLowerCase() === repo)) {return;}
 
     throw new TrustError(
       `Source "${source}" is not trusted. ` +
@@ -88,13 +88,11 @@ export function validateTrustedSource(
 
   if (parsed.type === "git") {
     const domain = extractDomain(parsed.url!)?.toLowerCase();
-    if (domain && trust.git_domains.some((d) => d.toLowerCase() === domain)) return;
+    if (domain && trust.git_domains.some((d) => d.toLowerCase() === domain)) {return;}
 
     const hint = domain ? `\nRun: dotagents trust add ${domain}` : "";
     throw new TrustError(
-      `Source "${source}" is not trusted. ` +
-        `Allowed sources: ${formatAllowed(trust)}.` +
-        hint,
+      `Source "${source}" is not trusted. Allowed sources: ${formatAllowed(trust)}.${hint}`,
     );
   }
 }

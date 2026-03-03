@@ -14,7 +14,7 @@ export async function writeAgentsGitignore(
   managedSkillNames: string[],
 ): Promise<void> {
   const lines = [HEADER];
-  for (const name of managedSkillNames.sort()) {
+  for (const name of managedSkillNames.toSorted()) {
     lines.push(`/skills/${name}/`);
   }
   lines.push(""); // trailing newline

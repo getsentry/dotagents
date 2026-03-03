@@ -166,7 +166,7 @@ describe("runList", () => {
 
     const results = await runList({ scope: resolveScope("project", projectRoot) });
     expect(results).toHaveLength(2);
-    expect(results.map((r) => r.name).sort()).toEqual(["pdf", "review"]);
+    expect(results.map((r) => r.name).toSorted()).toEqual(["pdf", "review"]);
     // Both should be marked as wildcard
     expect(results.every((r) => r.wildcard === "org/repo")).toBe(true);
   });

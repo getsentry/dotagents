@@ -14,10 +14,10 @@ export async function writeLockfile(
 ): Promise<void> {
   // Sort skills by name for deterministic output
   const sortedSkills: Record<string, unknown> = {};
-  for (const name of Object.keys(lockfile.skills).sort()) {
+  for (const name of Object.keys(lockfile.skills).toSorted()) {
     sortedSkills[name] = lockfile.skills[name];
   }
 
   const toml = stringify({ version: lockfile.version, skills: sortedSkills });
-  await writeFile(filePath, (HEADER + toml).trimEnd() + "\n", "utf-8");
+  await writeFile(filePath, `${(HEADER + toml).trimEnd()}\n`, "utf-8");
 }

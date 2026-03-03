@@ -22,10 +22,10 @@ const skillSourceSchema = z.string().check(
       // Require a valid protocol scheme or absolute path to prevent argument injection
       return GIT_URL_VALID.test(s);
     }
-    if (s.startsWith("path:")) return true;
+    if (s.startsWith("path:")) {return true;}
     // GitHub HTTPS or SSH URLs
-    if (GITHUB_HTTPS_URL.test(s)) return true;
-    if (GITHUB_SSH_URL.test(s)) return true;
+    if (GITHUB_HTTPS_URL.test(s)) {return true;}
+    if (GITHUB_SSH_URL.test(s)) {return true;}
     // owner/repo or owner/repo@ref
     const base = s.includes("@") ? s.slice(0, s.indexOf("@")) : s;
     const parts = base.split("/");

@@ -9,8 +9,7 @@ import { loadConfig } from "../../config/loader.js";
 import { getAgent, allAgentIds, allAgents } from "../../agents/registry.js";
 import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
-import { resolveScope, isInsideGitRepo } from "../../scope.js";
-import type { ScopeRoot } from "../../scope.js";
+import { resolveScope, isInsideGitRepo, type ScopeRoot } from "../../scope.js";
 import type { TrustConfig } from "../../config/schema.js";
 import { TrustError } from "../../trust/index.js";
 import { runInstall } from "./install.js";
@@ -84,9 +83,9 @@ export async function runInit(opts: InitOptions): Promise<void> {
     const seen = new Set<string>();
     for (const agentId of config.agents) {
       const agent = getAgent(agentId);
-      if (!agent?.userSkillsParentDirs) continue;
+      if (!agent?.userSkillsParentDirs) {continue;}
       for (const dir of agent.userSkillsParentDirs) {
-        if (seen.has(dir)) continue;
+        if (seen.has(dir)) {continue;}
         seen.add(dir);
         const result = await ensureSkillsSymlink(agentsDir, dir);
         symlinkResults.push({ target: dir, ...result });
@@ -103,8 +102,8 @@ export async function runInit(opts: InitOptions): Promise<void> {
     const seenParentDirs = new Set(targets);
     for (const agentId of config.agents) {
       const agent = getAgent(agentId);
-      if (!agent?.skillsParentDir) continue;
-      if (seenParentDirs.has(agent.skillsParentDir)) continue;
+      if (!agent?.skillsParentDir) {continue;}
+      if (seenParentDirs.has(agent.skillsParentDir)) {continue;}
       seenParentDirs.add(agent.skillsParentDir);
       const targetDir = join(scope.root, agent.skillsParentDir);
       const result = await ensureSkillsSymlink(agentsDir, targetDir);
@@ -118,7 +117,7 @@ export async function runInit(opts: InitOptions): Promise<void> {
       await runInstall({ scope });
     } catch (err) {
       // Re-throw trust errors — these are policy violations, not transient failures
-      if (err instanceof TrustError) throw err;
+      if (err instanceof TrustError) {throw err;}
       console.log(chalk.yellow("Could not install skills. Run `dotagents install` to install them later."));
     }
   }
@@ -175,17 +174,17 @@ async function ensureRootGitignoreEntry(projectRoot: string): Promise<void> {
   const gitignorePath = join(projectRoot, ".gitignore");
 
   if (!existsSync(gitignorePath)) {
-    await writeFile(gitignorePath, ROOT_GITIGNORE_COMMENT + "\n" + ROOT_GITIGNORE_ENTRY + "\n", "utf-8");
+    await writeFile(gitignorePath, `${ROOT_GITIGNORE_COMMENT}\n${ROOT_GITIGNORE_ENTRY}\n`, "utf-8");
     return;
   }
 
   const content = await readFile(gitignorePath, "utf-8");
-  if (content.split("\n").map((l) => l.trim()).includes(ROOT_GITIGNORE_ENTRY)) return;
+  if (content.split("\n").map((l) => l.trim()).includes(ROOT_GITIGNORE_ENTRY)) {return;}
 
   const suffix = content.endsWith("\n") ? "" : "\n";
   await writeFile(
     gitignorePath,
-    content + suffix + ROOT_GITIGNORE_COMMENT + "\n" + ROOT_GITIGNORE_ENTRY + "\n",
+    `${content}${suffix}${ROOT_GITIGNORE_COMMENT}\n${ROOT_GITIGNORE_ENTRY}\n`,
     "utf-8",
   );
 }
@@ -207,7 +206,7 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
   }
 
   function prompt<T>(result: T | symbol): T {
-    if (clack.isCancel(result)) cancelled();
+    if (clack.isCancel(result)) {cancelled();}
     return result;
   }
 
@@ -294,11 +293,11 @@ export default async function init(args: string[], flags?: { user?: boolean }): 
   let scope: ScopeRoot;
   if (flags?.user) {
     scope = resolveScope("user");
-  } else if (!isInsideGitRepo(resolve("."))) {
+  } else if (isInsideGitRepo(resolve("."))) {
+    scope = resolveScope("project", resolve("."));
+  } else {
     console.error("No project found, using user scope (~/.agents/)");
     scope = resolveScope("user");
-  } else {
-    scope = resolveScope("project", resolve("."));
   }
 
   try {
@@ -314,7 +313,7 @@ export default async function init(args: string[], flags?: { user?: boolean }): 
 
     await runInit({ scope, force: values["force"], agents, pin: values["pin"] });
   } catch (err) {
-    if (err instanceof CancelledError) return;
+    if (err instanceof CancelledError) {return;}
     if (err instanceof InitError || err instanceof TrustError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;

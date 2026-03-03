@@ -56,9 +56,9 @@ export function isInsideGitRepo(dir: string): boolean {
 
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   while (true) {
-    if (existsSync(join(current, ".git"))) return true;
+    if (existsSync(join(current, ".git"))) {return true;}
     const parent = dirname(current);
-    if (parent === current || parent === root) return false;
+    if (parent === current || parent === root) {return false;}
     current = parent;
   }
 }

@@ -1,8 +1,7 @@
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { loadSkillMd } from "./loader.js";
-import type { SkillMeta } from "./loader.js";
+import { loadSkillMd, type SkillMeta } from "./loader.js";
 
 export interface DiscoveredSkill {
   /** Relative path within the repo to the skill directory */
@@ -40,7 +39,7 @@ export async function discoverSkill(
   // (e.g. skills/chat/SKILL.md with name: "chat-sdk").
   for (const scanDir of SCAN_DIRS) {
     const absDir = join(repoDir, scanDir);
-    if (!existsSync(absDir)) continue;
+    if (!existsSync(absDir)) {continue;}
 
     let entries;
     try {
@@ -50,9 +49,9 @@ export async function discoverSkill(
     }
 
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory()) {continue;}
       const skillMdPath = join(absDir, entry.name, "SKILL.md");
-      if (!existsSync(skillMdPath)) continue;
+      if (!existsSync(skillMdPath)) {continue;}
 
       try {
         const meta = await loadSkillMd(skillMdPath);
@@ -68,7 +67,7 @@ export async function discoverSkill(
 
   // Marketplace format: check .claude-plugin/marketplace.json
   const marketplaceSkill = await tryMarketplaceFormat(repoDir, skillName);
-  if (marketplaceSkill) return marketplaceSkill;
+  if (marketplaceSkill) {return marketplaceSkill;}
 
   return null;
 }
@@ -85,7 +84,7 @@ export async function discoverAllSkills(
   // Scan each conventional directory for directories containing SKILL.md
   for (const scanDir of SCAN_DIRS) {
     const absDir = join(repoDir, scanDir);
-    if (!existsSync(absDir)) continue;
+    if (!existsSync(absDir)) {continue;}
 
     let entries;
     try {
@@ -95,12 +94,12 @@ export async function discoverAllSkills(
     }
 
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory()) {continue;}
       const skillMdPath = join(absDir, entry.name, "SKILL.md");
-      if (!existsSync(skillMdPath)) continue;
+      if (!existsSync(skillMdPath)) {continue;}
 
       // First match wins (higher priority dirs are scanned first)
-      if (found.has(entry.name)) continue;
+      if (found.has(entry.name)) {continue;}
 
       try {
         const meta = await loadSkillMd(skillMdPath);
@@ -127,10 +126,10 @@ async function scanMarketplaceFormat(
   repoDir: string,
 ): Promise<DiscoveredSkill[]> {
   const pluginsDir = join(repoDir, ".claude-plugin");
-  if (!existsSync(pluginsDir)) return [];
+  if (!existsSync(pluginsDir)) {return [];}
 
   const pluginsDirPath = join(repoDir, "plugins");
-  if (!existsSync(pluginsDirPath)) return [];
+  if (!existsSync(pluginsDirPath)) {return [];}
 
   let plugins;
   try {
@@ -141,9 +140,9 @@ async function scanMarketplaceFormat(
 
   const results: DiscoveredSkill[] = [];
   for (const plugin of plugins) {
-    if (!plugin.isDirectory()) continue;
+    if (!plugin.isDirectory()) {continue;}
     const skillsDir = join(pluginsDirPath, plugin.name, "skills");
-    if (!existsSync(skillsDir)) continue;
+    if (!existsSync(skillsDir)) {continue;}
 
     let skillEntries;
     try {
@@ -153,9 +152,9 @@ async function scanMarketplaceFormat(
     }
 
     for (const entry of skillEntries) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory()) {continue;}
       const skillMdPath = join(skillsDir, entry.name, "SKILL.md");
-      if (!existsSync(skillMdPath)) continue;
+      if (!existsSync(skillMdPath)) {continue;}
 
       try {
         const meta = await loadSkillMd(skillMdPath);
@@ -177,11 +176,11 @@ async function tryMarketplaceFormat(
   skillName: string,
 ): Promise<DiscoveredSkill | null> {
   const pluginsDir = join(repoDir, ".claude-plugin");
-  if (!existsSync(pluginsDir)) return null;
+  if (!existsSync(pluginsDir)) {return null;}
 
   // Scan plugins/*/skills/<name>/SKILL.md
   const pluginsDirPath = join(repoDir, "plugins");
-  if (!existsSync(pluginsDirPath)) return null;
+  if (!existsSync(pluginsDirPath)) {return null;}
 
   let plugins;
   try {
@@ -191,9 +190,9 @@ async function tryMarketplaceFormat(
   }
 
   for (const plugin of plugins) {
-    if (!plugin.isDirectory()) continue;
+    if (!plugin.isDirectory()) {continue;}
     const skillMdPath = join(pluginsDirPath, plugin.name, "skills", skillName, "SKILL.md");
-    if (!existsSync(skillMdPath)) continue;
+    if (!existsSync(skillMdPath)) {continue;}
 
     try {
       const meta = await loadSkillMd(skillMdPath);

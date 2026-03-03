@@ -21,7 +21,7 @@ export function compareSemver(a: string, b: string): number {
   const pb = b.split(".").map(Number);
   for (let i = 0; i < 3; i++) {
     const diff = (pb[i] ?? 0) - (pa[i] ?? 0);
-    if (diff !== 0) return diff;
+    if (diff !== 0) {return diff;}
   }
   return 0;
 }
@@ -52,7 +52,7 @@ async function fetchLatestVersion(): Promise<string | null> {
     const response = await fetch(REGISTRY_URL, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {return null;}
     const data = (await response.json()) as { version?: unknown };
     return typeof data.version === "string" ? data.version : null;
   } catch {
@@ -92,8 +92,8 @@ export async function checkForUpdate(
       }
     }
 
-    if (!latestVersion) return null;
-    if (compareSemver(currentVersion, latestVersion) <= 0) return null;
+    if (!latestVersion) {return null;}
+    if (compareSemver(currentVersion, latestVersion) <= 0) {return null;}
 
     return formatUpdateMessage(currentVersion, latestVersion);
   } catch {
