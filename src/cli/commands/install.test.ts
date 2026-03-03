@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -107,7 +107,6 @@ describe("runInstall", () => {
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const { readFile } = await import("node:fs/promises");
     const gitignore = await readFile(
       join(projectRoot, ".agents", ".gitignore"),
       "utf-8",
@@ -135,13 +134,11 @@ describe("runInstall", () => {
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const { readFile: rf } = await import("node:fs/promises");
-    const mcp = JSON.parse(await rf(join(projectRoot, ".mcp.json"), "utf-8"));
+    const mcp = JSON.parse(await readFile(join(projectRoot, ".mcp.json"), "utf-8"));
     expect(mcp.mcpServers.github).toBeDefined();
 
     // Agent symlinks should also be created
-    const { lstat: ls } = await import("node:fs/promises");
-    const stat = await ls(join(projectRoot, ".claude", "skills"));
+    const stat = await lstat(join(projectRoot, ".claude", "skills"));
     expect(stat.isSymbolicLink()).toBe(true);
   });
 
@@ -182,7 +179,6 @@ describe("runInstall", () => {
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const { lstat, access } = await import("node:fs/promises");
     const claudeStat = await lstat(join(projectRoot, ".claude", "skills"));
     expect(claudeStat.isSymbolicLink()).toBe(true);
     // Cursor shares .claude/skills — no .cursor/skills symlink created
@@ -198,7 +194,6 @@ describe("runInstall", () => {
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const { readFile } = await import("node:fs/promises");
     const mcp = JSON.parse(await readFile(join(projectRoot, ".mcp.json"), "utf-8"));
     expect(mcp.mcpServers.github).toBeDefined();
     expect(mcp.mcpServers.github.command).toBe("npx");
@@ -214,7 +209,6 @@ describe("runInstall", () => {
     const result = await runInstall({ scope });
     expect(result.hookWarnings).toHaveLength(0);
 
-    const { readFile } = await import("node:fs/promises");
     const settings = JSON.parse(await readFile(join(projectRoot, ".claude", "settings.json"), "utf-8"));
     expect(settings.hooks.PreToolUse).toEqual([
       { matcher: "Bash", hooks: [{ type: "command", command: ".agents/hooks/block-rm.sh" }] },
@@ -271,8 +265,7 @@ describe("runInstall", () => {
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const { readFile: rf } = await import("node:fs/promises");
-    const gitignore = await rf(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
     // Sourced skill should be gitignored
     expect(gitignore).toContain("/skills/pdf/");
     // In-place skill should NOT be gitignored
@@ -361,8 +354,7 @@ describe("runInstall", () => {
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const { readFile: rf2 } = await import("node:fs/promises");
-    const gitignore = await rf2(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
     expect(gitignore).toContain("/skills/pdf/");
     expect(gitignore).toContain("/skills/review/");
   });

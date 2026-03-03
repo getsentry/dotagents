@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
+import { parse as parseTOML } from "smol-toml";
 import { writeMcpConfigs, verifyMcpConfigs, projectMcpResolver } from "./mcp-writer.js";
 import type { McpDeclaration } from "./types.js";
 
@@ -148,7 +149,6 @@ describe("writeMcpConfigs", () => {
   it("writes codex HTTP server with http_headers and no type", async () => {
     await writeMcpConfigs(["codex"], [HTTP_SERVER], projectMcpResolver(dir));
 
-    const { parse: parseTOML } = await import("smol-toml");
     const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
     const content = parseTOML(raw) as Record<string, Record<string, Record<string, unknown>>>;
     expect(content["mcp_servers"]!["remote"]).toEqual({
@@ -194,7 +194,6 @@ describe("writeMcpConfigs", () => {
     });
 
     // Codex
-    const { parse: parseTOML } = await import("smol-toml");
     const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
     const codex = parseTOML(raw) as Record<string, Record<string, Record<string, unknown>>>;
     expect(codex["mcp_servers"]!["remote"]).toEqual({
@@ -206,7 +205,6 @@ describe("writeMcpConfigs", () => {
   it("merges into existing shared config file", async () => {
     // Codex config.toml is shared — write something else first
     const codexDir = join(dir, ".codex");
-    const { mkdir } = await import("node:fs/promises");
     await mkdir(codexDir, { recursive: true });
     await writeFile(join(codexDir, "config.toml"), 'model = "o3"\n', "utf-8");
 

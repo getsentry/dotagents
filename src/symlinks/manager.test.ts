@@ -3,6 +3,7 @@ import {
   mkdtemp,
   rm,
   mkdir,
+  symlink,
   writeFile,
   lstat,
   readlink,
@@ -68,7 +69,6 @@ describe("symlinks", () => {
       await mkdir(targetDir, { recursive: true });
 
       // Create a wrong symlink
-      const { symlink } = await import("node:fs/promises");
       await symlink("/wrong/target", join(targetDir, "skills"));
 
       const result = await ensureSkillsSymlink(agentsDir, targetDir);

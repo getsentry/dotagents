@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runSync } from "./sync.js";
@@ -180,7 +181,6 @@ describe("runSync", () => {
     const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.gitignoreUpdated).toBe(true);
 
-    const { readFile } = await import("node:fs/promises");
     const gitignore = await readFile(
       join(projectRoot, ".agents", ".gitignore"),
       "utf-8",
@@ -198,7 +198,6 @@ describe("runSync", () => {
     expect(result.mcpRepaired).toBeGreaterThan(0);
 
     // Verify config was created
-    const { existsSync } = await import("node:fs");
     expect(existsSync(join(projectRoot, ".mcp.json"))).toBe(true);
   });
 
@@ -225,10 +224,8 @@ describe("runSync", () => {
     expect(result.hooksRepaired).toBeGreaterThan(0);
 
     // Verify config was created
-    const { existsSync } = await import("node:fs");
     expect(existsSync(join(projectRoot, ".claude", "settings.json"))).toBe(true);
 
-    const { readFile } = await import("node:fs/promises");
     const settings = JSON.parse(await readFile(join(projectRoot, ".claude", "settings.json"), "utf-8"));
     expect(settings.hooks.PreToolUse).toBeDefined();
   });

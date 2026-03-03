@@ -1,4 +1,4 @@
-import { symlink, readlink, unlink, mkdir, lstat, readdir } from "node:fs/promises";
+import { symlink, readlink, unlink, mkdir, lstat, readdir, rename, rm } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { exec } from "../utils/exec.js";
 
@@ -79,7 +79,6 @@ async function migrateDirectory(
       // Doesn't exist, proceed with migration
     }
 
-    const { rename } = await import("node:fs/promises");
     await rename(srcPath, destPath);
     migrated.push(entry.name);
   }
@@ -88,7 +87,6 @@ async function migrateDirectory(
 }
 
 async function rmdir(dir: string): Promise<void> {
-  const { rm } = await import("node:fs/promises");
   await rm(dir, { recursive: true });
 }
 

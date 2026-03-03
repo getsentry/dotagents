@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { writeLockfile } from "./writer.js";
@@ -87,7 +87,6 @@ describe("writeLockfile + loadLockfile", () => {
       },
     });
 
-    const { readFile } = await import("node:fs/promises");
     const content = await readFile(lockPath, "utf-8");
     expect(content).toMatch(/[^\n]\n$/);
   });

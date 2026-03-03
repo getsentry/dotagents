@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
 import chalk from "chalk";
@@ -6,7 +6,9 @@ import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
 import { addSkillToConfig, addWildcardToConfig } from "../../config/writer.js";
 import { parseSource, sourcesMatch, VALID_SKILL_NAME } from "../../skills/resolver.js";
-import { discoverAllSkills } from "../../skills/discovery.js";
+import { discoverAllSkills, discoverSkill } from "../../skills/discovery.js";
+import { resolveLocalSource } from "../../sources/local.js";
+import { loadSkillMd } from "../../skills/loader.js";
 import { ensureCached } from "../../sources/cache.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import { runInstall } from "./install.js";
@@ -98,13 +100,10 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
 
   if (parsed.type === "local") {
     // Local source — resolve the path
-    const { resolveLocalSource } = await import("../../sources/local.js");
     const localDir = await resolveLocalSource(scope.root, parsed.path!);
 
     if (namesOverride?.length) {
       // User specified name(s), verify each exists in the local directory
-      const { discoverSkill } = await import("../../skills/discovery.js");
-
       for (const name of namesOverride) {
         const found = await discoverSkill(localDir, name);
         if (!found) {
@@ -143,9 +142,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
       }
     } else {
       // No names — load SKILL.md from root for the name
-      const { loadSkillMd } = await import("../../skills/loader.js");
-      const { join: pathJoin } = await import("node:path");
-      const meta = await loadSkillMd(pathJoin(localDir, "SKILL.md"));
+      const meta = await loadSkillMd(join(localDir, "SKILL.md"));
       skillName = meta.name;
     }
   } else {
@@ -161,8 +158,6 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
 
     if (namesOverride?.length) {
       // User specified name(s), verify each exists
-      const { discoverSkill } = await import("../../skills/discovery.js");
-
       for (const name of namesOverride) {
         const found = await discoverSkill(cached.repoDir, name);
         if (!found) {
