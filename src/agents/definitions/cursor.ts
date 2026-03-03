@@ -38,7 +38,7 @@ const cursor: AgentDefinition = {
   },
   serializeServer(s) {
     // Cursor auto-detects transport from url presence; no type field needed
-    if (s.url) return httpServer(s);
+    if (s.url) {return httpServer(s);}
     return claude.serializeServer(s);
   },
   serializeHooks(hooks: HookDeclaration[]) {
