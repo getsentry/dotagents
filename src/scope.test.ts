@@ -1,8 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { join } from "node:path";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { homedir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { resolveScope, isInsideGitRepo, resolveDefaultScope, ScopeError } from "./scope.js";
 
 describe("resolveScope", () => {
@@ -55,7 +54,7 @@ describe("isInsideGitRepo", () => {
   let tempDir: string;
 
   afterEach(() => {
-    if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+    if (tempDir) {rmSync(tempDir, { recursive: true, force: true });}
   });
 
   it("returns true when .git exists in dir", () => {
@@ -84,7 +83,7 @@ describe("resolveDefaultScope", () => {
 
   afterEach(() => {
     delete process.env["DOTAGENTS_HOME"];
-    if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+    if (tempDir) {rmSync(tempDir, { recursive: true, force: true });}
   });
 
   it("returns project scope when agents.toml exists", () => {

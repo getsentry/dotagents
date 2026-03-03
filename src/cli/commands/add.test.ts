@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runAdd, AddError } from "./add.js";
-import add from "./add.js";
+import add, { runAdd, AddError } from "./add.js";
 import { exec } from "../../utils/exec.js";
 import { resolveScope } from "../../scope.js";
 

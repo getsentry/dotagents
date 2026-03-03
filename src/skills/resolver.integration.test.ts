@@ -215,7 +215,7 @@ describe("resolveWildcardSkills integration", () => {
       { projectRoot },
     );
 
-    const names = results.map((r) => r.name).sort();
+    const names = results.map((r) => r.name).toSorted();
     expect(names).toEqual(["pdf", "review"]);
     expect(results.every((r) => r.resolved.type === "git")).toBe(true);
   });

@@ -20,7 +20,7 @@ export async function resolveLocalSource(
   const absPath = resolve(projectRoot, relativePath);
 
   // Prevent path traversal outside the project root
-  if (!absPath.startsWith(absRoot + "/") && absPath !== absRoot) {
+  if (!absPath.startsWith(`${absRoot}/`) && absPath !== absRoot) {
     throw new LocalSourceError(
       `Local source "${relativePath}" resolves outside project root`,
     );

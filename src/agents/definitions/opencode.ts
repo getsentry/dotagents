@@ -16,7 +16,7 @@ const opencode: AgentDefinition = {
     shared: true,
   },
   serializeServer(s) {
-    if (s.url) return httpServer(s, "remote");
+    if (s.url) {return httpServer(s, "remote");}
     const env = envRecord(s.env, (k) => `\${${k}}`);
     return [
       s.name,

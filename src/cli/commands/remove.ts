@@ -10,8 +10,7 @@ import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
 import { sourcesMatch } from "../../skills/resolver.js";
-import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
-import type { ScopeRoot } from "../../scope.js";
+import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 
 export class RemoveError extends Error {
   constructor(message: string) {
@@ -63,7 +62,7 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
       const allNames = updatedLock ? Object.keys(updatedLock.skills) : [];
       const managedNames = allNames.filter((name) => {
         const dep = updatedConfig.skills.find((s) => s.name === name);
-        if (!dep || isWildcardDep(dep)) return true; // wildcard-sourced skills are always managed
+        if (!dep || isWildcardDep(dep)) {return true;} // wildcard-sourced skills are always managed
         return !dep.source.startsWith("path:.agents/skills/") && !dep.source.startsWith("path:skills/");
       });
       await updateAgentsGitignore(scope.agentsDir, updatedConfig.gitignore, managedNames);

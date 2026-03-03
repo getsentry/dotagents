@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
+  "categories": {
+    "suspicious": "error",
+    "perf": "error"
+  },
+  "rules": {
+    "no-unused-vars": "error",
+    "no-console": "off",
+    "eqeqeq": "error",
+    "no-var": "error",
+    "prefer-const": "error",
+
+    "no-await-in-loop": "off",
+
+    "no-negated-condition": "error",
+    "unicorn/no-useless-undefined": "error",
+    "unicorn/prefer-string-replace-all": "error",
+    "unicorn/prefer-at": "error",
+    "unicorn/no-lonely-if": "error",
+
+    "no-duplicate-imports": "error",
+    "prefer-template": "error",
+    "curly": "error"
+  }
+}

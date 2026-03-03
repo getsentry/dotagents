@@ -3,15 +3,12 @@ import { mkdir, rm } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
-import { isWildcardDep } from "../../config/schema.js";
-import type { SkillDependency } from "../../config/schema.js";
+import { isWildcardDep, type SkillDependency } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
-import { isGitLocked } from "../../lockfile/schema.js";
-import type { Lockfile, LockedSkill } from "../../lockfile/schema.js";
-import { resolveSkill, resolveWildcardSkills, sourcesMatch } from "../../skills/resolver.js";
+import { isGitLocked, type Lockfile, type LockedSkill } from "../../lockfile/schema.js";
+import { resolveSkill, resolveWildcardSkills, sourcesMatch, type ResolvedSkill } from "../../skills/resolver.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
-import type { ResolvedSkill } from "../../skills/resolver.js";
 import { hashDirectory } from "../../utils/hash.js";
 import { copyDir } from "../../utils/fs.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
@@ -20,8 +17,7 @@ import { getAgent } from "../../agents/registry.js";
 import { writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
 import { writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
 import { userMcpResolver } from "../../agents/paths.js";
-import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
-import type { ScopeRoot } from "../../scope.js";
+import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 
 /** A skill whose source points to its own install location (adopted orphan). */
 function isInPlaceSkill(source: string): boolean {
@@ -90,11 +86,11 @@ async function expandSkills(
 
     if (opts.frozen) {
       // In frozen mode, expand from lockfile — no network needed
-      if (!lockfile) continue;
+      if (!lockfile) {continue;}
       for (const [name, locked] of Object.entries(lockfile.skills)) {
-        if (!sourcesMatch(locked.source, wDep.source)) continue;
-        if (explicitNames.has(name)) continue;
-        if (excludeSet.has(name)) continue;
+        if (!sourcesMatch(locked.source, wDep.source)) {continue;}
+        if (explicitNames.has(name)) {continue;}
+        if (excludeSet.has(name)) {continue;}
 
         const lockedCommit =
           pin && isGitLocked(locked) && locked.commit ? locked.commit : undefined;
@@ -107,7 +103,7 @@ async function expandSkills(
         ttlMs: pin ? undefined : 0,
       });
       for (const { name, resolved } of named) {
-        if (explicitNames.has(name)) continue; // explicit wins
+        if (explicitNames.has(name)) {continue;} // explicit wins
 
         // Check for conflicts between different wildcards
         const existingSource = wildcardNames.get(name);
@@ -213,13 +209,10 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
 
       const integrity = pin ? await hashDirectory(destDir) : undefined;
 
-      if (frozen && pin && locked && locked.integrity) {
-        if (locked.integrity !== integrity) {
-          throw new InstallError(
-            `--frozen: integrity mismatch for "${name}". ` +
-              `Expected ${locked.integrity}, got ${integrity}.`,
-          );
-        }
+      if (frozen && pin && locked && locked.integrity && locked.integrity !== integrity) {
+        throw new InstallError(
+          `--frozen: integrity mismatch for "${name}". Expected ${locked.integrity}, got ${integrity}.`,
+        );
       }
 
       const lockEntry: LockedSkill =
@@ -244,7 +237,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     if (!frozen && lockfile) {
       const wildcardDeps = config.skills.filter(isWildcardDep);
       for (const [name, locked] of Object.entries(lockfile.skills)) {
-        if (newLock.skills[name]) continue; // still tracked
+        if (newLock.skills[name]) {continue;} // still tracked
         const fromWildcard = wildcardDeps.some((w) => sourcesMatch(locked.source, w.source));
         if (fromWildcard) {
           await rm(join(skillsDir, name), { recursive: true, force: true });
@@ -264,7 +257,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     const managedNames = installed.filter((name) => {
       const dep = config.skills.find((s) => s.name === name);
       // Wildcard-sourced skills are always managed
-      if (!dep || isWildcardDep(dep)) return true;
+      if (!dep || isWildcardDep(dep)) {return true;}
       return !isInPlaceSkill(dep.source);
     });
     await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
@@ -275,9 +268,9 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     const seen = new Set<string>();
     for (const agentId of config.agents) {
       const agent = getAgent(agentId);
-      if (!agent?.userSkillsParentDirs) continue;
+      if (!agent?.userSkillsParentDirs) {continue;}
       for (const dir of agent.userSkillsParentDirs) {
-        if (seen.has(dir)) continue;
+        if (seen.has(dir)) {continue;}
         seen.add(dir);
         await ensureSkillsSymlink(agentsDir, dir);
       }
@@ -291,8 +284,8 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     const seenParentDirs = new Set(targets);
     for (const agentId of config.agents) {
       const agent = getAgent(agentId);
-      if (!agent?.skillsParentDir) continue;
-      if (seenParentDirs.has(agent.skillsParentDir)) continue;
+      if (!agent?.skillsParentDir) {continue;}
+      if (seenParentDirs.has(agent.skillsParentDir)) {continue;}
       seenParentDirs.add(agent.skillsParentDir);
       await ensureSkillsSymlink(agentsDir, join(scope.root, agent.skillsParentDir));
     }

@@ -3,19 +3,16 @@ import { rm } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
-import { isWildcardDep } from "../../config/schema.js";
-import type { WildcardSkillDependency } from "../../config/schema.js";
+import { isWildcardDep, type WildcardSkillDependency } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
-import { isGitLocked } from "../../lockfile/schema.js";
+import { isGitLocked, type Lockfile, type LockedSkill } from "../../lockfile/schema.js";
 import { resolveSkill, resolveWildcardSkills, sourcesMatch } from "../../skills/resolver.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import { hashDirectory } from "../../utils/hash.js";
 import { copyDir } from "../../utils/fs.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { updateAgentsGitignore } from "../../gitignore/writer.js";
-import type { Lockfile, LockedSkill } from "../../lockfile/schema.js";
-import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
-import type { ScopeRoot } from "../../scope.js";
+import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 
 /** A skill whose source points to its own install location (adopted orphan). */
 function isInPlaceSkill(source: string): boolean {
@@ -74,7 +71,7 @@ export async function runUpdate(opts: UpdateOptions): Promise<UpdateResult> {
     const dep = regularDeps.find((s) => s.name === skillName);
     if (dep) {
       const result = await updateRegularSkill(skillName, dep, lockfile, newLock, scope, config.trust);
-      if (result) updated.push(result);
+      if (result) {updated.push(result);}
     } else {
       // Check if it's from a wildcard source (via lockfile)
       const locked = lockfile.skills[skillName];
@@ -92,7 +89,7 @@ export async function runUpdate(opts: UpdateOptions): Promise<UpdateResult> {
   } else {
     for (const dep of regularDeps) {
       const result = await updateRegularSkill(dep.name, dep, lockfile, newLock, scope, config.trust);
-      if (result) updated.push(result);
+      if (result) {updated.push(result);}
     }
 
     for (const wDep of wildcardDeps) {
@@ -111,7 +108,7 @@ export async function runUpdate(opts: UpdateOptions): Promise<UpdateResult> {
       const allNames = Object.keys(newLock.skills);
       const managedNames = allNames.filter((name) => {
         const dep = regularDeps.find((s) => s.name === name);
-        if (!dep) return true; // wildcard-sourced skills are always managed
+        if (!dep) {return true;} // wildcard-sourced skills are always managed
         return !isInPlaceSkill(dep.source);
       });
       await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
@@ -130,19 +127,19 @@ async function updateRegularSkill(
   trust?: Parameters<typeof validateTrustedSource>[1],
 ): Promise<UpdatedSkill | null> {
   const locked = lockfile.skills[name];
-  if (!locked) return null;
-  if (!isGitLocked(locked)) return null;
+  if (!locked) {return null;}
+  if (!isGitLocked(locked)) {return null;}
 
   validateTrustedSource(dep.source, trust);
 
-  if (dep.ref && /^[a-f0-9]{40}$/.test(dep.ref)) return null;
+  if (dep.ref && /^[a-f0-9]{40}$/.test(dep.ref)) {return null;}
 
   const resolved = await resolveSkill(name, dep, { projectRoot: scope.root });
-  if (resolved.type !== "git") return null;
+  if (resolved.type !== "git") {return null;}
 
   const oldCommit = locked.commit ?? "";
   const newCommit = resolved.commit;
-  if (oldCommit === newCommit) return null;
+  if (oldCommit === newCommit) {return null;}
 
   const destDir = join(scope.skillsDir, name);
   await copyDir(resolved.skillDir, destDir);
@@ -176,7 +173,7 @@ async function updateWildcardSource(
 ): Promise<{ updated: UpdatedSkill[]; removed: string[] }> {
   validateTrustedSource(wDep.source, trust);
 
-  if (wDep.ref && /^[a-f0-9]{40}$/.test(wDep.ref)) return { updated: [], removed: [] };
+  if (wDep.ref && /^[a-f0-9]{40}$/.test(wDep.ref)) {return { updated: [], removed: [] };}
 
   // Re-discover all skills fresh
   const named = await resolveWildcardSkills(wDep, { projectRoot: scope.root });
@@ -191,14 +188,14 @@ async function updateWildcardSource(
 
   // Process discovered skills (new + changed)
   for (const { name, resolved } of named) {
-    if (explicitNames.has(name)) continue;
-    if (resolved.type !== "git") continue;
+    if (explicitNames.has(name)) {continue;}
+    if (resolved.type !== "git") {continue;}
 
     const locked = lockfile.skills[name];
     const oldCommit = locked && isGitLocked(locked) ? locked.commit : undefined;
     const newCommit = resolved.commit;
 
-    if (oldCommit && oldCommit === newCommit) continue;
+    if (oldCommit && oldCommit === newCommit) {continue;}
 
     const destDir = join(skillsDir, name);
     await copyDir(resolved.skillDir, destDir);

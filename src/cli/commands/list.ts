@@ -8,8 +8,7 @@ import { isGitLocked } from "../../lockfile/schema.js";
 import { sourcesMatch } from "../../skills/resolver.js";
 import { hashDirectory } from "../../utils/hash.js";
 import { existsSync } from "node:fs";
-import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
-import type { ScopeRoot } from "../../scope.js";
+import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 
 export interface SkillStatus {
   name: string;
@@ -48,16 +47,16 @@ export async function runList(opts: ListOptions): Promise<SkillStatus[]> {
     for (const wDep of wildcardDeps) {
       const excludeSet = new Set(wDep.exclude);
       for (const [name, locked] of Object.entries(lockfile.skills)) {
-        if (!sourcesMatch(locked.source, wDep.source)) continue;
-        if (explicitNames.has(name)) continue;
-        if (excludeSet.has(name)) continue;
-        if (skillEntries.has(name)) continue;
+        if (!sourcesMatch(locked.source, wDep.source)) {continue;}
+        if (explicitNames.has(name)) {continue;}
+        if (excludeSet.has(name)) {continue;}
+        if (skillEntries.has(name)) {continue;}
         skillEntries.set(name, { source: wDep.source, wildcard: wDep.source });
       }
     }
   }
 
-  const skillNames = [...skillEntries.keys()].sort();
+  const skillNames = [...skillEntries.keys()].toSorted();
   const results: SkillStatus[] = [];
 
   for (const name of skillNames) {

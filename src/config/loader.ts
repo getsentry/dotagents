@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
-import { agentsConfigSchema, isWildcardDep } from "./schema.js";
-import type { AgentsConfig } from "./schema.js";
+import { agentsConfigSchema, isWildcardDep, type AgentsConfig } from "./schema.js";
 import { allAgentIds } from "../agents/registry.js";
 
 export class ConfigError extends Error {

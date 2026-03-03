@@ -50,13 +50,13 @@ export async function writeHookConfigs(
   resolveTarget: HookTargetResolver,
 ): Promise<HookWriteWarning[]> {
   const warnings: HookWriteWarning[] = [];
-  if (hooks.length === 0) return warnings;
+  if (hooks.length === 0) {return warnings;}
 
   const seen = new Set<string>();
 
   for (const id of agentIds) {
     const agent = getAgent(id);
-    if (!agent) continue;
+    if (!agent) {continue;}
 
     if (!agent.hooks) {
       warnings.push({ agent: id, message: `Agent "${agent.displayName}" does not support hooks` });
@@ -66,7 +66,7 @@ export async function writeHookConfigs(
     const serialized = agent.serializeHooks(hooks);
     const spec = agent.hooks;
     const { filePath, shared } = resolveTarget(id, spec);
-    if (seen.has(filePath)) continue;
+    if (seen.has(filePath)) {continue;}
     seen.add(filePath);
 
     await mkdir(dirname(filePath), { recursive: true });
@@ -90,21 +90,21 @@ export async function verifyHookConfigs(
   hooks: HookDeclaration[],
   resolveTarget: HookTargetResolver,
 ): Promise<{ agent: string; issue: string }[]> {
-  if (hooks.length === 0) return [];
+  if (hooks.length === 0) {return [];}
 
   const issues: { agent: string; issue: string }[] = [];
   const seen = new Set<string>();
 
   for (const id of agentIds) {
     const agent = getAgent(id);
-    if (!agent) continue;
+    if (!agent) {continue;}
 
     // Skip agents that don't support hooks
-    if (!agent.hooks) continue;
+    if (!agent.hooks) {continue;}
 
     const spec = agent.hooks;
     const { filePath } = resolveTarget(id, spec);
-    if (seen.has(filePath)) continue;
+    if (seen.has(filePath)) {continue;}
     seen.add(filePath);
 
     if (!existsSync(filePath)) {
@@ -137,7 +137,7 @@ async function freshWrite(
     ...spec.extraFields,
     [spec.rootKey]: serialized,
   };
-  await writeFile(filePath, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+  await writeFile(filePath, `${JSON.stringify(doc, null, 2)}\n`, "utf-8");
 }
 
 async function mergeWrite(
@@ -147,7 +147,7 @@ async function mergeWrite(
 ): Promise<void> {
   const existing = existsSync(filePath) ? await readExisting(filePath) : {};
   existing[spec.rootKey] = serialized;
-  await writeFile(filePath, JSON.stringify(existing, null, 2) + "\n", "utf-8");
+  await writeFile(filePath, `${JSON.stringify(existing, null, 2)}\n`, "utf-8");
 }
 
 async function readExisting(filePath: string): Promise<Record<string, unknown>> {

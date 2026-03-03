@@ -14,9 +14,9 @@ function makeTrust(overrides: Partial<TrustConfig> = {}): TrustConfig {
 
 describe("validateTrustedSource", () => {
   it("allows everything when trust config is undefined", () => {
-    expect(() => validateTrustedSource("evil/repo", undefined)).not.toThrow();
-    expect(() => validateTrustedSource("git:https://evil.com/repo.git", undefined)).not.toThrow();
-    expect(() => validateTrustedSource("path:../local", undefined)).not.toThrow();
+    expect(() => validateTrustedSource("evil/repo")).not.toThrow();
+    expect(() => validateTrustedSource("git:https://evil.com/repo.git")).not.toThrow();
+    expect(() => validateTrustedSource("path:../local")).not.toThrow();
   });
 
   it("allows everything when allow_all is true", () => {

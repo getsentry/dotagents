@@ -47,18 +47,18 @@ export async function writeMcpConfigs(
   servers: McpDeclaration[],
   resolveTarget: McpTargetResolver,
 ): Promise<void> {
-  if (servers.length === 0) return;
+  if (servers.length === 0) {return;}
 
   // Deduplicate by resolved filePath so shared files aren't written twice
   const seen = new Set<string>();
 
   for (const id of agentIds) {
     const agent = getAgent(id);
-    if (!agent) continue;
+    if (!agent) {continue;}
 
     const { mcp } = agent;
     const { filePath, shared } = resolveTarget(id, mcp);
-    if (seen.has(filePath)) continue;
+    if (seen.has(filePath)) {continue;}
     seen.add(filePath);
 
     const serialized: Record<string, unknown> = {};
@@ -86,18 +86,18 @@ export async function verifyMcpConfigs(
   servers: McpDeclaration[],
   resolveTarget: McpTargetResolver,
 ): Promise<{ agent: string; issue: string }[]> {
-  if (servers.length === 0) return [];
+  if (servers.length === 0) {return [];}
 
   const issues: { agent: string; issue: string }[] = [];
   const seen = new Set<string>();
 
   for (const id of agentIds) {
     const agent = getAgent(id);
-    if (!agent) continue;
+    if (!agent) {continue;}
 
     const { mcp } = agent;
     const { filePath } = resolveTarget(id, mcp);
-    if (seen.has(filePath)) continue;
+    if (seen.has(filePath)) {continue;}
     seen.add(filePath);
 
     if (!existsSync(filePath)) {
@@ -158,7 +158,7 @@ async function readExisting(
 
 function serialize(doc: Record<string, unknown>, format: "json" | "toml"): string {
   if (format === "toml") {
-    return tomlStringify(doc) + "\n";
+    return `${tomlStringify(doc)}\n`;
   }
-  return JSON.stringify(doc, null, 2) + "\n";
+  return `${JSON.stringify(doc, null, 2)}\n`;
 }

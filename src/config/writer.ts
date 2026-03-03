@@ -25,12 +25,12 @@ export async function addSkillToConfig(
 
   // Build a partial TOML object and stringify it for proper escaping
   const entry: Record<string, string> = { name, source: dep.source };
-  if (dep.ref) entry["ref"] = dep.ref;
-  if (dep.path) entry["path"] = dep.path;
+  if (dep.ref) {entry["ref"] = dep.ref;}
+  if (dep.path) {entry["path"] = dep.path;}
 
   const section = stringify({ skills: [entry] });
 
-  const newContent = content.trimEnd() + "\n\n" + section.trimEnd() + "\n";
+  const newContent = `${content.trimEnd()}\n\n${section.trimEnd()}\n`;
   await writeFile(filePath, newContent, "utf-8");
 }
 
@@ -57,12 +57,12 @@ export async function addWildcardToConfig(
   const content = await readFile(filePath, "utf-8");
 
   const entry: Record<string, unknown> = { name: "*", source };
-  if (opts?.ref) entry["ref"] = opts.ref;
-  if (opts?.exclude && opts.exclude.length > 0) entry["exclude"] = opts.exclude;
+  if (opts?.ref) {entry["ref"] = opts.ref;}
+  if (opts?.exclude && opts.exclude.length > 0) {entry["exclude"] = opts.exclude;}
 
   const section = stringify({ skills: [entry] });
 
-  const newContent = content.trimEnd() + "\n\n" + section.trimEnd() + "\n";
+  const newContent = `${content.trimEnd()}\n\n${section.trimEnd()}\n`;
   await writeFile(filePath, newContent, "utf-8");
 }
 
@@ -144,17 +144,17 @@ export async function addMcpToConfig(
   const obj: Record<string, unknown> = { name: entry.name };
   if (entry.command) {
     obj["command"] = entry.command;
-    if (entry.args && entry.args.length > 0) obj["args"] = entry.args;
+    if (entry.args && entry.args.length > 0) {obj["args"] = entry.args;}
   }
   if (entry.url) {
     obj["url"] = entry.url;
-    if (entry.headers && Object.keys(entry.headers).length > 0) obj["headers"] = entry.headers;
+    if (entry.headers && Object.keys(entry.headers).length > 0) {obj["headers"] = entry.headers;}
   }
-  if (entry.env.length > 0) obj["env"] = entry.env;
+  if (entry.env.length > 0) {obj["env"] = entry.env;}
 
   const section = stringify({ mcp: [obj] });
 
-  const newContent = content.trimEnd() + "\n\n" + section.trimEnd() + "\n";
+  const newContent = `${content.trimEnd()}\n\n${section.trimEnd()}\n`;
   await writeFile(filePath, newContent, "utf-8");
 }
 
@@ -190,7 +190,7 @@ function removeBlockByHeader(content: string, header: string, name: string): str
       const match = nameLine?.match(/^name\s*=\s*"([^"]+)"/);
       if (match && match[1] === name) {
         // Remove blank lines before the block
-        while (result.length > 0 && result[result.length - 1]?.trim() === "") {
+        while (result.length > 0 && result.at(-1)?.trim() === "") {
           result.pop();
         }
         // Skip this block
@@ -233,7 +233,7 @@ export async function addTrustSource(
       trustSectionIdx = j;
     } else if (trustSectionIdx >= 0 && fieldLineIdx < 0) {
       const trimmed = lines[j]!.trim();
-      if (trimmed.startsWith("[")) break;
+      if (trimmed.startsWith("[")) {break;}
       if (trimmed.startsWith(`${field} `) || trimmed.startsWith(`${field}=`)) {
         fieldLineIdx = j;
       }
@@ -263,8 +263,8 @@ export async function addTrustSource(
     let insertIdx = trustSectionIdx + 1;
     while (insertIdx < lines.length) {
       const trimmed = lines[insertIdx]!.trim();
-      if (trimmed.startsWith("[")) break;
-      if (trimmed === "" && insertIdx + 1 < lines.length && lines[insertIdx + 1]!.trim().startsWith("[")) break;
+      if (trimmed.startsWith("[")) {break;}
+      if (trimmed === "" && insertIdx + 1 < lines.length && lines[insertIdx + 1]!.trim().startsWith("[")) {break;}
       insertIdx++;
     }
     lines.splice(insertIdx, 0, `${field} = ${tomlArray([value])}`);
@@ -284,7 +284,7 @@ export async function addTrustSource(
     return;
   }
 
-  const newContent = content.trimEnd() + `\n\n[trust]\n${field} = ${tomlArray([value])}\n`;
+  const newContent = `${content.trimEnd()}\n\n[trust]\n${field} = ${tomlArray([value])}\n`;
   await writeFile(filePath, newContent, "utf-8");
 }
 
@@ -306,18 +306,18 @@ export async function removeTrustSource(
       trustSectionIdx = j;
     } else if (trustSectionIdx >= 0) {
       const trimmed = lines[j]!.trim();
-      if (trimmed.startsWith("[")) break;
+      if (trimmed.startsWith("[")) {break;}
 
       if (trimmed.startsWith(`${field} `) || trimmed.startsWith(`${field}=`)) {
         const match = trimmed.match(new RegExp(`^${field}\\s*=\\s*\\[([^\\]]*)\\]`));
-        if (!match) break;
+        if (!match) {break;}
 
         const items = match[1]!
           .split(",")
           .map((s) => s.trim())
           .filter((s) => s.length > 0);
         const filtered = items.filter(
-          (s) => s.replace(/^"|"$/g, "").toLowerCase() !== value.toLowerCase(),
+          (s) => s.replaceAll(/^"|"$/g, "").toLowerCase() !== value.toLowerCase(),
         );
 
         if (filtered.length === 0) {
@@ -342,8 +342,8 @@ export async function removeTrustSource(
 function isTrustSectionEmpty(lines: string[], headerIdx: number): boolean {
   for (let i = headerIdx + 1; i < lines.length; i++) {
     const trimmed = lines[i]!.trim();
-    if (trimmed.startsWith("[")) return true;
-    if (trimmed !== "") return false;
+    if (trimmed.startsWith("[")) {return true;}
+    if (trimmed !== "") {return false;}
   }
   return true;
 }
@@ -407,9 +407,9 @@ export function generateDefaultConfig(opts?: DefaultConfigOptions | string[]): s
   if (options.skills && options.skills.length > 0) {
     for (const skill of options.skills) {
       const entry: Record<string, string> = { name: skill.name, source: skill.source };
-      if (skill.ref) entry["ref"] = skill.ref;
-      if (skill.path) entry["path"] = skill.path;
-      config += "\n" + stringify({ skills: [entry] }).trimEnd() + "\n";
+      if (skill.ref) {entry["ref"] = skill.ref;}
+      if (skill.path) {entry["path"] = skill.path;}
+      config += `\n${stringify({ skills: [entry] }).trimEnd()}\n`;
     }
   }
 

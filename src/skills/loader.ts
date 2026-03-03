@@ -52,9 +52,9 @@ function parseSimpleYaml(yaml: string): Record<string, string> {
   const result: Record<string, string> = {};
   for (const line of yaml.split("\n")) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (!trimmed || trimmed.startsWith("#")) {continue;}
     const colonIdx = trimmed.indexOf(":");
-    if (colonIdx === -1) continue;
+    if (colonIdx === -1) {continue;}
     const key = trimmed.slice(0, colonIdx).trim();
     let value = trimmed.slice(colonIdx + 1).trim();
     // Strip surrounding quotes

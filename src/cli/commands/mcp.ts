@@ -5,8 +5,7 @@ import { loadConfig } from "../../config/loader.js";
 import type { AgentsConfig, McpConfig } from "../../config/schema.js";
 import { addMcpToConfig, removeMcpFromConfig } from "../../config/writer.js";
 import { runInstall } from "./install.js";
-import { resolveScope, resolveDefaultScope, ScopeError } from "../../scope.js";
-import type { ScopeRoot } from "../../scope.js";
+import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 
 export class McpError extends Error {
   constructor(message: string) {
@@ -73,7 +72,7 @@ export async function runMcpAdd(opts: McpAddOptions): Promise<void> {
 }
 
 function buildHeaders(raw?: string[]): Record<string, string> | undefined {
-  if (!raw || raw.length === 0) return undefined;
+  if (!raw || raw.length === 0) {return undefined;}
   const headers: Record<string, string> = {};
   for (const h of raw) {
     const [key, value] = parseHeader(h);
