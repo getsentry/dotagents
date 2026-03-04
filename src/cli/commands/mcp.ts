@@ -133,7 +133,9 @@ export function getMcpList(config: AgentsConfig): McpListEntry[] {
 async function mcpAddInteractive(name: string | undefined, scope: ScopeRoot): Promise<void> {
   let serverName = name;
 
-  if (!serverName) {
+  if (serverName) {
+    validateMcpName(serverName);
+  } else {
     const result = await clack.text({
       message: "MCP server name",
       validate: (v) => {
@@ -186,11 +188,13 @@ async function mcpAddInteractive(name: string | undefined, scope: ScopeRoot): Pr
     url = urlInput.trim();
 
     const headersInput = await clack.text({
-      message: "Headers (comma-separated Key:Value, optional)",
-      placeholder: "Authorization:Bearer tok",
+      message: "Headers (semicolon-separated Key:Value, optional)",
+      placeholder: "Authorization:Bearer tok; X-Custom:value",
     });
     if (clack.isCancel(headersInput)) {throw new McpCancelledError();}
-    headers = splitCommaList(headersInput);
+    if (headersInput.trim()) {
+      headers = headersInput.trim().split(";").map((h) => h.trim()).filter(Boolean);
+    }
   }
 
   const envInput = await clack.text({
