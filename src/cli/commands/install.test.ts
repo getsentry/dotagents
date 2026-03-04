@@ -593,6 +593,28 @@ describe("runInstall", () => {
     expect(result.installed).toContain("local-skill");
   });
 
+  it("frozen mode handles old lockfile with integrity for local skill", async () => {
+    const skillDir = join(projectRoot, ".agents", "skills", "local-skill");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("local-skill"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "local-skill"\nsource = "path:.agents/skills/local-skill"\n`,
+    );
+
+    // Write a lockfile with a stale integrity hash (simulating pre-fix lockfile)
+    await writeFile(
+      join(projectRoot, "agents.lock"),
+      `version = 1\n\n[skills.local-skill]\nsource = "path:.agents/skills/local-skill"\nintegrity = "sha256-stale-hash"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    // Frozen install should succeed — old integrity for local skills is ignored
+    const result = await runInstall({ scope, frozen: true });
+    expect(result.installed).toContain("local-skill");
+  });
+
   it("pin=false with wildcard still prunes stale skills", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

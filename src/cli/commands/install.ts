@@ -210,7 +210,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       // Local skills are expected to change — don't freeze their content
       const integrity = pin && resolved.type !== "local" ? await hashDirectory(destDir) : undefined;
 
-      if (frozen && pin && locked && locked.integrity && locked.integrity !== integrity) {
+      if (frozen && pin && resolved.type !== "local" && locked && locked.integrity && locked.integrity !== integrity) {
         throw new InstallError(
           `--frozen: integrity mismatch for "${name}". Expected ${locked.integrity}, got ${integrity}.`,
         );
