@@ -242,11 +242,11 @@ describe("runInstall", () => {
     const result = await runInstall({ scope });
     expect(result.installed).toContain("local-skill");
 
-    // Lockfile should have integrity and source
+    // Lockfile should have source but no integrity (local skills are not frozen)
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile).not.toBeNull();
     expect(lockfile!.skills["local-skill"]).toBeDefined();
-    expect(lockfile!.skills["local-skill"]!.integrity).toMatch(/^sha256-/);
+    expect("integrity" in lockfile!.skills["local-skill"]!).toBe(false);
     expect(lockfile!.skills["local-skill"]!.source).toBe("path:.agents/skills/local-skill");
   });
 
@@ -570,6 +570,27 @@ describe("runInstall", () => {
     );
 
     await expect(runInstall({ scope, frozen: true })).rejects.toThrow(InstallError);
+  });
+
+  it("frozen mode does not check integrity for local skills", async () => {
+    const skillDir = join(projectRoot, ".agents", "skills", "local-skill");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("local-skill"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "local-skill"\nsource = "path:.agents/skills/local-skill"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    // Modify the local skill content
+    await writeFile(join(skillDir, "SKILL.md"), `${SKILL_MD("local-skill")}\nUpdated content.`);
+
+    // Frozen install should succeed despite content change
+    const result = await runInstall({ scope, frozen: true });
+    expect(result.installed).toContain("local-skill");
   });
 
   it("pin=false with wildcard still prunes stale skills", async () => {
