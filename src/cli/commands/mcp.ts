@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
+import * as clack from "@clack/prompts";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import type { AgentsConfig, McpConfig } from "../../config/schema.js";
@@ -11,6 +12,13 @@ export class McpError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "McpError";
+  }
+}
+
+export class McpCancelledError extends Error {
+  constructor() {
+    super("Cancelled");
+    this.name = "McpCancelledError";
   }
 }
 
@@ -71,6 +79,12 @@ export async function runMcpAdd(opts: McpAddOptions): Promise<void> {
   await runInstall({ scope });
 }
 
+function splitCommaList(input: string): string[] | undefined {
+  const trimmed = input.trim();
+  if (!trimmed) {return undefined;}
+  return trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 function buildHeaders(raw?: string[]): Record<string, string> | undefined {
   if (!raw || raw.length === 0) {return undefined;}
   const headers: Record<string, string> = {};
@@ -116,6 +130,92 @@ export function getMcpList(config: AgentsConfig): McpListEntry[] {
 
 // --- CLI wrappers ---
 
+async function mcpAddInteractive(name: string | undefined, scope: ScopeRoot): Promise<void> {
+  let serverName = name;
+
+  if (serverName) {
+    validateMcpName(serverName);
+  } else {
+    const result = await clack.text({
+      message: "MCP server name",
+      validate: (v) => {
+        if (!v?.trim()) {return "Name is required.";}
+        if (!MCP_NAME_RE.test(v.trim())) {
+          return "Names must start with alphanumeric and contain only [a-zA-Z0-9._-].";
+        }
+      },
+    });
+    if (clack.isCancel(result)) {throw new McpCancelledError();}
+    serverName = result.trim();
+  }
+
+  const transport = await clack.select({
+    message: "Transport",
+    options: [
+      { label: "Command (stdio)", value: "stdio" as const },
+      { label: "URL (HTTP)", value: "http" as const },
+    ],
+  });
+  if (clack.isCancel(transport)) {throw new McpCancelledError();}
+
+  let command: string | undefined;
+  let commandArgs: string[] | undefined;
+  let url: string | undefined;
+  let headers: string[] | undefined;
+
+  if (transport === "stdio") {
+    const cmdInput = await clack.text({
+      message: "Command",
+      placeholder: "npx -y @modelcontextprotocol/server-github",
+      validate: (v) => {
+        if (!v?.trim()) {return "Command is required.";}
+      },
+    });
+    if (clack.isCancel(cmdInput)) {throw new McpCancelledError();}
+
+    const parts = cmdInput.trim().split(/\s+/).filter(Boolean);
+    command = parts[0];
+    commandArgs = parts.length > 1 ? parts.slice(1) : undefined;
+  } else {
+    const urlInput = await clack.text({
+      message: "URL",
+      placeholder: "https://mcp.example.com/sse",
+      validate: (v) => {
+        if (!v?.trim()) {return "URL is required.";}
+      },
+    });
+    if (clack.isCancel(urlInput)) {throw new McpCancelledError();}
+    url = urlInput.trim();
+
+    const headersInput = await clack.text({
+      message: "Headers (semicolon-separated Key:Value, optional)",
+      placeholder: "Authorization:Bearer tok; X-Custom:value",
+    });
+    if (clack.isCancel(headersInput)) {throw new McpCancelledError();}
+    if (headersInput.trim()) {
+      headers = headersInput.trim().split(";").map((h) => h.trim()).filter(Boolean);
+    }
+  }
+
+  const envInput = await clack.text({
+    message: "Environment variables (comma-separated, optional)",
+    placeholder: "GITHUB_TOKEN,API_KEY",
+  });
+  if (clack.isCancel(envInput)) {throw new McpCancelledError();}
+  const env = splitCommaList(envInput);
+
+  await runMcpAdd({
+    scope,
+    name: serverName,
+    command,
+    args: commandArgs,
+    url,
+    headers,
+    env,
+  });
+  console.log(chalk.green(`Added MCP server: ${serverName}`));
+}
+
 async function mcpAdd(args: string[], scope: ScopeRoot): Promise<void> {
   const { positionals, values } = parseArgs({
     args,
@@ -128,6 +228,13 @@ async function mcpAdd(args: string[], scope: ScopeRoot): Promise<void> {
     },
     strict: true,
   });
+
+  const interactive = process.stdout.isTTY === true && !values["command"] && !values["url"];
+
+  if (interactive) {
+    await mcpAddInteractive(positionals[0], scope);
+    return;
+  }
 
   const name = positionals[0];
   if (!name) {
@@ -256,6 +363,7 @@ export default async function mcp(args: string[], flags?: { user?: boolean }): P
         process.exitCode = 1;
     }
   } catch (err) {
+    if (err instanceof McpCancelledError) {return;}
     if (err instanceof ScopeError || err instanceof McpError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
