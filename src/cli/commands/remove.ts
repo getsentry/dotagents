@@ -8,7 +8,7 @@ import { isWildcardDep } from "../../config/schema.js";
 import { removeSkillFromConfig, addExcludeToWildcard } from "../../config/writer.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
-import { updateAgentsGitignore } from "../../gitignore/writer.js";
+import { writeAgentsGitignore } from "../../gitignore/writer.js";
 import { sourcesMatch } from "../../skills/resolver.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 
@@ -65,7 +65,7 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
         if (!dep || isWildcardDep(dep)) {return true;} // wildcard-sourced skills are always managed
         return !dep.source.startsWith("path:.agents/skills/") && !dep.source.startsWith("path:skills/");
       });
-      await updateAgentsGitignore(scope.agentsDir, updatedConfig.gitignore, managedNames);
+      await writeAgentsGitignore(scope.agentsDir, managedNames);
     }
     return;
   }

@@ -213,7 +213,7 @@ describe("runSync", () => {
     expect(result.issues.filter((i) => i.type === "hooks")).toHaveLength(0);
   });
 
-  it("ensures agents.lock is in root .gitignore", async () => {
+  it("warns when agents.lock is not in root .gitignore", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "org/repo"\n`,
@@ -221,8 +221,7 @@ describe("runSync", () => {
 
     await runSync({ scope: resolveScope("project", projectRoot) });
 
-    const rootGitignore = await readFile(join(projectRoot, ".gitignore"), "utf-8");
-    expect(rootGitignore).toContain("agents.lock");
-    expect(rootGitignore).toContain(".agents/.gitignore");
+    // Should not auto-create .gitignore (only init does that)
+    expect(existsSync(join(projectRoot, ".gitignore"))).toBe(false);
   });
 });

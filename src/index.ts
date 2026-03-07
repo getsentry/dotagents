@@ -15,7 +15,7 @@ export { resolveScope } from "./scope.js";
 export type { Scope, ScopeRoot } from "./scope.js";
 export { getAgent, allAgentIds, writeMcpConfigs, verifyMcpConfigs, projectMcpResolver, getUserMcpTarget, userMcpResolver } from "./agents/index.js";
 export type { AgentDefinition, McpDeclaration, McpConfigSpec, McpSerializer, McpTargetResolver } from "./agents/index.js";
-export { writeAgentsGitignore, removeAgentsGitignore, updateAgentsGitignore } from "./gitignore/index.js";
+export { writeAgentsGitignore, ensureRootGitignoreEntries } from "./gitignore/index.js";
 export { ensureSkillsSymlink, verifySymlinks } from "./symlinks/index.js";
 export { exec, ExecError, hashDirectory, sha256, copyDir } from "./utils/index.js";
 export { clone, fetchAndReset, fetchRef, headCommit, isGitRepo, GitError, ensureCached, resolveLocalSource, LocalSourceError } from "./sources/index.js";

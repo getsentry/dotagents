@@ -541,7 +541,7 @@ describe("runInstall", () => {
     await expect(runInstall({ scope, frozen: true })).rejects.toThrow(InstallError);
   });
 
-  it("ensures agents.lock is in root .gitignore", async () => {
+  it("warns when agents.lock is not in root .gitignore", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
@@ -550,8 +550,7 @@ describe("runInstall", () => {
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const rootGitignore = await readFile(join(projectRoot, ".gitignore"), "utf-8");
-    expect(rootGitignore).toContain("agents.lock");
-    expect(rootGitignore).toContain(".agents/.gitignore");
+    // Should not auto-create .gitignore (only init does that)
+    expect(existsSync(join(projectRoot, ".gitignore"))).toBe(false);
   });
 });

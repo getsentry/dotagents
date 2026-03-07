@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import chalk from "chalk";
 import { generateDefaultConfig } from "../../config/writer.js";
-import { updateAgentsGitignore, ensureRootGitignoreEntries } from "../../gitignore/writer.js";
+import { writeAgentsGitignore, ensureRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { loadConfig } from "../../config/loader.js";
 import { getAgent, allAgentIds, allAgents } from "../../agents/registry.js";
@@ -19,14 +19,13 @@ const BOOTSTRAP_SKILL = { name: "dotagents", source: "getsentry/dotagents" } as 
 export interface InitOptions {
   force?: boolean;
   agents?: string[];
-  gitignore?: boolean;
   trust?: TrustConfig;
   skills?: Array<{ name: string; source: string }>;
   scope: ScopeRoot;
 }
 
 export async function runInit(opts: InitOptions): Promise<void> {
-  const { scope, force, agents, gitignore } = opts;
+  const { scope, force, agents } = opts;
   let { trust } = opts;
   const { configPath, agentsDir, skillsDir } = scope;
   const skills = opts.skills ?? [BOOTSTRAP_SKILL];
@@ -56,22 +55,16 @@ export async function runInit(opts: InitOptions): Promise<void> {
     }
   }
 
-  // For user scope, default gitignore to false and skip gitignore comments
-  const effectiveGitignore = scope.scope === "user" ? false : gitignore;
   await mkdir(agentsDir, { recursive: true });
-  await writeFile(configPath, generateDefaultConfig({ agents, gitignore: effectiveGitignore, trust, skills }), "utf-8");
+  await writeFile(configPath, generateDefaultConfig({ agents, trust, skills }), "utf-8");
   await mkdir(skillsDir, { recursive: true });
 
   // Set up gitignore and symlinks based on config
   const config = await loadConfig(configPath);
 
   if (scope.scope === "project") {
-    await updateAgentsGitignore(agentsDir, config.gitignore, []);
-
-    // Ensure agents.lock and .agents/.gitignore are in root .gitignore
-    if (config.gitignore) {
-      await ensureRootGitignoreEntries(scope.root);
-    }
+    await writeAgentsGitignore(agentsDir, []);
+    await ensureRootGitignoreEntries(scope.root);
   }
 
   // Symlinks — create per-agent symlinks so each agent discovers skills
@@ -120,18 +113,17 @@ export async function runInit(opts: InitOptions): Promise<void> {
     }
   }
 
-  return printSummary(scope, scope.scope === "project" ? config.gitignore : false, symlinkResults);
+  return printSummary(scope, symlinkResults);
 }
 
 function printSummary(
   scope: ScopeRoot,
-  gitignore: boolean,
   symlinks: { target: string; created: boolean; migrated: string[] }[],
 ): void {
   const prefix = scope.scope === "user" ? "~/.agents/" : "";
   console.log(chalk.green(`Created ${prefix}agents.toml`));
   console.log(chalk.green(`Created ${prefix}${scope.scope === "user" ? "" : ".agents/"}skills/`));
-  if (gitignore) {
+  if (scope.scope === "project") {
     console.log(chalk.green("Created .agents/.gitignore"));
   }
 
@@ -196,17 +188,6 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
     }),
   );
 
-  // Skip gitignore prompt for user scope (not a git repo)
-  let gitignore = true;
-  if (scope.scope === "project") {
-    gitignore = prompt(
-      await clack.confirm({
-        message: "Manage a .gitignore inside .agents/?",
-        initialValue: true,
-      }),
-    );
-  }
-
   const trustMode = prompt(
     await clack.select({
       message: "Skill source trust policy:",
@@ -240,7 +221,6 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
     scope,
     force,
     agents: selectedAgents,
-    gitignore,
     trust,
   });
 

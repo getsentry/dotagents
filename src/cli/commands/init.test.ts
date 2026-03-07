@@ -53,7 +53,7 @@ describe("runInit", () => {
     expect(stat.isDirectory()).toBe(true);
   });
 
-  it("creates .agents/.gitignore with default config (gitignore = true)", async () => {
+  it("always creates .agents/.gitignore", async () => {
     await runInit({ scope: resolveScope("project", dir) });
 
     expect(existsSync(join(dir, ".agents", ".gitignore"))).toBe(true);
@@ -99,7 +99,6 @@ describe("runInit", () => {
     expect(existsSync(join(dir, "agents.toml"))).toBe(true);
     expect(existsSync(join(dir, ".agents"))).toBe(true);
     expect(existsSync(join(dir, ".agents", "skills"))).toBe(true);
-    // Default config has gitignore = true
     expect(existsSync(join(dir, ".agents", ".gitignore"))).toBe(true);
   });
 
@@ -138,14 +137,6 @@ describe("runInit", () => {
     ).rejects.toThrow(/Unknown agent/);
   });
 
-  it("creates .agents/.gitignore when gitignore option is true", async () => {
-    await runInit({ scope: resolveScope("project", dir), gitignore: true });
-
-    const config = await loadConfig(join(dir, "agents.toml"));
-    expect(config.gitignore).toBe(true);
-    expect(existsSync(join(dir, ".agents", ".gitignore"))).toBe(true);
-  });
-
   it("adds agents.lock and .agents/.gitignore to root .gitignore", async () => {
     await runInit({ scope: resolveScope("project", dir) });
 
@@ -163,12 +154,6 @@ describe("runInit", () => {
     expect(content).toContain("node_modules/");
     expect(content).toContain("agents.lock");
     expect(content).toContain(".agents/.gitignore");
-  });
-
-  it("does not add root .gitignore entry when gitignore is false", async () => {
-    await runInit({ scope: resolveScope("project", dir), gitignore: false });
-
-    expect(existsSync(join(dir, ".gitignore"))).toBe(false);
   });
 
   it("writes trust section when trust option is provided", async () => {

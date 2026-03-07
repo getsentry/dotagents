@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, readFile, rm, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { existsSync } from "node:fs";
-import { writeAgentsGitignore, removeAgentsGitignore, updateAgentsGitignore } from "./writer.js";
+import { writeAgentsGitignore, checkRootGitignoreEntries, ensureRootGitignoreEntries } from "./writer.js";
 
 describe("writeAgentsGitignore", () => {
   let dir: string;
@@ -60,62 +59,69 @@ describe("writeAgentsGitignore", () => {
   });
 });
 
-describe("removeAgentsGitignore", () => {
+describe("checkRootGitignoreEntries", () => {
   let dir: string;
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "dotagents-test-"));
-    await mkdir(join(dir, ".agents"), { recursive: true });
   });
 
   afterEach(async () => {
     await rm(dir, { recursive: true });
   });
 
-  it("removes existing .gitignore", async () => {
-    const agentsDir = join(dir, ".agents");
-    await writeFile(join(agentsDir, ".gitignore"), "some content");
-    await removeAgentsGitignore(agentsDir);
-    expect(existsSync(join(agentsDir, ".gitignore"))).toBe(false);
+  it("returns all entries when no .gitignore exists", async () => {
+    const missing = await checkRootGitignoreEntries(dir);
+    expect(missing).toContain("agents.lock");
+    expect(missing).toContain(".agents/.gitignore");
   });
 
-  it("is a no-op when .gitignore does not exist", async () => {
-    const agentsDir = join(dir, ".agents");
-    await removeAgentsGitignore(agentsDir);
-    expect(existsSync(join(agentsDir, ".gitignore"))).toBe(false);
+  it("returns missing entries", async () => {
+    await writeFile(join(dir, ".gitignore"), "agents.lock\n", "utf-8");
+    const missing = await checkRootGitignoreEntries(dir);
+    expect(missing).toEqual([".agents/.gitignore"]);
+  });
+
+  it("returns empty when all entries present", async () => {
+    await writeFile(join(dir, ".gitignore"), "agents.lock\n.agents/.gitignore\n", "utf-8");
+    const missing = await checkRootGitignoreEntries(dir);
+    expect(missing).toEqual([]);
   });
 });
 
-describe("updateAgentsGitignore", () => {
+describe("ensureRootGitignoreEntries", () => {
   let dir: string;
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "dotagents-test-"));
-    await mkdir(join(dir, ".agents"), { recursive: true });
   });
 
   afterEach(async () => {
     await rm(dir, { recursive: true });
   });
 
-  it("creates .gitignore when gitignore is true", async () => {
-    const agentsDir = join(dir, ".agents");
-    await updateAgentsGitignore(agentsDir, true, ["my-skill"]);
+  it("creates .gitignore with entries when missing", async () => {
+    const added = await ensureRootGitignoreEntries(dir);
+    expect(added).toContain("agents.lock");
+    expect(added).toContain(".agents/.gitignore");
 
-    const content = await readFile(join(agentsDir, ".gitignore"), "utf-8");
-    expect(content).toContain("/skills/my-skill/");
+    const content = await readFile(join(dir, ".gitignore"), "utf-8");
+    expect(content).toContain("agents.lock");
+    expect(content).toContain(".agents/.gitignore");
   });
 
-  it("removes .gitignore when gitignore is false", async () => {
-    const agentsDir = join(dir, ".agents");
-    await writeFile(join(agentsDir, ".gitignore"), "existing content");
-    await updateAgentsGitignore(agentsDir, false, ["my-skill"]);
-    expect(existsSync(join(agentsDir, ".gitignore"))).toBe(false);
+  it("appends missing entries to existing .gitignore", async () => {
+    await writeFile(join(dir, ".gitignore"), "node_modules/\n", "utf-8");
+    await ensureRootGitignoreEntries(dir);
+
+    const content = await readFile(join(dir, ".gitignore"), "utf-8");
+    expect(content).toContain("node_modules/");
+    expect(content).toContain("agents.lock");
   });
 
-  it("does not create .gitignore when gitignore is false", async () => {
-    const agentsDir = join(dir, ".agents");
-    await updateAgentsGitignore(agentsDir, false, ["my-skill"]);
-    expect(existsSync(join(agentsDir, ".gitignore"))).toBe(false);
+  it("is a no-op when entries already present", async () => {
+    await writeFile(join(dir, ".gitignore"), "agents.lock\n.agents/.gitignore\n", "utf-8");
+    const added = await ensureRootGitignoreEntries(dir);
+    expect(added).toEqual([]);
   });
 });

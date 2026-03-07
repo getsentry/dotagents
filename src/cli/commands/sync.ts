@@ -8,7 +8,7 @@ import { normalizeSource } from "../../skills/resolver.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { addSkillToConfig } from "../../config/writer.js";
-import { updateAgentsGitignore, ensureRootGitignoreEntries } from "../../gitignore/writer.js";
+import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
 import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
@@ -104,15 +104,13 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       if (!dep || isWildcardDep(dep)) {return true;} // wildcard-sourced skills are always managed
       return !isInPlaceSkill(dep.source);
     });
-    await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
-    gitignoreUpdated = config.gitignore;
+    await writeAgentsGitignore(agentsDir, managedNames);
+    gitignoreUpdated = true;
 
-    // Health check: ensure agents.lock and .agents/.gitignore are in root .gitignore
-    if (config.gitignore) {
-      const added = await ensureRootGitignoreEntries(scope.root);
-      if (added.length > 0) {
-        console.log(chalk.yellow(`Added to .gitignore: ${added.join(", ")}`));
-      }
+    // Health check: warn if agents.lock and .agents/.gitignore are not in root .gitignore
+    const missing = await checkRootGitignoreEntries(scope.root);
+    if (missing.length > 0) {
+      console.log(chalk.yellow(`Warning: ${missing.join(", ")} should be in .gitignore. Run 'dotagents init --force' or add manually.`));
     }
   }
 
@@ -242,12 +240,8 @@ export default async function sync(_args: string[], flags?: { user?: boolean }):
     console.log(chalk.green(`Adopted ${result.adopted.length} orphan(s): ${result.adopted.join(", ")}`));
   }
 
-  if (scope.scope === "project") {
-    if (result.gitignoreUpdated) {
-      console.log(chalk.green("Regenerated .agents/.gitignore"));
-    } else {
-      console.log(chalk.green("Removed .agents/.gitignore (skills checked into git)"));
-    }
+  if (scope.scope === "project" && result.gitignoreUpdated) {
+    console.log(chalk.green("Regenerated .agents/.gitignore"));
   }
 
   if (result.symlinksRepaired > 0) {

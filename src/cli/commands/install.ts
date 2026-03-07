@@ -10,7 +10,7 @@ import { type Lockfile, type LockedSkill } from "../../lockfile/schema.js";
 import { resolveSkill, resolveWildcardSkills, sourcesMatch, type ResolvedSkill } from "../../skills/resolver.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import { copyDir } from "../../utils/fs.js";
-import { updateAgentsGitignore, ensureRootGitignoreEntries } from "../../gitignore/writer.js";
+import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
 import { writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
@@ -224,14 +224,12 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       if (!dep || isWildcardDep(dep)) {return true;}
       return !isInPlaceSkill(dep.source);
     });
-    await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
+    await writeAgentsGitignore(agentsDir, managedNames);
 
-    // Health check: ensure agents.lock and .agents/.gitignore are in root .gitignore
-    if (config.gitignore) {
-      const added = await ensureRootGitignoreEntries(scope.root);
-      if (added.length > 0) {
-        console.log(chalk.yellow(`Added to .gitignore: ${added.join(", ")}`));
-      }
+    // Health check: warn if agents.lock and .agents/.gitignore are not in root .gitignore
+    const missing = await checkRootGitignoreEntries(scope.root);
+    if (missing.length > 0) {
+      console.log(chalk.yellow(`Warning: ${missing.join(", ")} should be in .gitignore. Run 'dotagents init --force' or add manually.`));
     }
   }
 
