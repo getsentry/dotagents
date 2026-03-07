@@ -7,7 +7,6 @@ import { runSync } from "./sync.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { loadConfig } from "../../config/loader.js";
-import { hashDirectory } from "../../utils/hash.js";
 import { resolveScope } from "../../scope.js";
 
 const SKILL_MD = (name: string) => `---
@@ -51,11 +50,10 @@ describe("runSync", () => {
     expect(skill).toBeDefined();
     expect(skill!.source).toBe("path:.agents/skills/orphan");
 
-    // agents.lock should have integrity for the skill
+    // agents.lock should track the skill
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile).not.toBeNull();
     expect(lockfile!.skills["orphan"]).toBeDefined();
-    expect(lockfile!.skills["orphan"]!.integrity).toMatch(/^sha256-/);
     expect(lockfile!.skills["orphan"]!.source).toBe("path:.agents/skills/orphan");
   });
 
@@ -105,33 +103,6 @@ describe("runSync", () => {
     expect(missingIssues[0]!.name).toBe("pdf");
   });
 
-  it("detects modified skills", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "org/repo"\n`,
-    );
-    const skillDir = join(projectRoot, ".agents", "skills", "pdf");
-    await mkdir(skillDir, { recursive: true });
-    await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("pdf"));
-
-    await writeLockfile(join(projectRoot, "agents.lock"), {
-      version: 1,
-      skills: {
-        pdf: {
-          source: "org/repo",
-          resolved_url: "https://github.com/org/repo.git",
-          resolved_path: "pdf",
-          commit: "a".repeat(40),
-          integrity: "sha256-stale",
-        },
-      },
-    });
-
-    const result = await runSync({ scope: resolveScope("project", projectRoot) });
-    const modifiedIssues = result.issues.filter((i) => i.type === "modified");
-    expect(modifiedIssues).toHaveLength(1);
-  });
-
   it("reports no issues when everything is in sync", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -141,7 +112,6 @@ describe("runSync", () => {
     await mkdir(skillDir, { recursive: true });
     await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("pdf"));
 
-    const integrity = await hashDirectory(skillDir);
     await writeLockfile(join(projectRoot, "agents.lock"), {
       version: 1,
       skills: {
@@ -149,8 +119,6 @@ describe("runSync", () => {
           source: "org/repo",
           resolved_url: "https://github.com/org/repo.git",
           resolved_path: "pdf",
-          commit: "a".repeat(40),
-          integrity,
         },
       },
     });
@@ -243,5 +211,18 @@ describe("runSync", () => {
     const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.hooksRepaired).toBe(0);
     expect(result.issues.filter((i) => i.type === "hooks")).toHaveLength(0);
+  });
+
+  it("ensures agents.lock is in root .gitignore", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "org/repo"\n`,
+    );
+
+    await runSync({ scope: resolveScope("project", projectRoot) });
+
+    const rootGitignore = await readFile(join(projectRoot, ".gitignore"), "utf-8");
+    expect(rootGitignore).toContain("agents.lock");
+    expect(rootGitignore).toContain(".agents/.gitignore");
   });
 });

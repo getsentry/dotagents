@@ -26,8 +26,6 @@ describe("writeLockfile + loadLockfile", () => {
           resolved_url: "https://github.com/anthropics/skills.git",
           resolved_path: "pdf-processing",
           resolved_ref: "v1.2.0",
-          commit: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
-          integrity: "sha256-test123",
         },
       },
     });
@@ -35,7 +33,7 @@ describe("writeLockfile + loadLockfile", () => {
     const loaded = await loadLockfile(lockPath);
     expect(loaded).not.toBeNull();
     expect(loaded!.version).toBe(1);
-    expect(loaded!.skills["pdf-processing"]?.integrity).toBe("sha256-test123");
+    expect(loaded!.skills["pdf-processing"]?.source).toBe("anthropics/skills");
   });
 
   it("round-trips a lockfile with local skills", async () => {
@@ -45,7 +43,6 @@ describe("writeLockfile + loadLockfile", () => {
       skills: {
         "my-skill": {
           source: "path:../shared/my-skill",
-          integrity: "sha256-localtest",
         },
       },
     });
@@ -61,11 +58,9 @@ describe("writeLockfile + loadLockfile", () => {
       skills: {
         "z-skill": {
           source: "org/z-repo",
-          integrity: "sha256-z",
         },
         "a-skill": {
           source: "org/a-repo",
-          integrity: "sha256-a",
         },
       },
     });
@@ -82,7 +77,6 @@ describe("writeLockfile + loadLockfile", () => {
       skills: {
         "test-skill": {
           source: "org/repo",
-          integrity: "sha256-abc",
         },
       },
     });

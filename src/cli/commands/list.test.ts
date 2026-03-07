@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runList } from "./list.js";
 import { writeLockfile } from "../../lockfile/writer.js";
-import { hashDirectory } from "../../utils/hash.js";
 import { resolveScope } from "../../scope.js";
 
 const SKILL_MD = (name: string) => `---
@@ -61,7 +60,7 @@ describe("runList", () => {
     expect(results[0]!.status).toBe("unlocked");
   });
 
-  it("reports ok when integrity matches", async () => {
+  it("reports ok when skill is installed and locked", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "org/repo"\n`,
@@ -70,7 +69,6 @@ describe("runList", () => {
     await mkdir(skillDir, { recursive: true });
     await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("pdf"));
 
-    const integrity = await hashDirectory(skillDir);
     await writeLockfile(join(projectRoot, "agents.lock"), {
       version: 1,
       skills: {
@@ -78,8 +76,6 @@ describe("runList", () => {
           source: "org/repo",
           resolved_url: "https://github.com/org/repo.git",
           resolved_path: "pdf",
-          commit: "a".repeat(40),
-          integrity,
         },
       },
     });
@@ -87,34 +83,6 @@ describe("runList", () => {
     const results = await runList({ scope: resolveScope("project", projectRoot) });
     expect(results).toHaveLength(1);
     expect(results[0]!.status).toBe("ok");
-    expect(results[0]!.commit).toBe("aaaaaaaa");
-  });
-
-  it("reports modified when integrity differs", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "org/repo"\n`,
-    );
-    const skillDir = join(projectRoot, ".agents", "skills", "pdf");
-    await mkdir(skillDir, { recursive: true });
-    await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("pdf"));
-
-    await writeLockfile(join(projectRoot, "agents.lock"), {
-      version: 1,
-      skills: {
-        pdf: {
-          source: "org/repo",
-          resolved_url: "https://github.com/org/repo.git",
-          resolved_path: "pdf",
-          commit: "a".repeat(40),
-          integrity: "sha256-stale",
-        },
-      },
-    });
-
-    const results = await runList({ scope: resolveScope("project", projectRoot) });
-    expect(results).toHaveLength(1);
-    expect(results[0]!.status).toBe("modified");
   });
 
   it("sorts results by name", async () => {
@@ -141,9 +109,6 @@ describe("runList", () => {
     await writeFile(join(pdfDir, "SKILL.md"), SKILL_MD("pdf"));
     await writeFile(join(reviewDir, "SKILL.md"), SKILL_MD("review"));
 
-    const pdfIntegrity = await hashDirectory(pdfDir);
-    const reviewIntegrity = await hashDirectory(reviewDir);
-
     await writeLockfile(join(projectRoot, "agents.lock"), {
       version: 1,
       skills: {
@@ -151,15 +116,11 @@ describe("runList", () => {
           source: "org/repo",
           resolved_url: "https://github.com/org/repo.git",
           resolved_path: "pdf",
-          commit: "a".repeat(40),
-          integrity: pdfIntegrity,
         },
         review: {
           source: "org/repo",
           resolved_url: "https://github.com/org/repo.git",
           resolved_path: "skills/review",
-          commit: "a".repeat(40),
-          integrity: reviewIntegrity,
         },
       },
     });
@@ -180,7 +141,6 @@ describe("runList", () => {
     const pdfDir = join(projectRoot, ".agents", "skills", "pdf");
     await mkdir(pdfDir, { recursive: true });
     await writeFile(join(pdfDir, "SKILL.md"), SKILL_MD("pdf"));
-    const pdfIntegrity = await hashDirectory(pdfDir);
 
     await writeLockfile(join(projectRoot, "agents.lock"), {
       version: 1,
@@ -189,15 +149,11 @@ describe("runList", () => {
           source: "org/repo",
           resolved_url: "https://github.com/org/repo.git",
           resolved_path: "pdf",
-          commit: "a".repeat(40),
-          integrity: pdfIntegrity,
         },
         review: {
           source: "org/repo",
           resolved_url: "https://github.com/org/repo.git",
           resolved_path: "skills/review",
-          commit: "a".repeat(40),
-          integrity: "sha256-whatever",
         },
       },
     });

@@ -82,7 +82,10 @@ describe("runInstall", () => {
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile).not.toBeNull();
     expect(lockfile!.skills["pdf"]).toBeDefined();
-    expect(lockfile!.skills["pdf"]!.integrity).toMatch(/^sha256-/);
+    expect(lockfile!.skills["pdf"]!.source).toBeDefined();
+    // No commit or integrity fields in v1
+    expect("commit" in lockfile!.skills["pdf"]!).toBe(false);
+    expect("integrity" in lockfile!.skills["pdf"]!).toBe(false);
   });
 
   it("installs multiple skills", async () => {
@@ -242,11 +245,10 @@ describe("runInstall", () => {
     const result = await runInstall({ scope });
     expect(result.installed).toContain("local-skill");
 
-    // Lockfile should have source but no integrity (local skills are not frozen)
+    // Lockfile should have source only
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile).not.toBeNull();
     expect(lockfile!.skills["local-skill"]).toBeDefined();
-    expect("integrity" in lockfile!.skills["local-skill"]!).toBe(false);
     expect(lockfile!.skills["local-skill"]!.source).toBe("path:.agents/skills/local-skill");
   });
 
@@ -522,43 +524,10 @@ describe("runInstall", () => {
     expect(result.installed).toHaveLength(0);
   });
 
-  it("pin=false omits commit and integrity from lockfile", async () => {
+  it("frozen mode fails when skill missing from lockfile", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
-      `version = 1\npin = false\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    const result = await runInstall({ scope });
-    expect(result.installed).toContain("pdf");
-
-    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
-    expect(lockfile).not.toBeNull();
-    const pdfLock = lockfile!.skills["pdf"]!;
-    expect(pdfLock.source).toBeDefined();
-    expect("resolved_url" in pdfLock).toBe(true);
-    expect("commit" in pdfLock).toBe(false);
-    expect("integrity" in pdfLock).toBe(false);
-  });
-
-  it("pin=false frozen mode validates skill list but not integrity", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\npin = false\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
-
-    // Frozen install should succeed (no integrity to check)
-    const result = await runInstall({ scope, frozen: true });
-    expect(result.installed).toContain("pdf");
-  });
-
-  it("pin=false frozen mode fails when skill missing from lockfile", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\npin = false\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
@@ -566,72 +535,23 @@ describe("runInstall", () => {
     // Add review to config but lockfile still has only pdf
     await writeFile(
       join(projectRoot, "agents.toml"),
-      `version = 1\npin = false\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "review"\nsource = "git:${repoDir}"\n`,
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "review"\nsource = "git:${repoDir}"\n`,
     );
 
     await expect(runInstall({ scope, frozen: true })).rejects.toThrow(InstallError);
   });
 
-  it("frozen mode does not check integrity for local skills", async () => {
-    const skillDir = join(projectRoot, ".agents", "skills", "local-skill");
-    await mkdir(skillDir, { recursive: true });
-    await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("local-skill"));
-
+  it("ensures agents.lock is in root .gitignore", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "local-skill"\nsource = "path:.agents/skills/local-skill"\n`,
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
 
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    // Modify the local skill content
-    await writeFile(join(skillDir, "SKILL.md"), `${SKILL_MD("local-skill")}\nUpdated content.`);
-
-    // Frozen install should succeed despite content change
-    const result = await runInstall({ scope, frozen: true });
-    expect(result.installed).toContain("local-skill");
-  });
-
-  it("frozen mode handles old lockfile with integrity for local skill", async () => {
-    const skillDir = join(projectRoot, ".agents", "skills", "local-skill");
-    await mkdir(skillDir, { recursive: true });
-    await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("local-skill"));
-
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "local-skill"\nsource = "path:.agents/skills/local-skill"\n`,
-    );
-
-    // Write a lockfile with a stale integrity hash (simulating pre-fix lockfile)
-    await writeFile(
-      join(projectRoot, "agents.lock"),
-      `version = 1\n\n[skills.local-skill]\nsource = "path:.agents/skills/local-skill"\nintegrity = "sha256-stale-hash"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    // Frozen install should succeed — old integrity for local skills is ignored
-    const result = await runInstall({ scope, frozen: true });
-    expect(result.installed).toContain("local-skill");
-  });
-
-  it("pin=false with wildcard still prunes stale skills", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\npin = false\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    const first = await runInstall({ scope });
-    expect(first.installed).toContain("pdf");
-    expect(first.installed).toContain("review");
-
-    // Remove "review" from upstream
-    await exec("git", ["rm", "-rf", "skills/review"], { cwd: repoDir });
-    await exec("git", ["commit", "-m", "remove review"], { cwd: repoDir });
-    await rm(stateDir, { recursive: true });
-
-    const second = await runInstall({ scope });
-    expect(second.pruned).toContain("review");
+    const rootGitignore = await readFile(join(projectRoot, ".gitignore"), "utf-8");
+    expect(rootGitignore).toContain("agents.lock");
+    expect(rootGitignore).toContain(".agents/.gitignore");
   });
 });

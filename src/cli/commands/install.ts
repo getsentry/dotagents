@@ -6,12 +6,11 @@ import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep, type SkillDependency } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
-import { isGitLocked, type Lockfile, type LockedSkill } from "../../lockfile/schema.js";
+import { type Lockfile, type LockedSkill } from "../../lockfile/schema.js";
 import { resolveSkill, resolveWildcardSkills, sourcesMatch, type ResolvedSkill } from "../../skills/resolver.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
-import { hashDirectory } from "../../utils/hash.js";
 import { copyDir } from "../../utils/fs.js";
-import { updateAgentsGitignore } from "../../gitignore/writer.js";
+import { updateAgentsGitignore, ensureRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
 import { writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
@@ -48,7 +47,6 @@ export interface InstallResult {
 interface ExpandedSkill {
   name: string;
   dep: SkillDependency;
-  lockedCommit?: string;
   resolved?: ResolvedSkill;
 }
 
@@ -57,11 +55,10 @@ interface ExpandedSkill {
  * Explicit entries always win over wildcard-discovered skills.
  */
 async function expandSkills(
-  config: { skills: SkillDependency[]; trust?: Parameters<typeof validateTrustedSource>[1]; pin: boolean },
+  config: { skills: SkillDependency[]; trust?: Parameters<typeof validateTrustedSource>[1] },
   lockfile: Lockfile | null,
   opts: { frozen?: boolean; force?: boolean; projectRoot: string },
 ): Promise<ExpandedSkill[]> {
-  const { pin } = config;
   const regularDeps = config.skills.filter((d) => !isWildcardDep(d));
   const wildcardDeps = config.skills.filter(isWildcardDep);
   const explicitNames = new Set(regularDeps.map((d) => d.name));
@@ -70,12 +67,7 @@ async function expandSkills(
 
   // Add regular deps
   for (const dep of regularDeps) {
-    const locked = lockfile?.skills[dep.name];
-    const lockedCommit =
-      pin && !opts.force && locked && isGitLocked(locked) && locked.commit
-        ? locked.commit
-        : undefined;
-    expanded.push({ name: dep.name, dep, lockedCommit });
+    expanded.push({ name: dep.name, dep });
   }
 
   // Expand wildcards
@@ -92,15 +84,12 @@ async function expandSkills(
         if (explicitNames.has(name)) {continue;}
         if (excludeSet.has(name)) {continue;}
 
-        const lockedCommit =
-          pin && isGitLocked(locked) && locked.commit ? locked.commit : undefined;
-        expanded.push({ name, dep: wDep, lockedCommit });
+        expanded.push({ name, dep: wDep });
       }
     } else {
-      // resolveWildcardSkills already filters by exclude list
       const named = await resolveWildcardSkills(wDep, {
         projectRoot: opts.projectRoot,
-        ttlMs: pin ? undefined : 0,
+        ttlMs: 0,
       });
       for (const { name, resolved } of named) {
         if (explicitNames.has(name)) {continue;} // explicit wins
@@ -115,12 +104,7 @@ async function expandSkills(
         }
         wildcardNames.set(name, wDep.source);
 
-        const locked = lockfile?.skills[name];
-        const lockedCommit =
-          pin && !opts.force && locked && isGitLocked(locked) && locked.commit
-            ? locked.commit
-            : undefined;
-        expanded.push({ name, dep: wDep, lockedCommit, resolved });
+        expanded.push({ name, dep: wDep, resolved });
       }
     }
   }
@@ -134,7 +118,6 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
 
   // 1. Read config
   const config = await loadConfig(configPath);
-  const { pin } = config;
   const installed: string[] = [];
   const skipped: string[] = [];
   const pruned: string[] = [];
@@ -151,7 +134,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     }
 
     const expanded = await expandSkills(
-      { skills: config.skills, trust: config.trust, pin },
+      { skills: config.skills, trust: config.trust },
       lockfile,
       { frozen, force, projectRoot: scope.root },
     );
@@ -169,28 +152,19 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     const newLock: Lockfile = { version: 1, skills: {} };
 
     for (const item of expanded) {
-      const { name, dep, lockedCommit } = item;
+      const { name, dep } = item;
 
       // Validate trust before any network work
       validateTrustedSource(dep.source, config.trust);
 
-      const locked = lockfile?.skills[name];
-
       const resolveOpts = {
         projectRoot: scope.root,
-        lockedCommit,
-        ttlMs: pin ? undefined : 0,
+        ttlMs: 0,
       };
 
       let resolved: ResolvedSkill;
       if (item.resolved) {
-        // Already resolved during wildcard expansion (use locked commit if available and unchanged)
-        if (lockedCommit && item.resolved.type === "git" && item.resolved.commit !== lockedCommit) {
-          // Re-resolve with locked commit for cache hit
-          resolved = await resolveSkill(name, dep, resolveOpts);
-        } else {
-          resolved = item.resolved;
-        }
+        resolved = item.resolved;
       } else {
         try {
           resolved = await resolveSkill(name, dep, resolveOpts);
@@ -207,15 +181,6 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
         await copyDir(resolved.skillDir, destDir);
       }
 
-      // Local skills are expected to change — don't freeze their content
-      const integrity = pin && resolved.type !== "local" ? await hashDirectory(destDir) : undefined;
-
-      if (frozen && pin && resolved.type !== "local" && locked && locked.integrity && locked.integrity !== integrity) {
-        throw new InstallError(
-          `--frozen: integrity mismatch for "${name}". Expected ${locked.integrity}, got ${integrity}.`,
-        );
-      }
-
       const lockEntry: LockedSkill =
         resolved.type === "git"
           ? {
@@ -223,7 +188,6 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
               resolved_url: resolved.resolvedUrl,
               resolved_path: resolved.resolvedPath,
               ...(resolved.resolvedRef ? { resolved_ref: resolved.resolvedRef } : {}),
-              ...(pin ? { commit: resolved.commit, integrity } : {}),
             }
           : {
               source: dep.source,
@@ -261,6 +225,14 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       return !isInPlaceSkill(dep.source);
     });
     await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
+
+    // Health check: ensure agents.lock and .agents/.gitignore are in root .gitignore
+    if (config.gitignore) {
+      const added = await ensureRootGitignoreEntries(scope.root);
+      if (added.length > 0) {
+        console.log(chalk.yellow(`Added to .gitignore: ${added.join(", ")}`));
+      }
+    }
   }
 
   // 4. Symlinks — create per-agent symlinks so each agent discovers skills

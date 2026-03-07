@@ -4,17 +4,14 @@ import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
-import { isGitLocked } from "../../lockfile/schema.js";
 import { sourcesMatch } from "../../skills/resolver.js";
-import { hashDirectory } from "../../utils/hash.js";
 import { existsSync } from "node:fs";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 
 export interface SkillStatus {
   name: string;
   source: string;
-  commit?: string;
-  status: "ok" | "modified" | "missing" | "unlocked";
+  status: "ok" | "missing" | "unlocked";
   /** If this skill comes from a wildcard entry, the source string */
   wildcard?: string;
 }
@@ -74,26 +71,19 @@ export async function runList(opts: ListOptions): Promise<SkillStatus[]> {
       continue;
     }
 
-    // Check integrity (skip when not available, e.g. pin = false)
-    const commit = isGitLocked(locked) && locked.commit ? locked.commit.slice(0, 8) : undefined;
-
-    const modified = locked.integrity && (await hashDirectory(installed)) !== locked.integrity;
-    results.push({ name, source: entry.source, commit, status: modified ? "modified" : "ok", wildcard: entry.wildcard });
+    results.push({ name, source: entry.source, status: "ok", wildcard: entry.wildcard });
   }
 
   return results;
 }
 
 function formatStatus(s: SkillStatus): string {
-  const commit = s.commit ? chalk.dim(` (${s.commit})`) : "";
   const source = chalk.dim(s.source);
   const wildcard = s.wildcard ? chalk.dim(" (* wildcard)") : "";
 
   switch (s.status) {
     case "ok":
-      return `  ${chalk.green("✓")} ${s.name}${commit}  ${source}${wildcard}`;
-    case "modified":
-      return `  ${chalk.yellow("~")} ${s.name}${commit}  ${source}${wildcard}  ${chalk.yellow("modified")}`;
+      return `  ${chalk.green("✓")} ${s.name}  ${source}${wildcard}`;
     case "missing":
       return `  ${chalk.red("✗")} ${s.name}  ${source}${wildcard}  ${chalk.red("not installed")}`;
     case "unlocked":

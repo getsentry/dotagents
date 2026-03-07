@@ -111,8 +111,6 @@ export async function resolveSkill(
   dep: { source: string; ref?: string; path?: string },
   opts?: {
     projectRoot?: string;
-    /** Locked commit from agents.lock — skip resolution, use this exact commit */
-    lockedCommit?: string;
     /** Override cache TTL (pass 0 to force refresh) */
     ttlMs?: number;
   },
@@ -138,7 +136,6 @@ export async function resolveSkill(
     url: cloneUrl,
     cacheKey,
     ref,
-    pinnedCommit: opts?.lockedCommit,
     ttlMs: opts?.ttlMs,
   });
 
@@ -186,7 +183,6 @@ export async function resolveWildcardSkills(
   dep: Pick<WildcardSkillDependency, "source" | "ref" | "exclude">,
   opts?: {
     projectRoot?: string;
-    lockedCommit?: string;
     /** Override cache TTL (pass 0 to force refresh) */
     ttlMs?: number;
   },
@@ -219,7 +215,6 @@ export async function resolveWildcardSkills(
     url: cloneUrl,
     cacheKey,
     ref,
-    pinnedCommit: opts?.lockedCommit,
     ttlMs: opts?.ttlMs,
   });
 

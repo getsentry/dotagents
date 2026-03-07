@@ -36,30 +36,6 @@ describe("agentsConfigSchema", () => {
     }
   });
 
-  it("defaults pin to true when absent", () => {
-    const result = agentsConfigSchema.safeParse({ version: 1 });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.pin).toBe(true);
-    }
-  });
-
-  it("parses pin = true", () => {
-    const result = agentsConfigSchema.safeParse({ version: 1, pin: true });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.pin).toBe(true);
-    }
-  });
-
-  it("parses pin = false", () => {
-    const result = agentsConfigSchema.safeParse({ version: 1, pin: false });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.pin).toBe(false);
-    }
-  });
-
   it("parses a full config with all fields", () => {
     const result = agentsConfigSchema.safeParse({
       version: 1,

@@ -5,7 +5,6 @@ import init from "./commands/init.js";
 import install from "./commands/install.js";
 import add from "./commands/add.js";
 import remove from "./commands/remove.js";
-import update from "./commands/update.js";
 import sync from "./commands/sync.js";
 import list from "./commands/list.js";
 import mcp from "./commands/mcp.js";
@@ -16,7 +15,7 @@ const { version } = require("../../package.json") as { version: string };
 export { version };
 
 const COMMANDS = {
-  init, install, add, remove, update, sync, list, mcp, trust,
+  init, install, add, remove, sync, list, mcp, trust,
 } as const;
 type Command = keyof typeof COMMANDS;
 
@@ -31,7 +30,6 @@ Commands:
   install     Install dependencies from agents.toml
   add         Add a skill dependency
   remove      Remove a skill dependency
-  update      Update skills to latest versions
   sync        Reconcile gitignore, symlinks, verify state
   list        Show installed skills
   mcp         Manage MCP server declarations

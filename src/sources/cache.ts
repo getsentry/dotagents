@@ -17,35 +17,18 @@ export interface CacheResult {
  * Get or populate the global cache for a git source.
  *
  * Cache layout:
- *   ~/.local/dotagents/<owner>/<repo>/          -- unpinned (TTL-refreshed)
- *   ~/.local/dotagents/<owner>/<repo>@<sha>/    -- pinned (immutable)
+ *   ~/.local/dotagents/<owner>/<repo>/          -- TTL-refreshed shallow clone
  */
 export async function ensureCached(opts: {
   url: string;
   /** Cache key, e.g. "anthropics/skills" or "git.corp.example.com/team/skills" */
   cacheKey: string;
   ref?: string;
-  /** If set, we pin to this exact commit and don't refresh */
-  pinnedCommit?: string;
   ttlMs?: number;
 }): Promise<CacheResult> {
   const stateDir = process.env["DOTAGENTS_STATE_DIR"] || DEFAULT_STATE_DIR;
   const ttl = opts.ttlMs ?? DEFAULT_TTL_MS;
 
-  // Pinned to an exact commit
-  if (opts.pinnedCommit) {
-    const repoDir = join(stateDir, `${opts.cacheKey}@${opts.pinnedCommit}`);
-    if (isGitRepo(repoDir)) {
-      return { repoDir, commit: opts.pinnedCommit };
-    }
-    await mkdir(repoDir, { recursive: true });
-    await clone(opts.url, repoDir, opts.ref);
-    await fetchRef(repoDir, opts.pinnedCommit);
-    const commit = await headCommit(repoDir);
-    return { repoDir, commit };
-  }
-
-  // Unpinned — use TTL-based refresh
   const repoDir = join(stateDir, opts.cacheKey);
 
   if (isGitRepo(repoDir)) {

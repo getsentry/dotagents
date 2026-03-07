@@ -13,7 +13,7 @@ Agent skills are currently distributed as loose folders copied from git repos. T
 ### Key Principles
 
 - **`.agents/skills/` is the canonical home** for all skills (managed and custom)
-- **`agents.toml`** declares what you want; **`agents.lock`** pins what you have
+- **`agents.toml`** declares what you want; **`agents.lock`** tracks what's managed
 - **Selective gitignore**: managed skills are gitignored, custom skills are tracked
 - **Subdirectory symlinks**: `.claude/skills/ -> .agents/skills/`, not full directory symlinks
 - **agentskills.io format**: skills are folders with a `SKILL.md` file containing YAML frontmatter
@@ -74,7 +74,6 @@ headers = { Authorization = "Bearer tok" }
 |-------|----------|-------------|
 | `version` | Yes | Schema version. Always `1`. |
 | `gitignore` | No | When `true` (default), generates `.agents/.gitignore` to exclude managed skills. When `false`, skills are checked into git. |
-| `pin` | No | When `true` (default), lockfile pins exact commit SHAs and integrity hashes for reproducible installs. When `false`, lockfile tracks skill names and sources only; `install` always fetches latest. Skills with an explicit `ref` still respect that ref. |
 | `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Defaults to `[]`. When set, dotagents creates skills symlinks and MCP config files for each agent. |
 | `project` | No | Project metadata. |
 | `symlinks` | No | Symlink configuration (legacy — prefer `agents` for new projects). |
@@ -236,7 +235,7 @@ name = "my-custom-skill"
 source = "path:../shared-skills/my-custom-skill"
 ```
 
-Local path skills have an integrity hash in the lockfile but no git commit. Re-copied if source content changes.
+Local path skills are re-copied on each install.
 
 ---
 
@@ -244,7 +243,7 @@ Local path skills have an integrity hash in the lockfile but no git commit. Re-c
 
 The lockfile. Lives at the project root alongside `agents.toml`. TOML format.
 
-**This file is auto-generated.** Do not edit manually. Commit it to version control.
+**This file is auto-generated.** Do not edit manually. Should be gitignored (the health check during init/install/sync ensures `agents.lock` and `.agents/.gitignore` are in the root `.gitignore`).
 
 ### Format
 
@@ -256,19 +255,14 @@ version = 1
 source = "getsentry/skills"
 resolved_url = "https://github.com/getsentry/skills.git"
 resolved_path = "plugins/sentry-skills/skills/find-bugs"
-commit = "c8881564e75eff4faaecc82d1c3f13356851b6e7"
-integrity = "sha256-FWmCLdOj+x+XffiEg7Bx19drylVypeKz8me9OA757js="
 
 [skills.warden-skill]
 source = "getsentry/warden"
 resolved_url = "https://github.com/getsentry/warden.git"
 resolved_path = ".claude/skills/warden-skill"
-commit = "bf8bc008ef99dd381d21c7a4e9dacc2769bd7738"
-integrity = "sha256-g7g4avFU2KDTuY7ondgeyRIxny/nMW4Tkxbo+FC5pOw="
 
 [skills.my-custom-skill]
 source = "path:../shared-skills/my-custom-skill"
-integrity = "sha256-No6eAmT2pIsOz0uQ1yBcWj=="
 ```
 
 ### Fields per skill
@@ -279,18 +273,6 @@ integrity = "sha256-No6eAmT2pIsOz0uQ1yBcWj=="
 | `resolved_url` | Git sources | Resolved git clone URL. |
 | `resolved_path` | Git sources | Subdirectory within the repo where the skill was discovered. |
 | `resolved_ref` | Git sources (optional) | The ref that was resolved (tag/branch name). Omitted when using default branch. |
-| `commit` | Git sources (when `pin = true`) | Full 40-char SHA of the resolved commit. Omitted when `pin = false`. |
-| `integrity` | All (when `pin = true`) | SHA-256 content hash of the installed skill directory. Omitted when `pin = false`. |
-
-### Integrity Hashing
-
-The integrity hash is computed deterministically:
-
-1. Walk all files in the skill directory, sorted alphabetically by relative path
-2. For each file, compute SHA-256 of its contents
-3. Concatenate all `<relative-path>\0<hex-hash>\n` strings
-4. SHA-256 hash the concatenation
-5. Base64-encode and prefix with `sha256-`
 
 ### Frozen Mode
 
@@ -298,10 +280,9 @@ The integrity hash is computed deterministically:
 
 - Fails if `agents.lock` does not exist
 - Fails if any skill in `agents.toml` is missing from the lockfile
-- Fails if integrity hashes don't match after install (when `pin = true`)
 - Does NOT modify the lockfile
 
-When `pin = false`, frozen mode validates the skill list matches the lockfile but fetches latest content (no integrity check).
+Frozen mode validates the skill list matches the lockfile but still fetches latest content (no integrity check).
 
 ---
 
@@ -314,21 +295,21 @@ The CLI binary is `dotagents`. Currently runs via `tsx` during development; will
 Initialize a new project.
 
 ```
-dotagents init [--force] [--agents claude,cursor] [--pin]
+dotagents init [--force] [--agents claude,cursor]
 ```
 
 **Behavior:**
 1. Create `agents.toml` with `version = 1` and a bootstrap `dotagents` skill from `getsentry/dotagents`
 2. Create `.agents/skills/` directory
 3. Generate `.agents/.gitignore`
-4. If symlink targets or agents are configured, set up symlinks
-5. Attempt to install the bootstrap skill (best-effort — warns on failure)
-6. Print next steps
+4. Ensure `agents.lock` and `.agents/.gitignore` are in the root `.gitignore`
+5. If symlink targets or agents are configured, set up symlinks
+6. Attempt to install the bootstrap skill (best-effort — warns on failure)
+7. Print next steps
 
 **Flags:**
 - `--force`: Overwrite existing `agents.toml`
 - `--agents <list>`: Comma-separated list of agent IDs to include in config (e.g. `claude,cursor`)
-- `--pin`: Set `pin` in config (default: `true`). Use `--no-pin` to disable version pinning.
 
 ### `dotagents install`
 
@@ -340,22 +321,20 @@ dotagents install [--frozen] [--force]
 
 **Behavior:**
 1. Read `agents.toml`
-2. If `agents.lock` exists, use locked commits for resolution
-3. If `agents.lock` is missing (or `--force`), resolve all from sources
-4. For each skill:
-   a. Resolve source (check cache, clone/fetch if needed)
+2. For each skill:
+   a. Resolve source (check cache with TTL-based refresh, clone/fetch if needed)
    b. Discover skill within the repo
    c. Copy skill directory into `.agents/skills/<name>/`
-   d. Compute integrity hash
-5. Write `agents.lock` (unless `--frozen`)
-6. Regenerate `.agents/.gitignore`
-7. Create/verify symlinks (legacy `[symlinks]` and agent-specific)
-8. Write MCP config files for each declared agent
-9. Print summary
+3. Write `agents.lock` (unless `--frozen`)
+4. Regenerate `.agents/.gitignore`
+5. Ensure `agents.lock` and `.agents/.gitignore` are in the root `.gitignore`
+6. Create/verify symlinks (legacy `[symlinks]` and agent-specific)
+7. Write MCP config files for each declared agent
+8. Print summary
 
 **Flags:**
-- `--frozen`: Fail if lockfile is stale. Do not modify lockfile. For CI.
-- `--force`: Re-resolve everything, ignore locked commits.
+- `--frozen`: Fail if lockfile is missing or skill list doesn't match. Do not modify lockfile. For CI.
+- `--force`: Re-resolve everything, ignore cache.
 
 ### `dotagents add <specifier>`
 
@@ -411,25 +390,6 @@ dotagents remove <name>
 3. Remove entry from `agents.lock`
 4. Regenerate `.agents/.gitignore`
 
-### `dotagents update [<name>]`
-
-Update skills to latest versions.
-
-```
-dotagents update              # all skills
-dotagents update find-bugs    # one skill
-```
-
-**Behavior:**
-1. If `pin = false`: no-op (skills always fetch latest on `install`)
-2. For each skill:
-   - Re-resolve from source (ignoring locked commit)
-   - If ref is a 40-char SHA: skip (immutable)
-   - Otherwise: fetch latest and compare commits
-3. Copy updated skill directories
-4. Update `agents.lock` with new commits and integrity hashes
-5. Print changelog (old commit -> new commit)
-
 ### `dotagents sync`
 
 Reconcile actual state with declared state.
@@ -441,8 +401,8 @@ dotagents sync
 **Behavior:**
 1. Adopt orphaned skills (installed but not in `agents.toml`) into config
 2. Regenerate `.agents/.gitignore`
-3. Check for missing skills (in `agents.toml` but not installed)
-4. Verify integrity hashes, warn on local modifications
+3. Ensure `agents.lock` and `.agents/.gitignore` are in the root `.gitignore`
+4. Check for missing skills (in `agents.toml` but not installed)
 5. Create/verify/repair symlinks
 6. Verify and repair MCP config files for declared agents
 7. Verify and repair hook config files for declared agents
@@ -492,12 +452,11 @@ dotagents list [--json]
 ```
 
 **Status indicators:**
-- `✓` ok — installed, integrity matches lockfile
-- `~` modified — installed but integrity doesn't match (locally modified)
+- `✓` ok — installed and present in lockfile
 - `✗` missing — in agents.toml but not installed
 - `?` unlocked — installed but not in lockfile
 
-**Output:** name, short commit SHA, source, status
+**Output:** name, source, status
 
 ---
 
@@ -533,13 +492,11 @@ Source string
 Cache location: `~/.local/dotagents/` (overridable via `DOTAGENTS_STATE_DIR`)
 
 Structure:
-- `owner/repo/` -- unpinned (shallow clone, refreshed per TTL, default 24h)
-- `owner/repo@sha/` -- pinned (immutable, never refreshed)
+- `owner/repo/` -- shallow clone, refreshed per TTL (default 24h)
 
 Git operations (all non-interactive: `GIT_TERMINAL_PROMPT=0`, SSH `BatchMode=yes`):
 - Initial: `git clone --depth=1`
-- Update (unpinned): `git fetch --depth=1 origin && git reset --hard FETCH_HEAD`
-- Pinned ref: `git fetch --depth=1 origin <ref> && git checkout FETCH_HEAD`
+- Update: `git fetch --depth=1 origin && git reset --hard FETCH_HEAD`
 
 ### Skill Validation
 
@@ -636,7 +593,7 @@ dotagents/
   AGENTS.md                # Agent instructions
   CLAUDE.md -> AGENTS.md   # Symlink
   agents.toml              # Self-dogfooding
-  agents.lock              # Pinned skill versions
+  agents.lock              # Tracks managed skills (gitignored)
   warden.toml              # Warden config for code analysis
   package.json
   tsconfig.json
@@ -654,7 +611,6 @@ dotagents/
         install.ts
         add.ts
         remove.ts
-        update.ts
         sync.ts
         list.ts
         mcp.ts
