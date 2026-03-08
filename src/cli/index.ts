@@ -9,13 +9,14 @@ import sync from "./commands/sync.js";
 import list from "./commands/list.js";
 import mcp from "./commands/mcp.js";
 import trust from "./commands/trust.js";
+import doctor from "./commands/doctor.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../../package.json") as { version: string };
 export { version };
 
 const COMMANDS = {
-  init, install, add, remove, sync, list, mcp, trust,
+  init, install, add, remove, sync, list, mcp, trust, doctor,
 } as const;
 type Command = keyof typeof COMMANDS;
 
@@ -34,6 +35,7 @@ Commands:
   list        Show installed skills
   mcp         Manage MCP server declarations
   trust       Manage trusted sources
+  doctor      Check project health and fix issues
 
 Options:
   --user      Operate on user-scope (~/.agents/) instead of project
