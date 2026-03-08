@@ -65,8 +65,6 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
       message: "agents.toml contains 'pin' which is no longer used in v1. Remove it.",
       fix: fixFn,
     });
-  } else {
-    checks.push({ name: "legacy pin field", status: "ok", message: "No legacy 'pin' field." });
   }
 
   if ("gitignore" in rawConfig) {
@@ -87,8 +85,6 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
       message: "agents.toml contains 'gitignore' which is no longer used in v1. Gitignore is always managed. Remove it.",
       fix: fixFn,
     });
-  } else {
-    checks.push({ name: "legacy gitignore field", status: "ok", message: "No legacy 'gitignore' field." });
   }
 
   // 3. Check for legacy fields in agents.lock
@@ -111,11 +107,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
         message: "agents.lock contains 'commit' or 'integrity' fields from v0. These are no longer used.",
         fix: fixFn,
       });
-    } else {
-      checks.push({ name: "legacy lockfile fields", status: "ok", message: "No legacy lockfile fields." });
     }
-  } else {
-    checks.push({ name: "legacy lockfile fields", status: "ok", message: "No lockfile to check." });
   }
 
   // 4. Root .gitignore health check (project scope only)
