@@ -30,7 +30,6 @@ This creates an `agents.toml`:
 
 ```toml
 version = 1
-gitignore = true
 agents = ["claude"]
 
 [[skills]]
@@ -38,16 +37,16 @@ name = "find-bugs"
 source = "getsentry/skills"
 ```
 
-And a lockfile (`agents.lock`) tracking which skills are managed.
+And a lockfile (`agents.lock`) tracking which skills are managed. Both `agents.lock` and `.agents/.gitignore` are automatically gitignored.
 
 ## How It Works
 
 1. Declare skill dependencies in `agents.toml` at the project root (or `~/.agents/agents.toml` for user scope)
 2. `install` clones repos (always fetching latest), discovers skills by convention, and copies them into `.agents/skills/`
-3. `agents.lock` tracks which skills are managed (should be gitignored)
-4. Symlinks connect `.agents/skills/` to each agent's expected location (`.claude/skills/`, `.cursor/skills/`, etc.)
-5. MCP and hook configs are generated for each declared agent
-6. By default (`gitignore = true`), managed skills are gitignored. Set `gitignore = false` to check skills into git instead.
+3. `agents.lock` tracks which skills are managed (gitignored automatically)
+4. Managed skills are gitignored. Collaborators run `dotagents install` after cloning. Custom skills in `.agents/skills/` are tracked by git normally.
+5. Symlinks connect `.agents/skills/` to each agent's expected location (`.claude/skills/`, `.cursor/skills/`, etc.)
+6. MCP and hook configs are generated for each declared agent
 
 ## Configuration (agents.toml)
 
@@ -55,7 +54,6 @@ Full example with all sections:
 
 ```toml
 version = 1
-gitignore = true
 agents = ["claude", "cursor"]
 
 [project]
@@ -121,7 +119,6 @@ command = "notify-done"
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version. Always `1`. |
-| `gitignore` | boolean | No | `true` | When `true`, generates `.agents/.gitignore` to exclude managed skills. When `false`, skills are checked into git. |
 | `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Creates symlinks and config files for each. |
 
 ### Skills
@@ -227,7 +224,7 @@ Global flags (before command name):
 dotagents init [--force] [--agents claude,cursor]
 ```
 
-Create `agents.toml` and `.agents/skills/` directory. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance. Interactive mode (when TTY is available) prompts for agent targets, gitignore preference, and trust policy. Ensures `agents.lock` and `.agents/.gitignore` are in the root `.gitignore`.
+Create `agents.toml` and `.agents/skills/` directory. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance. Interactive mode (when TTY is available) prompts for agent targets and trust policy. Sets up gitignore entries automatically.
 
 | Flag | Description |
 |------|-------------|
@@ -240,11 +237,11 @@ Create `agents.toml` and `.agents/skills/` directory. Automatically includes the
 dotagents install [--frozen] [--force]
 ```
 
-Install all dependencies from `agents.toml`. Always fetches latest skills (TTL-based cache refresh). Resolves sources, copies skills, writes lockfile, creates symlinks, generates MCP and hook configs. This is the way to get latest skills -- no separate update step.
+Install all dependencies from `agents.toml`. Always fetches latest skills (TTL-based cache refresh). Resolves sources, copies skills, writes lockfile, creates symlinks, generates MCP and hook configs. There is no separate update step.
 
 | Flag | Description |
 |------|-------------|
-| `--frozen` | Fail if lockfile is missing or skill list doesn't match; do not write lockfile. For CI. |
+| `--frozen` | Fail if lockfile is missing or skill list doesn't match. Do not write lockfile. For CI. |
 | `--force` | Re-resolve and re-install all skills, ignoring cache |
 
 ### add
@@ -280,7 +277,7 @@ Remove a skill from `agents.toml`, delete from disk, and update the lockfile. Fo
 dotagents sync
 ```
 
-Reconcile project state: adopt orphaned skills (installed but not declared), regenerate `.agents/.gitignore`, check for missing skills, repair symlinks, verify/repair MCP and hook configs. Ensures `agents.lock` and `.agents/.gitignore` are in the root `.gitignore`. Reports issues as warnings or errors.
+Reconcile project state without network access: adopt orphaned skills (installed but not declared), regenerate `.agents/.gitignore`, check for missing skills, repair symlinks, verify/repair MCP and hook configs. Reports issues as warnings or errors.
 
 ### mcp add
 
@@ -355,6 +352,18 @@ Show installed skills and status.
 
 Skills from wildcard entries are marked with a wildcard indicator.
 
+### doctor
+
+```
+dotagents doctor [--fix]
+```
+
+Check project health: gitignore setup, installed skills, symlinks, and legacy config fields. Use `--fix` to auto-repair issues.
+
+| Flag | Description |
+|------|-------------|
+| `--fix` | Auto-fix issues where possible |
+
 ## Agent Targets
 
 | ID | Tool | Config Dir | Skills Symlink | MCP Config | Hooks |
@@ -419,7 +428,7 @@ Required frontmatter fields: `name` (string), `description` (string).
 
 ## Lockfile (agents.lock)
 
-Auto-generated TOML file. Do not edit manually. Should be gitignored (the health check during init/install/sync ensures `agents.lock` and `.agents/.gitignore` are in the root `.gitignore`).
+Auto-generated TOML file. Do not edit manually. Gitignored automatically (`dotagents init` adds it to `.gitignore`).
 
 ```toml
 # Auto-generated by dotagents. Do not edit.
@@ -447,13 +456,11 @@ Local `path:` skills have `source` only.
 - Fails if any skill in `agents.toml` is missing from the lockfile
 - Does not modify the lockfile
 
-Frozen mode validates the skill list matches the lockfile but still fetches latest content (no integrity check).
-
 ## Caching
 
 Location: `~/.local/dotagents/` (override: `DOTAGENTS_STATE_DIR`)
 
-- Repos (`owner/repo/`): shallow clone, refreshed after 24-hour TTL
+- Shallow clone per repo, refreshed after 24-hour TTL
 - All git operations are non-interactive (`GIT_TERMINAL_PROMPT=0`)
 - Use `dotagents install --force` to bypass cache
 
@@ -464,11 +471,17 @@ Location: `~/.local/dotagents/` (override: `DOTAGENTS_STATE_DIR`)
 | `DOTAGENTS_STATE_DIR` | Override cache location (default: `~/.local/dotagents`) |
 | `DOTAGENTS_HOME` | Override user-scope location (default: `~/.agents`) |
 
-## Gitignore Strategy
+## Gitignore
 
-- `gitignore = true` (default): Generates `.agents/.gitignore` listing managed skills. Custom skills in `.agents/skills/` are not gitignored. Collaborators run `dotagents install` after cloning.
-- `gitignore = false`: Skills are checked into git. No `.agents/.gitignore` is created. Anyone cloning the repo gets skills without running `install`.
-- `.agents/.gitignore` is regenerated on every `install`, `add`, `remove`, and `sync`.
+dotagents always manages gitignore. Two files are gitignored automatically:
+- `agents.lock` -- tracks managed skills
+- `.agents/.gitignore` -- excludes managed skill directories from git
+
+`dotagents init` adds both to the root `.gitignore`. If they're missing, `install` and `sync` warn. Run `dotagents doctor --fix` to add them.
+
+Custom skills created directly in `.agents/skills/` are not gitignored. They're tracked by git normally.
+
+`.agents/.gitignore` is regenerated on every `install`, `add`, `remove`, and `sync`.
 
 ## Update Strategy
 

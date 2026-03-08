@@ -34,9 +34,8 @@ dotagents --user init
 
 **Interactive mode** (when TTY is available):
 1. Select agents (multiselect)
-2. Manage `.gitignore` for installed skills?
-3. Trust policy: allow all sources or restrict to trusted
-4. If restricted: enter trusted GitHub orgs/repos (comma-separated)
+2. Trust policy: allow all sources or restrict to trusted
+3. If restricted: enter trusted GitHub orgs/repos (comma-separated)
 
 ### `install`
 
@@ -50,17 +49,17 @@ dotagents install --force
 
 | Flag | Description |
 |------|-------------|
-| `--frozen` | Fail if lockfile is missing or out of sync; do not modify lockfile |
-| `--force` | Ignore locked commits and resolve all skills to latest refs |
+| `--frozen` | Fail if lockfile is missing or skill list doesn't match. Do not modify lockfile. For CI. |
+| `--force` | Re-resolve and re-install all skills, ignoring cache |
 
 **Workflow:**
 1. Load config and lockfile
 2. Expand wildcard entries (discover all skills from source)
 3. Validate trust for each skill source
-4. Resolve skills (use locked commits when available)
+4. Resolve skills (always fetches latest)
 5. Copy skills into `.agents/skills/<name>/`
-6. Write/update lockfile with integrity hashes
-7. Generate `.agents/.gitignore` (if `gitignore = true`)
+6. Write/update lockfile
+7. Generate `.agents/.gitignore`
 8. Create/verify agent symlinks
 9. Write MCP and hook configs
 
@@ -114,20 +113,9 @@ Removes from `agents.toml`, deletes `.agents/skills/<name>/`, updates lockfile, 
 
 For skills sourced from a wildcard entry (`name = "*"`), interactively prompts whether to add the skill to the wildcard's `exclude` list. If declined, the removal is cancelled.
 
-### `update [name]`
-
-Update skills to their latest versions.
-
-```bash
-dotagents update           # Update all
-dotagents update find-bugs # Update one
-```
-
-Skips skills pinned to immutable commits (40-char SHAs). For wildcard entries, re-discovers all skills in the source -- adds new ones, removes deleted ones. Prints changelog showing old and new commits.
-
 ### `sync`
 
-Reconcile project state: adopt orphans, verify integrity, repair symlinks and configs.
+Reconcile project state without network access: adopt orphans, repair symlinks and configs.
 
 ```bash
 dotagents sync
@@ -137,12 +125,28 @@ dotagents sync
 1. Adopt orphaned skills (installed but not declared in config)
 2. Regenerate `.agents/.gitignore`
 3. Check for missing skills
-4. Verify integrity hashes
-5. Repair agent symlinks
-6. Verify/repair MCP configs
-7. Verify/repair hook configs
+4. Repair agent symlinks
+5. Verify/repair MCP configs
+6. Verify/repair hook configs
 
-Reports issues as warnings (modified skills, missing MCP/hook configs) or errors (missing skills).
+Reports issues as warnings (missing MCP/hook configs) or errors (missing skills).
+
+### `doctor`
+
+Check project health and fix issues.
+
+```bash
+dotagents doctor
+dotagents doctor --fix
+```
+
+| Flag | Description |
+|------|-------------|
+| `--fix` | Auto-fix issues where possible |
+
+**Checks:** gitignore setup, legacy config fields, installed skills, symlinks, `.agents/.gitignore`.
+
+Useful when migrating to a new version of dotagents.
 
 ### `list`
 
@@ -158,8 +162,7 @@ dotagents list --json
 | `--json` | Output as JSON |
 
 **Status indicators:**
-- `✓` ok -- installed, integrity matches
-- `~` modified -- locally modified since install
+- `✓` installed -- present in lockfile
 - `✗` missing -- in config but not installed
 - `?` unlocked -- installed but not in lockfile
 

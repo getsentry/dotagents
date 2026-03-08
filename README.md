@@ -6,7 +6,7 @@ A package manager for `.agents` directories. Declare agent skill dependencies in
 
 **One source of truth.** Skills live in `.agents/skills/` and symlink into `.claude/skills/`, `.cursor/skills/`, or wherever your tools expect them. No copy-pasting between directories.
 
-**Reproducible.** `agents.lock` tracks which skills are managed. `dotagents install --frozen` in CI guarantees everyone has the same skill set declared.
+**Reproducible.** `agents.lock` tracks managed skills. `dotagents install --frozen` in CI validates the skill list matches what's declared.
 
 **Shareable.** Skills are just directories with a `SKILL.md`. Host them in any git repo, discover them automatically, install with one command.
 
@@ -35,7 +35,6 @@ This creates an `agents.toml`:
 
 ```toml
 version = 1
-gitignore = true
 agents = ["claude"]
 
 [[skills]]
@@ -43,7 +42,7 @@ name = "find-bugs"
 source = "getsentry/skills"
 ```
 
-And a lockfile (`agents.lock`) tracking which skills are managed.
+And a lockfile (`agents.lock`) tracking which skills are managed. Both `agents.lock` and `.agents/.gitignore` are automatically gitignored.
 
 ## Commands
 
@@ -56,6 +55,8 @@ And a lockfile (`agents.lock`) tracking which skills are managed.
 | `list` | Show installed skills and their status |
 | `sync` | Reconcile gitignore, symlinks, and verify state |
 | `mcp` | Manage MCP server declarations |
+| `trust` | Manage trusted sources |
+| `doctor` | Check project health and fix issues |
 
 All commands accept `--user` to operate on user scope (`~/.agents/`) instead of the current project.
 
@@ -65,7 +66,7 @@ All commands accept `--user` to operate on user scope (`~/.agents/`) instead of 
 dotagents init [--agents claude,cursor] [--force]
 ```
 
-Interactive mode prompts for agent targets, gitignore preference, and trust policy. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance.
+Interactive mode prompts for agent targets and trust policy. Sets up gitignore entries automatically. Includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance.
 
 ### install
 
@@ -73,7 +74,7 @@ Interactive mode prompts for agent targets, gitignore preference, and trust poli
 dotagents install [--frozen] [--force]
 ```
 
-Use `--frozen` in CI to fail if the lockfile is missing or the skill list doesn't match. Use `--force` to re-resolve everything from scratch.
+Always fetches latest versions. Use `--frozen` in CI to fail if the lockfile is missing or the skill list doesn't match. Use `--force` to re-resolve everything from scratch.
 
 ### add
 
@@ -118,7 +119,7 @@ For wildcard-sourced skills, adds the skill to the `exclude` list instead of rem
 dotagents list [--json]
 ```
 
-Status indicators: `✓` ok, `✗` missing, `?` unlocked.
+Status indicators: `✓` installed, `✗` missing, `?` unlocked.
 
 ### sync
 
@@ -168,6 +169,14 @@ dotagents trust list [--json]
 ```
 
 The source type is inferred automatically: `owner/repo` for repos, names with `.` for domains, and bare names for GitHub orgs.
+
+### doctor
+
+```bash
+dotagents doctor [--fix]
+```
+
+Check project health: gitignore setup, installed skills, symlinks, and legacy config fields. Use `--fix` to auto-repair issues. Useful when migrating to a new version.
 
 ## Source Formats
 
@@ -297,16 +306,11 @@ User-scope files live in `~/.agents/` (override with `DOTAGENTS_HOME`).
 
 1. Skills are declared in `agents.toml` at the project root
 2. `install` clones repos (always fetching latest), discovers skills by convention, and copies them into `.agents/skills/`
-3. `agents.lock` tracks which skills are managed (should be gitignored)
-4. By default (`gitignore = true`), managed skills are gitignored and collaborators run `dotagents install` after cloning. Set `gitignore = false` to check skills into git instead.
+3. `agents.lock` tracks which skills are managed (gitignored automatically)
+4. Managed skills are gitignored. Collaborators run `dotagents install` after cloning to get skills. Custom skills in `.agents/skills/` are tracked by git normally.
 5. Symlinks connect `.agents/skills/` to wherever your tools look (configured via the `agents` field)
 6. MCP and hook configs are generated for each declared agent
-
-## Update Strategy
-
-`dotagents install` always fetches the latest version of each skill (with a TTL-based cache). There is no separate update step. Collaborators run `dotagents install` after cloning to get the latest skills.
-
-To check skills into git instead, set `gitignore = false` in `agents.toml`. Collaborators get skills immediately without running install.
+7. `dotagents doctor` checks project health and can auto-fix configuration issues
 
 ## Contributing
 

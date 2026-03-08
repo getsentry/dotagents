@@ -28,7 +28,6 @@ The manifest file. Lives at the project root.
 
 ```toml
 version = 1
-gitignore = true
 agents = ["claude", "cursor"]
 
 [project]
@@ -73,7 +72,6 @@ headers = { Authorization = "Bearer tok" }
 | Field | Required | Description |
 |-------|----------|-------------|
 | `version` | Yes | Schema version. Always `1`. |
-| `gitignore` | No | When `true` (default), generates `.agents/.gitignore` to exclude managed skills. When `false`, skills are checked into git. |
 | `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Defaults to `[]`. When set, dotagents creates skills symlinks and MCP config files for each agent. |
 | `project` | No | Project metadata. |
 | `symlinks` | No | Symlink configuration (legacy — prefer `agents` for new projects). |
@@ -243,7 +241,7 @@ Local path skills are re-copied on each install.
 
 The lockfile. Lives at the project root alongside `agents.toml`. TOML format.
 
-**This file is auto-generated.** Do not edit manually. Should be gitignored (the health check during init/install/sync ensures `agents.lock` and `.agents/.gitignore` are in the root `.gitignore`).
+**This file is auto-generated.** Do not edit manually. Gitignored automatically (`dotagents init` adds it to `.gitignore`).
 
 ### Format
 
@@ -282,7 +280,7 @@ source = "path:../shared-skills/my-custom-skill"
 - Fails if any skill in `agents.toml` is missing from the lockfile
 - Does NOT modify the lockfile
 
-Frozen mode validates the skill list matches the lockfile but still fetches latest content (no integrity check).
+Frozen mode validates the skill list matches the lockfile but still fetches latest content.
 
 ---
 
@@ -302,7 +300,7 @@ dotagents init [--force] [--agents claude,cursor]
 1. Create `agents.toml` with `version = 1` and a bootstrap `dotagents` skill from `getsentry/dotagents`
 2. Create `.agents/skills/` directory
 3. Generate `.agents/.gitignore`
-4. Ensure `agents.lock` and `.agents/.gitignore` are in the root `.gitignore`
+4. Add `agents.lock` and `.agents/.gitignore` to the root `.gitignore`
 5. If symlink targets or agents are configured, set up symlinks
 6. Attempt to install the bootstrap skill (best-effort — warns on failure)
 7. Print next steps
@@ -327,7 +325,7 @@ dotagents install [--frozen] [--force]
    c. Copy skill directory into `.agents/skills/<name>/`
 3. Write `agents.lock` (unless `--frozen`)
 4. Regenerate `.agents/.gitignore`
-5. Ensure `agents.lock` and `.agents/.gitignore` are in the root `.gitignore`
+5. Warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
 6. Create/verify symlinks (legacy `[symlinks]` and agent-specific)
 7. Write MCP config files for each declared agent
 8. Print summary
@@ -401,7 +399,7 @@ dotagents sync
 **Behavior:**
 1. Adopt orphaned skills (installed but not in `agents.toml`) into config
 2. Regenerate `.agents/.gitignore`
-3. Ensure `agents.lock` and `.agents/.gitignore` are in the root `.gitignore`
+3. Warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
 4. Check for missing skills (in `agents.toml` but not installed)
 5. Create/verify/repair symlinks
 6. Verify and repair MCP config files for declared agents
@@ -442,6 +440,27 @@ dotagents trust list [--json]
 - `add`: Classify the source, check for duplicates (case-insensitive), and append it to the appropriate field in `[trust]`. Creates the section if absent.
 - `remove`: Remove the source from the appropriate field (case-insensitive). Removes the field line if the array becomes empty.
 - `list`: Show trusted sources with their type. Use `--json` for machine-readable output.
+
+### `dotagents doctor`
+
+Check project health and fix issues.
+
+```
+dotagents doctor [--fix]
+```
+
+**Checks:**
+1. `agents.toml` exists
+2. No legacy fields (`pin`, `gitignore`) in `agents.toml`
+3. No legacy fields (`commit`, `integrity`) in `agents.lock`
+4. Root `.gitignore` has required entries (`agents.lock`, `.agents/.gitignore`)
+5. `.agents/.gitignore` exists
+6. `.agents/skills/` directory exists
+7. All declared skills are installed
+8. Symlinks are intact
+
+**Flags:**
+- `--fix`: Auto-fix issues where possible (add gitignore entries, remove legacy fields, create missing `.agents/.gitignore`)
 
 ### `dotagents list`
 
@@ -492,7 +511,7 @@ Source string
 Cache location: `~/.local/dotagents/` (overridable via `DOTAGENTS_STATE_DIR`)
 
 Structure:
-- `owner/repo/` -- shallow clone, refreshed per TTL (default 24h)
+- `owner/repo/` — shallow clone, refreshed per TTL (default 24h)
 
 Git operations (all non-interactive: `GIT_TERMINAL_PROMPT=0`, SSH `BatchMode=yes`):
 - Initial: `git clone --depth=1`
@@ -510,9 +529,11 @@ The YAML frontmatter is parsed with a minimal key-value parser (no external YAML
 
 ## Gitignore Strategy
 
-Controlled by the `gitignore` option in `agents.toml`.
+dotagents always manages gitignore. Two files are added to the root `.gitignore` during `init`:
+- `agents.lock` — tracks managed skills
+- `.agents/.gitignore` — excludes managed skill directories from git
 
-### `gitignore = true` (default)
+### How It Works
 
 Managed (external) skills are gitignored. Custom (local) skills are tracked. dotagents generates `.agents/.gitignore` listing every managed skill:
 
@@ -525,19 +546,17 @@ Managed (external) skills are gitignored. Custom (local) skills are tracked. dot
 
 Custom skills in `.agents/skills/my-local-skill/` are NOT listed, so git tracks them normally.
 
-### `gitignore = false`
-
-Skills are checked into git so collaborators get them immediately without running `dotagents install`. No `.agents/.gitignore` is created. If one exists from a previous configuration, it is deleted.
-
 ### Regeneration
 
-`.agents/.gitignore` is regenerated (or removed, if `gitignore = false`) on every:
+`.agents/.gitignore` is regenerated on every:
 - `dotagents install`
 - `dotagents add`
 - `dotagents remove`
 - `dotagents sync`
 
-The list of managed skills comes from `agents.toml` — every declared skill is considered managed.
+### Health Checks
+
+`install` and `sync` warn if gitignore entries are missing but do not modify the root `.gitignore`. Run `dotagents doctor --fix` to add them.
 
 ### Edge Cases
 

@@ -25,7 +25,7 @@ export default function RootLayout({
             </a>
             <div className="nav-links">
               <a href="/cli">CLI</a>
-              <a href="/strategies">Strategies</a>
+              <a href="/guide">Guide</a>
               <a href="/security">Security</a>
               <a
                 href="https://github.com/getsentry/dotagents"

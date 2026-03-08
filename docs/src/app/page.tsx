@@ -17,11 +17,11 @@ export default function Home() {
       <div className="hero">
         <p className="tagline">Package Manager for .agents</p>
         <p className="tagline-sub">
-          Declare skill dependencies in <code>agents.toml</code>, lock versions
-          for reproducibility, and let every tool discover skills from one place.
+          Declare skill dependencies in <code>agents.toml</code>, install with
+          one command, and let every tool discover skills from one place.
         </p>
         <div className="cta-buttons">
-          <a href="/cli" className="btn btn-primary">
+          <a href="/guide" className="btn btn-primary">
             Get Started
           </a>
           <a
@@ -47,9 +47,9 @@ export default function Home() {
           <div className="feature">
             <h3>Reproducible</h3>
             <p>
-              <code>agents.lock</code> pins exact commits and integrity hashes.{" "}
-              <code>--frozen</code> in CI guarantees everyone runs the same
-              skills.
+              <code>agents.lock</code> tracks managed skills.{" "}
+              <code>--frozen</code> in CI validates the skill list matches
+              what&apos;s declared.
             </p>
           </div>
           <div className="feature">
@@ -72,9 +72,8 @@ export default function Home() {
       <section className="steps" id="quick-start">
         <h2>Quick Start</h2>
         <p>
-          Run <code>init</code> to set up a new project. The interactive TUI
-          walks you through selecting agents, gitignore preference, and trust
-          policy.
+          Run <code>init</code> to set up a new project. The interactive setup
+          walks you through selecting agents and trust policy.
         </p>
         <Terminal>
           <pre>
@@ -202,110 +201,9 @@ dotagents add path:./my-skills/custom`}</code>
           are found, use <code>--name</code> to pick one or{" "}
           <code>--all</code> to add them all as a wildcard entry.
         </p>
-      </section>
-
-      <section className="section" id="source-formats">
-        <h2>Source Formats</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Format</th>
-              <th>Example</th>
-              <th>Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>
-                <strong>GitHub</strong>
-              </td>
-              <td>
-                <code>getsentry/skills</code>
-              </td>
-              <td>Auto-discovers skills by name</td>
-            </tr>
-            <tr>
-              <td>
-                <strong>Pinned</strong>
-              </td>
-              <td>
-                <code>getsentry/skills@v1.0.0</code>
-              </td>
-              <td>Locked to a specific ref</td>
-            </tr>
-            <tr>
-              <td>
-                <strong>Git URL</strong>
-              </td>
-              <td>
-                <code>git:https://git.corp.dev/repo</code>
-              </td>
-              <td>Non-GitHub git servers</td>
-            </tr>
-            <tr>
-              <td>
-                <strong>Local</strong>
-              </td>
-              <td>
-                <code>path:./my-skills/custom</code>
-              </td>
-              <td>Local directory, relative to project root</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section className="section" id="configuration">
-        <h2>Configuration</h2>
         <p>
-          Full <code>agents.toml</code> example with skills, wildcards, MCP
-          servers, and hooks:
-        </p>
-        <pre>
-          <code>{`version = 1
-gitignore = true
-agents = ["claude", "cursor"]
-
-[trust]
-github_orgs = ["getsentry"]
-
-# Individual skill
-[[skills]]
-name = "find-bugs"
-source = "getsentry/skills"
-
-# Pinned to a ref
-[[skills]]
-name = "warden-skill"
-source = "getsentry/warden@v1.0.0"
-
-# Wildcard: all skills from a repo
-[[skills]]
-name = "*"
-source = "myorg/skills"
-exclude = ["deprecated-skill"]
-
-# MCP server (stdio)
-[[mcp]]
-name = "github"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-github"]
-env = ["GITHUB_TOKEN"]
-
-# MCP server (HTTP with OAuth)
-[[mcp]]
-name = "remote-api"
-url = "https://mcp.example.com/sse"
-
-# Hooks
-[[hooks]]
-event = "PreToolUse"
-matcher = "Bash"
-command = "my-lint-check"`}</code>
-        </pre>
-        <p>
-          See the <a href="/cli">CLI reference</a> for all commands and flags,
-          or the <a href="/security">Security page</a> for trust configuration.
+          Read the <a href="/guide">Guide</a> for the full setup walkthrough,
+          including trust policies, git hooks, and CI configuration.
         </p>
       </section>
     </>

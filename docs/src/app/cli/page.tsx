@@ -81,7 +81,7 @@ export default function CliPage() {
             <>
               Initialize a new project with <code>agents.toml</code> and{" "}
               <code>.agents/skills/</code>. Interactive mode prompts for agent
-              targets, gitignore preference, and trust policy.
+              targets and trust policy. Sets up gitignore entries automatically.
             </>
           }
           options={[
@@ -105,17 +105,17 @@ export default function CliPage() {
         <CliCommand
           name="install"
           synopsis="dotagents install [--frozen] [--force]"
-          description="Install all skill dependencies from agents.toml. Resolves sources, copies skills, writes lockfile, creates symlinks, generates MCP and hook configs."
+          description="Install all skill dependencies from agents.toml. Resolves sources, copies skills, writes lockfile, creates symlinks, generates MCP and hook configs. Always fetches latest versions."
           options={[
             {
               flag: "--frozen",
               description:
-                "Fail if lockfile is missing or stale. Do not write lockfile. For CI.",
+                "Fail if lockfile is missing or skill list doesn't match. Do not write lockfile. For CI.",
             },
             {
               flag: "--force",
               description:
-                "Re-resolve and re-install all skills, ignoring cache and locked commits",
+                "Re-resolve and re-install all skills, ignoring cache",
             },
           ]}
           examples={[
@@ -184,19 +184,9 @@ export default function CliPage() {
         />
 
         <CliCommand
-          name="update"
-          synopsis="dotagents update [name]"
-          description="Update all or one skill to latest version. Skips SHA-pinned refs. For wildcards, re-discovers all skills and adds or removes as needed. Prints a changelog showing old and new commits."
-          examples={[
-            "dotagents update           # all skills",
-            "dotagents update find-bugs # one skill",
-          ]}
-        />
-
-        <CliCommand
           name="sync"
           synopsis="dotagents sync"
-          description="Reconcile project state: adopt orphaned skills, regenerate gitignore, verify integrity hashes, repair symlinks and MCP/hook configs. Reports issues as warnings or errors."
+          description="Reconcile project state without network access. Adopts orphaned skills, regenerates gitignore, repairs symlinks and MCP/hook configs. Reports issues as warnings or errors."
         />
 
         <CliCommand
@@ -316,6 +306,22 @@ dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"
         />
 
         <CliCommand
+          name="doctor"
+          synopsis="dotagents doctor [--fix]"
+          description="Check project health and fix issues. Verifies gitignore setup, installed skills, symlinks, and detects legacy config fields. Useful for migrating to a new version of dotagents."
+          options={[
+            {
+              flag: "--fix",
+              description: "Auto-fix issues where possible",
+            },
+          ]}
+          examples={[
+            "dotagents doctor          # check for issues",
+            "dotagents doctor --fix    # fix what it can",
+          ]}
+        />
+
+        <CliCommand
           name="list"
           synopsis="dotagents list [--json]"
           description={
@@ -327,11 +333,7 @@ dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"
           options={[
             {
               flag: "✓",
-              description: "Installed, integrity matches",
-            },
-            {
-              flag: "~",
-              description: "Modified locally since install",
+              description: "Installed and present in lockfile",
             },
             {
               flag: "✗",
@@ -343,6 +345,57 @@ dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"
             },
           ]}
         />
+      </section>
+
+      <section className="section" id="source-formats">
+        <h2>Source Formats</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Format</th>
+              <th>Example</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <strong>GitHub</strong>
+              </td>
+              <td>
+                <code>getsentry/skills</code>
+              </td>
+              <td>Auto-discovers skills by name</td>
+            </tr>
+            <tr>
+              <td>
+                <strong>Pinned</strong>
+              </td>
+              <td>
+                <code>getsentry/skills@v1.0.0</code>
+              </td>
+              <td>Locked to a specific ref</td>
+            </tr>
+            <tr>
+              <td>
+                <strong>Git URL</strong>
+              </td>
+              <td>
+                <code>git:https://git.corp.dev/repo</code>
+              </td>
+              <td>Non-GitHub git servers</td>
+            </tr>
+            <tr>
+              <td>
+                <strong>Local</strong>
+              </td>
+              <td>
+                <code>path:./my-skills/custom</code>
+              </td>
+              <td>Local directory, relative to project root</td>
+            </tr>
+          </tbody>
+        </table>
       </section>
 
       <section className="section" id="configuration">
@@ -367,18 +420,6 @@ dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"
               <td>--</td>
               <td>
                 Schema version. Always <code>1</code>.
-              </td>
-            </tr>
-            <tr>
-              <td>
-                <code>gitignore</code>
-              </td>
-              <td>boolean</td>
-              <td>
-                <code>true</code>
-              </td>
-              <td>
-                Generate <code>.agents/.gitignore</code> for managed skills.
               </td>
             </tr>
             <tr>

@@ -1,6 +1,6 @@
 ---
 name: dotagents
-description: Manage agent skill dependencies with dotagents. Use when asked to "add a skill", "install skills", "remove a skill", "update skills", "dotagents init", "agents.toml", "agents.lock", "sync skills", "list skills", "set up dotagents", "configure trust", "add MCP server", "add hook", "wildcard skills", "user scope", or any dotagents-related task.
+description: Manage agent skill dependencies with dotagents. Use when asked to "add a skill", "install skills", "remove a skill", "dotagents init", "agents.toml", "agents.lock", "sync skills", "list skills", "set up dotagents", "configure trust", "add MCP server", "add hook", "wildcard skills", "user scope", "dotagents doctor", or any dotagents-related task.
 ---
 
 Manage agent skill dependencies declared in `agents.toml`. dotagents resolves, installs, and symlinks skills so multiple agent tools (Claude Code, Cursor, Codex, VS Code, OpenCode) discover them from `.agents/skills/`.
@@ -52,10 +52,11 @@ dotagents list
 | `dotagents install` | Install all skills from `agents.toml` |
 | `dotagents add <specifier>` | Add a skill dependency |
 | `dotagents remove <name>` | Remove a skill |
-| `dotagents update [name]` | Update skills to latest versions |
-| `dotagents sync` | Reconcile state (adopt orphans, repair symlinks, verify integrity) |
+| `dotagents sync` | Reconcile state (adopt orphans, repair symlinks, fix configs) |
 | `dotagents list` | Show installed skills and their status |
 | `dotagents mcp` | Add, remove, or list MCP server declarations |
+| `dotagents trust` | Add, remove, or list trusted sources |
+| `dotagents doctor` | Check project health and fix issues |
 
 All commands accept `--user` to operate on user scope (`~/.agents/`) instead of the current project.
 
@@ -75,10 +76,10 @@ For full options and flags, read [references/cli-reference.md](references/cli-re
 ## Key Concepts
 
 - **`.agents/skills/`** is the canonical home for all installed skills
-- **`agents.toml`** declares dependencies; **`agents.lock`** pins exact commits and integrity hashes
+- **`agents.toml`** declares dependencies; **`agents.lock`** tracks managed skills
 - **Symlinks**: `.claude/skills/`, `.cursor/skills/` point to `.agents/skills/`
 - **Wildcards**: `name = "*"` installs all skills from a source, with optional `exclude` list
 - **Trust**: Optional `[trust]` section restricts which sources are allowed
 - **Hooks**: `[[hooks]]` declarations write tool-event hooks to each agent's config
-- **Gitignore**: When `gitignore = true`, managed skills are gitignored; custom in-place skills are tracked
+- **Gitignore**: Managed skills are always gitignored; custom in-place skills are tracked
 - **User scope**: `--user` flag manages skills in `~/.agents/` shared across all projects
