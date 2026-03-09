@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lockfileSchema, isGitLocked } from "./schema.js";
+import { lockfileSchema } from "./schema.js";
 
 describe("lockfileSchema", () => {
   it("parses a minimal lockfile", () => {
@@ -56,22 +56,3 @@ describe("lockfileSchema", () => {
   });
 });
 
-describe("isGitLocked", () => {
-  it("returns true for git-locked skills", () => {
-    expect(
-      isGitLocked({
-        source: "anthropics/skills",
-        resolved_url: "https://github.com/anthropics/skills.git",
-        resolved_path: "pdf-processing",
-      }),
-    ).toBe(true);
-  });
-
-  it("returns false for local-locked skills", () => {
-    expect(
-      isGitLocked({
-        source: "path:../shared/my-skill",
-      }),
-    ).toBe(false);
-  });
-});

@@ -89,7 +89,7 @@ async function expandSkills(
     } else {
       const named = await resolveWildcardSkills(wDep, {
         projectRoot: opts.projectRoot,
-        ttlMs: 0,
+        ...(opts.force ? { ttlMs: 0 } : {}),
       });
       for (const { name, resolved } of named) {
         if (explicitNames.has(name)) {continue;} // explicit wins
@@ -159,7 +159,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
 
       const resolveOpts = {
         projectRoot: scope.root,
-        ttlMs: 0,
+        ...(force ? { ttlMs: 0 } : {}),
       };
 
       let resolved: ResolvedSkill;

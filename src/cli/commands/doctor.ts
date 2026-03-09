@@ -221,6 +221,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     for (const check of checks) {
       if (check.status !== "ok" && check.fix) {
         await check.fix();
+        check.status = "ok";
         fixed++;
       }
     }

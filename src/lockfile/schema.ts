@@ -21,10 +21,3 @@ export const lockfileSchema = z.object({
 });
 
 export type Lockfile = z.infer<typeof lockfileSchema>;
-
-/**
- * Type guard: is this a git-based locked skill?
- */
-export function isGitLocked(skill: LockedSkill): skill is z.infer<typeof lockedGitSkillSchema> {
-  return "resolved_url" in skill;
-}
