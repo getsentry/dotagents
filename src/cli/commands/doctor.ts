@@ -12,6 +12,7 @@ import { writeLockfile } from "../../lockfile/writer.js";
 import { verifySymlinks } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import { exec } from "../../utils/exec.js";
 
 export interface DoctorCheck {
   name: string;
@@ -127,7 +128,22 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     }
   }
 
-  // 5. .agents/.gitignore exists (project scope only)
+  // 5. Check if generated files are tracked by git (project scope only)
+  if (scope.scope === "project") {
+    const trackedFiles = await findTrackedGeneratedFiles(scope.root);
+    if (trackedFiles.length > 0) {
+      checks.push({
+        name: "tracked generated files",
+        status: "warn",
+        message: `Generated files checked into git: ${trackedFiles.join(", ")}. Remove them with 'git rm --cached'.`,
+        fix: async () => {
+          await exec("git", ["rm", "--cached", ...trackedFiles], { cwd: scope.root });
+        },
+      });
+    }
+  }
+
+  // 6. .agents/.gitignore exists (project scope only)
   if (scope.scope === "project") {
     if (existsSync(`${scope.agentsDir}/.gitignore`)) {
       checks.push({ name: ".agents/.gitignore", status: "ok", message: ".agents/.gitignore exists." });
@@ -144,7 +160,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     }
   }
 
-  // 6. Skills directory exists
+  // 7. Skills directory exists
   if (existsSync(scope.skillsDir)) {
     checks.push({ name: "skills directory", status: "ok", message: "Skills directory exists." });
   } else {
@@ -155,7 +171,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     });
   }
 
-  // 7. Declared skills are installed
+  // 8. Declared skills are installed
   const declaredNames = getDeclaredSkillNames(config, lockfile);
   const missingSkills = declaredNames.filter((name) => !existsSync(`${scope.skillsDir}/${name}`));
   if (missingSkills.length > 0) {
@@ -170,7 +186,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     checks.push({ name: "installed skills", status: "ok", message: "No skills declared." });
   }
 
-  // 8. Symlinks (project scope only)
+  // 9. Symlinks (project scope only)
   if (scope.scope === "project" && existsSync(scope.agentsDir)) {
     const targets: string[] = [];
     const seenDirs = new Set<string>();
@@ -211,6 +227,23 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
   }
 
   return { checks, fixed };
+}
+
+const GENERATED_FILES = ["agents.lock", ".agents/.gitignore"];
+
+async function findTrackedGeneratedFiles(root: string): Promise<string[]> {
+  const tracked: string[] = [];
+  for (const file of GENERATED_FILES) {
+    try {
+      const { stdout } = await exec("git", ["ls-files", file], { cwd: root });
+      if (stdout.trim()) {
+        tracked.push(file);
+      }
+    } catch {
+      // Not a git repo or git not available — skip
+    }
+  }
+  return tracked;
 }
 
 function getDeclaredSkillNames(

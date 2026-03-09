@@ -102,6 +102,42 @@ describe("runDoctor", () => {
     expect(check?.message).toContain("pdf");
   });
 
+  it("detects generated files tracked by git", async () => {
+    // Initialize a git repo so git ls-files works
+    const { execSync } = await import("node:child_process");
+    execSync("git init", { cwd: projectRoot, stdio: "ignore" });
+    execSync("git config user.email test@test.com", { cwd: projectRoot, stdio: "ignore" });
+    execSync("git config user.name test", { cwd: projectRoot, stdio: "ignore" });
+
+    await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
+    await writeFile(join(projectRoot, "agents.lock"), "version = 1\n");
+    await writeFile(join(projectRoot, ".gitignore"), "");
+    await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");
+
+    // Stage and commit the generated files
+    execSync("git add agents.lock .agents/.gitignore", { cwd: projectRoot, stdio: "ignore" });
+    execSync("git commit -m 'init'", { cwd: projectRoot, stdio: "ignore" });
+
+    const result = await runDoctor({ scope: resolveScope("project", projectRoot) });
+    const check = result.checks.find((c) => c.name === "tracked generated files");
+    expect(check?.status).toBe("warn");
+    expect(check?.message).toContain("agents.lock");
+    expect(check?.message).toContain(".agents/.gitignore");
+  });
+
+  it("does not warn when generated files are not tracked", async () => {
+    const { execSync } = await import("node:child_process");
+    execSync("git init", { cwd: projectRoot, stdio: "ignore" });
+
+    await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
+    await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+    await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");
+
+    const result = await runDoctor({ scope: resolveScope("project", projectRoot) });
+    const check = result.checks.find((c) => c.name === "tracked generated files");
+    expect(check).toBeUndefined();
+  });
+
   describe("--fix", () => {
     it("fixes missing root .gitignore entries", async () => {
       await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
