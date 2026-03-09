@@ -5,8 +5,6 @@ import { sourcesMatch } from "../skills/resolver.js";
 
 export interface DefaultConfigOptions {
   agents?: string[];
-  gitignore?: boolean;
-  pin?: boolean;
   trust?: TrustConfig;
   skills?: Array<{ name: string; source: string; ref?: string; path?: string }>;
 }
@@ -369,18 +367,7 @@ function removeTrustHeader(lines: string[], headerIdx: number): void {
 export function generateDefaultConfig(opts?: DefaultConfigOptions | string[]): string {
   // Backwards compat: bare string[] treated as agents list
   const options: DefaultConfigOptions = Array.isArray(opts) ? { agents: opts } : (opts ?? {});
-  const gitignore = options.gitignore ?? true;
-
   let config = `version = 1\n`;
-  if (gitignore) {
-    config += `# Managed skills are gitignored; collaborators must run 'dotagents install'.\ngitignore = true\n`;
-  } else {
-    config += `# Check skills into git so collaborators get them without running 'dotagents install'.\n# Set to true (or remove) to gitignore managed skills instead.\ngitignore = false\n`;
-  }
-
-  if (options.pin === false) {
-    config += `# Skills always fetch the latest version; lockfile tracks names only.\npin = false\n`;
-  }
 
   if (options.agents && options.agents.length > 0) {
     const list = options.agents.map((a) => `"${a}"`).join(", ");

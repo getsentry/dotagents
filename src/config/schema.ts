@@ -135,7 +135,6 @@ export type TrustConfig = z.infer<typeof trustConfigSchema>;
 export const agentsConfigSchema = z.object({
   version: z.literal(1),
   gitignore: z.boolean().default(true),
-  pin: z.boolean().default(true),
   project: projectConfigSchema.optional(),
   symlinks: symlinksConfigSchema.optional(),
   agents: z.array(z.string()).default([]),

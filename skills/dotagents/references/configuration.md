@@ -49,7 +49,7 @@ source = "getsentry/skills"
 exclude = ["deprecated-skill"]
 ```
 
-During `install` and `update`, dotagents discovers all skills in the source and installs each one (except those in `exclude`). Each skill gets its own lockfile entry. Use `dotagents add <source> --all` to create a wildcard entry from the CLI.
+During `install`, dotagents discovers all skills in the source and installs each one (except those in `exclude`). Each skill gets its own lockfile entry. Use `dotagents add <source> --all` to create a wildcard entry from the CLI.
 
 ## Trust
 
@@ -162,15 +162,18 @@ When no `agents.toml` exists and you're not inside a git repo, dotagents falls b
 
 ## Gitignore
 
-When `gitignore = true` (schema default), dotagents generates `.agents/.gitignore` listing managed (remote) skills. In-place skills (`path:.agents/skills/...`) are never gitignored since they must be tracked in git.
+dotagents always manages gitignore. It generates `.agents/.gitignore` listing managed (remote) skills. In-place skills (`path:.agents/skills/...`) are never gitignored since they must be tracked in git.
 
-When `gitignore = false`, no gitignore is created -- skills are checked into the repository. Anyone cloning gets skills without running `install`.
+Two files are added to the root `.gitignore` during `init`:
+- `agents.lock` — tracks managed skills
+- `.agents/.gitignore` — excludes managed skill directories
+
+If these entries are missing, `install` and `sync` warn. Run `dotagents doctor --fix` to add them.
 
 ## Caching
 
 - Cache location: `~/.local/dotagents/` (override with `DOTAGENTS_STATE_DIR`)
-- Unpinned repos: cached with 24-hour TTL
-- Pinned refs (40-char SHA): cached immutably, never re-fetched
+- Shallow clone per repo, refreshed after 24-hour TTL
 - Use `dotagents install --force` to bypass cache
 
 ## Troubleshooting
@@ -179,10 +182,10 @@ When `gitignore = false`, no gitignore is created -- skills are checked into the
 - Check `agents.toml` syntax with `dotagents list`
 - Verify source is accessible (`git clone` the URL manually)
 - Check trust config if using restricted mode
+- Run `dotagents doctor` to check project health
 
 **Symlinks broken:**
 - Run `dotagents sync` to repair
 
-**Integrity mismatch:**
-- Skill was modified locally -- run `dotagents install --force` to restore
-- Or run `dotagents sync` to detect and report issues
+**Configuration issues:**
+- Run `dotagents doctor --fix` to auto-repair gitignore and legacy config fields

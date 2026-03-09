@@ -8,9 +8,8 @@ import { normalizeSource } from "../../skills/resolver.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { addSkillToConfig } from "../../config/writer.js";
-import { updateAgentsGitignore } from "../../gitignore/writer.js";
+import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
-import { hashDirectory } from "../../utils/hash.js";
 import { getAgent } from "../../agents/registry.js";
 import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
 import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
@@ -23,7 +22,7 @@ function isInPlaceSkill(source: string): boolean {
 }
 
 export interface SyncIssue {
-  type: "modified" | "symlink" | "missing" | "mcp" | "hooks";
+  type: "symlink" | "missing" | "mcp" | "hooks";
   name: string;
   message: string;
 }
@@ -67,7 +66,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 
   // 1. Adopt orphaned skills (installed but not in agents.toml)
   if (existsSync(skillsDir)) {
-    const adoptedLockEntries: Record<string, { source: string; integrity?: string }> = {};
+    const adoptedLockEntries: Record<string, { source: string }> = {};
     const entries = await readdir(skillsDir, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory()) {continue;}
@@ -78,11 +77,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       await addSkillToConfig(configPath, entry.name, { source });
       declaredNames.add(entry.name);
 
-      const integrity = config.pin ? await hashDirectory(join(skillsDir, entry.name)) : undefined;
-      adoptedLockEntries[entry.name] = {
-        source,
-        ...(integrity === undefined ? {} : { integrity }),
-      };
+      adoptedLockEntries[entry.name] = { source };
       adopted.push(entry.name);
     }
 
@@ -109,8 +104,14 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       if (!dep || isWildcardDep(dep)) {return true;} // wildcard-sourced skills are always managed
       return !isInPlaceSkill(dep.source);
     });
-    await updateAgentsGitignore(agentsDir, config.gitignore, managedNames);
-    gitignoreUpdated = config.gitignore;
+    await writeAgentsGitignore(agentsDir, managedNames);
+    gitignoreUpdated = true;
+
+    // Health check: warn if agents.lock and .agents/.gitignore are not in root .gitignore
+    const missing = await checkRootGitignoreEntries(scope.root);
+    if (missing.length > 0) {
+      console.log(chalk.yellow(`Warning: ${missing.join(", ")} should be in .gitignore. Run 'dotagents doctor --fix' to fix.`));
+    }
   }
 
   // 3. Check for missing skills (in agents.toml but not installed)
@@ -124,25 +125,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
-  // 4. Verify integrity hashes against lockfile (skip entries without integrity, e.g. pin = false)
-  if (lockfile) {
-    for (const [name, locked] of Object.entries(lockfile.skills)) {
-      const installed = join(skillsDir, name);
-      if (!existsSync(installed)) {continue;}
-      if (!locked.integrity) {continue;}
-
-      const integrity = await hashDirectory(installed);
-      if (integrity !== locked.integrity) {
-        issues.push({
-          type: "modified",
-          name,
-          message: `"${name}" has been locally modified (integrity mismatch)`,
-        });
-      }
-    }
-  }
-
-  // 5. Verify and repair symlinks
+  // 4. Verify and repair symlinks
   let symlinksRepaired = 0;
 
   if (scope.scope === "user") {
@@ -191,7 +174,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
-  // 6. Verify and repair MCP configs
+  // 5. Verify and repair MCP configs
   let mcpRepaired = 0;
   const mcpServers = toMcpDeclarations(config.mcp);
   const mcpResolver = scope.scope === "user" ? userMcpResolver() : projectMcpResolver(scope.root);
@@ -209,7 +192,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
-  // 7. Verify and repair hook configs (skip for user scope)
+  // 6. Verify and repair hook configs (skip for user scope)
   let hooksRepaired = 0;
   if (scope.scope === "project") {
     const hookDecls = toHookDeclarations(config.hooks);
@@ -257,12 +240,8 @@ export default async function sync(_args: string[], flags?: { user?: boolean }):
     console.log(chalk.green(`Adopted ${result.adopted.length} orphan(s): ${result.adopted.join(", ")}`));
   }
 
-  if (scope.scope === "project") {
-    if (result.gitignoreUpdated) {
-      console.log(chalk.green("Regenerated .agents/.gitignore"));
-    } else {
-      console.log(chalk.green("Removed .agents/.gitignore (skills checked into git)"));
-    }
+  if (scope.scope === "project" && result.gitignoreUpdated) {
+    console.log(chalk.green("Regenerated .agents/.gitignore"));
   }
 
   if (result.symlinksRepaired > 0) {
@@ -284,7 +263,6 @@ export default async function sync(_args: string[], flags?: { user?: boolean }):
 
   for (const issue of result.issues) {
     switch (issue.type) {
-      case "modified":
       case "mcp":
       case "hooks":
         console.log(chalk.yellow(`  warn: ${issue.message}`));

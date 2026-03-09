@@ -35,41 +35,14 @@ describe("writer", () => {
       expect(config.skills).toEqual([]);
     });
 
-    it("sets gitignore to true by default", async () => {
-      const config = await loadConfig(configPath);
-      expect(config.gitignore).toBe(true);
-    });
-
-    it("contains gitignore = true in output", () => {
+    it("does not contain gitignore field", () => {
       const content = generateDefaultConfig();
-      expect(content).toContain("gitignore = true");
+      expect(content).not.toContain("gitignore");
     });
 
-    it("contains gitignore = false when explicitly set", () => {
-      const content = generateDefaultConfig({ gitignore: false });
-      expect(content).toContain("gitignore = false");
-    });
-
-    it("sets gitignore = true when requested", () => {
-      const content = generateDefaultConfig({ gitignore: true });
-      expect(content).toContain("gitignore = true");
-    });
-
-    it("does not contain pin when using defaults", () => {
+    it("does not contain pin", () => {
       const content = generateDefaultConfig();
       expect(content).not.toContain("pin");
-    });
-
-    it("contains pin = false when requested", () => {
-      const content = generateDefaultConfig({ pin: false });
-      expect(content).toContain("pin = false");
-    });
-
-    it("round-trips pin = false through loadConfig", async () => {
-      const content = generateDefaultConfig({ pin: false });
-      await writeFile(configPath, content);
-      const config = await loadConfig(configPath);
-      expect(config.pin).toBe(false);
     });
 
     it("includes agents when provided via options object", () => {
@@ -116,13 +89,11 @@ describe("writer", () => {
     it("generates valid TOML with all options combined", async () => {
       const content = generateDefaultConfig({
         agents: ["claude"],
-        gitignore: true,
         trust: { allow_all: false, github_orgs: ["my-org"], github_repos: [], git_domains: [] },
       });
       await writeFile(configPath, content);
       const config = await loadConfig(configPath);
       expect(config.version).toBe(1);
-      expect(config.gitignore).toBe(true);
       expect(config.agents).toEqual(["claude"]);
       expect(config.trust?.github_orgs).toEqual(["my-org"]);
     });

@@ -4,7 +4,6 @@
 
 ```toml
 version = 1                     # Required, must be 1
-gitignore = true                # Optional, default true
 agents = ["claude", "cursor"]   # Optional, agent targets
 
 [project]                       # Optional
@@ -19,7 +18,6 @@ agents = ["claude", "cursor"]   # Optional, agent targets
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version, must be `1` |
-| `gitignore` | boolean | No | `true` | Generate `.agents/.gitignore` for managed skills. |
 | `agents` | string[] | No | `[]` | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `opencode` |
 
 ## Project Section
@@ -142,7 +140,7 @@ command = "my-lint-check"           # Required
 
 ## Lockfile (agents.lock)
 
-Auto-generated. Do not edit manually.
+Auto-generated. Do not edit manually. Gitignored automatically.
 
 ```toml
 version = 1
@@ -152,8 +150,6 @@ source = "getsentry/skills"
 resolved_url = "https://github.com/getsentry/skills.git"
 resolved_path = "plugins/sentry-skills/skills/find-bugs"
 resolved_ref = "v1.0.0"
-commit = "c8881564e75eff4faaecc82d1c3f13356851b6e7"
-integrity = "sha256-FWmCLdOj+x+XffiEg7Bx19drylVypeKz8me9OA757js="
 ```
 
 | Field | Type | Description |
@@ -162,10 +158,8 @@ integrity = "sha256-FWmCLdOj+x+XffiEg7Bx19drylVypeKz8me9OA757js="
 | `resolved_url` | string | Resolved git URL |
 | `resolved_path` | string | Subdirectory within repo |
 | `resolved_ref` | string | Ref that was resolved (omitted for default branch) |
-| `commit` | string | Full 40-char SHA of resolved commit |
-| `integrity` | string | `sha256-` prefixed base64 content hash |
 
-Local path skills have `source` and `integrity` only (no commit).
+Local path skills have `source` only.
 
 ## Environment Variables
 
