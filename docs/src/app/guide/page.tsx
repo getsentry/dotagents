@@ -184,6 +184,32 @@ dotagents doctor --fix  # auto-fix what it can`}</code>
         </p>
       </section>
 
+      <section className="section" id="personal-skills">
+        <h2>Personal Skills</h2>
+        <p>
+          Project skills live in <code>agents.toml</code> and are shared with
+          your team. Personal skills apply to all your projects &mdash; useful
+          for tools and workflows only you need.
+        </p>
+        <p>
+          Use <code>--user</code> to manage personal skills:
+        </p>
+        <pre>
+          <code>{`dotagents --user init
+dotagents --user add getsentry/skills --all
+dotagents --user install`}</code>
+        </pre>
+        <p>
+          Personal skills live in <code>~/.agents/</code> and symlink to{" "}
+          <code>~/.claude/skills/</code> and <code>~/.cursor/skills/</code>.
+          Override the location with <code>DOTAGENTS_HOME</code>.
+        </p>
+        <p>
+          When you run dotagents outside a git repo without an{" "}
+          <code>agents.toml</code>, it falls back to user scope automatically.
+        </p>
+      </section>
+
       <section className="section" id="configuration">
         <h2>Full Configuration Example</h2>
         <p>

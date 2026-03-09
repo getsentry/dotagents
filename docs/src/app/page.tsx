@@ -41,7 +41,9 @@ export default function Home() {
             <p>
               Skills live in <code>.agents/skills/</code> and symlink into{" "}
               <code>.claude/</code>, <code>.cursor/</code>, or wherever your
-              tools expect them.
+              tools expect them. Manage{" "}
+              <a href="/guide#personal-skills">personal skills</a> across all
+              your projects with <code>--user</code>.
             </p>
           </div>
           <div className="feature">
