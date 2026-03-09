@@ -151,15 +151,16 @@ describe("runDoctor", () => {
       expect(gitignore).toContain(".agents/.gitignore");
     });
 
-    it("fixes legacy pin field", async () => {
-      await writeFile(join(projectRoot, "agents.toml"), "version = 1\npin = true\n");
+    it("fixes legacy pin field without removing unrelated lines", async () => {
+      await writeFile(join(projectRoot, "agents.toml"), "version = 1\npin = true\n# pinning notes\n");
       await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
       await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");
 
       await runDoctor({ scope: resolveScope("project", projectRoot), fix: true });
 
       const content = await readFile(join(projectRoot, "agents.toml"), "utf-8");
-      expect(content).not.toContain("pin");
+      expect(content).not.toMatch(/^\s*pin\s*=/m);
+      expect(content).toContain("# pinning notes");
     });
 
     it("fixes legacy gitignore field", async () => {

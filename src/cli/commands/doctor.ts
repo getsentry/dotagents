@@ -56,7 +56,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
       const content = await readFile(scope.configPath, "utf-8");
       const cleaned = content
         .split("\n")
-        .filter((line) => !line.trim().startsWith("pin"))
+        .filter((line) => !/^\s*pin\s*=/.test(line))
         .join("\n");
       await writeFile(scope.configPath, cleaned, "utf-8");
     };
@@ -75,7 +75,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
         .split("\n")
         .filter((line) => {
           const trimmed = line.trim();
-          return !trimmed.startsWith("gitignore") && !trimmed.startsWith("# Managed skills are gitignored") && !trimmed.startsWith("# Check skills into git");
+          return !/^\s*gitignore\s*=/.test(line) && !trimmed.startsWith("# Managed skills are gitignored") && !trimmed.startsWith("# Check skills into git");
         })
         .join("\n");
       await writeFile(scope.configPath, cleaned, "utf-8");
@@ -306,8 +306,13 @@ export default async function doctor(args: string[], flags?: { user?: boolean })
     console.log(`  ${icon} ${msg}`);
   }
 
+  const unfixable = result.checks.filter((c) => c.status !== "ok" && !c.fix);
+
   if (result.fixed > 0) {
     console.log(chalk.green(`\nFixed ${result.fixed} issue(s).`));
+    if (unfixable.length > 0) {
+      console.log(chalk.yellow(`${unfixable.length} issue(s) require manual action.`));
+    }
   } else if (hasIssues && !values["fix"]) {
     const fixable = result.checks.filter((c) => c.status !== "ok" && c.fix).length;
     if (fixable > 0) {
@@ -317,7 +322,7 @@ export default async function doctor(args: string[], flags?: { user?: boolean })
     console.log(chalk.green("\nAll checks passed."));
   }
 
-  if (hasIssues && !values["fix"]) {
+  if (hasIssues && (!values["fix"] || unfixable.length > 0)) {
     process.exitCode = 1;
   }
 }
