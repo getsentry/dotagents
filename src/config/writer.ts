@@ -1,6 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { stringify } from "smol-toml";
-import type { WildcardSkillDependency, TrustConfig, McpConfig } from "./schema.js";
+import type {
+  WildcardSkillDependency,
+  TrustConfig,
+  McpConfig,
+} from "./schema.js";
 import { sourcesMatch } from "../skills/resolver.js";
 
 export interface DefaultConfigOptions {
@@ -94,7 +98,12 @@ export async function addExcludeToWildcard(
       const isWildcard = nameLine?.trim().match(/^name\s*=\s*"\*"/);
       const sourceMatch = sourceLine?.trim().match(/^source\s*=\s*"([^"]+)"/);
 
-      if (isWildcard && sourceMatch && sourcesMatch(sourceMatch[1]!, source) && !found) {
+      if (
+        isWildcard &&
+        sourceMatch &&
+        sourcesMatch(sourceMatch[1]!, source) &&
+        !found
+      ) {
         found = true;
         // Find or create exclude line
         const excludeIdx = blockLines.findIndex((l) => l.trim().startsWith("exclude"));

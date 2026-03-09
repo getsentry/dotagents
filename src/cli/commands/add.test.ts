@@ -35,7 +35,9 @@ describe("runAdd", () => {
     // Create a local git repo with skills
     await mkdir(repoDir, { recursive: true });
     await exec("git", ["init"], { cwd: repoDir });
-    await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
+    await exec("git", ["config", "user.email", "test@test.com"], {
+      cwd: repoDir,
+    });
     await exec("git", ["config", "user.name", "Test"], { cwd: repoDir });
 
     await mkdir(join(repoDir, "pdf"), { recursive: true });
@@ -43,10 +45,16 @@ describe("runAdd", () => {
     await writeFile(join(repoDir, "pdf", "prompt.md"), "Process PDFs");
 
     await mkdir(join(repoDir, "skills", "review"), { recursive: true });
-    await writeFile(join(repoDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(repoDir, "skills", "review", "SKILL.md"),
+      SKILL_MD("review"),
+    );
 
     await mkdir(join(repoDir, "skills", "commit"), { recursive: true });
-    await writeFile(join(repoDir, "skills", "commit", "SKILL.md"), SKILL_MD("commit"));
+    await writeFile(
+      join(repoDir, "skills", "commit", "SKILL.md"),
+      SKILL_MD("commit"),
+    );
 
     await exec("git", ["add", "."], { cwd: repoDir });
     await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
@@ -174,15 +182,38 @@ describe("runAdd", () => {
     ).rejects.toThrow(AddError);
   });
 
+  it("treats shorthand and expanded GitLab sources as the same wildcard", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\ndefaultRepositorySource = "gitlab"\n\n[[skills]]\nname = "*"\nsource = "getsentry/skills"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(
+      runAdd({
+        scope,
+        specifier: "getsentry/skills",
+        all: true,
+      }),
+    ).rejects.toThrow(
+      'A wildcard entry for "getsentry/skills" already exists in agents.toml.',
+    );
+  });
+
   it("auto-selects when repo has a single skill", async () => {
     // Create a repo with only one skill
     const singleRepo = join(tmpDir, "single-repo");
     await mkdir(singleRepo, { recursive: true });
     await exec("git", ["init"], { cwd: singleRepo });
-    await exec("git", ["config", "user.email", "test@test.com"], { cwd: singleRepo });
+    await exec("git", ["config", "user.email", "test@test.com"], {
+      cwd: singleRepo,
+    });
     await exec("git", ["config", "user.name", "Test"], { cwd: singleRepo });
     await mkdir(join(singleRepo, "only-skill"), { recursive: true });
-    await writeFile(join(singleRepo, "only-skill", "SKILL.md"), SKILL_MD("only-skill"));
+    await writeFile(
+      join(singleRepo, "only-skill", "SKILL.md"),
+      SKILL_MD("only-skill"),
+    );
     await exec("git", ["add", "."], { cwd: singleRepo });
     await exec("git", ["commit", "-m", "initial"], { cwd: singleRepo });
 
@@ -231,10 +262,16 @@ describe("runAdd (local sources)", () => {
     await writeFile(join(localSkillsDir, "pdf", "SKILL.md"), SKILL_MD("pdf"));
 
     await mkdir(join(localSkillsDir, "skills", "review"), { recursive: true });
-    await writeFile(join(localSkillsDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(localSkillsDir, "skills", "review", "SKILL.md"),
+      SKILL_MD("review"),
+    );
 
     await mkdir(join(localSkillsDir, "skills", "commit"), { recursive: true });
-    await writeFile(join(localSkillsDir, "skills", "commit", "SKILL.md"), SKILL_MD("commit"));
+    await writeFile(
+      join(localSkillsDir, "skills", "commit", "SKILL.md"),
+      SKILL_MD("commit"),
+    );
   });
 
   afterEach(async () => {
@@ -372,14 +409,19 @@ describe("add() CLI parsing", () => {
     // Create a local git repo with skills
     await mkdir(repoDir, { recursive: true });
     await exec("git", ["init"], { cwd: repoDir });
-    await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
+    await exec("git", ["config", "user.email", "test@test.com"], {
+      cwd: repoDir,
+    });
     await exec("git", ["config", "user.name", "Test"], { cwd: repoDir });
 
     await mkdir(join(repoDir, "pdf"), { recursive: true });
     await writeFile(join(repoDir, "pdf", "SKILL.md"), SKILL_MD("pdf"));
 
     await mkdir(join(repoDir, "skills", "review"), { recursive: true });
-    await writeFile(join(repoDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(repoDir, "skills", "review", "SKILL.md"),
+      SKILL_MD("review"),
+    );
 
     await exec("git", ["add", "."], { cwd: repoDir });
     await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });

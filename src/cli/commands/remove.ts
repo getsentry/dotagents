@@ -75,7 +75,9 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
   const locked = lockfile?.skills[skillName];
   if (locked) {
     const wildcardDep = config.skills.find(
-      (s) => isWildcardDep(s) && sourcesMatch(s.source, locked.source),
+      (s) =>
+        isWildcardDep(s) &&
+        sourcesMatch(s.source, locked.source),
     );
     if (wildcardDep) {
       throw new WildcardSkillRemoveError(skillName, locked.source);
@@ -119,7 +121,11 @@ export default async function remove(args: string[], flags?: { user?: boolean })
       const shouldExclude = await promptYesNo("Add to exclude list? (y/N) ");
       if (shouldExclude) {
         const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
-        await addExcludeToWildcard(scope.configPath, err.source, skillName);
+        await addExcludeToWildcard(
+          scope.configPath,
+          err.source,
+          skillName,
+        );
 
         // Delete skill directory and update lockfile
         const skillDir = join(scope.skillsDir, skillName);

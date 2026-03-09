@@ -127,7 +127,10 @@ export default function CliPage() {
               Add a skill dependency and install it. Auto-discovers skills in
               the repo. When a repo has one skill, it is added automatically.
               When multiple are found, use <code>--name</code> to pick one or{" "}
-              <code>--all</code> to add them all as a wildcard entry.
+              <code>--all</code> to add them all as a wildcard entry. Shorthand{" "}
+              <code>owner/repo</code> resolves via{" "}
+              <code>defaultRepositorySource</code> in{" "}
+              <code>agents.toml</code>.
             </>
           }
           options={[
@@ -154,6 +157,9 @@ export default function CliPage() {
             "",
             "# Pinned to a version",
             "dotagents add getsentry/warden@v1.0.0",
+            "",
+            "# Explicit GitLab URL",
+            "dotagents add https://gitlab.com/group/repo --name find-bugs",
             "",
             "# Non-GitHub git server",
             "dotagents add git:https://git.corp.dev/team/skills --name review",
@@ -430,6 +436,18 @@ dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"
                 <code>opencode</code>
               </td>
             </tr>
+            <tr>
+              <td>
+                <code>defaultRepositorySource</code>
+              </td>
+              <td>string</td>
+              <td>
+                <code>github</code>
+              </td>
+              <td>
+                Host used for shorthand <code>owner/repo</code> sources. Valid values: <code>github</code> or <code>gitlab</code>.
+              </td>
+            </tr>
           </tbody>
         </table>
 
@@ -462,7 +480,7 @@ dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"
               <td>Yes</td>
               <td>
                 <code>owner/repo</code>, <code>owner/repo@ref</code>,{" "}
-                <code>git:url</code>, or <code>path:relative</code>
+                GitHub/GitLab URL, <code>git:url</code>, or <code>path:relative</code>
               </td>
             </tr>
             <tr>

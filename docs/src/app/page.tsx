@@ -178,8 +178,8 @@ export default function Home() {
       <section className="section" id="adding-skills">
         <h2>Adding Skills</h2>
         <p>
-          Use <code>dotagents add</code> to install skills from GitHub repos,
-          git URLs, or local directories.
+          Use <code>dotagents add</code> to install skills from git repos or
+          local directories.
         </p>
         <pre>
           <code>{`# Add a single skill from a GitHub repo
@@ -191,6 +191,9 @@ dotagents add getsentry/skills --all
 # Pin to a specific version
 dotagents add getsentry/warden@v1.0.0
 
+# Add from GitLab
+dotagents add https://gitlab.com/group/repo --name find-bugs
+
 # From a non-GitHub git server
 dotagents add git:https://git.corp.dev/team/skills --name review
 
@@ -201,6 +204,11 @@ dotagents add path:./my-skills/custom`}</code>
           When a repo has one skill, it is added automatically. When multiple
           are found, use <code>--name</code> to pick one or{" "}
           <code>--all</code> to add them all as a wildcard entry.
+        </p>
+        <p>
+          Shorthand <code>owner/repo</code> resolves using{" "}
+          <code>defaultRepositorySource</code> in <code>agents.toml</code>{" "}
+          (default: <code>github</code>).
         </p>
         <p>
           Read the <a href="/guide">Guide</a> for the full setup walkthrough,

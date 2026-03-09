@@ -119,6 +119,7 @@ command = "notify-done"
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version. Always `1`. |
+| `defaultRepositorySource` | string | No | `github` | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. |
 | `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Creates symlinks and config files for each. |
 
 ### Skills
@@ -128,13 +129,15 @@ Each `[[skills]]` entry requires `name` and `source`. Optional fields: `ref` (gi
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | Yes | Skill name. Pattern: `^[a-zA-Z0-9][a-zA-Z0-9._-]*$`. Use `"*"` for wildcard. |
-| `source` | string | Yes | `owner/repo`, `owner/repo@ref`, `git:<url>`, or `path:<relative>` |
+| `source` | string | Yes | `owner/repo` (resolved via `defaultRepositorySource`), `owner/repo@ref`, `https://github.com/owner/repo`, `https://gitlab.com/group/repo`, `git:<url>`, or `path:<relative>` |
 | `ref` | string | No | Git ref (tag, branch, or SHA). Also supported inline: `owner/repo@ref`. |
 | `path` | string | No | Subdirectory within repo. Only needed when auto-discovery fails. |
 
 Source formats:
-- `owner/repo` -- GitHub (auto-discovers skills by name)
-- `owner/repo@ref` -- GitHub pinned to a tag/branch/commit
+- `owner/repo` -- shorthand resolved by `defaultRepositorySource` (defaults to GitHub)
+- `owner/repo@ref` -- shorthand pinned to a tag/branch/commit
+- `https://github.com/owner/repo` -- explicit GitHub URL
+- `https://gitlab.com/group/repo` -- explicit GitLab URL
 - `git:<url>` -- Non-GitHub git (requires https://, git://, ssh://, git@, file://, or absolute path)
 - `path:<relative>` -- Local filesystem path (relative to project root)
 

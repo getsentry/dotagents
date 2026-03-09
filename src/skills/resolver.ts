@@ -1,5 +1,12 @@
 import { join } from "node:path";
-import { GITHUB_HTTPS_URL, GITHUB_SSH_URL, type WildcardSkillDependency } from "../config/schema.js";
+import {
+  GITHUB_HTTPS_URL,
+  GITHUB_SSH_URL,
+  GITLAB_HTTPS_URL,
+  GITLAB_SSH_URL,
+  type RepositorySource,
+  type WildcardSkillDependency,
+} from "../config/schema.js";
 import { ensureCached } from "../sources/cache.js";
 import { resolveLocalSource } from "../sources/local.js";
 import { discoverSkill, discoverAllSkills, type DiscoveredSkill } from "./discovery.js";
@@ -36,6 +43,54 @@ export interface ResolvedLocalSkill {
 }
 
 export type ResolvedSkill = ResolvedGitSkill | ResolvedLocalSkill;
+
+export function isExplicitSourceSpecifier(specifier: string): boolean {
+  return (
+    specifier.startsWith("path:") ||
+    specifier.startsWith("git:") ||
+    specifier.startsWith("http://") ||
+    specifier.startsWith("https://") ||
+    specifier.startsWith("git@")
+  );
+}
+
+export function parseOwnerRepoShorthand(
+  specifier: string,
+): { owner: string; repo: string; ref?: string } | undefined {
+  if (isExplicitSourceSpecifier(specifier)) {return undefined;}
+
+  const atIdx = specifier.indexOf("@");
+  const base = atIdx >= 0 ? specifier.slice(0, atIdx) : specifier;
+  const ref = atIdx >= 0 ? specifier.slice(atIdx + 1) : undefined;
+  const parts = base.split("/");
+  if (parts.length !== 2) {return undefined;}
+
+  const [owner, repo] = parts;
+  if (!owner || !repo || owner.startsWith("-") || repo.startsWith("-")) {
+    return undefined;
+  }
+
+  return { owner, repo, ref };
+}
+
+/**
+ * Expand owner/repo shorthand according to defaultRepositorySource.
+ * Returns input unchanged for explicit sources or non-shorthand values.
+ */
+export function applyDefaultRepositorySource(
+  specifier: string,
+  defaultRepositorySource: RepositorySource = "github",
+): string {
+  if (isExplicitSourceSpecifier(specifier)) {return specifier;}
+
+  const shorthand = parseOwnerRepoShorthand(specifier);
+  if (!shorthand) {return specifier;}
+
+  const host =
+    defaultRepositorySource === "gitlab" ? "gitlab.com" : "github.com";
+  const refSuffix = shorthand.ref ? `@${shorthand.ref}` : "";
+  return `https://${host}/${shorthand.owner}/${shorthand.repo}${refSuffix}`;
+}
 
 /**
  * Parse a source string into its components.
@@ -76,6 +131,24 @@ export function parseSource(source: string): {
     };
   }
 
+  // GitLab HTTPS or SSH URL
+  const gitlabUrlMatch =
+    source.match(GITLAB_HTTPS_URL) || source.match(GITLAB_SSH_URL);
+  if (gitlabUrlMatch) {
+    const [, owner, repo, ref] = gitlabUrlMatch;
+    // Strip @ref suffix using known ref length, upgrade http:// to https:// (no-op for SSH URLs)
+    const withoutRef = ref ? source.slice(0, -(ref.length + 1)) : source;
+    const cloneUrl = withoutRef.replace(/^http:\/\//i, "https://");
+    return {
+      type: "git",
+      owner,
+      repo,
+      ref,
+      url: `https://gitlab.com/${owner}/${repo}.git`,
+      cloneUrl,
+    };
+  }
+
   // owner/repo or owner/repo@ref — shorthand, no cloneUrl
   const atIdx = source.indexOf("@");
   const base = atIdx === -1 ? source : source.slice(0, atIdx);
@@ -91,14 +164,16 @@ export function parseSource(source: string): {
   };
 }
 
-/** Normalize any GitHub source to owner/repo canonical form for comparison/dedup. */
+/** Normalize hosted sources to canonical owner/repo form for comparison/dedup. */
 export function normalizeSource(source: string): string {
   const parsed = parseSource(source);
-  if (parsed.type === "github") {return `${parsed.owner}/${parsed.repo}`;}
+  if (parsed.owner && parsed.repo) {
+    return `${parsed.owner}/${parsed.repo}`;
+  }
   return source;
 }
 
-/** Compare two source strings for equivalence (normalizes GitHub URLs to owner/repo). */
+/** Compare two source strings for equivalence (normalizes hosted URLs to owner/repo). */
 export function sourcesMatch(a: string, b: string): boolean {
   return normalizeSource(a) === normalizeSource(b);
 }
@@ -111,11 +186,16 @@ export async function resolveSkill(
   dep: { source: string; ref?: string; path?: string },
   opts?: {
     projectRoot?: string;
+    defaultRepositorySource?: RepositorySource;
     /** Override cache TTL (pass 0 to force refresh) */
     ttlMs?: number;
   },
 ): Promise<ResolvedSkill> {
-  const parsed = parseSource(dep.source);
+  const sourceForResolve = applyDefaultRepositorySource(
+    dep.source,
+    opts?.defaultRepositorySource,
+  );
+  const parsed = parseSource(sourceForResolve);
 
   if (parsed.type === "local") {
     const projectRoot = opts?.projectRoot || process.cwd();
@@ -183,11 +263,16 @@ export async function resolveWildcardSkills(
   dep: Pick<WildcardSkillDependency, "source" | "ref" | "exclude">,
   opts?: {
     projectRoot?: string;
+    defaultRepositorySource?: RepositorySource;
     /** Override cache TTL (pass 0 to force refresh) */
     ttlMs?: number;
   },
 ): Promise<NamedResolvedSkill[]> {
-  const parsed = parseSource(dep.source);
+  const sourceForResolve = applyDefaultRepositorySource(
+    dep.source,
+    opts?.defaultRepositorySource,
+  );
+  const parsed = parseSource(sourceForResolve);
   const excludeSet = new Set(dep.exclude);
 
   if (parsed.type === "local") {
@@ -195,10 +280,17 @@ export async function resolveWildcardSkills(
     const skillDir = await resolveLocalSource(projectRoot, parsed.path!);
     const discovered = await discoverAllSkills(skillDir);
     return discovered
-      .filter((d) => !excludeSet.has(d.meta.name) && VALID_SKILL_NAME.test(d.meta.name))
+      .filter(
+        (d) =>
+          !excludeSet.has(d.meta.name) && VALID_SKILL_NAME.test(d.meta.name),
+      )
       .map((d) => ({
         name: d.meta.name,
-        resolved: { type: "local" as const, source: dep.source, skillDir: join(skillDir, d.path) },
+        resolved: {
+          type: "local" as const,
+          source: dep.source,
+          skillDir: join(skillDir, d.path),
+        },
       }));
   }
 
@@ -221,7 +313,9 @@ export async function resolveWildcardSkills(
   const discovered = await discoverAllSkills(cached.repoDir);
 
   return discovered
-    .filter((d) => !excludeSet.has(d.meta.name) && VALID_SKILL_NAME.test(d.meta.name))
+    .filter(
+      (d) => !excludeSet.has(d.meta.name) && VALID_SKILL_NAME.test(d.meta.name),
+    )
     .map((d) => ({
       name: d.meta.name,
       resolved: {

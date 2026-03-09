@@ -5,7 +5,14 @@ import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
 import { addSkillToConfig, addWildcardToConfig } from "../../config/writer.js";
-import { parseSource, sourcesMatch, VALID_SKILL_NAME } from "../../skills/resolver.js";
+import {
+  applyDefaultRepositorySource,
+  isExplicitSourceSpecifier,
+  parseOwnerRepoShorthand,
+  parseSource,
+  sourcesMatch,
+  VALID_SKILL_NAME,
+} from "../../skills/resolver.js";
 import { discoverAllSkills, discoverSkill } from "../../skills/discovery.js";
 import { resolveLocalSource } from "../../sources/local.js";
 import { loadSkillMd } from "../../skills/loader.js";
@@ -41,7 +48,14 @@ export interface AddOptions {
 }
 
 export async function runAdd(opts: AddOptions): Promise<string | string[]> {
-  const { scope, specifier, ref, names: rawNames, all, interactive } = opts;
+  const {
+    scope,
+    specifier,
+    ref,
+    names: rawNames,
+    all,
+    interactive,
+  } = opts;
   // Deduplicate names to prevent writing duplicate config entries
   const namesOverride = rawNames ? [...new Set(rawNames)] : rawNames;
   const { configPath } = scope;
@@ -49,14 +63,26 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
   // Load config early so we can check trust before any network work
   const config = await loadConfig(configPath);
 
-  // Parse the specifier
-  const parsed = parseSource(specifier);
+  // Validate the specifier is a recognized source format
+  if (!isExplicitSourceSpecifier(specifier) && !parseOwnerRepoShorthand(specifier)) {
+    throw new AddError(
+      `Invalid source "${specifier}". ` +
+        `Use owner/repo shorthand, an explicit URL, git:<url>, or path:<relative>.`,
+    );
+  }
 
-  // Preserve original source form (SSH, HTTPS, or shorthand) — strip inline @ref (stored separately)
-  const sourceForStorage =
-    parsed.type === "github" && parsed.ref
-      ? specifier.slice(0, -(parsed.ref.length + 1))
-      : specifier;
+  const hintedSpecifier = applyDefaultRepositorySource(
+    specifier,
+    config.defaultRepositorySource,
+  );
+
+  // Parse the specifier
+  const parsed = parseSource(hintedSpecifier);
+
+  // Store the original source form (shorthand, SSH, HTTPS) — strip inline @ref (stored separately)
+  const sourceForStorage = parsed.ref
+    ? specifier.slice(0, -(parsed.ref.length + 1))
+    : specifier;
 
   // Validate trust against the source
   validateTrustedSource(sourceForStorage, config.trust);
@@ -66,7 +92,12 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
   const refOpts = effectiveRef ? { ref: effectiveRef } : {};
 
   async function addWildcard(): Promise<"*"> {
-    if (config.skills.some((s) => isWildcardDep(s) && sourcesMatch(s.source, sourceForStorage))) {
+    if (
+      config.skills.some(
+        (s) =>
+          isWildcardDep(s) && sourcesMatch(s.source, sourceForStorage),
+      )
+    ) {
       throw new AddError(
         `A wildcard entry for "${sourceForStorage}" already exists in agents.toml.`,
       );
@@ -123,14 +154,18 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
         const toAdd: string[] = [];
         for (const name of namesOverride) {
           if (config.skills.some((s) => s.name === name)) {
-            console.warn(chalk.yellow(`Skipping "${name}": already exists in agents.toml`));
+            console.warn(
+              chalk.yellow(`Skipping "${name}": already exists in agents.toml`),
+            );
           } else {
             toAdd.push(name);
           }
         }
 
         if (toAdd.length === 0) {
-          throw new AddError("All specified skills already exist in agents.toml.");
+          throw new AddError(
+            "All specified skills already exist in agents.toml.",
+          );
         }
 
         for (const name of toAdd) {
@@ -156,7 +191,11 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
         ? `${parsed.owner}/${parsed.repo}`
         : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
 
-    const cached = await ensureCached({ url: cloneUrl, cacheKey, ref: effectiveRef });
+    const cached = await ensureCached({
+      url: cloneUrl,
+      cacheKey,
+      ref: effectiveRef,
+    });
 
     if (namesOverride?.length) {
       // User specified name(s), verify each exists
@@ -177,14 +216,18 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
         const toAdd: string[] = [];
         for (const name of namesOverride) {
           if (config.skills.some((s) => s.name === name)) {
-            console.warn(chalk.yellow(`Skipping "${name}": already exists in agents.toml`));
+            console.warn(
+              chalk.yellow(`Skipping "${name}": already exists in agents.toml`),
+            );
           } else {
             toAdd.push(name);
           }
         }
 
         if (toAdd.length === 0) {
-          throw new AddError("All specified skills already exist in agents.toml.");
+          throw new AddError(
+            "All specified skills already exist in agents.toml.",
+          );
         }
 
         for (const name of toAdd) {
@@ -267,7 +310,9 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
             added.push(name);
           }
           if (added.length === 0) {
-            throw new AddError("All selected skills already exist in agents.toml.");
+            throw new AddError(
+              "All selected skills already exist in agents.toml.",
+            );
           }
           await runInstall({ scope });
           return added;
@@ -302,7 +347,10 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
   return skillName;
 }
 
-export default async function add(args: string[], flags?: { user?: boolean }): Promise<void> {
+export default async function add(
+  args: string[],
+  flags?: { user?: boolean },
+): Promise<void> {
   const { positionals, values } = parseArgs({
     args,
     allowPositionals: true,
@@ -318,7 +366,9 @@ export default async function add(args: string[], flags?: { user?: boolean }): P
   const specifier = positionals[0];
   if (!specifier) {
     console.error(
-      chalk.red("Usage: dotagents add <specifier> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]"),
+      chalk.red(
+        "Usage: dotagents add <specifier> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]",
+      ),
     );
     process.exitCode = 1;
     return;
@@ -330,7 +380,9 @@ export default async function add(args: string[], flags?: { user?: boolean }): P
 
   if (positionalNames.length > 0 && flagNames.length > 0) {
     console.error(
-      chalk.red("Cannot mix positional skill names with --skill/--name flags. Use one or the other."),
+      chalk.red(
+        "Cannot mix positional skill names with --skill/--name flags. Use one or the other.",
+      ),
     );
     process.exitCode = 1;
     return;
@@ -340,8 +392,11 @@ export default async function add(args: string[], flags?: { user?: boolean }): P
   const names = rawNames.length > 0 ? [...new Set(rawNames)] : undefined;
 
   try {
-    const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
-    const interactive = process.stdout.isTTY === true && !names && !values["all"];
+    const scope = flags?.user
+      ? resolveScope("user")
+      : resolveDefaultScope(resolve("."));
+    const interactive =
+      process.stdout.isTTY === true && !names && !values["all"];
     const result = await runAdd({
       scope,
       specifier,
@@ -359,7 +414,11 @@ export default async function add(args: string[], flags?: { user?: boolean }): P
     }
   } catch (err) {
     if (err instanceof AddCancelledError) {return;}
-    if (err instanceof ScopeError || err instanceof AddError || err instanceof TrustError) {
+    if (
+      err instanceof ScopeError ||
+      err instanceof AddError ||
+      err instanceof TrustError
+    ) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

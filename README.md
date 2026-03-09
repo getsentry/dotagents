@@ -105,6 +105,8 @@ When a repo has one skill, it's added automatically. When multiple are found and
 
 When adding multiple skills, any that already exist in `agents.toml` are skipped with a warning. The rest are added normally.
 
+Shorthand (`owner/repo`) resolves using `defaultRepositorySource` in `agents.toml` (default: `github`, also supports `gitlab`).
+
 ### remove
 
 ```bash
@@ -188,6 +190,10 @@ source = "getsentry/skills"              # GitHub repo
 [[skills]]
 name = "review"
 source = "getsentry/skills@v1.0.0"       # Pinned to a ref
+
+[[skills]]
+name = "gitlab"
+source = "https://gitlab.com/group/repo" # GitLab URL
 
 [[skills]]
 name = "internal"

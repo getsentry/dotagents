@@ -72,6 +72,7 @@ headers = { Authorization = "Bearer tok" }
 | Field | Required | Description |
 |-------|----------|-------------|
 | `version` | Yes | Schema version. Always `1`. |
+| `defaultRepositorySource` | No | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. Defaults to `github`. |
 | `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Defaults to `[]`. When set, dotagents creates skills symlinks and MCP config files for each agent. |
 | `project` | No | Project metadata. |
 | `symlinks` | No | Symlink configuration (legacy — prefer `agents` for new projects). |
@@ -128,7 +129,7 @@ Trust is checked before any network work in both `dotagents add` and `dotagents 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | Yes | Skill name. Must start with alphanumeric and contain only `[a-zA-Z0-9._-]`. |
-| `source` | Yes | Skill source. `owner/repo` for GitHub, `owner/repo@ref` for pinned, `git:<url>` for non-GitHub, `path:<relative>` for local. |
+| `source` | Yes | Skill source. `owner/repo` (resolved via `defaultRepositorySource`), `owner/repo@ref`, `https://github.com/owner/repo`, `https://gitlab.com/group/repo`, `git:<url>`, or `path:<relative>`. |
 | `ref` | No | Git ref (tag, branch, or SHA). Can also be specified inline as `owner/repo@ref`. Defaults to repo's default branch. |
 | `path` | No | Explicit subdirectory path to the skill within the repo. Only needed when automatic discovery fails. |
 
@@ -171,11 +172,11 @@ Each agent has its own MCP config format. dotagents translates the universal `[[
 
 ### Source Types
 
-The source format is inferred from the value. No prefix needed for GitHub repos.
+The source format is inferred from the value. Shorthand `owner/repo` resolves using `defaultRepositorySource` (default: GitHub).
 
-#### `owner/repo` -- GitHub (most common)
+#### `owner/repo` -- shorthand (most common)
 
-Resolves to `https://github.com/<owner>/<repo>.git`. The skill is discovered by scanning the repo for SKILL.md files matching the skill name.
+Resolves to `https://github.com/<owner>/<repo>.git` by default, or `https://gitlab.com/<owner>/<repo>.git` when `defaultRepositorySource = "gitlab"`. The skill is discovered by scanning the repo for SKILL.md files matching the skill name.
 
 ```toml
 [[skills]]
@@ -192,6 +193,10 @@ ref = "v1.0.0"
 ```
 
 Ref pinning can also be inline: `source = "getsentry/warden@v1.0.0"`
+
+#### `https://github.com/...` / `https://gitlab.com/...` -- explicit hosted URL
+
+Use explicit URLs when you want to pin the host per source instead of relying on `defaultRepositorySource`.
 
 #### Skill discovery within a repo
 
