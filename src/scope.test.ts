@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { join } from "node:path";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
-import { resolveScope, isInsideGitRepo, resolveDefaultScope, ScopeError } from "./scope.js";
+import { resolveScope, isInsideGitRepo, findGitDir, resolveDefaultScope, ScopeError } from "./scope.js";
 
 describe("resolveScope", () => {
   afterEach(() => {
@@ -75,6 +75,39 @@ describe("isInsideGitRepo", () => {
     tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
     // No .git directory created
     expect(isInsideGitRepo(tempDir)).toBe(false);
+  });
+});
+
+describe("findGitDir", () => {
+  let tempDir: string;
+
+  afterEach(() => {
+    if (tempDir) {rmSync(tempDir, { recursive: true, force: true });}
+  });
+
+  it("returns .git directory path", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    mkdirSync(join(tempDir, ".git"));
+    expect(findGitDir(tempDir)).toBe(join(tempDir, ".git"));
+  });
+
+  it("resolves .git file (worktree/submodule) to real git dir", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    const realGitDir = join(tempDir, "real-git-dir");
+    mkdirSync(realGitDir);
+    writeFileSync(join(tempDir, ".git"), `gitdir: ${realGitDir}\n`);
+    expect(findGitDir(tempDir)).toBe(realGitDir);
+  });
+
+  it("returns undefined for .git file with invalid gitdir target", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    writeFileSync(join(tempDir, ".git"), "gitdir: /nonexistent/path\n");
+    expect(findGitDir(tempDir)).toBeUndefined();
+  });
+
+  it("returns undefined when no .git exists", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    expect(findGitDir(tempDir)).toBeUndefined();
   });
 });
 

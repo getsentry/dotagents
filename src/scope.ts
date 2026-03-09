@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 
@@ -54,15 +54,28 @@ export function isInsideGitRepo(dir: string): boolean {
   return findGitDir(dir) !== undefined;
 }
 
-/** Walk up from `dir` and return the `.git` directory path, or undefined. */
+/** Walk up from `dir` and return the `.git` directory path, or undefined.
+ *  Handles worktrees/submodules where `.git` is a file pointing to the real git dir. */
 export function findGitDir(dir: string): string | undefined {
   let current = resolve(dir);
   const root = dirname(current) === current ? current : undefined;
 
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   while (true) {
-    const gitDir = join(current, ".git");
-    if (existsSync(gitDir)) {return gitDir;}
+    const gitPath = join(current, ".git");
+    if (existsSync(gitPath)) {
+      // In worktrees/submodules, .git is a file containing "gitdir: <path>"
+      if (statSync(gitPath).isFile()) {
+        const content = readFileSync(gitPath, "utf-8").trim();
+        const match = content.match(/^gitdir:\s+(.+)$/);
+        if (match?.[1]) {
+          const target = resolve(current, match[1]);
+          return existsSync(target) ? target : undefined;
+        }
+        return undefined;
+      }
+      return gitPath;
+    }
     const parent = dirname(current);
     if (parent === current || parent === root) {return undefined;}
     current = parent;
