@@ -269,11 +269,15 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
       );
 
       if (setupHook) {
-        const result = await installPostMergeHook(gitDir);
-        if (result === "created") {
-          clack.log.success("Installed post-merge hook.");
-        } else {
-          clack.log.info("Post-merge hook already configured.");
+        try {
+          const result = await installPostMergeHook(gitDir);
+          if (result === "created") {
+            clack.log.success("Installed post-merge hook.");
+          } else {
+            clack.log.info("Post-merge hook already configured.");
+          }
+        } catch {
+          clack.log.warn("Could not install post-merge hook. You can set it up manually later.");
         }
       }
     }
