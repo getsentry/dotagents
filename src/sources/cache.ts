@@ -32,7 +32,9 @@ export async function ensureCached(opts: {
   const repoDir = join(stateDir, opts.cacheKey);
 
   if (isGitRepo(repoDir)) {
-    const needsRefresh = await isStale(repoDir, ttl);
+    // Always fetch when a specific ref is requested — the cached checkout
+    // may point at a different ref regardless of staleness.
+    const needsRefresh = opts.ref || await isStale(repoDir, ttl);
     if (needsRefresh) {
       if (opts.ref) {
         await fetchRef(repoDir, opts.ref);

@@ -49,9 +49,8 @@ export default function Home() {
           <div className="feature">
             <h3>Reproducible</h3>
             <p>
-              <code>agents.lock</code> tracks managed skills.{" "}
-              <code>--frozen</code> in CI validates the skill list matches
-              what&apos;s declared.
+              <code>agents.lock</code> tracks managed skills. Pin versions
+              directly in <code>agents.toml</code> with ref syntax.
             </p>
           </div>
           <div className="feature">

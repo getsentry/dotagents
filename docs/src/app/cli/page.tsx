@@ -104,14 +104,9 @@ export default function CliPage() {
 
         <CliCommand
           name="install"
-          synopsis="dotagents install [--frozen] [--force]"
+          synopsis="dotagents install [--force]"
           description="Install all skill dependencies from agents.toml. Resolves sources, copies skills, writes lockfile, creates symlinks, generates MCP and hook configs. Always fetches latest versions."
           options={[
-            {
-              flag: "--frozen",
-              description:
-                "Fail if lockfile is missing or skill list doesn't match. Do not write lockfile. For CI.",
-            },
             {
               flag: "--force",
               description:
@@ -120,7 +115,6 @@ export default function CliPage() {
           ]}
           examples={[
             "dotagents install",
-            "dotagents install --frozen   # CI mode",
             "dotagents install --force    # bypass cache",
           ]}
         />

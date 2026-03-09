@@ -290,6 +290,10 @@ export default async function install(args: string[], flags?: { user?: boolean }
 
   try {
     const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
+    if (values["frozen"]) {
+      console.log(chalk.yellow("Warning: --frozen is deprecated and will be removed in a future release. Pinning is now managed via agents.toml refs."));
+    }
+
     const result = await runInstall({
       scope,
       frozen: values["frozen"],

@@ -117,27 +117,6 @@ allow_all = true`}</code>
         </pre>
       </section>
 
-      <section className="section" id="frozen">
-        <h2>Frozen Installs (CI)</h2>
-        <p>
-          Use <code>--frozen</code> in CI to guarantee reproducible installs.
-        </p>
-        <pre>
-          <code>dotagents install --frozen</code>
-        </pre>
-        <p>This mode:</p>
-        <ul>
-          <li>
-            Fails if <code>agents.lock</code> does not exist
-          </li>
-          <li>
-            Fails if any skill in <code>agents.toml</code> is missing from the
-            lockfile
-          </li>
-          <li>Does not modify the lockfile</li>
-        </ul>
-      </section>
-
       <section className="section" id="lockfile">
         <h2>Lockfile</h2>
         <p>

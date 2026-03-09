@@ -234,14 +234,13 @@ Create `agents.toml` and `.agents/skills/` directory. Automatically includes the
 ### install
 
 ```
-dotagents install [--frozen] [--force]
+dotagents install [--force]
 ```
 
 Install all dependencies from `agents.toml`. Always fetches latest skills (TTL-based cache refresh). Resolves sources, copies skills, writes lockfile, creates symlinks, generates MCP and hook configs. There is no separate update step.
 
 | Flag | Description |
 |------|-------------|
-| `--frozen` | Fail if lockfile is missing or skill list doesn't match. Do not write lockfile. For CI. |
 | `--force` | Re-resolve and re-install all skills, ignoring cache |
 
 ### add
@@ -449,13 +448,6 @@ resolved_path = "plugins/sentry-skills/skills/find-bugs"
 
 Local `path:` skills have `source` only.
 
-### Frozen Mode
-
-`dotagents install --frozen` (for CI):
-- Fails if `agents.lock` does not exist
-- Fails if any skill in `agents.toml` is missing from the lockfile
-- Does not modify the lockfile
-
 ## Caching
 
 Location: `~/.local/dotagents/` (override: `DOTAGENTS_STATE_DIR`)
@@ -485,7 +477,7 @@ Custom skills created directly in `.agents/skills/` are not gitignored. They're 
 
 ## Update Strategy
 
-`dotagents install` always fetches the latest version of each skill (with a TTL-based cache). There is no separate update command. Collaborators run `dotagents install` after cloning to get the latest skills. Use `--frozen` in CI to validate the skill list matches the lockfile.
+`dotagents install` always fetches the latest version of each skill (with a TTL-based cache). There is no separate update command. Collaborators run `dotagents install` after cloning to get the latest skills.
 
 ## Links
 

@@ -43,13 +43,11 @@ Install all skill dependencies declared in `agents.toml`.
 
 ```bash
 dotagents install
-dotagents install --frozen
 dotagents install --force
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--frozen` | Fail if lockfile is missing or skill list doesn't match. Do not modify lockfile. For CI. |
 | `--force` | Re-resolve and re-install all skills, ignoring cache |
 
 **Workflow:**

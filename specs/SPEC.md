@@ -272,16 +272,6 @@ source = "path:../shared-skills/my-custom-skill"
 | `resolved_path` | Git sources | Subdirectory within the repo where the skill was discovered. |
 | `resolved_ref` | Git sources (optional) | The ref that was resolved (tag/branch name). Omitted when using default branch. |
 
-### Frozen Mode
-
-`dotagents install --frozen` (for CI):
-
-- Fails if `agents.lock` does not exist
-- Fails if any skill in `agents.toml` is missing from the lockfile
-- Does NOT modify the lockfile
-
-Frozen mode validates the skill list matches the lockfile but still fetches latest content.
-
 ---
 
 ## CLI Commands
@@ -314,7 +304,7 @@ dotagents init [--force] [--agents claude,cursor]
 Install all dependencies from `agents.toml`.
 
 ```
-dotagents install [--frozen] [--force]
+dotagents install [--force]
 ```
 
 **Behavior:**
@@ -323,7 +313,7 @@ dotagents install [--frozen] [--force]
    a. Resolve source (check cache with TTL-based refresh, clone/fetch if needed)
    b. Discover skill within the repo
    c. Copy skill directory into `.agents/skills/<name>/`
-3. Write `agents.lock` (unless `--frozen`)
+3. Write `agents.lock`
 4. Regenerate `.agents/.gitignore`
 5. Warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
 6. Create/verify symlinks (legacy `[symlinks]` and agent-specific)
@@ -331,7 +321,6 @@ dotagents install [--frozen] [--force]
 8. Print summary
 
 **Flags:**
-- `--frozen`: Fail if lockfile is missing or skill list doesn't match. Do not modify lockfile. For CI.
 - `--force`: Re-resolve everything, ignore cache.
 
 ### `dotagents add <specifier>`

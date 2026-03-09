@@ -6,7 +6,7 @@ A package manager for `.agents` directories. Declare agent skill dependencies in
 
 **One source of truth.** Skills live in `.agents/skills/` and symlink into `.claude/skills/`, `.cursor/skills/`, or wherever your tools expect them. No copy-pasting between directories.
 
-**Reproducible.** `agents.lock` tracks managed skills. `dotagents install --frozen` in CI validates the skill list matches what's declared.
+**Reproducible.** `agents.lock` tracks managed skills. Pin versions directly in `agents.toml` with ref syntax.
 
 **Shareable.** Skills are just directories with a `SKILL.md`. Host them in any git repo, discover them automatically, install with one command.
 
@@ -71,10 +71,10 @@ Interactive mode prompts for agent targets and trust policy. Sets up gitignore e
 ### install
 
 ```bash
-dotagents install [--frozen] [--force]
+dotagents install [--force]
 ```
 
-Always fetches latest versions. Use `--frozen` in CI to fail if the lockfile is missing or the skill list doesn't match. Use `--force` to re-resolve everything from scratch.
+Always fetches latest versions. Use `--force` to re-resolve everything from scratch.
 
 ### add
 

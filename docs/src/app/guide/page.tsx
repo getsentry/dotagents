@@ -135,22 +135,6 @@ npx @sentry/dotagents install || echo "dotagents install failed"
         </p>
       </section>
 
-      <section className="section" id="ci">
-        <h2>CI</h2>
-        <p>
-          Use <code>--frozen</code> in CI to validate the skill list matches the
-          lockfile:
-        </p>
-        <pre>
-          <code>dotagents install --frozen</code>
-        </pre>
-        <p>
-          Frozen mode fails if <code>agents.lock</code> is missing or if any
-          skill in <code>agents.toml</code> is missing from the lockfile. It
-          does not modify the lockfile.
-        </p>
-      </section>
-
       <section className="section" id="sync">
         <h2>Keeping Things in Sync</h2>
         <p>
