@@ -91,12 +91,27 @@ describe("findGitDir", () => {
     expect(findGitDir(tempDir)).toBe(join(tempDir, ".git"));
   });
 
-  it("resolves .git file (worktree/submodule) to real git dir", () => {
+  it("resolves .git file (submodule) to real git dir", () => {
     tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
     const realGitDir = join(tempDir, "real-git-dir");
     mkdirSync(realGitDir);
     writeFileSync(join(tempDir, ".git"), `gitdir: ${realGitDir}\n`);
     expect(findGitDir(tempDir)).toBe(realGitDir);
+  });
+
+  it("resolves worktree .git file to common git dir", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    // Simulate: main-repo/.git/worktrees/my-wt/ with commondir pointing to main .git
+    const mainGitDir = join(tempDir, "main-repo", ".git");
+    const worktreeGitDir = join(mainGitDir, "worktrees", "my-wt");
+    mkdirSync(worktreeGitDir, { recursive: true });
+    writeFileSync(join(worktreeGitDir, "commondir"), "../..\n");
+
+    const worktreeDir = join(tempDir, "my-worktree");
+    mkdirSync(worktreeDir);
+    writeFileSync(join(worktreeDir, ".git"), `gitdir: ${worktreeGitDir}\n`);
+
+    expect(findGitDir(worktreeDir)).toBe(mainGitDir);
   });
 
   it("returns undefined for .git file with invalid gitdir target", () => {

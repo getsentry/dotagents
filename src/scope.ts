@@ -55,7 +55,8 @@ export function isInsideGitRepo(dir: string): boolean {
 }
 
 /** Walk up from `dir` and return the `.git` directory path, or undefined.
- *  Handles worktrees/submodules where `.git` is a file pointing to the real git dir. */
+ *  Handles worktrees/submodules where `.git` is a file pointing to the real git dir.
+ *  For worktrees, resolves to the common git directory (where hooks are shared). */
 export function findGitDir(dir: string): string | undefined {
   let current = resolve(dir);
   const root = dirname(current) === current ? current : undefined;
@@ -70,7 +71,8 @@ export function findGitDir(dir: string): string | undefined {
         const match = content.match(/^gitdir:\s+(.+)$/);
         if (match?.[1]) {
           const target = resolve(current, match[1]);
-          return existsSync(target) ? target : undefined;
+          if (!existsSync(target)) {return undefined;}
+          return resolveCommonGitDir(target);
         }
         return undefined;
       }
@@ -80,6 +82,18 @@ export function findGitDir(dir: string): string | undefined {
     if (parent === current || parent === root) {return undefined;}
     current = parent;
   }
+}
+
+/** Resolve the common git directory from a worktree-specific git dir.
+ *  Worktree git dirs contain a `commondir` file pointing to the shared .git. */
+function resolveCommonGitDir(gitDir: string): string {
+  const commondirPath = join(gitDir, "commondir");
+  if (existsSync(commondirPath)) {
+    const rel = readFileSync(commondirPath, "utf-8").trim();
+    const common = resolve(gitDir, rel);
+    if (existsSync(common)) {return common;}
+  }
+  return gitDir;
 }
 
 export class ScopeError extends Error {
