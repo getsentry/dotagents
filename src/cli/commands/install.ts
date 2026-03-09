@@ -3,11 +3,21 @@ import { mkdir, rm } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
-import { isWildcardDep, type SkillDependency } from "../../config/schema.js";
+import {
+  isWildcardDep,
+  type RepositorySource,
+  type SkillDependency,
+} from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { type Lockfile, type LockedSkill } from "../../lockfile/schema.js";
-import { resolveSkill, resolveWildcardSkills, sourcesMatch, type ResolvedSkill } from "../../skills/resolver.js";
+import {
+  applyDefaultRepositorySource,
+  resolveSkill,
+  resolveWildcardSkills,
+  sourcesMatch,
+  type ResolvedSkill,
+} from "../../skills/resolver.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import { copyDir } from "../../utils/fs.js";
 import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore/writer.js";
@@ -55,7 +65,11 @@ interface ExpandedSkill {
  * Explicit entries always win over wildcard-discovered skills.
  */
 async function expandSkills(
-  config: { skills: SkillDependency[]; trust?: Parameters<typeof validateTrustedSource>[1] },
+  config: {
+    skills: SkillDependency[];
+    trust?: Parameters<typeof validateTrustedSource>[1];
+    defaultRepositorySource: RepositorySource;
+  },
   lockfile: Lockfile | null,
   opts: { frozen?: boolean; force?: boolean; projectRoot: string },
 ): Promise<ExpandedSkill[]> {
@@ -73,7 +87,11 @@ async function expandSkills(
   // Expand wildcards
   const wildcardNames = new Map<string, string>(); // name → source (for conflict detection)
   for (const wDep of wildcardDeps) {
-    validateTrustedSource(wDep.source, config.trust);
+    const wildcardSourceForTrust = applyDefaultRepositorySource(
+      wDep.source,
+      config.defaultRepositorySource,
+    );
+    validateTrustedSource(wildcardSourceForTrust, config.trust);
     const excludeSet = new Set(wDep.exclude);
 
     if (opts.frozen) {
@@ -90,6 +108,7 @@ async function expandSkills(
       const named = await resolveWildcardSkills(wDep, {
         projectRoot: opts.projectRoot,
         ...(opts.force ? { ttlMs: 0 } : {}),
+        defaultRepositorySource: config.defaultRepositorySource,
       });
       for (const { name, resolved } of named) {
         if (explicitNames.has(name)) {continue;} // explicit wins
@@ -134,7 +153,11 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     }
 
     const expanded = await expandSkills(
-      { skills: config.skills, trust: config.trust },
+      {
+        skills: config.skills,
+        trust: config.trust,
+        defaultRepositorySource: config.defaultRepositorySource,
+      },
       lockfile,
       { frozen, force, projectRoot: scope.root },
     );
@@ -155,11 +178,16 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       const { name, dep } = item;
 
       // Validate trust before any network work
-      validateTrustedSource(dep.source, config.trust);
+      const sourceForTrust = applyDefaultRepositorySource(
+        dep.source,
+        config.defaultRepositorySource,
+      );
+      validateTrustedSource(sourceForTrust, config.trust);
 
       const resolveOpts = {
         projectRoot: scope.root,
         ...(force ? { ttlMs: 0 } : {}),
+        defaultRepositorySource: config.defaultRepositorySource,
       };
 
       let resolved: ResolvedSkill;
@@ -202,7 +230,9 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       const wildcardDeps = config.skills.filter(isWildcardDep);
       for (const [name, locked] of Object.entries(lockfile.skills)) {
         if (newLock.skills[name]) {continue;} // still tracked
-        const fromWildcard = wildcardDeps.some((w) => sourcesMatch(locked.source, w.source));
+        const fromWildcard = wildcardDeps.some((w) =>
+          sourcesMatch(locked.source, w.source),
+        );
         if (fromWildcard) {
           await rm(join(skillsDir, name), { recursive: true, force: true });
           pruned.push(name);

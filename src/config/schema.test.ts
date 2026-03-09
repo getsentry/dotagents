@@ -14,8 +14,28 @@ describe("agentsConfigSchema", () => {
   it("accepts legacy gitignore field for backwards compat", () => {
     const result = agentsConfigSchema.safeParse({ version: 1, gitignore: true });
     expect(result.success).toBe(true);
-    const result2 = agentsConfigSchema.safeParse({ version: 1, gitignore: false });
-    expect(result2.success).toBe(true);
+    if (result.success) {
+      expect("gitignore" in result.data).toBe(false);
+    }
+  });
+
+  it("defaults defaultRepositorySource to github when absent", () => {
+    const result = agentsConfigSchema.safeParse({ version: 1 });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.defaultRepositorySource).toBe("github");
+    }
+  });
+
+  it("accepts defaultRepositorySource = gitlab", () => {
+    const result = agentsConfigSchema.safeParse({
+      version: 1,
+      defaultRepositorySource: "gitlab",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.defaultRepositorySource).toBe("gitlab");
+    }
   });
 
   it("parses a full config with all fields", () => {
@@ -75,11 +95,15 @@ describe("agentsConfigSchema", () => {
     });
 
     it("accepts git: source with ssh", () => {
-      expect(parseSkill("git:ssh://git@example.com/repo.git").success).toBe(true);
+      expect(parseSkill("git:ssh://git@example.com/repo.git").success).toBe(
+        true,
+      );
     });
 
     it("accepts git: source with git@", () => {
-      expect(parseSkill("git:git@github.com:owner/repo.git").success).toBe(true);
+      expect(parseSkill("git:git@github.com:owner/repo.git").success).toBe(
+        true,
+      );
     });
 
     it("accepts git: source with absolute path", () => {
@@ -119,11 +143,27 @@ describe("agentsConfigSchema", () => {
     });
 
     it("accepts GitHub HTTPS URL with .git suffix", () => {
-      expect(parseSkill("https://github.com/owner/repo.git").success).toBe(true);
+      expect(parseSkill("https://github.com/owner/repo.git").success).toBe(
+        true,
+      );
     });
 
     it("accepts GitHub SSH URL", () => {
       expect(parseSkill("git@github.com:owner/repo.git").success).toBe(true);
+    });
+
+    it("accepts GitLab HTTPS URL", () => {
+      expect(parseSkill("https://gitlab.com/group/repo").success).toBe(true);
+    });
+
+    it("accepts GitLab SSH URL", () => {
+      expect(parseSkill("git@gitlab.com:group/repo.git").success).toBe(true);
+    });
+
+    it("accepts GitLab subgroup URL", () => {
+      expect(parseSkill("https://gitlab.com/group/subgroup/repo").success).toBe(
+        true,
+      );
     });
 
     it("rejects GitHub URL with dash-prefixed owner", () => {
@@ -196,7 +236,13 @@ describe("agentsConfigSchema", () => {
     it("accepts a stdio MCP server", () => {
       const result = agentsConfigSchema.safeParse({
         version: 1,
-        mcp: [{ name: "github", command: "npx", args: ["-y", "@mcp/server-github"] }],
+        mcp: [
+          {
+            name: "github",
+            command: "npx",
+            args: ["-y", "@mcp/server-github"],
+          },
+        ],
       });
       expect(result.success).toBe(true);
       if (result.success) {
@@ -230,7 +276,13 @@ describe("agentsConfigSchema", () => {
     it("accepts MCP server with headers", () => {
       const result = agentsConfigSchema.safeParse({
         version: 1,
-        mcp: [{ name: "r", url: "https://x.com", headers: { Authorization: "Bearer tok" } }],
+        mcp: [
+          {
+            name: "r",
+            url: "https://x.com",
+            headers: { Authorization: "Bearer tok" },
+          },
+        ],
       });
       expect(result.success).toBe(true);
     });
@@ -322,7 +374,6 @@ describe("agentsConfigSchema", () => {
     it("parses config without agents or mcp fields", () => {
       const result = agentsConfigSchema.safeParse({
         version: 1,
-        gitignore: false,
         skills: [{ name: "test", source: "owner/repo" }],
       });
       expect(result.success).toBe(true);

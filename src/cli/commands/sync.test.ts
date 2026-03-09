@@ -127,6 +127,30 @@ describe("runSync", () => {
     expect(result.issues).toHaveLength(0);
   });
 
+  it("matches GitLab wildcard sources using defaultRepositorySource", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\ndefaultRepositorySource = "gitlab"\n\n[[skills]]\nname = "*"\nsource = "group/repo"\n`,
+    );
+    const skillDir = join(projectRoot, ".agents", "skills", "find-bugs");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("find-bugs"));
+
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        "find-bugs": {
+          source: "https://gitlab.com/group/repo",
+          resolved_url: "https://gitlab.com/group/repo.git",
+          resolved_path: "find-bugs",
+        },
+      },
+    });
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+    expect(result.issues).toHaveLength(0);
+  });
+
   it("repairs broken symlinks", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

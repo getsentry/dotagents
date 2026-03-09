@@ -1,5 +1,33 @@
 import { describe, it, expect } from "vitest";
-import { parseSource, normalizeSource, sourcesMatch } from "./resolver.js";
+import {
+  applyDefaultRepositorySource,
+  parseSource,
+  normalizeSource,
+  sourcesMatch,
+} from "./resolver.js";
+
+describe("applyDefaultRepositorySource", () => {
+  it("expands shorthand to GitHub by default", () => {
+    expect(applyDefaultRepositorySource("getsentry/skills")).toBe(
+      "https://github.com/getsentry/skills",
+    );
+  });
+
+  it("expands shorthand to GitLab when configured", () => {
+    expect(applyDefaultRepositorySource("getsentry/skills", "gitlab")).toBe(
+      "https://gitlab.com/getsentry/skills",
+    );
+  });
+
+  it("keeps explicit URL unchanged", () => {
+    expect(
+      applyDefaultRepositorySource(
+        "https://gitlab.com/group/repo",
+        "github",
+      ),
+    ).toBe("https://gitlab.com/group/repo");
+  });
+});
 
 describe("parseSource", () => {
   it("parses owner/repo as github", () => {
@@ -18,9 +46,7 @@ describe("parseSource", () => {
     expect(result.owner).toBe("getsentry");
     expect(result.repo).toBe("sentry-skills");
     expect(result.ref).toBe("v1.0.0");
-    expect(result.url).toBe(
-      "https://github.com/getsentry/sentry-skills.git",
-    );
+    expect(result.url).toBe("https://github.com/getsentry/sentry-skills.git");
   });
 
   it("parses owner/repo@sha as github with sha ref", () => {
@@ -30,7 +56,9 @@ describe("parseSource", () => {
   });
 
   it("parses git: prefix as generic git", () => {
-    const result = parseSource("git:https://git.corp.example.com/team/skills.git");
+    const result = parseSource(
+      "git:https://git.corp.example.com/team/skills.git",
+    );
     expect(result.type).toBe("git");
     expect(result.url).toBe("https://git.corp.example.com/team/skills.git");
   });
@@ -121,6 +149,33 @@ describe("parseSource", () => {
     expect(result.url).toBe("https://github.com/vercel/next.js.git");
   });
 
+  it("parses HTTPS GitLab URL", () => {
+    const result = parseSource("https://gitlab.com/group/repo");
+    expect(result.type).toBe("git");
+    expect(result.owner).toBe("group");
+    expect(result.repo).toBe("repo");
+    expect(result.url).toBe("https://gitlab.com/group/repo.git");
+    expect(result.cloneUrl).toBe("https://gitlab.com/group/repo");
+  });
+
+  it("parses HTTPS GitLab URL with subgroup", () => {
+    const result = parseSource("https://gitlab.com/group/subgroup/repo");
+    expect(result.type).toBe("git");
+    expect(result.owner).toBe("group/subgroup");
+    expect(result.repo).toBe("repo");
+    expect(result.url).toBe("https://gitlab.com/group/subgroup/repo.git");
+  });
+
+  it("parses SSH GitLab URL with ref", () => {
+    const result = parseSource("git@gitlab.com:group/repo@v2.0");
+    expect(result.type).toBe("git");
+    expect(result.owner).toBe("group");
+    expect(result.repo).toBe("repo");
+    expect(result.ref).toBe("v2.0");
+    expect(result.url).toBe("https://gitlab.com/group/repo.git");
+    expect(result.cloneUrl).toBe("git@gitlab.com:group/repo");
+  });
+
   it("upgrades http:// to https:// in cloneUrl", () => {
     const result = parseSource("http://github.com/getsentry/skills");
     expect(result.type).toBe("github");
@@ -147,21 +202,41 @@ describe("normalizeSource", () => {
     expect(normalizeSource("getsentry/skills")).toBe("getsentry/skills");
   });
 
-  it("normalizes HTTPS URL to owner/repo", () => {
-    expect(normalizeSource("https://github.com/getsentry/skills")).toBe("getsentry/skills");
+  it("normalizes GitHub HTTPS URL to owner/repo", () => {
+    expect(normalizeSource("https://github.com/getsentry/skills")).toBe(
+      "getsentry/skills",
+    );
   });
 
-  it("normalizes SSH URL to owner/repo", () => {
-    expect(normalizeSource("git@github.com:getsentry/skills.git")).toBe("getsentry/skills");
+  it("normalizes GitHub SSH URL to owner/repo", () => {
+    expect(normalizeSource("git@github.com:getsentry/skills.git")).toBe(
+      "getsentry/skills",
+    );
   });
 
-  it("normalizes HTTPS URL with .git suffix", () => {
-    expect(normalizeSource("https://github.com/getsentry/skills.git")).toBe("getsentry/skills");
+  it("normalizes GitHub HTTPS URL with .git suffix", () => {
+    expect(normalizeSource("https://github.com/getsentry/skills.git")).toBe(
+      "getsentry/skills",
+    );
+  });
+
+  it("normalizes GitLab HTTPS URL to group/repo", () => {
+    expect(normalizeSource("https://gitlab.com/group/repo")).toBe(
+      "group/repo",
+    );
+  });
+
+  it("normalizes GitLab SSH URL to group/repo", () => {
+    expect(normalizeSource("git@gitlab.com:group/repo.git")).toBe(
+      "group/repo",
+    );
   });
 
   it("returns non-github sources unchanged", () => {
     expect(normalizeSource("path:../my-skill")).toBe("path:../my-skill");
-    expect(normalizeSource("git:https://example.com/repo.git")).toBe("git:https://example.com/repo.git");
+    expect(normalizeSource("git:https://example.com/repo.git")).toBe(
+      "git:https://example.com/repo.git",
+    );
   });
 });
 
@@ -171,15 +246,39 @@ describe("sourcesMatch", () => {
   });
 
   it("matches SSH URL with shorthand", () => {
-    expect(sourcesMatch("git@github.com:getsentry/skills.git", "getsentry/skills")).toBe(true);
+    expect(
+      sourcesMatch("git@github.com:getsentry/skills.git", "getsentry/skills"),
+    ).toBe(true);
   });
 
   it("matches HTTPS URL with shorthand", () => {
-    expect(sourcesMatch("https://github.com/getsentry/skills", "getsentry/skills")).toBe(true);
+    expect(
+      sourcesMatch("https://github.com/getsentry/skills", "getsentry/skills"),
+    ).toBe(true);
+  });
+
+  it("matches GitLab URL with shorthand", () => {
+    expect(
+      sourcesMatch("https://gitlab.com/getsentry/skills", "getsentry/skills"),
+    ).toBe(true);
   });
 
   it("matches SSH URL with HTTPS URL", () => {
-    expect(sourcesMatch("git@github.com:getsentry/skills.git", "https://github.com/getsentry/skills")).toBe(true);
+    expect(
+      sourcesMatch(
+        "git@github.com:getsentry/skills.git",
+        "https://github.com/getsentry/skills",
+      ),
+    ).toBe(true);
+  });
+
+  it("matches GitLab SSH URL with GitLab HTTPS URL", () => {
+    expect(
+      sourcesMatch(
+        "git@gitlab.com:group/repo.git",
+        "https://gitlab.com/group/repo",
+      ),
+    ).toBe(true);
   });
 
   it("does not match different repos", () => {

@@ -53,7 +53,9 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   if (lockfile) {
     // Add concrete skill names from wildcard sources
     const wildcardSources = new Set(
-      config.skills.filter(isWildcardDep).map((s) => normalizeSource(s.source)),
+      config.skills
+        .filter(isWildcardDep)
+        .map((s) => normalizeSource(s.source)),
     );
     for (const [name, locked] of Object.entries(lockfile.skills)) {
       if (wildcardSources.has(normalizeSource(locked.source))) {

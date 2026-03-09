@@ -1,6 +1,20 @@
 import { exec, ExecError } from "../utils/exec.js";
 import { existsSync } from "node:fs";
 
+function toSshCloneUrl(url: string): string | undefined {
+  const hostedMatch = url.match(
+    /^https?:\/\/(github\.com|gitlab\.com)\/(.+)$/i,
+  );
+  if (!hostedMatch) {return undefined;}
+
+  const host = hostedMatch[1]!;
+  const rawPath = hostedMatch[2]!;
+  let path = rawPath;
+  while (path.endsWith("/")) {path = path.slice(0, -1);}
+
+  return `git@${host.toLowerCase()}:${path.endsWith(".git") ? path : `${path}.git`}`;
+}
+
 export class GitError extends Error {
   constructor(message: string) {
     super(message);
@@ -28,15 +42,12 @@ export async function clone(
   } catch (err) {
     if (err instanceof ExecError) {
       const stderr = err.stderr;
+      const sshUrl = toSshCloneUrl(url);
       if (
-        url.startsWith("https://github.com/") &&
+        sshUrl &&
         (/terminal prompts disabled/i.test(stderr) ||
           /could not read Username/i.test(stderr))
       ) {
-        // Convert https://github.com/org/repo[.git][/] → git@github.com:org/repo.git
-        let path = url.slice("https://github.com/".length);
-        while (path.endsWith("/")) {path = path.slice(0, -1);}
-        const sshUrl = `git@github.com:${path.endsWith(".git") ? path : `${path}.git`}`;
         throw new GitError(
           `Failed to clone ${url}: authentication required.\n` +
             `Hint: for private repos, use the SSH URL instead:\n` +
@@ -69,11 +80,15 @@ export async function fetchAndReset(repoDir: string): Promise<void> {
  */
 export async function fetchRef(repoDir: string, ref: string): Promise<void> {
   try {
-    await exec("git", ["fetch", "--depth=1", "--", "origin", ref], { cwd: repoDir });
+    await exec("git", ["fetch", "--depth=1", "--", "origin", ref], {
+      cwd: repoDir,
+    });
     await exec("git", ["checkout", "FETCH_HEAD"], { cwd: repoDir });
   } catch (err) {
     if (err instanceof ExecError) {
-      throw new GitError(`Failed to fetch ref ${ref} in ${repoDir}: ${err.stderr}`);
+      throw new GitError(
+        `Failed to fetch ref ${ref} in ${repoDir}: ${err.stderr}`,
+      );
     }
     throw err;
   }

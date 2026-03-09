@@ -2,8 +2,10 @@ import { z } from "zod/v4";
 
 /**
  * Source specifier patterns (inferred from value):
- *   owner/repo          -- GitHub
- *   owner/repo@ref      -- GitHub pinned
+ *   owner/repo          -- shorthand (resolved via defaultRepositorySource)
+ *   owner/repo@ref      -- shorthand pinned
+ *   https://gitlab.com/group/repo[.git][@ref] -- GitLab URL
+ *   git@gitlab.com:group/repo[.git][@ref]     -- GitLab SSH URL
  *   git:https://...     -- non-GitHub git
  *   path:../relative    -- local filesystem
  */
@@ -15,6 +17,12 @@ export const GITHUB_HTTPS_URL =
 /** GitHub SSH URL pattern — owner/repo must start with alphanumeric (no dash prefix). */
 export const GITHUB_SSH_URL =
   /^git@github\.com:([a-zA-Z0-9][^/]*)\/([a-zA-Z0-9][^/@]*?)(?:\.git)?(?:@(.+))?$/;
+/** GitLab HTTPS URL pattern — supports nested groups/subgroups. */
+export const GITLAB_HTTPS_URL =
+  /^https?:\/\/gitlab\.com\/([a-zA-Z0-9][^@]*?)\/([a-zA-Z0-9][^/@]*?)(?:\.git)?(?:\/)?(?:@(.+))?$/;
+/** GitLab SSH URL pattern — supports nested groups/subgroups. */
+export const GITLAB_SSH_URL =
+  /^git@gitlab\.com:([a-zA-Z0-9][^@]*?)\/([a-zA-Z0-9][^/@]*?)(?:\.git)?(?:@(.+))?$/;
 
 const skillSourceSchema = z.string().check(
   z.refine((s) => {
@@ -26,20 +34,28 @@ const skillSourceSchema = z.string().check(
     // GitHub HTTPS or SSH URLs
     if (GITHUB_HTTPS_URL.test(s)) {return true;}
     if (GITHUB_SSH_URL.test(s)) {return true;}
+    // GitLab HTTPS or SSH URLs
+    if (GITLAB_HTTPS_URL.test(s)) {return true;}
+    if (GITLAB_SSH_URL.test(s)) {return true;}
     // owner/repo or owner/repo@ref
     const base = s.includes("@") ? s.slice(0, s.indexOf("@")) : s;
     const parts = base.split("/");
-    return parts.length === 2 && parts.every((p) => p.length > 0 && !p.startsWith("-"));
-  }, "Must be owner/repo, owner/repo@ref, GitHub URL, git:<url> (with https/git/ssh protocol), or path:<relative>"),
+    return (
+      parts.length === 2 &&
+      parts.every((p) => p.length > 0 && !p.startsWith("-"))
+    );
+  }, "Must be owner/repo, owner/repo@ref, GitHub/GitLab URL, git:<url> (with https/git/ssh protocol), or path:<relative>"),
 );
 
 export type SkillSource = z.infer<typeof skillSourceSchema>;
 
 /** Skill names must be safe for use in file paths: alphanumeric, dots, hyphens, underscores. */
-const skillNameSchema = z.string().regex(
-  /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
-  "Skill names must start with alphanumeric and contain only [a-zA-Z0-9._-]",
-);
+const skillNameSchema = z
+  .string()
+  .regex(
+    /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
+    "Skill names must start with alphanumeric and contain only [a-zA-Z0-9._-]",
+  );
 
 const wildcardSkillDependencySchema = z.object({
   name: z.literal("*"),
@@ -60,11 +76,17 @@ const skillDependencySchema = z.union([
   regularSkillDependencySchema,
 ]);
 
-export type WildcardSkillDependency = z.infer<typeof wildcardSkillDependencySchema>;
-export type RegularSkillDependency = z.infer<typeof regularSkillDependencySchema>;
+export type WildcardSkillDependency = z.infer<
+  typeof wildcardSkillDependencySchema
+>;
+export type RegularSkillDependency = z.infer<
+  typeof regularSkillDependencySchema
+>;
 export type SkillDependency = z.infer<typeof skillDependencySchema>;
 
-export function isWildcardDep(dep: SkillDependency): dep is WildcardSkillDependency {
+export function isWildcardDep(
+  dep: SkillDependency,
+): dep is WildcardSkillDependency {
   return dep.name === "*";
 }
 
@@ -94,14 +116,11 @@ const mcpSchema = z
     env: z.array(z.string()).default([]),
   })
   .check(
-    z.refine(
-      (m) => {
-        const hasStdio = !!m.command;
-        const hasHttp = !!m.url;
-        return (hasStdio || hasHttp) && !(hasStdio && hasHttp);
-      },
-      "MCP server must have either command (stdio) or url (http), but not both",
-    ),
+    z.refine((m) => {
+      const hasStdio = !!m.command;
+      const hasHttp = !!m.url;
+      return (hasStdio || hasHttp) && !(hasStdio && hasHttp);
+    }, "MCP server must have either command (stdio) or url (http), but not both"),
   );
 
 export type McpConfig = z.infer<typeof mcpSchema>;
@@ -132,9 +151,12 @@ const trustConfigSchema = z.object({
 
 export type TrustConfig = z.infer<typeof trustConfigSchema>;
 
+const repositorySourceSchema = z.enum(["github", "gitlab"]);
+export type RepositorySource = z.infer<typeof repositorySourceSchema>;
+
 export const agentsConfigSchema = z.object({
   version: z.literal(1),
-  gitignore: z.boolean().default(true),
+  defaultRepositorySource: repositorySourceSchema.default("github"),
   project: projectConfigSchema.optional(),
   symlinks: symlinksConfigSchema.optional(),
   agents: z.array(z.string()).default([]),
