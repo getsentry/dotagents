@@ -116,6 +116,101 @@ describe("discoverSkill", () => {
     expect(result!.path).toBe("skills/my-skill");
   });
 
+  it("prefers higher-priority scan dir frontmatter match over lower-priority dir name match", async () => {
+    // Root-level: ./chat/SKILL.md with name: "chat-sdk" (frontmatter match)
+    await mkdir(join(repoDir, "chat"), { recursive: true });
+    await writeFile(join(repoDir, "chat", "SKILL.md"), SKILL_MD("chat-sdk"));
+    // skills/: skills/chat-sdk/SKILL.md (dir name match, but lower priority scan dir)
+    await mkdir(join(repoDir, "skills", "chat-sdk"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "chat-sdk", "SKILL.md"),
+      SKILL_MD("chat-sdk"),
+    );
+
+    const result = await discoverSkill(repoDir, "chat-sdk");
+    // The root-level frontmatter match should win over the skills/ dir name match
+    expect(result!.path).toBe("chat");
+  });
+
+  it("finds skill nested in category subdirectory (e.g. skills/.curated/pdf/)", async () => {
+    await mkdir(join(repoDir, "skills", ".curated", "pdf"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", ".curated", "pdf", "SKILL.md"),
+      SKILL_MD("pdf"),
+    );
+
+    const result = await discoverSkill(repoDir, "pdf");
+    expect(result).not.toBeNull();
+    expect(result!.path).toBe("skills/.curated/pdf");
+    expect(result!.meta.name).toBe("pdf");
+  });
+
+  it("finds skill nested multiple levels deep", async () => {
+    await mkdir(join(repoDir, "skills", "org", "team", "deploy"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(repoDir, "skills", "org", "team", "deploy", "SKILL.md"),
+      SKILL_MD("deploy"),
+    );
+
+    const result = await discoverSkill(repoDir, "deploy");
+    expect(result).not.toBeNull();
+    expect(result!.path).toBe("skills/org/team/deploy");
+  });
+
+  it("prefers direct match over nested match", async () => {
+    // Direct: skills/pdf/SKILL.md
+    await mkdir(join(repoDir, "skills", "pdf"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "pdf", "SKILL.md"),
+      SKILL_MD("pdf"),
+    );
+    // Nested: skills/.curated/pdf/SKILL.md
+    await mkdir(join(repoDir, "skills", ".curated", "pdf"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", ".curated", "pdf", "SKILL.md"),
+      SKILL_MD("pdf"),
+    );
+
+    const result = await discoverSkill(repoDir, "pdf");
+    expect(result!.path).toBe("skills/pdf");
+  });
+
+  it("finds skill by frontmatter name in nested category directory", async () => {
+    await mkdir(join(repoDir, "skills", "experimental", "chat"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(repoDir, "skills", "experimental", "chat", "SKILL.md"),
+      SKILL_MD("chat-sdk"),
+    );
+
+    const result = await discoverSkill(repoDir, "chat-sdk");
+    expect(result).not.toBeNull();
+    expect(result!.path).toBe("skills/experimental/chat");
+    expect(result!.meta.name).toBe("chat-sdk");
+  });
+
+  it("does not descend into skill directories", async () => {
+    // A skill that has a subdirectory with another SKILL.md (e.g. scripts/sub/SKILL.md)
+    // The inner one should NOT be discovered as a separate skill
+    await mkdir(join(repoDir, "skills", "outer"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "outer", "SKILL.md"),
+      SKILL_MD("outer"),
+    );
+    await mkdir(join(repoDir, "skills", "outer", "nested"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "outer", "nested", "SKILL.md"),
+      SKILL_MD("nested"),
+    );
+
+    // Should not find "nested" since it's inside a skill directory
+    const result = await discoverSkill(repoDir, "nested");
+    expect(result).toBeNull();
+  });
+
   it("returns null when skill not found", async () => {
     const result = await discoverSkill(repoDir, "nonexistent");
     expect(result).toBeNull();
@@ -161,6 +256,51 @@ describe("discoverAllSkills", () => {
 
     const results = await discoverAllSkills(repoDir);
     expect(results).toHaveLength(0);
+  });
+
+  it("discovers skills in category subdirectories", async () => {
+    // OpenAI-style: skills/.curated/pdf/, skills/.curated/sentry/
+    await mkdir(join(repoDir, "skills", ".curated", "pdf"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", ".curated", "pdf", "SKILL.md"),
+      SKILL_MD("pdf"),
+    );
+    await mkdir(join(repoDir, "skills", ".curated", "sentry"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", ".curated", "sentry", "SKILL.md"),
+      SKILL_MD("sentry"),
+    );
+    // Also a direct skill alongside
+    await mkdir(join(repoDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "review", "SKILL.md"),
+      SKILL_MD("review"),
+    );
+
+    const results = await discoverAllSkills(repoDir);
+    expect(results).toHaveLength(3);
+    const names = results.map((r) => r.meta.name).toSorted();
+    expect(names).toEqual(["pdf", "review", "sentry"]);
+    expect(results.find((r) => r.meta.name === "pdf")!.path).toBe(
+      "skills/.curated/pdf",
+    );
+  });
+
+  it("does not descend into skill directories when discovering all", async () => {
+    await mkdir(join(repoDir, "skills", "outer"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "outer", "SKILL.md"),
+      SKILL_MD("outer"),
+    );
+    await mkdir(join(repoDir, "skills", "outer", "nested"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "outer", "nested", "SKILL.md"),
+      SKILL_MD("nested"),
+    );
+
+    const results = await discoverAllSkills(repoDir);
+    expect(results).toHaveLength(1);
+    expect(results[0]!.meta.name).toBe("outer");
   });
 
   it("discovers skills in marketplace format", async () => {
