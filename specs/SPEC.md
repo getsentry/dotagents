@@ -293,7 +293,8 @@ dotagents init [--force] [--agents claude,cursor]
 4. Add `agents.lock` and `.agents/.gitignore` to the root `.gitignore`
 5. If symlink targets or agents are configured, set up symlinks
 6. Attempt to install the bootstrap skill (best-effort — warns on failure)
-7. Print next steps
+7. (Interactive, project scope) Offer to install a git `post-merge` hook that runs `dotagents install` on pull (defaults to no). The hook tries `dotagents` first, falling back to `npx --yes @sentry/dotagents`.
+8. Print next steps
 
 **Flags:**
 - `--force`: Overwrite existing `agents.toml`

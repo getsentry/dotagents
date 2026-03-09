@@ -51,14 +51,20 @@ export function resolveScope(scope: Scope, projectRoot?: string): ScopeRoot {
 
 /** Walk up from `dir` looking for a `.git` directory. */
 export function isInsideGitRepo(dir: string): boolean {
+  return findGitDir(dir) !== undefined;
+}
+
+/** Walk up from `dir` and return the `.git` directory path, or undefined. */
+export function findGitDir(dir: string): string | undefined {
   let current = resolve(dir);
   const root = dirname(current) === current ? current : undefined;
 
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   while (true) {
-    if (existsSync(join(current, ".git"))) {return true;}
+    const gitDir = join(current, ".git");
+    if (existsSync(gitDir)) {return gitDir;}
     const parent = dirname(current);
-    if (parent === current || parent === root) {return false;}
+    if (parent === current || parent === root) {return undefined;}
     current = parent;
   }
 }
