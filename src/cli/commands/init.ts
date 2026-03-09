@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import chalk from "chalk";
 import { generateDefaultConfig } from "../../config/writer.js";
@@ -9,7 +9,7 @@ import { loadConfig } from "../../config/loader.js";
 import { getAgent, allAgentIds, allAgents } from "../../agents/registry.js";
 import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
-import { resolveScope, isInsideGitRepo, type ScopeRoot } from "../../scope.js";
+import { resolveScope, isInsideGitRepo, findGitDir, type ScopeRoot } from "../../scope.js";
 import type { TrustConfig } from "../../config/schema.js";
 import { TrustError } from "../../trust/index.js";
 import { runInstall } from "./install.js";
@@ -157,6 +157,39 @@ export class InitError extends Error {
 
 class CancelledError extends Error {}
 
+const POST_MERGE_MARKER = "# dotagents:post-merge";
+
+const POST_MERGE_SNIPPET = `
+${POST_MERGE_MARKER}
+if command -v dotagents >/dev/null 2>&1; then
+  dotagents install
+elif command -v npx >/dev/null 2>&1; then
+  npx --yes @sentry/dotagents install
+fi
+# dotagents:end
+`;
+
+export async function installPostMergeHook(gitDir: string): Promise<"created" | "exists"> {
+  const hooksDir = join(gitDir, "hooks");
+  await mkdir(hooksDir, { recursive: true });
+
+  const hookPath = join(hooksDir, "post-merge");
+
+  if (existsSync(hookPath)) {
+    const existing = await readFile(hookPath, "utf-8");
+    if (existing.includes(POST_MERGE_MARKER)) {
+      return "exists";
+    }
+    // Append to existing hook
+    await writeFile(hookPath, `${existing.trimEnd()}\n${POST_MERGE_SNIPPET}`, "utf-8");
+  } else {
+    await writeFile(hookPath, `#!/bin/sh\n${POST_MERGE_SNIPPET}`, "utf-8");
+  }
+
+  await chmod(hookPath, 0o755);
+  return "created";
+}
+
 const BANNER = `
      _       _                         _
   __| | ___ | |_  __ _  __ _  ___ _ __| |_ ___
@@ -223,6 +256,32 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
     agents: selectedAgents,
     trust,
   });
+
+  // Offer git post-merge hook (project scope only)
+  if (scope.scope === "project") {
+    const gitDir = findGitDir(scope.root);
+    if (gitDir) {
+      const setupHook = prompt(
+        await clack.confirm({
+          message: "Set up a git hook to auto-run `dotagents install` on pull?",
+          initialValue: false,
+        }),
+      );
+
+      if (setupHook) {
+        try {
+          const result = await installPostMergeHook(gitDir);
+          if (result === "created") {
+            clack.log.success("Installed post-merge hook.");
+          } else {
+            clack.log.info("Post-merge hook already configured.");
+          }
+        } catch {
+          clack.log.warn("Could not install post-merge hook. You can set it up manually later.");
+        }
+      }
+    }
+  }
 
   clack.outro("You're all set! Run `dotagents add` to add more skills.");
 }

@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 
@@ -51,16 +51,49 @@ export function resolveScope(scope: Scope, projectRoot?: string): ScopeRoot {
 
 /** Walk up from `dir` looking for a `.git` directory. */
 export function isInsideGitRepo(dir: string): boolean {
+  return findGitDir(dir) !== undefined;
+}
+
+/** Walk up from `dir` and return the `.git` directory path, or undefined.
+ *  Handles worktrees/submodules where `.git` is a file pointing to the real git dir.
+ *  For worktrees, resolves to the common git directory (where hooks are shared). */
+export function findGitDir(dir: string): string | undefined {
   let current = resolve(dir);
   const root = dirname(current) === current ? current : undefined;
 
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   while (true) {
-    if (existsSync(join(current, ".git"))) {return true;}
+    const gitPath = join(current, ".git");
+    if (existsSync(gitPath)) {
+      // In worktrees/submodules, .git is a file containing "gitdir: <path>"
+      if (statSync(gitPath).isFile()) {
+        const content = readFileSync(gitPath, "utf-8").trim();
+        const match = content.match(/^gitdir:\s+(.+)$/);
+        if (match?.[1]) {
+          const target = resolve(current, match[1]);
+          if (!existsSync(target)) {return undefined;}
+          return resolveCommonGitDir(target);
+        }
+        return undefined;
+      }
+      return gitPath;
+    }
     const parent = dirname(current);
-    if (parent === current || parent === root) {return false;}
+    if (parent === current || parent === root) {return undefined;}
     current = parent;
   }
+}
+
+/** Resolve the common git directory from a worktree-specific git dir.
+ *  Worktree git dirs contain a `commondir` file pointing to the shared .git. */
+function resolveCommonGitDir(gitDir: string): string {
+  const commondirPath = join(gitDir, "commondir");
+  if (existsSync(commondirPath)) {
+    const rel = readFileSync(commondirPath, "utf-8").trim();
+    const common = resolve(gitDir, rel);
+    if (existsSync(common)) {return common;}
+  }
+  return gitDir;
 }
 
 export class ScopeError extends Error {

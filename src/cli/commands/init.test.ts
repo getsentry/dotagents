@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile, readFile, lstat, readdir } from "node:fs
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
-import { runInit, InitError } from "./init.js";
+import { runInit, InitError, installPostMergeHook } from "./init.js";
 import { loadConfig } from "../../config/loader.js";
 
 vi.mock("./install.js", () => ({
@@ -237,5 +237,75 @@ describe("runInit", () => {
 
     const raw = await readFile(join(dir, "agents.toml"), "utf-8");
     expect(raw).not.toContain("pin");
+  });
+});
+
+describe("installPostMergeHook", () => {
+  let dir: string;
+  let gitDir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "dotagents-hook-test-"));
+    gitDir = join(dir, ".git");
+    await mkdir(gitDir);
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true });
+  });
+
+  it("creates post-merge hook with shebang", async () => {
+    const result = await installPostMergeHook(gitDir);
+
+    expect(result).toBe("created");
+    const content = await readFile(join(gitDir, "hooks", "post-merge"), "utf-8");
+    expect(content).toMatch(/^#!\/bin\/sh\n/);
+    expect(content).toContain("dotagents install");
+    expect(content).toContain("dotagents:post-merge");
+  });
+
+  it("makes hook executable", async () => {
+    await installPostMergeHook(gitDir);
+
+    const stat = await lstat(join(gitDir, "hooks", "post-merge"));
+    // Check owner execute bit
+    expect(stat.mode & 0o111).toBeTruthy();
+  });
+
+  it("appends to existing hook without duplicating shebang", async () => {
+    const hooksDir = join(gitDir, "hooks");
+    await mkdir(hooksDir, { recursive: true });
+    await writeFile(join(hooksDir, "post-merge"), "#!/bin/sh\necho 'existing'\n");
+
+    const result = await installPostMergeHook(gitDir);
+
+    expect(result).toBe("created");
+    const content = await readFile(join(hooksDir, "post-merge"), "utf-8");
+    expect(content).toContain("echo 'existing'");
+    expect(content).toContain("dotagents install");
+    // Only one shebang
+    expect(content.match(/^#!\/bin\/sh/gm)).toHaveLength(1);
+  });
+
+  it("returns 'exists' if marker already present", async () => {
+    await installPostMergeHook(gitDir);
+    const result = await installPostMergeHook(gitDir);
+
+    expect(result).toBe("exists");
+  });
+
+  it("is idempotent — does not duplicate snippet", async () => {
+    await installPostMergeHook(gitDir);
+    await installPostMergeHook(gitDir);
+
+    const content = await readFile(join(gitDir, "hooks", "post-merge"), "utf-8");
+    expect(content.match(/dotagents:post-merge/g)).toHaveLength(1);
+  });
+
+  it("includes npx fallback", async () => {
+    await installPostMergeHook(gitDir);
+
+    const content = await readFile(join(gitDir, "hooks", "post-merge"), "utf-8");
+    expect(content).toContain("npx --yes @sentry/dotagents install");
   });
 });

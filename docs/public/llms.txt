@@ -224,7 +224,7 @@ Global flags (before command name):
 dotagents init [--force] [--agents claude,cursor]
 ```
 
-Create `agents.toml` and `.agents/skills/` directory. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance. Interactive mode (when TTY is available) prompts for agent targets and trust policy. Sets up gitignore entries automatically.
+Create `agents.toml` and `.agents/skills/` directory. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance. Interactive mode (when TTY is available) prompts for agent targets, trust policy, and optionally sets up a git `post-merge` hook to auto-run `dotagents install` on pull (defaults to no). Sets up gitignore entries automatically.
 
 | Flag | Description |
 |------|-------------|

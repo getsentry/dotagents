@@ -66,7 +66,7 @@ All commands accept `--user` to operate on user scope (`~/.agents/`) instead of 
 dotagents init [--agents claude,cursor] [--force]
 ```
 
-Interactive mode prompts for agent targets and trust policy. Sets up gitignore entries automatically. Includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance.
+Interactive mode prompts for agent targets, trust policy, and optionally sets up a git `post-merge` hook to auto-run `dotagents install` on pull. Sets up gitignore entries automatically. Includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance.
 
 ### install
 
