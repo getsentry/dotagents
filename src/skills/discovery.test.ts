@@ -116,6 +116,22 @@ describe("discoverSkill", () => {
     expect(result!.path).toBe("skills/my-skill");
   });
 
+  it("prefers higher-priority scan dir frontmatter match over lower-priority dir name match", async () => {
+    // Root-level: ./chat/SKILL.md with name: "chat-sdk" (frontmatter match)
+    await mkdir(join(repoDir, "chat"), { recursive: true });
+    await writeFile(join(repoDir, "chat", "SKILL.md"), SKILL_MD("chat-sdk"));
+    // skills/: skills/chat-sdk/SKILL.md (dir name match, but lower priority scan dir)
+    await mkdir(join(repoDir, "skills", "chat-sdk"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "chat-sdk", "SKILL.md"),
+      SKILL_MD("chat-sdk"),
+    );
+
+    const result = await discoverSkill(repoDir, "chat-sdk");
+    // The root-level frontmatter match should win over the skills/ dir name match
+    expect(result!.path).toBe("chat");
+  });
+
   it("finds skill nested in category subdirectory (e.g. skills/.curated/pdf/)", async () => {
     await mkdir(join(repoDir, "skills", ".curated", "pdf"), { recursive: true });
     await writeFile(

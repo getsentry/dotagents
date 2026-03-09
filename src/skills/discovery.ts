@@ -9,8 +9,14 @@ export interface DiscoveredSkill {
   meta: SkillMeta;
 }
 
-/** Conventional directories to scan for skills, in priority order. */
-const SCAN_DIRS = [".", "skills", ".agents/skills", ".claude/skills"];
+/**
+ * Conventional directories to scan for skills, in priority order.
+ * The root dir (".") is scanned flat (direct children only) to avoid
+ * walking the entire repo. Other dirs are scanned recursively to handle
+ * categorized layouts like skills/.curated/<name>/.
+ */
+const ROOT_SCAN_DIR = ".";
+const RECURSIVE_SCAN_DIRS = ["skills", ".agents/skills", ".claude/skills"];
 
 interface SkillDir {
   /** Absolute path to the directory containing SKILL.md */
@@ -53,6 +59,43 @@ async function walkSkillDirs(baseDir: string, relPrefix = ""): Promise<SkillDir[
   return [...direct, ...nested];
 }
 
+/** All scan dirs in priority order, with their scan mode. */
+const ALL_SCAN_DIRS: Array<{ dir: string; recursive: boolean }> = [
+  { dir: ROOT_SCAN_DIR, recursive: false },
+  ...RECURSIVE_SCAN_DIRS.map((dir) => ({ dir, recursive: true })),
+];
+
+/**
+ * List skill directories within a scan dir.
+ * Root dir is scanned flat; other dirs are walked recursively.
+ */
+async function listSkillDirs(
+  repoDir: string,
+  scanDir: string,
+  recursive: boolean,
+): Promise<SkillDir[]> {
+  const absDir = join(repoDir, scanDir);
+  if (recursive) {return walkSkillDirs(absDir);}
+
+  // Flat scan: only direct children with SKILL.md
+  if (!existsSync(absDir)) {return [];}
+  let entries;
+  try {
+    entries = await readdir(absDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const results: SkillDir[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {continue;}
+    const absPath = join(absDir, entry.name);
+    if (existsSync(join(absPath, "SKILL.md"))) {
+      results.push({ absPath, relPath: entry.name });
+    }
+  }
+  return results;
+}
+
 /**
  * Discover a specific skill by name within a repo directory.
  * Scans conventional directories in priority order, recursing into
@@ -62,32 +105,33 @@ export async function discoverSkill(
   repoDir: string,
   skillName: string,
 ): Promise<DiscoveredSkill | null> {
-  // Walk once per scan dir, check dir name match first then frontmatter match
-  let frontmatterMatch: DiscoveredSkill | null = null;
+  for (const { dir: scanDir, recursive } of ALL_SCAN_DIRS) {
+    const skillDirs = await listSkillDirs(repoDir, scanDir, recursive);
 
-  for (const scanDir of SCAN_DIRS) {
-    const absDir = join(repoDir, scanDir);
-    const skillDirs = await walkSkillDirs(absDir);
+    // Within each scan dir: prefer dir-name match, fall back to frontmatter match
+    let dirNameMatch: DiscoveredSkill | null = null;
+    let frontmatterMatch: DiscoveredSkill | null = null;
 
     for (const { absPath, relPath } of skillDirs) {
       const dirName = relPath.split("/").pop()!;
-      const fullRelPath = scanDir === "." ? relPath : `${scanDir}/${relPath}`;
+      const fullRelPath = scanDir === ROOT_SCAN_DIR ? relPath : `${scanDir}/${relPath}`;
 
       try {
         const meta = await loadSkillMd(join(absPath, "SKILL.md"));
-        if (dirName === skillName) {
-          return { path: fullRelPath, meta };
-        }
-        if (!frontmatterMatch && meta.name === skillName) {
+        if (!dirNameMatch && dirName === skillName) {
+          dirNameMatch = { path: fullRelPath, meta };
+        } else if (!frontmatterMatch && meta.name === skillName) {
           frontmatterMatch = { path: fullRelPath, meta };
         }
       } catch {
         // Skip skills with invalid SKILL.md
       }
     }
-  }
 
-  if (frontmatterMatch) {return frontmatterMatch;}
+    // Any match in this scan dir wins over later scan dirs
+    if (dirNameMatch) {return dirNameMatch;}
+    if (frontmatterMatch) {return frontmatterMatch;}
+  }
 
   // Marketplace format
   const marketplaceSkill = await tryMarketplaceFormat(repoDir, skillName);
@@ -105,16 +149,15 @@ export async function discoverAllSkills(
 ): Promise<DiscoveredSkill[]> {
   const found = new Map<string, DiscoveredSkill>();
 
-  for (const scanDir of SCAN_DIRS) {
-    const absDir = join(repoDir, scanDir);
-    const skillDirs = await walkSkillDirs(absDir);
+  for (const { dir: scanDir, recursive } of ALL_SCAN_DIRS) {
+    const skillDirs = await listSkillDirs(repoDir, scanDir, recursive);
 
     for (const { absPath, relPath } of skillDirs) {
       try {
         const meta = await loadSkillMd(join(absPath, "SKILL.md"));
         // First match wins (higher priority scan dirs are checked first)
         if (found.has(meta.name)) {continue;}
-        const fullRelPath = scanDir === "." ? relPath : `${scanDir}/${relPath}`;
+        const fullRelPath = scanDir === ROOT_SCAN_DIR ? relPath : `${scanDir}/${relPath}`;
         found.set(meta.name, { path: fullRelPath, meta });
       } catch {
         // Skip skills with invalid SKILL.md
