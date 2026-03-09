@@ -14,6 +14,9 @@ import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import { runInstall } from "./install.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 
+/** Parent paths that are standard/expected — no need to show them in the picker */
+const STANDARD_PARENTS = new Set(["", "skills", ".agents/skills", ".claude/skills"]);
+
 export class AddError extends Error {
   constructor(message: string) {
     super(message);
@@ -231,11 +234,18 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
           message: "Select which skills to add:",
           options: skills
             .toSorted((a, b) => a.meta.name.localeCompare(b.meta.name))
-            .map((s) => ({
-              label: s.meta.name,
-              value: s.meta.name,
-              hint: s.meta.description,
-            })),
+            .map((s) => {
+              const lastSlash = s.path.lastIndexOf("/");
+              const parentPath = lastSlash === -1 ? "" : s.path.slice(0, lastSlash);
+              const pathHint = STANDARD_PARENTS.has(parentPath)
+                ? ""
+                : chalk.dim(`(${s.path}) `);
+              return {
+                label: s.meta.name,
+                value: s.meta.name,
+                hint: pathHint + s.meta.description,
+              };
+            }),
           required: true,
         });
 

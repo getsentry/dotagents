@@ -195,13 +195,22 @@ Ref pinning can also be inline: `source = "getsentry/warden@v1.0.0"`
 
 #### Skill discovery within a repo
 
-After cloning, dotagents scans these locations (in order) for a skill matching the name:
+After cloning, dotagents scans these base directories (in priority order) for a skill matching the name:
 
-1. `<name>/SKILL.md` (root-level skill directory)
-2. `skills/<name>/SKILL.md`
-3. `.agents/skills/<name>/SKILL.md`
-4. `.claude/skills/<name>/SKILL.md`
-5. Marketplace format: `plugins/*/skills/<name>/SKILL.md` (requires `.claude-plugin/` marker directory)
+1. `.` (repo root)
+2. `skills/`
+3. `.agents/skills/`
+4. `.claude/skills/`
+
+Within each base directory, scanning is **recursive**: dotagents walks the directory tree looking for directories containing `SKILL.md`. When a `SKILL.md` is found, that directory is treated as a skill and its children are not descended into. This supports both flat layouts (`skills/<name>/SKILL.md`) and categorized layouts (`skills/<category>/<name>/SKILL.md`, `skills/<org>/<team>/<name>/SKILL.md`, etc.).
+
+Matching proceeds in two phases:
+1. **Directory name match**: the skill directory's name matches the requested skill name
+2. **Frontmatter name match**: the `name` field in SKILL.md's YAML frontmatter matches the requested skill name
+
+Directory name matches take priority over frontmatter matches. Earlier base directories take priority over later ones.
+
+Additionally, the **marketplace format** is supported: `plugins/*/skills/<name>/SKILL.md` (requires `.claude-plugin/` marker directory).
 
 If discovery fails, the `path` field can be used as an explicit override:
 
