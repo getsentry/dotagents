@@ -7,6 +7,7 @@ import type { AgentsConfig, McpConfig } from "../../config/schema.js";
 import { addMcpToConfig, removeMcpFromConfig } from "../../config/writer.js";
 import { runInstall } from "./install.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 
 export class McpError extends Error {
   constructor(message: string) {
@@ -335,6 +336,7 @@ export default async function mcp(args: string[], flags?: { user?: boolean }): P
   let scope: ScopeRoot;
   try {
     scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
+    await ensureUserScopeBootstrapped(scope);
   } catch (err) {
     if (err instanceof ScopeError) {
       console.error(chalk.red(err.message));

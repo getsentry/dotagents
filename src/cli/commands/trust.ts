@@ -5,6 +5,7 @@ import { loadConfig } from "../../config/loader.js";
 import type { AgentsConfig } from "../../config/schema.js";
 import { addTrustSource, removeTrustSource } from "../../config/writer.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 
 export class TrustCommandError extends Error {
   constructor(message: string) {
@@ -179,6 +180,7 @@ export default async function trust(args: string[], flags?: { user?: boolean }):
   let scope: ScopeRoot;
   try {
     scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
+    await ensureUserScopeBootstrapped(scope);
   } catch (err) {
     if (err instanceof ScopeError) {
       console.error(chalk.red(err.message));

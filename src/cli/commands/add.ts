@@ -20,6 +20,7 @@ import { ensureCached } from "../../sources/cache.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import { runInstall } from "./install.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 
 /** Parent paths that are standard/expected — no need to show them in the picker */
 const STANDARD_PARENTS = new Set(["", "skills", ".agents/skills", ".claude/skills"]);
@@ -396,6 +397,7 @@ export default async function add(
     const scope = flags?.user
       ? resolveScope("user")
       : resolveDefaultScope(resolve("."));
+    await ensureUserScopeBootstrapped(scope);
     const interactive =
       process.stdout.isTTY === true && !names && !values["all"];
     const result = await runAdd({
