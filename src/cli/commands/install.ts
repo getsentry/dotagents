@@ -27,6 +27,7 @@ import { writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../ag
 import { writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
 import { userMcpResolver } from "../../agents/paths.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 
 /** A skill whose source points to its own install location (adopted orphan). */
 function isInPlaceSkill(source: string): boolean {
@@ -320,6 +321,7 @@ export default async function install(args: string[], flags?: { user?: boolean }
 
   try {
     const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
+    await ensureUserScopeBootstrapped(scope);
     if (values["frozen"]) {
       console.log(chalk.yellow("Warning: --frozen is deprecated and will be removed in a future release. Pinning is now managed via agents.toml refs."));
     }

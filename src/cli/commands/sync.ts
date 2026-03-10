@@ -15,6 +15,7 @@ import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolve
 import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
 import { userMcpResolver } from "../../agents/paths.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 
 /** A skill whose source points to its own install location (adopted orphan). */
 function isInPlaceSkill(source: string): boolean {
@@ -228,6 +229,7 @@ export default async function sync(_args: string[], flags?: { user?: boolean }):
   let scope: ScopeRoot;
   try {
     scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
+    await ensureUserScopeBootstrapped(scope);
   } catch (err) {
     if (err instanceof ScopeError) {
       console.error(chalk.red(err.message));

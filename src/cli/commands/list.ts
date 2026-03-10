@@ -7,6 +7,7 @@ import { loadLockfile } from "../../lockfile/loader.js";
 import { sourcesMatch } from "../../skills/resolver.js";
 import { existsSync } from "node:fs";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 
 export interface SkillStatus {
   name: string;
@@ -103,6 +104,7 @@ export default async function list(args: string[], flags?: { user?: boolean }): 
   let scope: ScopeRoot;
   try {
     scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
+    await ensureUserScopeBootstrapped(scope);
   } catch (err) {
     if (err instanceof ScopeError) {
       console.error(chalk.red(err.message));
