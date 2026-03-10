@@ -84,8 +84,9 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
     ? specifier.slice(0, -(parsed.ref.length + 1))
     : specifier;
 
-  // Validate trust against the source
-  validateTrustedSource(sourceForStorage, config.trust);
+  // Validate trust against the expanded source (not the shorthand) so that
+  // defaultRepositorySource=gitlab doesn't bypass trust checks
+  validateTrustedSource(hintedSpecifier, config.trust);
 
   // Determine ref (flag overrides inline @ref)
   const effectiveRef = ref ?? parsed.ref;
