@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import add, { runAdd, AddError } from "./add.js";
+import { TrustError } from "../../trust/index.js";
 import { exec } from "../../utils/exec.js";
 import { resolveScope } from "../../scope.js";
 
@@ -198,6 +199,32 @@ describe("runAdd", () => {
     ).rejects.toThrow(
       'A wildcard entry for "getsentry/skills" already exists in agents.toml.',
     );
+  });
+
+  it("validates trust against expanded source, not raw shorthand", async () => {
+    // When defaultRepositorySource=gitlab, a shorthand like "getsentry/skills"
+    // should be validated as a GitLab source, not a GitHub source.
+    // github_orgs=["getsentry"] should NOT allow it — the clone targets GitLab.
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      [
+        "version = 1",
+        'defaultRepositorySource = "gitlab"',
+        "",
+        "[trust]",
+        'github_orgs = ["getsentry"]',
+        "",
+      ].join("\n"),
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(
+      runAdd({
+        scope,
+        specifier: "getsentry/skills",
+        names: ["pdf"],
+      }),
+    ).rejects.toThrow(TrustError);
   });
 
   it("auto-selects when repo has a single skill", async () => {
