@@ -53,5 +53,10 @@
   "onlyBuiltDependencies": [
     "esbuild",
     "simple-git-hooks"
-  ]
+  ],
+  "pnpm": {
+    "overrides": {
+      "rollup": ">=4.59.0"
+    }
+  }
 }
