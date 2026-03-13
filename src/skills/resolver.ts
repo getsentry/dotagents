@@ -54,14 +54,20 @@ export function isExplicitSourceSpecifier(specifier: string): boolean {
   );
 }
 
+/** Strip a leading `@` from npm-style scoped specifiers (e.g. `@owner/repo` → `owner/repo`). */
+export function stripLeadingAt(specifier: string): string {
+  return specifier.startsWith("@") ? specifier.slice(1) : specifier;
+}
+
 export function parseOwnerRepoShorthand(
   specifier: string,
 ): { owner: string; repo: string; ref?: string } | undefined {
   if (isExplicitSourceSpecifier(specifier)) {return undefined;}
 
-  const atIdx = specifier.indexOf("@");
-  const base = atIdx >= 0 ? specifier.slice(0, atIdx) : specifier;
-  const ref = atIdx >= 0 ? specifier.slice(atIdx + 1) : undefined;
+  const stripped = stripLeadingAt(specifier);
+  const atIdx = stripped.indexOf("@");
+  const base = atIdx >= 0 ? stripped.slice(0, atIdx) : stripped;
+  const ref = atIdx >= 0 ? stripped.slice(atIdx + 1) : undefined;
   const parts = base.split("/");
   if (parts.length !== 2) {return undefined;}
 
@@ -150,9 +156,10 @@ export function parseSource(source: string): {
   }
 
   // owner/repo or owner/repo@ref — shorthand, no cloneUrl
-  const atIdx = source.indexOf("@");
-  const base = atIdx === -1 ? source : source.slice(0, atIdx);
-  const ref = atIdx === -1 ? undefined : source.slice(atIdx + 1);
+  const stripped = stripLeadingAt(source);
+  const atIdx = stripped.indexOf("@");
+  const base = atIdx === -1 ? stripped : stripped.slice(0, atIdx);
+  const ref = atIdx === -1 ? undefined : stripped.slice(atIdx + 1);
   const [owner, repo] = base.split("/");
 
   return {

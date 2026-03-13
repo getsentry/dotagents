@@ -11,6 +11,7 @@ import {
   parseOwnerRepoShorthand,
   parseSource,
   sourcesMatch,
+  stripLeadingAt,
   VALID_SKILL_NAME,
 } from "../../skills/resolver.js";
 import { discoverAllSkills, discoverSkill } from "../../skills/discovery.js";
@@ -51,12 +52,14 @@ export interface AddOptions {
 export async function runAdd(opts: AddOptions): Promise<string | string[]> {
   const {
     scope,
-    specifier,
+    specifier: rawSpecifier,
     ref,
     names: rawNames,
     all,
     interactive,
   } = opts;
+  // Strip npm-style leading @ (e.g. @getsentry/skills → getsentry/skills)
+  const specifier = stripLeadingAt(rawSpecifier);
   // Deduplicate names to prevent writing duplicate config entries
   const namesOverride = rawNames ? [...new Set(rawNames)] : rawNames;
   const { configPath } = scope;

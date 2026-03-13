@@ -1,10 +1,40 @@
 import { describe, it, expect } from "vitest";
 import {
   applyDefaultRepositorySource,
+  parseOwnerRepoShorthand,
   parseSource,
   normalizeSource,
   sourcesMatch,
 } from "./resolver.js";
+
+describe("parseOwnerRepoShorthand", () => {
+  it("parses owner/repo", () => {
+    expect(parseOwnerRepoShorthand("getsentry/skills")).toEqual({
+      owner: "getsentry",
+      repo: "skills",
+    });
+  });
+
+  it("parses @owner/repo (strips leading @)", () => {
+    expect(parseOwnerRepoShorthand("@getsentry/skills")).toEqual({
+      owner: "getsentry",
+      repo: "skills",
+    });
+  });
+
+  it("parses @owner/repo@ref (strips leading @, preserves ref)", () => {
+    expect(parseOwnerRepoShorthand("@getsentry/skills@v1.0.0")).toEqual({
+      owner: "getsentry",
+      repo: "skills",
+      ref: "v1.0.0",
+    });
+  });
+
+  it("returns undefined for explicit URLs", () => {
+    expect(parseOwnerRepoShorthand("https://github.com/o/r")).toBeUndefined();
+    expect(parseOwnerRepoShorthand("git@github.com:o/r")).toBeUndefined();
+  });
+});
 
 describe("applyDefaultRepositorySource", () => {
   it("expands shorthand to GitHub by default", () => {
@@ -38,6 +68,23 @@ describe("parseSource", () => {
     expect(result.url).toBe("https://github.com/anthropics/skills.git");
     expect(result.cloneUrl).toBeUndefined();
     expect(result.ref).toBeUndefined();
+  });
+
+  it("parses @owner/repo as github (strips leading @)", () => {
+    const result = parseSource("@getsentry/skills");
+    expect(result.type).toBe("github");
+    expect(result.owner).toBe("getsentry");
+    expect(result.repo).toBe("skills");
+    expect(result.url).toBe("https://github.com/getsentry/skills.git");
+    expect(result.ref).toBeUndefined();
+  });
+
+  it("parses @owner/repo@ref as github with ref", () => {
+    const result = parseSource("@getsentry/skills@v2.0");
+    expect(result.type).toBe("github");
+    expect(result.owner).toBe("getsentry");
+    expect(result.repo).toBe("skills");
+    expect(result.ref).toBe("v2.0");
   });
 
   it("parses owner/repo@ref as github with ref", () => {
