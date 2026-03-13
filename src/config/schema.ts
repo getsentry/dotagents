@@ -37,8 +37,9 @@ const skillSourceSchema = z.string().check(
     // GitLab HTTPS or SSH URLs
     if (GITLAB_HTTPS_URL.test(s)) {return true;}
     if (GITLAB_SSH_URL.test(s)) {return true;}
-    // owner/repo or owner/repo@ref
-    const base = s.includes("@") ? s.slice(0, s.indexOf("@")) : s;
+    // owner/repo or owner/repo@ref (strip npm-style leading @)
+    const stripped = s.startsWith("@") ? s.slice(1) : s;
+    const base = stripped.includes("@") ? stripped.slice(0, stripped.indexOf("@")) : stripped;
     const parts = base.split("/");
     return (
       parts.length === 2 &&
