@@ -49,7 +49,7 @@ source = "getsentry/skills"
 exclude = ["deprecated-skill"]
 ```
 
-During `install`, dotagents discovers all skills in the source and installs each one (except those in `exclude`). Each skill gets its own lockfile entry. Use `dotagents add <source> --all` to create a wildcard entry from the CLI.
+During `install`, dotagents discovers all skills in the source and installs each one (except those in `exclude`). Each skill gets its own lockfile entry. Use `npx @sentry/dotagents add <source> --all` to create a wildcard entry from the CLI.
 
 ## Trust
 
@@ -152,8 +152,8 @@ Operates on the current project. Requires `agents.toml` at the project root.
 Operates on `~/.agents/` for skills shared across all projects. Override with `DOTAGENTS_HOME`.
 
 ```bash
-dotagents --user init
-dotagents --user add getsentry/skills --all
+npx @sentry/dotagents --user init
+npx @sentry/dotagents --user add getsentry/skills --all
 ```
 
 User-scope symlinks go to `~/.claude/skills/` and `~/.cursor/skills/`.
@@ -168,24 +168,24 @@ Two files are added to the root `.gitignore` during `init`:
 - `agents.lock` — tracks managed skills
 - `.agents/.gitignore` — excludes managed skill directories
 
-If these entries are missing, `install` and `sync` warn. Run `dotagents doctor --fix` to add them.
+If these entries are missing, `install` and `sync` warn. Run `npx @sentry/dotagents doctor --fix` to add them.
 
 ## Caching
 
 - Cache location: `~/.local/dotagents/` (override with `DOTAGENTS_STATE_DIR`)
 - Shallow clone per repo, refreshed after 24-hour TTL
-- Use `dotagents install --force` to bypass cache
+- Use `npx @sentry/dotagents install --force` to bypass cache
 
 ## Troubleshooting
 
 **Skills not installing:**
-- Check `agents.toml` syntax with `dotagents list`
+- Check `agents.toml` syntax with `npx @sentry/dotagents list`
 - Verify source is accessible (`git clone` the URL manually)
 - Check trust config if using restricted mode
-- Run `dotagents doctor` to check project health
+- Run `npx @sentry/dotagents doctor` to check project health
 
 **Symlinks broken:**
-- Run `dotagents sync` to repair
+- Run `npx @sentry/dotagents sync` to repair
 
 **Configuration issues:**
-- Run `dotagents doctor --fix` to auto-repair gitignore and legacy config fields
+- Run `npx @sentry/dotagents doctor --fix` to auto-repair gitignore and legacy config fields

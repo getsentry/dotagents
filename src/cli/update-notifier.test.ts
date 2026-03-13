@@ -33,7 +33,7 @@ describe("formatUpdateMessage", () => {
     const msg = formatUpdateMessage("0.7.0", "0.8.0");
     expect(msg).toContain("0.7.0");
     expect(msg).toContain("0.8.0");
-    expect(msg).toContain("npm install -g @sentry/dotagents");
+    expect(msg).toContain("npx @sentry/dotagents@latest");
   });
 
   it("contains the arrow separator", () => {

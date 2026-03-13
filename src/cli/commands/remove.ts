@@ -107,7 +107,7 @@ export default async function remove(args: string[], flags?: { user?: boolean })
 
   const skillName = positionals[0];
   if (!skillName) {
-    console.error(chalk.red("Usage: dotagents remove <name>"));
+    console.error(chalk.red("Usage: npx @sentry/dotagents remove <name>"));
     process.exitCode = 1;
     return;
   }

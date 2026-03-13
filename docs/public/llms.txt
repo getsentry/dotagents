@@ -44,7 +44,7 @@ And a lockfile (`agents.lock`) tracking which skills are managed. Both `agents.l
 1. Declare skill dependencies in `agents.toml` at the project root (or `~/.agents/agents.toml` for user scope)
 2. `install` clones repos (always fetching latest), discovers skills by convention, and copies them into `.agents/skills/`
 3. `agents.lock` tracks which skills are managed (gitignored automatically)
-4. Managed skills are gitignored. Collaborators run `dotagents install` after cloning. Custom skills in `.agents/skills/` are tracked by git normally.
+4. Managed skills are gitignored. Collaborators run `npx @sentry/dotagents install` after cloning. Custom skills in `.agents/skills/` are tracked by git normally.
 5. Symlinks connect `.agents/skills/` to each agent's expected location (`.claude/skills/`, `.cursor/skills/`, etc.)
 6. MCP and hook configs are generated for each declared agent
 
@@ -224,10 +224,10 @@ Global flags (before command name):
 ### init
 
 ```
-dotagents init [--force] [--agents claude,cursor]
+npx @sentry/dotagents init [--force] [--agents claude,cursor]
 ```
 
-Create `agents.toml` and `.agents/skills/` directory. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance. Interactive mode (when TTY is available) prompts for agent targets, trust policy, and optionally sets up a git `post-merge` hook to auto-run `dotagents install` on pull (defaults to no). Sets up gitignore entries automatically.
+Create `agents.toml` and `.agents/skills/` directory. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance. Interactive mode (when TTY is available) prompts for agent targets, trust policy, and optionally sets up a git `post-merge` hook to auto-run `npx @sentry/dotagents install` on pull (defaults to no). Sets up gitignore entries automatically.
 
 | Flag | Description |
 |------|-------------|
@@ -237,7 +237,7 @@ Create `agents.toml` and `.agents/skills/` directory. Automatically includes the
 ### install
 
 ```
-dotagents install [--force]
+npx @sentry/dotagents install [--force]
 ```
 
 Install all dependencies from `agents.toml`. Always fetches latest skills (TTL-based cache refresh). Resolves sources, copies skills, writes lockfile, creates symlinks, generates MCP and hook configs. There is no separate update step.
@@ -249,7 +249,7 @@ Install all dependencies from `agents.toml`. Always fetches latest skills (TTL-b
 ### add
 
 ```
-dotagents add <source> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]
+npx @sentry/dotagents add <source> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]
 ```
 
 Add one or more skill dependencies and install them. Specify skill names as positional arguments or with `--skill` flags.
@@ -268,7 +268,7 @@ When adding multiple skills, any that already exist in `agents.toml` are skipped
 ### remove
 
 ```
-dotagents remove <name>
+npx @sentry/dotagents remove <name>
 ```
 
 Remove a skill from `agents.toml`, delete from disk, and update the lockfile. For skills sourced from a wildcard entry, prompts to add the skill to the `exclude` list instead of removing the entire wildcard.
@@ -276,7 +276,7 @@ Remove a skill from `agents.toml`, delete from disk, and update the lockfile. Fo
 ### sync
 
 ```
-dotagents sync
+npx @sentry/dotagents sync
 ```
 
 Reconcile project state without network access: adopt orphaned skills (installed but not declared), regenerate `.agents/.gitignore`, check for missing skills, repair symlinks, verify/repair MCP and hook configs. Reports issues as warnings or errors.
@@ -284,8 +284,8 @@ Reconcile project state without network access: adopt orphaned skills (installed
 ### mcp add
 
 ```
-dotagents mcp add <name> --command <cmd> [--args <a>...] [--env <VAR>...]
-dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]
+npx @sentry/dotagents mcp add <name> --command <cmd> [--args <a>...] [--env <VAR>...]
+npx @sentry/dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]
 ```
 
 Add an MCP server declaration to `agents.toml` and run `install` to generate agent configs. Specify exactly one transport: `--command` for stdio or `--url` for HTTP.
@@ -301,7 +301,7 @@ Add an MCP server declaration to `agents.toml` and run `install` to generate age
 ### mcp remove
 
 ```
-dotagents mcp remove <name>
+npx @sentry/dotagents mcp remove <name>
 ```
 
 Remove an MCP server declaration from `agents.toml` and run `install` to regenerate agent configs.
@@ -309,7 +309,7 @@ Remove an MCP server declaration from `agents.toml` and run `install` to regener
 ### mcp list
 
 ```
-dotagents mcp list [--json]
+npx @sentry/dotagents mcp list [--json]
 ```
 
 Show declared MCP servers. Use `--json` for machine-readable output.
@@ -317,7 +317,7 @@ Show declared MCP servers. Use `--json` for machine-readable output.
 ### trust add
 
 ```
-dotagents trust add <source>
+npx @sentry/dotagents trust add <source>
 ```
 
 Add a trusted source to `[trust]` in `agents.toml`. The source type is inferred automatically: contains `/` → `github_repos`, contains `.` → `git_domains`, otherwise → `github_orgs`. Creates the `[trust]` section if absent. Duplicates (case-insensitive) are rejected.
@@ -325,7 +325,7 @@ Add a trusted source to `[trust]` in `agents.toml`. The source type is inferred 
 ### trust remove
 
 ```
-dotagents trust remove <source>
+npx @sentry/dotagents trust remove <source>
 ```
 
 Remove a trusted source from `[trust]` in `agents.toml`. Matching is case-insensitive. Removes the field line if the array becomes empty.
@@ -333,7 +333,7 @@ Remove a trusted source from `[trust]` in `agents.toml`. Matching is case-insens
 ### trust list
 
 ```
-dotagents trust list [--json]
+npx @sentry/dotagents trust list [--json]
 ```
 
 Show trusted sources with their type. Use `--json` for machine-readable output. When `allow_all = true`, reports that all sources are trusted.
@@ -341,7 +341,7 @@ Show trusted sources with their type. Use `--json` for machine-readable output. 
 ### list
 
 ```
-dotagents list [--json]
+npx @sentry/dotagents list [--json]
 ```
 
 Show installed skills and status.
@@ -357,7 +357,7 @@ Skills from wildcard entries are marked with a wildcard indicator.
 ### doctor
 
 ```
-dotagents doctor [--fix]
+npx @sentry/dotagents doctor [--fix]
 ```
 
 Check project health: gitignore setup, installed skills, symlinks, and legacy config fields. Use `--fix` to auto-repair issues.
@@ -430,7 +430,7 @@ Required frontmatter fields: `name` (string), `description` (string).
 
 ## Lockfile (agents.lock)
 
-Auto-generated TOML file. Do not edit manually. Gitignored automatically (`dotagents init` adds it to `.gitignore`).
+Auto-generated TOML file. Do not edit manually. Gitignored automatically (`npx @sentry/dotagents init` adds it to `.gitignore`).
 
 ```toml
 # Auto-generated by dotagents. Do not edit.
@@ -457,7 +457,7 @@ Location: `~/.local/dotagents/` (override: `DOTAGENTS_STATE_DIR`)
 
 - Shallow clone per repo, refreshed after 24-hour TTL
 - All git operations are non-interactive (`GIT_TERMINAL_PROMPT=0`)
-- Use `dotagents install --force` to bypass cache
+- Use `npx @sentry/dotagents install --force` to bypass cache
 
 ## Environment Variables
 
@@ -472,7 +472,7 @@ dotagents always manages gitignore. Two files are gitignored automatically:
 - `agents.lock` -- tracks managed skills
 - `.agents/.gitignore` -- excludes managed skill directories from git
 
-`dotagents init` adds both to the root `.gitignore`. If they're missing, `install` and `sync` warn. Run `dotagents doctor --fix` to add them.
+`npx @sentry/dotagents init` adds both to the root `.gitignore`. If they're missing, `install` and `sync` warn. Run `npx @sentry/dotagents doctor --fix` to add them.
 
 Custom skills created directly in `.agents/skills/` are not gitignored. They're tracked by git normally.
 
@@ -480,7 +480,7 @@ Custom skills created directly in `.agents/skills/` are not gitignored. They're 
 
 ## Update Strategy
 
-`dotagents install` always fetches the latest version of each skill (with a TTL-based cache). There is no separate update command. Collaborators run `dotagents install` after cloning to get the latest skills.
+`npx @sentry/dotagents install` always fetches the latest version of each skill (with a TTL-based cache). There is no separate update command. Collaborators run `npx @sentry/dotagents install` after cloning to get the latest skills.
 
 ## Links
 

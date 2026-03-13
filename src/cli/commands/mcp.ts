@@ -240,10 +240,10 @@ async function mcpAdd(args: string[], scope: ScopeRoot): Promise<void> {
   const name = positionals[0];
   if (!name) {
     console.error(
-      chalk.red("Usage: dotagents mcp add <name> --command <cmd> [--env <VAR>...]"),
+      chalk.red("Usage: npx @sentry/dotagents mcp add <name> --command <cmd> [--env <VAR>...]"),
     );
     console.error(
-      chalk.red("       dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"),
+      chalk.red("       npx @sentry/dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"),
     );
     process.exitCode = 1;
     return;
@@ -278,7 +278,7 @@ async function mcpRemove(args: string[], scope: ScopeRoot): Promise<void> {
 
   const name = positionals[0];
   if (!name) {
-    console.error(chalk.red("Usage: dotagents mcp remove <name>"));
+    console.error(chalk.red("Usage: npx @sentry/dotagents mcp remove <name>"));
     process.exitCode = 1;
     return;
   }
@@ -317,7 +317,7 @@ async function mcpList(args: string[], scope: ScopeRoot): Promise<void> {
 }
 
 function printMcpUsage(): void {
-  console.error(`Usage: dotagents mcp <subcommand>
+  console.error(`Usage: npx @sentry/dotagents mcp <subcommand>
 
 Subcommands:
   add      Add an MCP server declaration

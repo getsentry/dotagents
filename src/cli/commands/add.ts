@@ -147,7 +147,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
         if (!found) {
           throw new AddError(
             `Skill "${name}" not found in ${sourceForStorage}. ` +
-              `Use 'dotagents add ${sourceForStorage}' without --name to see available skills.`,
+              `Use 'npx @sentry/dotagents add ${sourceForStorage}' without --name to see available skills.`,
           );
         }
       }
@@ -209,7 +209,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
         if (!found) {
           throw new AddError(
             `Skill "${name}" not found in ${sourceForStorage}. ` +
-              `Use 'dotagents add ${sourceForStorage}' without --name to see available skills.`,
+              `Use 'npx @sentry/dotagents add ${sourceForStorage}' without --name to see available skills.`,
           );
         }
       }
@@ -372,7 +372,7 @@ export default async function add(
   if (!specifier) {
     console.error(
       chalk.red(
-        "Usage: dotagents add <specifier> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]",
+        "Usage: npx @sentry/dotagents add <specifier> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]",
       ),
     );
     process.exitCode = 1;

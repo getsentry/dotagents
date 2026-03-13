@@ -81,8 +81,8 @@ export function validateTrustedSource(
     throw new TrustError(
       `Source "${source}" is not trusted. ` +
         `Allowed sources: ${formatAllowed(trust)}.\n` +
-        `Run: dotagents trust add ${parsed.owner!} ` +
-        `(or \`dotagents trust add ${parsed.owner!}/${parsed.repo!}\` for just this repo)`,
+        `Run: npx @sentry/dotagents trust add ${parsed.owner!} ` +
+        `(or \`npx @sentry/dotagents trust add ${parsed.owner!}/${parsed.repo!}\` for just this repo)`,
     );
   }
 
@@ -90,7 +90,7 @@ export function validateTrustedSource(
     const domain = extractDomain(parsed.url!)?.toLowerCase();
     if (domain && trust.git_domains.some((d) => d.toLowerCase() === domain)) {return;}
 
-    const hint = domain ? `\nRun: dotagents trust add ${domain}` : "";
+    const hint = domain ? `\nRun: npx @sentry/dotagents trust add ${domain}` : "";
     throw new TrustError(
       `Source "${source}" is not trusted. Allowed sources: ${formatAllowed(trust)}.${hint}`,
     );

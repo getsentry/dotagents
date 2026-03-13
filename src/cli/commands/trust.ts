@@ -96,7 +96,7 @@ async function trustAdd(args: string[], scope: ScopeRoot): Promise<void> {
 
   const source = positionals[0];
   if (!source) {
-    console.error(chalk.red("Usage: dotagents trust add <source>"));
+    console.error(chalk.red("Usage: npx @sentry/dotagents trust add <source>"));
     console.error(chalk.red("  <source> can be: org, owner/repo, or domain.name"));
     process.exitCode = 1;
     return;
@@ -116,7 +116,7 @@ async function trustRemove(args: string[], scope: ScopeRoot): Promise<void> {
 
   const source = positionals[0];
   if (!source) {
-    console.error(chalk.red("Usage: dotagents trust remove <source>"));
+    console.error(chalk.red("Usage: npx @sentry/dotagents trust remove <source>"));
     process.exitCode = 1;
     return;
   }
@@ -161,7 +161,7 @@ async function trustList(args: string[], scope: ScopeRoot): Promise<void> {
 }
 
 function printTrustUsage(): void {
-  console.error(`Usage: dotagents trust <subcommand>
+  console.error(`Usage: npx @sentry/dotagents trust <subcommand>
 
 Subcommands:
   add      Add a trusted source (org, owner/repo, or domain)
