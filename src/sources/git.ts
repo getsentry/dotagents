@@ -51,7 +51,7 @@ export async function clone(
         throw new GitError(
           `Failed to clone ${url}: authentication required.\n` +
             `Hint: for private repos, use the SSH URL instead:\n` +
-            `  dotagents add ${sshUrl}`,
+            `  npx @sentry/dotagents add ${sshUrl}`,
         );
       }
       throw new GitError(`Failed to clone ${url}: ${stderr}`);

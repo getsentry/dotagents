@@ -3,7 +3,7 @@
 ## Usage
 
 ```
-dotagents [--user] <command> [options]
+npx @sentry/dotagents [--user] <command> [options]
 ```
 
 ### Global Flags
@@ -21,10 +21,10 @@ dotagents [--user] <command> [options]
 Initialize a new project with `agents.toml` and `.agents/` directory. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance, and attempts to install it.
 
 ```bash
-dotagents init
-dotagents init --agents claude,cursor
-dotagents init --force
-dotagents --user init
+npx @sentry/dotagents init
+npx @sentry/dotagents init --agents claude,cursor
+npx @sentry/dotagents init --force
+npx @sentry/dotagents --user init
 ```
 
 | Flag | Description |
@@ -42,8 +42,8 @@ dotagents --user init
 Install all skill dependencies declared in `agents.toml`.
 
 ```bash
-dotagents install
-dotagents install --force
+npx @sentry/dotagents install
+npx @sentry/dotagents install --force
 ```
 
 | Flag | Description |
@@ -66,16 +66,16 @@ dotagents install --force
 Add one or more skill dependencies and install them.
 
 ```bash
-dotagents add getsentry/skills                          # Interactive selection if multiple skills
-dotagents add getsentry/skills find-bugs                # Add by positional name
-dotagents add getsentry/skills find-bugs code-review    # Add multiple skills at once
-dotagents add getsentry/skills --name find-bugs         # Add by --name flag
-dotagents add getsentry/skills --skill find-bugs        # --skill is an alias for --name
-dotagents add getsentry/skills --all                    # Add all as wildcard
-dotagents add getsentry/warden@v1.0.0                   # Pinned ref (inline)
-dotagents add getsentry/skills --ref v2.0.0             # Pinned ref (flag)
-dotagents add git:https://git.corp.dev/team/skills      # Non-GitHub git URL
-dotagents add path:./my-skills/custom                   # Local path
+npx @sentry/dotagents add getsentry/skills                          # Interactive selection if multiple skills
+npx @sentry/dotagents add getsentry/skills find-bugs                # Add by positional name
+npx @sentry/dotagents add getsentry/skills find-bugs code-review    # Add multiple skills at once
+npx @sentry/dotagents add getsentry/skills --name find-bugs         # Add by --name flag
+npx @sentry/dotagents add getsentry/skills --skill find-bugs        # --skill is an alias for --name
+npx @sentry/dotagents add getsentry/skills --all                    # Add all as wildcard
+npx @sentry/dotagents add getsentry/warden@v1.0.0                   # Pinned ref (inline)
+npx @sentry/dotagents add getsentry/skills --ref v2.0.0             # Pinned ref (flag)
+npx @sentry/dotagents add git:https://git.corp.dev/team/skills      # Non-GitHub git URL
+npx @sentry/dotagents add path:./my-skills/custom                   # Local path
 ```
 
 | Flag | Description |
@@ -104,7 +104,7 @@ When adding multiple skills, already-existing entries are skipped with a warning
 Remove a skill dependency.
 
 ```bash
-dotagents remove find-bugs
+npx @sentry/dotagents remove find-bugs
 ```
 
 Removes from `agents.toml`, deletes `.agents/skills/<name>/`, updates lockfile, and regenerates `.gitignore`.
@@ -116,7 +116,7 @@ For skills sourced from a wildcard entry (`name = "*"`), interactively prompts w
 Reconcile project state without network access: adopt orphans, repair symlinks and configs.
 
 ```bash
-dotagents sync
+npx @sentry/dotagents sync
 ```
 
 **Actions performed:**
@@ -134,8 +134,8 @@ Reports issues as warnings (missing MCP/hook configs) or errors (missing skills)
 Check project health and fix issues.
 
 ```bash
-dotagents doctor
-dotagents doctor --fix
+npx @sentry/dotagents doctor
+npx @sentry/dotagents doctor --fix
 ```
 
 | Flag | Description |
@@ -151,8 +151,8 @@ Useful when migrating to a new version of dotagents.
 Show installed skills and their status.
 
 ```bash
-dotagents list
-dotagents list --json
+npx @sentry/dotagents list
+npx @sentry/dotagents list --json
 ```
 
 | Flag | Description |
@@ -175,8 +175,8 @@ Manage MCP (Model Context Protocol) server declarations in `agents.toml`.
 Add an MCP server declaration.
 
 ```bash
-dotagents mcp add github --command npx --args -y --args @modelcontextprotocol/server-github --env GITHUB_TOKEN
-dotagents mcp add remote-api --url https://mcp.example.com/sse --header "Authorization:Bearer token"
+npx @sentry/dotagents mcp add github --command npx --args -y --args @modelcontextprotocol/server-github --env GITHUB_TOKEN
+npx @sentry/dotagents mcp add remote-api --url https://mcp.example.com/sse --header "Authorization:Bearer token"
 ```
 
 | Flag | Description |
@@ -194,7 +194,7 @@ Either `--command` or `--url` is required (mutually exclusive).
 Remove an MCP server declaration.
 
 ```bash
-dotagents mcp remove github
+npx @sentry/dotagents mcp remove github
 ```
 
 #### `mcp list`
@@ -202,8 +202,8 @@ dotagents mcp remove github
 Show declared MCP servers.
 
 ```bash
-dotagents mcp list
-dotagents mcp list --json
+npx @sentry/dotagents mcp list
+npx @sentry/dotagents mcp list --json
 ```
 
 | Flag | Description |

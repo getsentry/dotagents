@@ -121,6 +121,6 @@ export function resolveDefaultScope(projectRoot: string): ScopeRoot {
   }
 
   throw new ScopeError(
-    "No agents.toml found. Run 'dotagents init' to set up this project, or use --user for user scope.",
+    "No agents.toml found. Run 'npx @sentry/dotagents init' to set up this project, or use --user for user scope.",
   );
 }

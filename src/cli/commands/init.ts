@@ -109,7 +109,7 @@ export async function runInit(opts: InitOptions): Promise<void> {
     } catch (err) {
       // Re-throw trust errors — these are policy violations, not transient failures
       if (err instanceof TrustError) {throw err;}
-      console.log(chalk.yellow("Could not install skills. Run `dotagents install` to install them later."));
+      console.log(chalk.yellow("Could not install skills. Run `npx @sentry/dotagents install` to install them later."));
     }
   }
 
@@ -142,9 +142,9 @@ function printSummary(
     }
   }
 
-  const cmd = scope.scope === "user" ? "dotagents --user" : "dotagents";
+  const cmd = scope.scope === "user" ? "npx @sentry/dotagents --user" : "npx @sentry/dotagents";
   console.log(
-    `\n${chalk.bold("Next steps:")}\n  1. Add more skills: ${cmd} add @anthropics/pdf-processing\n  2. Install: ${cmd} install`,
+    `\n${chalk.bold("Next steps:")}\n  1. Add skills: ${cmd} add getsentry/skills find-bugs\n  2. Install: ${cmd} install`,
   );
 }
 
@@ -263,7 +263,7 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
     if (gitDir) {
       const setupHook = prompt(
         await clack.confirm({
-          message: "Set up a git hook to auto-run `dotagents install` on pull?",
+          message: "Set up a git hook to auto-run `npx @sentry/dotagents install` on pull?",
           initialValue: false,
         }),
       );
@@ -283,7 +283,7 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
     }
   }
 
-  clack.outro("You're all set! Run `dotagents add` to add more skills.");
+  clack.outro("You're all set! Run `npx @sentry/dotagents add` to add more skills.");
 }
 
 export default async function init(args: string[], flags?: { user?: boolean }): Promise<void> {

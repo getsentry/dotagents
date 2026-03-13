@@ -24,7 +24,7 @@ function printUsage(): void {
   // eslint-disable-next-line no-console
   console.log(`dotagents - package manager for .agents directories
 
-Usage: dotagents [--user] <command> [options]
+Usage: npx @sentry/dotagents [--user] <command> [options]
 
 Commands:
   init        Initialize agents.toml and .agents/skills/

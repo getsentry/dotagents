@@ -7,7 +7,7 @@ Manage agent skill dependencies declared in `agents.toml`. dotagents resolves, i
 
 ## Running dotagents
 
-If `dotagents` is not available as a direct command, use `npx @sentry/dotagents` instead. For example: `npx @sentry/dotagents sync`. All commands and flags work the same way.
+Always use `npx @sentry/dotagents` to run commands. For example: `npx @sentry/dotagents sync`.
 
 ## References
 
@@ -23,40 +23,40 @@ Read the relevant reference when the task requires deeper detail:
 
 ```bash
 # Initialize a new project (interactive TUI)
-dotagents init
+npx @sentry/dotagents init
 
 # Add a skill from GitHub
-dotagents add getsentry/skills find-bugs
+npx @sentry/dotagents add getsentry/skills find-bugs
 
 # Add multiple skills at once
-dotagents add getsentry/skills find-bugs code-review commit
+npx @sentry/dotagents add getsentry/skills find-bugs code-review commit
 
 # Add all skills from a repo
-dotagents add getsentry/skills --all
+npx @sentry/dotagents add getsentry/skills --all
 
 # Add a pinned skill
-dotagents add getsentry/warden@v1.0.0
+npx @sentry/dotagents add getsentry/warden@v1.0.0
 
 # Install all dependencies from agents.toml
-dotagents install
+npx @sentry/dotagents install
 
 # List installed skills
-dotagents list
+npx @sentry/dotagents list
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `dotagents init` | Initialize `agents.toml` and `.agents/` directory |
-| `dotagents install` | Install all skills from `agents.toml` |
-| `dotagents add <specifier>` | Add a skill dependency |
-| `dotagents remove <name>` | Remove a skill |
-| `dotagents sync` | Reconcile state (adopt orphans, repair symlinks, fix configs) |
-| `dotagents list` | Show installed skills and their status |
-| `dotagents mcp` | Add, remove, or list MCP server declarations |
-| `dotagents trust` | Add, remove, or list trusted sources |
-| `dotagents doctor` | Check project health and fix issues |
+| `npx @sentry/dotagents init` | Initialize `agents.toml` and `.agents/` directory |
+| `npx @sentry/dotagents install` | Install all skills from `agents.toml` |
+| `npx @sentry/dotagents add <specifier>` | Add a skill dependency |
+| `npx @sentry/dotagents remove <name>` | Remove a skill |
+| `npx @sentry/dotagents sync` | Reconcile state (adopt orphans, repair symlinks, fix configs) |
+| `npx @sentry/dotagents list` | Show installed skills and their status |
+| `npx @sentry/dotagents mcp` | Add, remove, or list MCP server declarations |
+| `npx @sentry/dotagents trust` | Add, remove, or list trusted sources |
+| `npx @sentry/dotagents doctor` | Check project health and fix issues |
 
 All commands accept `--user` to operate on user scope (`~/.agents/`) instead of the current project.
 

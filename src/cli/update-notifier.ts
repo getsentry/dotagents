@@ -64,7 +64,7 @@ export function formatUpdateMessage(
   currentVersion: string,
   latestVersion: string,
 ): string {
-  return `Update available: ${currentVersion} \u2192 ${latestVersion}\nRun \`npm install -g @sentry/dotagents\` to upgrade`;
+  return `Update available: ${currentVersion} \u2192 ${latestVersion}\nRun \`npx @sentry/dotagents@latest\` to use the latest version`;
 }
 
 /**

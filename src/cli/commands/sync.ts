@@ -113,7 +113,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     // Health check: warn if agents.lock and .agents/.gitignore are not in root .gitignore
     const missing = await checkRootGitignoreEntries(scope.root);
     if (missing.length > 0) {
-      console.log(chalk.yellow(`Warning: ${missing.join(", ")} should be in .gitignore. Run 'dotagents doctor --fix' to fix.`));
+      console.log(chalk.yellow(`Warning: ${missing.join(", ")} should be in .gitignore. Run 'npx @sentry/dotagents doctor --fix' to fix.`));
     }
   }
 
@@ -123,7 +123,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       issues.push({
         type: "missing",
         name,
-        message: `"${name}" is in agents.toml but not installed. Run 'dotagents install'.`,
+        message: `"${name}" is in agents.toml but not installed. Run 'npx @sentry/dotagents install'.`,
       });
     }
   }

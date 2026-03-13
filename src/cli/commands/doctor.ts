@@ -41,7 +41,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     checks.push({
       name: "agents.toml",
       status: "error",
-      message: "agents.toml not found. Run 'dotagents init' to create one.",
+      message: "agents.toml not found. Run 'npx @sentry/dotagents init' to create one.",
     });
     return { checks, fixed };
   }
@@ -152,7 +152,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
       checks.push({
         name: ".agents/.gitignore",
         status: "warn",
-        message: ".agents/.gitignore is missing. Run 'dotagents install' or 'dotagents sync' to regenerate.",
+        message: ".agents/.gitignore is missing. Run 'npx @sentry/dotagents install' or 'npx @sentry/dotagents sync' to regenerate.",
         fix: async () => {
           await writeAgentsGitignore(scope.agentsDir, managedNames);
         },
@@ -167,7 +167,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     checks.push({
       name: "skills directory",
       status: "warn",
-      message: ".agents/skills/ directory is missing. Run 'dotagents install' to create it.",
+      message: ".agents/skills/ directory is missing. Run 'npx @sentry/dotagents install' to create it.",
     });
   }
 
@@ -178,7 +178,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     checks.push({
       name: "installed skills",
       status: "error",
-      message: `${missingSkills.length} skill(s) not installed: ${missingSkills.join(", ")}. Run 'dotagents install'.`,
+      message: `${missingSkills.length} skill(s) not installed: ${missingSkills.join(", ")}. Run 'npx @sentry/dotagents install'.`,
     });
   } else if (declaredNames.length > 0) {
     checks.push({ name: "installed skills", status: "ok", message: `All ${declaredNames.length} declared skill(s) installed.` });
@@ -208,7 +208,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
         checks.push({
           name: "symlinks",
           status: "warn",
-          message: `${issues.length} symlink(s) broken or missing. Run 'dotagents sync' to repair.`,
+          message: `${issues.length} symlink(s) broken or missing. Run 'npx @sentry/dotagents sync' to repair.`,
         });
       } else {
         checks.push({ name: "symlinks", status: "ok", message: "All symlinks intact." });
@@ -317,7 +317,7 @@ export default async function doctor(args: string[], flags?: { user?: boolean })
   } else if (hasIssues && !values["fix"]) {
     const fixable = result.checks.filter((c) => c.status !== "ok" && c.fix).length;
     if (fixable > 0) {
-      console.log(chalk.yellow(`\nRun 'dotagents doctor --fix' to auto-fix ${fixable} issue(s).`));
+      console.log(chalk.yellow(`\nRun 'npx @sentry/dotagents doctor --fix' to auto-fix ${fixable} issue(s).`));
     }
   } else if (!hasIssues) {
     console.log(chalk.green("\nAll checks passed."));
