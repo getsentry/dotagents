@@ -93,6 +93,12 @@ async function listSkillDirs(
       results.push({ absPath, relPath: entry.name });
     }
   }
+
+  // Check if the root directory itself is a skill (single-skill repo pattern)
+  if (scanDir === ROOT_SCAN_DIR && existsSync(join(absDir, "SKILL.md"))) {
+    results.push({ absPath: absDir, relPath: "." });
+  }
+
   return results;
 }
 

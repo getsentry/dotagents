@@ -408,10 +408,13 @@ When no `agents.toml` exists and you are not inside a git repo, dotagents falls 
 After cloning a repo, dotagents scans these locations for skills:
 
 1. `<name>/SKILL.md` (root-level directory)
-2. `skills/<name>/SKILL.md`
-3. `.agents/skills/<name>/SKILL.md`
-4. `.claude/skills/<name>/SKILL.md`
-5. `plugins/*/skills/<name>/SKILL.md` (marketplace format, requires `.claude-plugin/` marker)
+2. `./SKILL.md` (root-level SKILL.md for single-skill repos, matched by frontmatter `name`)
+3. `skills/<name>/SKILL.md`
+4. `.agents/skills/<name>/SKILL.md`
+5. `.claude/skills/<name>/SKILL.md`
+6. `plugins/*/skills/<name>/SKILL.md` (marketplace format, requires `.claude-plugin/` marker)
+
+Single-skill repos with SKILL.md at the root are supported — the skill name is derived from the frontmatter `name` field. Child-directory skills take priority over root-level SKILL.md when names conflict.
 
 Use the `path` field for explicit overrides when auto-discovery does not find the skill.
 
