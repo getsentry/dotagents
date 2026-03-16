@@ -49,6 +49,46 @@ export async function removeSkillFromConfig(
 }
 
 /**
+ * Remove all [[skills]] blocks whose source matches the given source.
+ * Handles both explicit and wildcard entries.
+ */
+export async function removeSkillBlocksBySource(
+  filePath: string,
+  source: string,
+): Promise<void> {
+  const content = await readFile(filePath, "utf-8");
+  const lines = content.split("\n");
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    if (lines[i]!.trim() === "[[skills]]") {
+      const headerLine = lines[i]!;
+      i++;
+      const { blockLines, nextIndex } = collectBlockLines(lines, i);
+      i = nextIndex;
+
+      const sourceValue = blockLines.map((l) => extractTomlStringValue(l, "source")).find(Boolean);
+
+      if (sourceValue && sourcesMatch(sourceValue, source)) {
+        while (result.length > 0 && result.at(-1)?.trim() === "") {
+          result.pop();
+        }
+        continue;
+      }
+
+      result.push(headerLine, ...blockLines);
+      continue;
+    }
+
+    result.push(lines[i]!);
+    i++;
+  }
+
+  await writeFile(filePath, result.join("\n"), "utf-8");
+}
+
+/**
  * Add a wildcard skill entry (name = "*") to agents.toml.
  */
 export async function addWildcardToConfig(
@@ -85,30 +125,23 @@ export async function addExcludeToWildcard(
 
   while (i < lines.length) {
     if (lines[i]!.trim() === "[[skills]]") {
-      const blockLines = [lines[i]!];
+      const headerLine = lines[i]!;
       i++;
-      while (i < lines.length && lines[i]!.trim() !== "" && !lines[i]!.trim().startsWith("[")) {
-        blockLines.push(lines[i]!);
-        i++;
-      }
+      const { blockLines, nextIndex } = collectBlockLines(lines, i);
+      i = nextIndex;
 
-      // Check if this is a wildcard block for the target source
-      const nameLine = blockLines.find((l) => l.trim().startsWith("name"));
-      const sourceLine = blockLines.find((l) => l.trim().startsWith("source"));
-      const isWildcard = nameLine?.trim().match(/^name\s*=\s*"\*"/);
-      const sourceMatch = sourceLine?.trim().match(/^source\s*=\s*"([^"]+)"/);
+      const nameValue = blockLines.map((l) => extractTomlStringValue(l, "name")).find(Boolean);
+      const sourceValue = blockLines.map((l) => extractTomlStringValue(l, "source")).find(Boolean);
 
       if (
-        isWildcard &&
-        sourceMatch &&
-        sourcesMatch(sourceMatch[1]!, source) &&
+        nameValue === "*" &&
+        sourceValue &&
+        sourcesMatch(sourceValue, source) &&
         !found
       ) {
         found = true;
-        // Find or create exclude line
         const excludeIdx = blockLines.findIndex((l) => l.trim().startsWith("exclude"));
         if (excludeIdx >= 0) {
-          // Parse existing exclude array and append
           const excludeLine = blockLines[excludeIdx]!;
           const match = excludeLine.trim().match(/^(exclude\s*=\s*)\[([^\]]*)\]/);
           if (match) {
@@ -119,15 +152,14 @@ export async function addExcludeToWildcard(
             blockLines[excludeIdx] = newValue;
           }
         } else {
-          // Add new exclude line after the last key-value line
           const excludeValue = stringify({ v: [skillName] }).replace("v = ", "");
           blockLines.push(`exclude = ${excludeValue}`);
         }
-        result.push(...blockLines);
+        result.push(headerLine, ...blockLines);
         continue;
       }
 
-      result.push(...blockLines);
+      result.push(headerLine, ...blockLines);
       continue;
     }
 
@@ -177,6 +209,31 @@ export async function removeMcpFromConfig(
   await writeFile(filePath, removeBlockByHeader(content, "[[mcp]]", name), "utf-8");
 }
 
+/** Extract a TOML string value from a line like `key = "value"` or `key = 'value'`. */
+function extractTomlStringValue(line: string, key: string): string | undefined {
+  const match = line.trim().match(new RegExp(`^${key}\\s*=\\s*(?:"([^"]+)"|'([^']+)')`));
+  return match?.[1] ?? match?.[2];
+}
+
+/**
+ * Collect a TOML array-of-tables block starting after the header.
+ * Includes blank lines within the block; stops at the next `[` header or EOF.
+ */
+function collectBlockLines(lines: string[], start: number): { blockLines: string[]; nextIndex: number } {
+  const blockLines: string[] = [];
+  let i = start;
+  while (i < lines.length && !lines[i]!.trim().startsWith("[")) {
+    blockLines.push(lines[i]!);
+    i++;
+  }
+  // Trim trailing blank lines from the block (they belong between blocks, not inside)
+  while (blockLines.length > 0 && blockLines.at(-1)!.trim() === "") {
+    blockLines.pop();
+    i--;
+  }
+  return { blockLines, nextIndex: i };
+}
+
 function removeBlockByHeader(content: string, header: string, name: string): string {
   const lines = content.split("\n");
   const result: string[] = [];
@@ -184,18 +241,14 @@ function removeBlockByHeader(content: string, header: string, name: string): str
 
   while (i < lines.length) {
     if (lines[i]!.trim() === header) {
-      // Collect the entire block (header + key-value lines)
-      const blockLines = [lines[i]!];
+      const headerLine = lines[i]!;
       i++;
-      while (i < lines.length && lines[i]!.trim() !== "" && !lines[i]!.trim().startsWith("[")) {
-        blockLines.push(lines[i]!);
-        i++;
-      }
+      const { blockLines, nextIndex } = collectBlockLines(lines, i);
+      i = nextIndex;
 
       // Check if this block's name matches
-      const nameLine = blockLines.find((l) => l.trim().startsWith("name"));
-      const match = nameLine?.match(/^name\s*=\s*"([^"]+)"/);
-      if (match && match[1] === name) {
+      const nameValue = blockLines.map((l) => extractTomlStringValue(l, "name")).find(Boolean);
+      if (nameValue === name) {
         // Remove blank lines before the block
         while (result.length > 0 && result.at(-1)?.trim() === "") {
           result.pop();
@@ -205,7 +258,7 @@ function removeBlockByHeader(content: string, header: string, name: string): str
       }
 
       // Not the target — keep the block
-      result.push(...blockLines);
+      result.push(headerLine, ...blockLines);
       continue;
     }
 
