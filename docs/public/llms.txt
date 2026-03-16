@@ -98,10 +98,16 @@ command = "npx"
 args = ["-y", "@modelcontextprotocol/server-github"]
 env = ["GITHUB_TOKEN"]
 
-# HTTP MCP server (OAuth)
+# HTTP MCP server
 [[mcp]]
 name = "remote-api"
 url = "https://mcp.example.com/sse"
+
+# HTTP server with secrets via env vars
+[[mcp]]
+name = "authed-api"
+url = "https://${API_HOST}/mcp"
+headers = { X-Api-Key = "${API_KEY}" }
 
 # Hooks
 [[hooks]]
@@ -164,8 +170,10 @@ Each `[[mcp]]` entry requires `name` and either `command` (stdio) or `url` (HTTP
 | `command` | string | Stdio only | Command to execute |
 | `args` | string[] | No | Command arguments |
 | `url` | string | HTTP only | Server URL |
-| `headers` | table | No | HTTP headers (url servers only) |
+| `headers` | table | No | HTTP headers (url servers only). Supports `${VAR}` syntax for env var interpolation. |
 | `env` | string[] | No | Environment variable names to pass through |
+
+Use `${VAR}` in header values and `url` to reference secrets from the environment. Write `${VAR}` in `agents.toml` — dotagents translates it to each agent's native syntax when generating config files. Claude keeps `${VAR}`, Cursor and VS Code use `${env:VAR}`, OpenCode uses `{env:VAR}`, and Codex splits pure refs into a separate `env_http_headers` field (mixed values like `"Bearer ${TOKEN}"` stay as literals).
 
 Config files generated per agent:
 - Claude: `.mcp.json` (JSON)

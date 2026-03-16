@@ -63,6 +63,12 @@ env = ["GITHUB_TOKEN"]
 name = "remote-api"
 url = "https://mcp.example.com/sse"
 headers = { Authorization = "Bearer tok" }
+
+# HTTP server with secrets via env vars
+[[mcp]]
+name = "authed-api"
+url = "https://${API_HOST}/mcp"
+headers = { X-Api-Key = "${API_KEY}" }
 ```
 
 ### Fields
@@ -143,10 +149,20 @@ MCP server declarations. Each entry defines an MCP server that dotagents will co
 | `command` | Conditional | Command to run (stdio transport). Required if `url` is not set. |
 | `args` | No | Arguments for the command. Defaults to `[]`. |
 | `url` | Conditional | URL for HTTP/SSE transport. Required if `command` is not set. |
-| `headers` | No | HTTP headers (only for `url` servers). |
+| `headers` | No | HTTP headers (only for `url` servers). Supports `${VAR}` syntax for env var interpolation. |
 | `env` | No | Array of environment variable names. Values are referenced from the user's environment. Defaults to `[]`. |
 
 A server must have either `command` (stdio) or `url` (HTTP), but not both.
+
+**Environment variable interpolation.** Use `${VAR}` in header values and `url` to reference secrets from the environment (e.g. `headers = { X-Api-Key = "${API_KEY}" }`). Write `${VAR}` in `agents.toml` — dotagents translates it to each agent's native syntax when generating config files:
+
+| Agent | Output syntax |
+|-------|---------------|
+| Claude Code | `${VAR}` (unchanged) |
+| Cursor | `${env:VAR}` |
+| VS Code | `${env:VAR}` |
+| OpenCode | `{env:VAR}` |
+| Codex | Pure `${VAR}` refs move to a separate `env_http_headers` field. Mixed values like `"Bearer ${TOKEN}"` stay as literals in `http_headers` (Codex limitation). |
 
 #### `[[hooks]]`
 

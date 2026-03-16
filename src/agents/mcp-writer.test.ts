@@ -20,6 +20,12 @@ const HTTP_SERVER: McpDeclaration = {
   headers: { Authorization: "Bearer tok" },
 };
 
+const HTTP_SERVER_WITH_ENV_REFS: McpDeclaration = {
+  name: "authed-api",
+  url: "https://${API_HOST}/mcp",
+  headers: { "X-Api-Key": "${API_KEY}", Authorization: "Bearer ${TOKEN}" },
+};
+
 describe("writeMcpConfigs", () => {
   let dir: string;
 
@@ -229,6 +235,63 @@ describe("writeMcpConfigs", () => {
     expect(content.mcp.github).toBeDefined();
     // User's custom server should NOT be deleted
     expect(content.mcp["my-custom-server"]).toEqual({ type: "local", command: ["my-tool"] });
+  });
+
+  it("interpolates env refs in claude HTTP headers/URL with ${VAR} syntax", async () => {
+    await writeMcpConfigs(["claude"], [HTTP_SERVER_WITH_ENV_REFS], projectMcpResolver(dir));
+
+    const content = JSON.parse(await readFile(join(dir, ".mcp.json"), "utf-8"));
+    expect(content.mcpServers["authed-api"]).toEqual({
+      type: "http",
+      url: "https://${API_HOST}/mcp",
+      headers: { "X-Api-Key": "${API_KEY}", Authorization: "Bearer ${TOKEN}" },
+    });
+  });
+
+  it("interpolates env refs in cursor HTTP headers/URL with ${env:VAR} syntax", async () => {
+    await writeMcpConfigs(["cursor"], [HTTP_SERVER_WITH_ENV_REFS], projectMcpResolver(dir));
+
+    const content = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf-8"));
+    expect(content.mcpServers["authed-api"]).toEqual({
+      url: "https://${env:API_HOST}/mcp",
+      headers: { "X-Api-Key": "${env:API_KEY}", Authorization: "Bearer ${env:TOKEN}" },
+    });
+  });
+
+  it("interpolates env refs in vscode HTTP headers/URL with ${env:VAR} syntax", async () => {
+    await writeMcpConfigs(["vscode"], [HTTP_SERVER_WITH_ENV_REFS], projectMcpResolver(dir));
+
+    const content = JSON.parse(await readFile(join(dir, ".vscode", "mcp.json"), "utf-8"));
+    expect(content.servers["authed-api"]).toEqual({
+      type: "http",
+      url: "https://${env:API_HOST}/mcp",
+      headers: { "X-Api-Key": "${env:API_KEY}", Authorization: "Bearer ${env:TOKEN}" },
+    });
+  });
+
+  it("interpolates env refs in opencode HTTP headers/URL with {env:VAR} syntax", async () => {
+    await writeMcpConfigs(["opencode"], [HTTP_SERVER_WITH_ENV_REFS], projectMcpResolver(dir));
+
+    const content = JSON.parse(await readFile(join(dir, "opencode.json"), "utf-8"));
+    expect(content.mcp["authed-api"]).toEqual({
+      type: "remote",
+      url: "https://{env:API_HOST}/mcp",
+      headers: { "X-Api-Key": "{env:API_KEY}", Authorization: "Bearer {env:TOKEN}" },
+    });
+  });
+
+  it("splits codex env refs into env_http_headers for pure refs", async () => {
+    await writeMcpConfigs(["codex"], [HTTP_SERVER_WITH_ENV_REFS], projectMcpResolver(dir));
+
+    const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
+    const content = parseTOML(raw) as Record<string, Record<string, Record<string, unknown>>>;
+    expect(content["mcp_servers"]!["authed-api"]).toEqual({
+      url: "https://${API_HOST}/mcp",
+      // Pure ref: X-Api-Key = "${API_KEY}" → env_http_headers.API_KEY = "X-Api-Key"
+      env_http_headers: { API_KEY: "X-Api-Key" },
+      // Mixed ref stays as literal in http_headers
+      http_headers: { Authorization: "Bearer ${TOKEN}" },
+    });
   });
 
   it("is idempotent", async () => {
