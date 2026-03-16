@@ -1,7 +1,7 @@
 import type { AgentDefinition } from "../types.js";
 import { UnsupportedFeature } from "../errors.js";
 import claude from "./claude.js";
-import { envRecord } from "./helpers.js";
+import { envRecord, extractCodexHeaders } from "./helpers.js";
 
 const codex: AgentDefinition = {
   ...claude,
@@ -19,7 +19,12 @@ const codex: AgentDefinition = {
   },
   serializeServer(s) {
     if (s.url) {
-      return [s.name, { url: s.url, ...(s.headers && { http_headers: s.headers }) }];
+      const { httpHeaders, envHttpHeaders } = extractCodexHeaders(s.headers);
+      return [s.name, {
+        url: s.url,
+        ...(httpHeaders && { http_headers: httpHeaders }),
+        ...(envHttpHeaders && { env_http_headers: envHttpHeaders }),
+      }];
     }
     const env = envRecord(s.env, (k) => `\${${k}}`);
     return [s.name, { command: s.command, args: s.args ?? [], ...(env && { env }) }];
