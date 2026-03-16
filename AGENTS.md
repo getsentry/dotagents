@@ -6,7 +6,7 @@ Use **pnpm**: `pnpm install`, `pnpm build`, `pnpm test`
 
 ## What This Project Is
 
-dotagents is a package manager for `.agents` directories. It manages agent skill dependencies declared in `agents.toml`, maintains a lockfile for reproducibility, and handles symlinks so tools like Claude Code can discover skills from a single canonical location.
+dotagents is shared tooling for coding agents. It manages skills, MCP servers, and hooks declared in `agents.toml`, and handles symlinks and config generation so tools like Claude Code can be configured from a single source of truth.
 
 See `specs/SPEC.md` for the full design.
 

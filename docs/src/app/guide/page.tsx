@@ -41,7 +41,7 @@ dotagents add getsentry/skills --name find-bugs
 # Add all skills from a repo
 dotagents add getsentry/skills --all
 
-# Pin to a specific version
+# Pin to a specific ref
 dotagents add getsentry/warden@v1.0.0`}</code>
         </pre>
         <p>
@@ -61,8 +61,8 @@ dotagents add getsentry/warden@v1.0.0`}</code>
           <code>dotagents install</code>
         </pre>
         <p>
-          This always fetches the latest version of each skill. There is no
-          separate update step.
+          This always fetches the latest skills. There is no separate update
+          step.
         </p>
       </section>
 

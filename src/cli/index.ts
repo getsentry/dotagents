@@ -22,7 +22,7 @@ type Command = keyof typeof COMMANDS;
 
 function printUsage(): void {
   // eslint-disable-next-line no-console
-  console.log(`dotagents - package manager for .agents directories
+  console.log(`dotagents - shared tooling for coding agents
 
 Usage: npx @sentry/dotagents [--user] <command> [options]
 

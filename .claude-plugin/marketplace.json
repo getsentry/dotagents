@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "dotagents",
-  "description": "Package manager for .agents directories — manages agent skill dependencies, lockfiles, and symlinks",
+  "description": "Shared tooling for coding agents — manages skills, MCP servers, hooks, and symlinks from a single agents.toml",
   "owner": {
     "name": "dcramer",
     "email": "dcramer@gmail.com"

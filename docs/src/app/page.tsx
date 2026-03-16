@@ -15,7 +15,7 @@ export default function Home() {
   return (
     <>
       <div className="hero">
-        <p className="tagline">Package Manager for .agents</p>
+        <p className="tagline">Shared Tooling for Coding Agents</p>
         <p className="tagline-sub">
           Declare skill dependencies in <code>agents.toml</code>, install with
           one command, and let every tool discover skills from one place.
@@ -47,10 +47,11 @@ export default function Home() {
             </p>
           </div>
           <div className="feature">
-            <h3>Reproducible</h3>
+            <h3>One command to install</h3>
             <p>
-              <code>agents.lock</code> tracks managed skills. Pin versions
-              directly in <code>agents.toml</code> with ref syntax.
+              <code>agents.toml</code> is committed, managed skills are
+              gitignored. Collaborators run <code>install</code> and get the
+              same setup.
             </p>
           </div>
           <div className="feature">
@@ -188,7 +189,7 @@ dotagents add getsentry/skills --name find-bugs
 # Add all skills from a repo
 dotagents add getsentry/skills --all
 
-# Pin to a specific version
+# Pin to a specific ref
 dotagents add getsentry/warden@v1.0.0
 
 # Add from GitLab

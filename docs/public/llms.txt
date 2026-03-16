@@ -1,8 +1,8 @@
 # dotagents
 
-> A package manager for .agents directories
+> Shared tooling for coding agents
 
-dotagents manages agent skill dependencies declared in `agents.toml`, maintains a lockfile (`agents.lock`) for reproducibility, and handles symlinks so tools like Claude Code, Cursor, Codex, VS Code, and OpenCode discover skills from a single canonical location (`.agents/skills/`).
+dotagents manages agent skills, MCP servers, and hooks declared in `agents.toml`, and handles symlinks and config generation so tools like Claude Code, Cursor, Codex, VS Code, and OpenCode are configured from a single source of truth.
 
 Install: `npm install -g @sentry/dotagents`
 Run without installing: `npx @sentry/dotagents <command>`
@@ -493,7 +493,7 @@ Custom skills created directly in `.agents/skills/` are not gitignored. They're 
 
 ## Update Strategy
 
-`npx @sentry/dotagents install` always fetches the latest version of each skill (with a TTL-based cache). There is no separate update command. Collaborators run `npx @sentry/dotagents install` after cloning to get the latest skills.
+`npx @sentry/dotagents install` always fetches the latest skills (with a TTL-based cache), unless a ref is pinned. There is no separate update command. Collaborators run `npx @sentry/dotagents install` after cloning.
 
 ## Links
 

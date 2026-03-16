@@ -1,12 +1,12 @@
 # dotagents
 
-A package manager for `.agents` directories. Declare agent skill dependencies in `agents.toml`, lock versions for reproducibility, and let every tool on your team discover skills from a single place.
+Shared tooling for coding agents. Declare skills, MCP servers, and hooks in `agents.toml` — dotagents wires them into every agent tool on your team.
 
 ## Why dotagents?
 
 **One source of truth.** Skills live in `.agents/skills/` and symlink into `.claude/skills/`, `.cursor/skills/`, or wherever your tools expect them. No copy-pasting between directories.
 
-**Reproducible.** `agents.lock` tracks managed skills. Pin versions directly in `agents.toml` with ref syntax.
+**One command to install.** `agents.toml` is committed, managed skills are gitignored. Collaborators run `dotagents install` and get the same setup.
 
 **Shareable.** Skills are directories with a `SKILL.md`. Host them in any git repo, discover them automatically, install with one command.
 

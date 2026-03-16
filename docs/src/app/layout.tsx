@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "dotagents",
-  description: "A package manager for .agents directories",
+  description: "Shared tooling for coding agents",
   other: {
     "llms.txt": "/llms.txt",
   },

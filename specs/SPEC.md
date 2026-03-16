@@ -2,13 +2,13 @@
 
 ## Overview
 
-dotagents is a package manager for `.agents` directories. It manages agent skill dependencies using the [agentskills.io](https://agentskills.io) standard, providing reproducible installs, a lockfile, and symlinks so that multiple agent tools (Claude Code, Cursor, Codex, etc.) can discover skills from a single canonical location.
+dotagents is shared tooling for coding agents. It manages agent skill dependencies using the [agentskills.io](https://agentskills.io) standard, and handles MCP servers, hooks, and symlinks so that multiple agent tools (Claude Code, Cursor, Codex, etc.) can be configured from a single `agents.toml`.
 
-Think of it as npm for agent skills: you declare dependencies in `agents.toml`, run `dotagents install`, and skills appear in `.agents/skills/` with symlinks into each tool's expected directory.
+Declare what you need, run `dotagents install`, and skills appear in `.agents/skills/` with symlinks into each tool's expected directory. MCP and hook configs are generated per agent.
 
 ### Why
 
-Agent skills are currently distributed as loose folders copied from git repos. There's no dependency management, no lockfile, no way to keep skills updated across a team. dotagents fills this gap.
+Agent skills, MCP servers, and hooks are configured differently for every agent tool, and skills are distributed as loose folders copied from git repos. There's no way to declare what you need once and have it work everywhere, or to keep a team's agent setup in sync. dotagents fills this gap.
 
 ### Key Principles
 

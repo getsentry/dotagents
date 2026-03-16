@@ -105,7 +105,7 @@ export default function CliPage() {
         <CliCommand
           name="install"
           synopsis="dotagents install [--force]"
-          description="Install all skill dependencies from agents.toml. Resolves sources, copies skills, writes lockfile, creates symlinks, generates MCP and hook configs. Always fetches latest versions."
+          description="Install all skill dependencies from agents.toml. Resolves sources, copies skills, writes lockfile, creates symlinks, generates MCP and hook configs. Always fetches latest unless a ref is pinned."
           options={[
             {
               flag: "--force",
