@@ -30,7 +30,7 @@ Commands:
   init        Initialize agents.toml and .agents/skills/
   install     Install dependencies from agents.toml
   add         Add a skill dependency
-  remove      Remove a skill dependency
+  remove      Remove a skill or all skills from a source
   sync        Reconcile gitignore, symlinks, verify state
   list        Show installed skills
   mcp         Manage MCP server declarations

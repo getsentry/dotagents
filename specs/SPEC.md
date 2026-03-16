@@ -380,19 +380,30 @@ dotagents add myorg/single-skill-repo   # auto-detects if repo has one skill
 
 Positional skill names and `--skill` flags cannot be mixed.
 
-### `dotagents remove <name>`
+### `dotagents remove <name|source> [-y]`
 
-Remove a skill dependency.
+Remove a skill dependency, or all skills from a source.
 
 ```
-dotagents remove <name>
+dotagents remove <name|source> [-y]
 ```
 
-**Behavior:**
+**Behavior (single skill):**
 1. Remove `[[skills]]` entry from `agents.toml`
 2. Delete `.agents/skills/<name>/`
 3. Remove entry from `agents.lock`
 4. Regenerate `.agents/.gitignore`
+
+**Behavior (source removal):**
+When the argument matches a source specifier (e.g. `owner/repo`, a URL) rather than a skill name, removes all skills from that source:
+1. Find all skills from the source (explicit entries from config + wildcard-expanded entries from lockfile)
+2. Confirm with the user (unless `-y` is passed)
+3. Remove all matching `[[skills]]` entries from `agents.toml` (both explicit and wildcard)
+4. Delete skill directories and lockfile entries
+5. Regenerate `.agents/.gitignore`
+
+**Flags:**
+- `-y`, `--yes`: Skip confirmation prompt
 
 ### `dotagents sync`
 

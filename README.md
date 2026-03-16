@@ -45,7 +45,7 @@ npx @sentry/dotagents install
 |---------|-------------|
 | `init` | Create `agents.toml` and `.agents/skills/` |
 | `add <source> [skills...]` | Add skill dependencies |
-| `remove <name>` | Remove a skill |
+| `remove <name\|source> [-y]` | Remove a skill or all skills from a source |
 | `install` | Install all dependencies from `agents.toml` |
 | `list` | Show installed skills and their status |
 | `sync` | Reconcile gitignore, symlinks, and verify state |
