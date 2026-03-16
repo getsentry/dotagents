@@ -56,18 +56,7 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
       await writeLockfile(lockPath, lockfile);
     }
 
-    if (scope.scope === "project") {
-      const updatedConfig = await loadConfig(configPath);
-      // Use lockfile for concrete skill names (wildcard entries expand to concrete names there)
-      const updatedLock = await loadLockfile(lockPath);
-      const allNames = updatedLock ? Object.keys(updatedLock.skills) : [];
-      const managedNames = allNames.filter((name) => {
-        const dep = updatedConfig.skills.find((s) => s.name === name);
-        if (!dep || isWildcardDep(dep)) {return true;} // wildcard-sourced skills are always managed
-        return !dep.source.startsWith("path:.agents/skills/") && !dep.source.startsWith("path:skills/");
-      });
-      await writeAgentsGitignore(scope.agentsDir, managedNames);
-    }
+    await updateProjectGitignore(scope);
     return;
   }
 
@@ -151,20 +140,22 @@ export async function runRemoveSource(opts: RemoveSourceOptions): Promise<string
     await writeLockfile(lockPath, lockfile);
   }
 
-  // Update gitignore for project scope
-  if (scope.scope === "project") {
-    const updatedConfig = await loadConfig(configPath);
-    const updatedLock = await loadLockfile(lockPath);
-    const allNames = updatedLock ? Object.keys(updatedLock.skills) : [];
-    const managedNames = allNames.filter((name) => {
-      const dep = updatedConfig.skills.find((s) => s.name === name);
-      if (!dep || isWildcardDep(dep)) {return true;}
-      return !dep.source.startsWith("path:.agents/skills/") && !dep.source.startsWith("path:skills/");
-    });
-    await writeAgentsGitignore(scope.agentsDir, managedNames);
-  }
+  await updateProjectGitignore(scope);
 
   return skillNames;
+}
+
+async function updateProjectGitignore(scope: ScopeRoot): Promise<void> {
+  if (scope.scope !== "project") {return;}
+  const config = await loadConfig(scope.configPath);
+  const lockfile = await loadLockfile(scope.lockPath);
+  const allNames = lockfile ? Object.keys(lockfile.skills) : [];
+  const managedNames = allNames.filter((name) => {
+    const dep = config.skills.find((s) => s.name === name);
+    if (!dep || isWildcardDep(dep)) {return true;}
+    return !dep.source.startsWith("path:.agents/skills/") && !dep.source.startsWith("path:skills/");
+  });
+  await writeAgentsGitignore(scope.agentsDir, managedNames);
 }
 
 async function promptYesNo(question: string): Promise<boolean> {
