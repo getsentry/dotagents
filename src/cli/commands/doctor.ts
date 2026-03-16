@@ -4,7 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
-import { checkRootGitignoreEntries, ensureRootGitignoreEntries, writeAgentsGitignore } from "../../gitignore/writer.js";
+import { checkRootGitignoreEntries, ensureRootGitignoreEntries, writeAgentsGitignore, getManagedSkillNames } from "../../gitignore/writer.js";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
@@ -260,20 +260,6 @@ function getDeclaredSkillNames(
     }
   }
   return [...names];
-}
-
-function getManagedSkillNames(
-  config: Awaited<ReturnType<typeof loadConfig>>,
-  lockfile: Awaited<ReturnType<typeof loadLockfile>>,
-): string[] {
-  const allNames = lockfile
-    ? Object.keys(lockfile.skills)
-    : config.skills.filter((s) => !isWildcardDep(s)).map((s) => s.name);
-  return allNames.filter((name) => {
-    const dep = config.skills.find((s) => s.name === name);
-    if (!dep || isWildcardDep(dep)) {return true;}
-    return !dep.source.startsWith("path:.agents/skills/") && !dep.source.startsWith("path:skills/");
-  });
 }
 
 export default async function doctor(args: string[], flags?: { user?: boolean }): Promise<void> {
