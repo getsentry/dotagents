@@ -209,6 +209,8 @@ After cloning, dotagents scans these base directories (in priority order) for a 
 
 The repo root (`.`) is scanned **flat** — only direct children are checked. The other base directories (`skills/`, `.agents/skills/`, `.claude/skills/`) are scanned **recursively**: dotagents walks the directory tree looking for directories containing `SKILL.md`. When a `SKILL.md` is found, that directory is treated as a skill and its children are not descended into. This supports both flat layouts (`skills/<name>/SKILL.md`) and categorized layouts (`skills/<category>/<name>/SKILL.md`, `skills/<org>/<team>/<name>/SKILL.md`, etc.).
 
+Additionally, the root directory itself is checked for a `SKILL.md` file as a fallback after child directories. This supports single-skill repositories where the entire repo is one skill, with the skill name derived from the SKILL.md frontmatter `name` field.
+
 Matching proceeds in two phases:
 1. **Directory name match**: the skill directory's name matches the requested skill name
 2. **Frontmatter name match**: the `name` field in SKILL.md's YAML frontmatter matches the requested skill name

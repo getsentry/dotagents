@@ -211,6 +211,38 @@ describe("discoverSkill", () => {
     expect(result).toBeNull();
   });
 
+  it("finds skill at repo root (./SKILL.md)", async () => {
+    await writeFile(join(repoDir, "SKILL.md"), SKILL_MD("glab"));
+
+    const result = await discoverSkill(repoDir, "glab");
+    expect(result).not.toBeNull();
+    expect(result!.path).toBe(".");
+    expect(result!.meta.name).toBe("glab");
+  });
+
+  it("prefers child directory over root SKILL.md with same name", async () => {
+    await writeFile(join(repoDir, "SKILL.md"), SKILL_MD("pdf"));
+    await mkdir(join(repoDir, "pdf"), { recursive: true });
+    await writeFile(join(repoDir, "pdf", "SKILL.md"), SKILL_MD("pdf"));
+
+    const result = await discoverSkill(repoDir, "pdf");
+    expect(result!.path).toBe("pdf");
+  });
+
+  it("finds root SKILL.md alongside child-dir skills with different names", async () => {
+    await writeFile(join(repoDir, "SKILL.md"), SKILL_MD("root-skill"));
+    await mkdir(join(repoDir, "other"), { recursive: true });
+    await writeFile(join(repoDir, "other", "SKILL.md"), SKILL_MD("other"));
+
+    const rootResult = await discoverSkill(repoDir, "root-skill");
+    expect(rootResult).not.toBeNull();
+    expect(rootResult!.path).toBe(".");
+
+    const otherResult = await discoverSkill(repoDir, "other");
+    expect(otherResult).not.toBeNull();
+    expect(otherResult!.path).toBe("other");
+  });
+
   it("returns null when skill not found", async () => {
     const result = await discoverSkill(repoDir, "nonexistent");
     expect(result).toBeNull();
@@ -301,6 +333,36 @@ describe("discoverAllSkills", () => {
     const results = await discoverAllSkills(repoDir);
     expect(results).toHaveLength(1);
     expect(results[0]!.meta.name).toBe("outer");
+  });
+
+  it("discovers root-level SKILL.md", async () => {
+    await writeFile(join(repoDir, "SKILL.md"), SKILL_MD("glab"));
+
+    const results = await discoverAllSkills(repoDir);
+    expect(results).toHaveLength(1);
+    expect(results[0]!.path).toBe(".");
+    expect(results[0]!.meta.name).toBe("glab");
+  });
+
+  it("discovers root SKILL.md alongside child-dir skills", async () => {
+    await writeFile(join(repoDir, "SKILL.md"), SKILL_MD("root-skill"));
+    await mkdir(join(repoDir, "other"), { recursive: true });
+    await writeFile(join(repoDir, "other", "SKILL.md"), SKILL_MD("other"));
+
+    const results = await discoverAllSkills(repoDir);
+    expect(results).toHaveLength(2);
+    const names = results.map((r) => r.meta.name).toSorted();
+    expect(names).toEqual(["other", "root-skill"]);
+  });
+
+  it("child-dir skill shadows root SKILL.md with same name", async () => {
+    await writeFile(join(repoDir, "SKILL.md"), SKILL_MD("pdf"));
+    await mkdir(join(repoDir, "pdf"), { recursive: true });
+    await writeFile(join(repoDir, "pdf", "SKILL.md"), SKILL_MD("pdf"));
+
+    const results = await discoverAllSkills(repoDir);
+    expect(results).toHaveLength(1);
+    expect(results[0]!.path).toBe("pdf");
   });
 
   it("discovers skills in marketplace format", async () => {
