@@ -49,6 +49,50 @@ export async function removeSkillFromConfig(
 }
 
 /**
+ * Remove all [[skills]] blocks whose source matches the given source.
+ * Handles both explicit and wildcard entries.
+ */
+export async function removeSkillBlocksBySource(
+  filePath: string,
+  source: string,
+): Promise<void> {
+  const content = await readFile(filePath, "utf-8");
+  const lines = content.split("\n");
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    if (lines[i]!.trim() === "[[skills]]") {
+      const blockLines = [lines[i]!];
+      i++;
+      while (i < lines.length && lines[i]!.trim() !== "" && !lines[i]!.trim().startsWith("[")) {
+        blockLines.push(lines[i]!);
+        i++;
+      }
+
+      const sourceLine = blockLines.find((l) => l.trim().startsWith("source"));
+      const sourceMatch = sourceLine?.trim().match(/^source\s*=\s*"([^"]+)"/);
+
+      if (sourceMatch && sourcesMatch(sourceMatch[1]!, source)) {
+        // Remove preceding blank lines
+        while (result.length > 0 && result.at(-1)?.trim() === "") {
+          result.pop();
+        }
+        continue;
+      }
+
+      result.push(...blockLines);
+      continue;
+    }
+
+    result.push(lines[i]!);
+    i++;
+  }
+
+  await writeFile(filePath, result.join("\n"), "utf-8");
+}
+
+/**
  * Add a wildcard skill entry (name = "*") to agents.toml.
  */
 export async function addWildcardToConfig(
