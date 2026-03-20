@@ -58,7 +58,11 @@ function isValidIndex(data: unknown): data is WellKnownIndex {
     (s: unknown) => {
       if (!s || typeof s !== "object") {return false;}
       const entry = s as Record<string, unknown>;
-      return typeof entry["name"] === "string" && Array.isArray(entry["files"]);
+      return (
+        typeof entry["name"] === "string" &&
+        Array.isArray(entry["files"]) &&
+        (entry["files"] as unknown[]).every((f) => typeof f === "string")
+      );
     },
   );
 }
