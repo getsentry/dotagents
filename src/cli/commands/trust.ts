@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
-import type { AgentsConfig } from "../../config/schema.js";
+import type { AgentsConfig, RepositorySource } from "../../config/schema.js";
 import { addTrustSource, removeTrustSource } from "../../config/writer.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
@@ -16,8 +16,22 @@ export class TrustCommandError extends Error {
 
 type TrustField = "github_orgs" | "github_repos" | "git_domains";
 
-export function classifyTrustSource(source: string): { field: TrustField; value: string } {
+export function classifyTrustSource(
+  source: string,
+  defaultRepositorySource?: RepositorySource,
+): { field: TrustField; value: string } {
+  // When configured for GitLab, expand shorthands (no dots) to gitlab.com/... domain paths
+  if (defaultRepositorySource === "gitlab" && !source.includes(".")) {
+    return { field: "git_domains", value: `gitlab.com/${source}` };
+  }
+
   if (source.includes("/")) {
+    // If the segment before the first / contains a dot, it's a domain path
+    // (e.g., gitlab.com/owner), not a GitHub owner/repo
+    const firstSegment = source.slice(0, source.indexOf("/"));
+    if (firstSegment.includes(".")) {
+      return { field: "git_domains", value: source };
+    }
     return { field: "github_repos", value: source };
   }
   if (source.includes(".")) {
@@ -34,7 +48,7 @@ export interface TrustAddOptions {
 export async function runTrustAdd(opts: TrustAddOptions): Promise<void> {
   const { scope, source } = opts;
   const config = await loadConfig(scope.configPath);
-  const { field, value } = classifyTrustSource(source);
+  const { field, value } = classifyTrustSource(source, config.defaultRepositorySource);
 
   // Check for duplicates (case-insensitive)
   const existing = config.trust?.[field] ?? [];
@@ -53,7 +67,7 @@ export interface TrustRemoveOptions {
 export async function runTrustRemove(opts: TrustRemoveOptions): Promise<void> {
   const { scope, source } = opts;
   const config = await loadConfig(scope.configPath);
-  const { field, value } = classifyTrustSource(source);
+  const { field, value } = classifyTrustSource(source, config.defaultRepositorySource);
 
   const existing = config.trust?.[field] ?? [];
   if (!existing.some((e) => e.toLowerCase() === value.toLowerCase())) {
@@ -102,9 +116,10 @@ async function trustAdd(args: string[], scope: ScopeRoot): Promise<void> {
     return;
   }
 
-  const { field } = classifyTrustSource(source);
+  const config = await loadConfig(scope.configPath);
+  const { field, value } = classifyTrustSource(source, config.defaultRepositorySource);
   await runTrustAdd({ scope, source });
-  console.log(chalk.green(`Added "${source}" to ${field}.`));
+  console.log(chalk.green(`Added "${value}" to ${field}.`));
 }
 
 async function trustRemove(args: string[], scope: ScopeRoot): Promise<void> {
@@ -121,9 +136,10 @@ async function trustRemove(args: string[], scope: ScopeRoot): Promise<void> {
     return;
   }
 
-  const { field } = classifyTrustSource(source);
+  const config = await loadConfig(scope.configPath);
+  const { field, value } = classifyTrustSource(source, config.defaultRepositorySource);
   await runTrustRemove({ scope, source });
-  console.log(chalk.green(`Removed "${source}" from ${field}.`));
+  console.log(chalk.green(`Removed "${value}" from ${field}.`));
 }
 
 async function trustList(args: string[], scope: ScopeRoot): Promise<void> {

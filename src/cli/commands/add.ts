@@ -67,18 +67,19 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
   // Load config early so we can check trust before any network work
   const config = await loadConfig(configPath);
 
-  // Validate the specifier is a recognized source format
-  if (!isExplicitSourceSpecifier(specifier) && !parseOwnerRepoShorthand(specifier)) {
+  const hintedSpecifier = applyDefaultRepositorySource(
+    specifier,
+    config.defaultRepositorySource,
+  );
+
+  // Validate the specifier is a recognized source format (check after expansion
+  // so multi-slash GitLab paths like group/subgroup/repo pass when configured)
+  if (!isExplicitSourceSpecifier(hintedSpecifier) && !parseOwnerRepoShorthand(hintedSpecifier)) {
     throw new AddError(
       `Invalid source "${specifier}". ` +
         `Use owner/repo shorthand, an explicit URL, git:<url>, or path:<relative>.`,
     );
   }
-
-  const hintedSpecifier = applyDefaultRepositorySource(
-    specifier,
-    config.defaultRepositorySource,
-  );
 
   // Parse the specifier
   const parsed = parseSource(hintedSpecifier);

@@ -90,7 +90,7 @@ git_domains = ["git.corp.example.com"]  # Git URL domains
 | `allow_all` | boolean | Allow all sources (overrides other fields) |
 | `github_orgs` | string[] | Allowed GitHub organizations |
 | `github_repos` | string[] | Allowed exact `owner/repo` pairs |
-| `git_domains` | string[] | Allowed domains for `git:` URLs |
+| `git_domains` | string[] | Allowed domains or domain path prefixes for `git:` URLs (e.g., `gitlab.com/myorg`) |
 
 No `[trust]` section = allow all sources (backward compatible).
 

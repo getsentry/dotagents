@@ -65,11 +65,52 @@ describe("trust", () => {
       });
     });
 
-    it("prefers / over . for classification", () => {
-      // owner.with.dots/repo should be a repo, not a domain
-      expect(classifyTrustSource("owner.co/repo")).toEqual({
-        field: "github_repos",
-        value: "owner.co/repo",
+    it("classifies dotted-domain/path as git_domains", () => {
+      // First segment has a dot → domain path, not GitHub owner/repo
+      expect(classifyTrustSource("gitlab.com/owner")).toEqual({
+        field: "git_domains",
+        value: "gitlab.com/owner",
+      });
+      expect(classifyTrustSource("git.corp.co/team/repo")).toEqual({
+        field: "git_domains",
+        value: "git.corp.co/team/repo",
+      });
+    });
+
+    describe("with defaultRepositorySource=gitlab", () => {
+      it("expands bare org name to gitlab.com domain path", () => {
+        expect(classifyTrustSource("myorg", "gitlab")).toEqual({
+          field: "git_domains",
+          value: "gitlab.com/myorg",
+        });
+      });
+
+      it("expands owner/repo to gitlab.com domain path", () => {
+        expect(classifyTrustSource("owner/repo", "gitlab")).toEqual({
+          field: "git_domains",
+          value: "gitlab.com/owner/repo",
+        });
+      });
+
+      it("expands owner/group/repo to gitlab.com domain path", () => {
+        expect(classifyTrustSource("owner/group/repo", "gitlab")).toEqual({
+          field: "git_domains",
+          value: "gitlab.com/owner/group/repo",
+        });
+      });
+
+      it("does not expand sources that already contain dots", () => {
+        expect(classifyTrustSource("gitlab.com", "gitlab")).toEqual({
+          field: "git_domains",
+          value: "gitlab.com",
+        });
+      });
+
+      it("classifies dotted domain paths as git_domains even with gitlab default", () => {
+        expect(classifyTrustSource("gitlab.com/owner", "gitlab")).toEqual({
+          field: "git_domains",
+          value: "gitlab.com/owner",
+        });
       });
     });
   });
@@ -119,6 +160,32 @@ describe("trust", () => {
       await expect(
         runTrustAdd({ scope, source: "GetSentry" }),
       ).rejects.toThrow(/already in/);
+    });
+
+    it("expands gitlab shorthands when defaultRepositorySource=gitlab", async () => {
+      await writeFile(
+        scope.configPath,
+        `version = 1\ndefaultRepositorySource = "gitlab"\n`,
+      );
+
+      await runTrustAdd({ scope, source: "myorg" });
+
+      const config = await loadConfig(scope.configPath);
+      expect(config.trust?.git_domains).toContain("gitlab.com/myorg");
+      expect(config.trust?.github_orgs ?? []).toEqual([]);
+    });
+
+    it("expands gitlab owner/repo when defaultRepositorySource=gitlab", async () => {
+      await writeFile(
+        scope.configPath,
+        `version = 1\ndefaultRepositorySource = "gitlab"\n`,
+      );
+
+      await runTrustAdd({ scope, source: "owner/repo" });
+
+      const config = await loadConfig(scope.configPath);
+      expect(config.trust?.git_domains).toContain("gitlab.com/owner/repo");
+      expect(config.trust?.github_repos ?? []).toEqual([]);
     });
 
     it("inserts [trust] before [[skills]]", async () => {
