@@ -82,8 +82,16 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
     );
   }
 
-  // Parse the specifier
   const parsed = parseSource(hintedSpecifier);
+
+  // Reject bare http:// URLs — well-known sources require HTTPS to prevent MITM.
+  // (GitHub/GitLab http:// URLs are upgraded to HTTPS by parseSource, so those are fine.)
+  if (/^http:\/\//i.test(hintedSpecifier) && parsed.type !== "github" && parsed.type !== "git") {
+    throw new AddError(
+      `Insecure source "${specifier}". Well-known sources require HTTPS. ` +
+        `Use https:// or the git: prefix for git repos.`,
+    );
+  }
 
   // Store the original source form (shorthand, SSH, HTTPS) — strip inline @ref (stored separately)
   const sourceForStorage = parsed.ref

@@ -290,10 +290,10 @@ describe("parseSource", () => {
     expect(result.url).toBe("https://cli.sentry.dev");
   });
 
-  it("parses http:// URL as well-known", () => {
+  it("does not parse http:// URL as well-known (HTTPS required)", () => {
     const result = parseSource("http://localhost:3000");
-    expect(result.type).toBe("well-known");
-    expect(result.url).toBe("http://localhost:3000");
+    // http:// falls through to owner/repo shorthand — not classified as well-known
+    expect(result.type).not.toBe("well-known");
   });
 });
 

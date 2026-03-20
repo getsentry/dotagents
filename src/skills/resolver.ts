@@ -185,8 +185,9 @@ export function parseSource(source: string): {
     };
   }
 
-  // Bare HTTP(S) URL not matching GitHub/GitLab — candidate for well-known
-  if (/^https?:\/\//i.test(source)) {
+  // Bare HTTPS URL not matching GitHub/GitLab — candidate for well-known
+  // Only HTTPS — http:// is rejected to prevent MITM attacks
+  if (/^https:\/\//i.test(source)) {
     return { type: "well-known", url: stripTrailingSlashes(source) };
   }
 
