@@ -107,13 +107,14 @@ allow_all = true
 | `allow_all` | No | When `true`, all sources are allowed (ignores other fields). Defaults to `false`. |
 | `github_orgs` | No | Array of GitHub org/user names. A GitHub source `owner/repo` passes if `owner` matches. Defaults to `[]`. |
 | `github_repos` | No | Array of exact `owner/repo` strings. Defaults to `[]`. |
-| `git_domains` | No | Array of domain names. A `git:` source passes if its domain matches. Defaults to `[]`. |
+| `git_domains` | No | Array of domain names or domain path prefixes. A `git:` source passes if its domain (or domain/path) matches. Supports path prefixes for scoping trust to specific orgs or groups (e.g., `gitlab.com/myorg`). Defaults to `[]`. |
 
 **Semantics:**
 - `[trust]` absent → all sources allowed (backward compat)
 - `allow_all = true` → all sources allowed (explicit intent)
 - `[trust]` present without `allow_all` → only matching sources allowed (allow-list)
-- A source passes if it matches ANY rule (org OR repo OR domain)
+- A source passes if it matches ANY rule (org OR repo OR domain/path prefix)
+- `git_domains` entries match by prefix: `gitlab.com` matches all repos on GitLab, `gitlab.com/myorg` matches repos under that org, `gitlab.com/myorg/repo` matches only that repo
 - Local `path:` sources are always allowed (already sandboxed to project root)
 
 Trust is checked before any network work in both `dotagents add` and `dotagents install`.
@@ -468,6 +469,8 @@ dotagents trust list [--json]
 - Contains `/` → `github_repos` (e.g., `external-org/specific-repo`)
 - Contains `.` (no `/`) → `git_domains` (e.g., `git.corp.example.com`)
 - Otherwise → `github_orgs` (e.g., `getsentry`)
+
+When `defaultRepositorySource = "gitlab"`, shorthand sources (without dots) are expanded to `gitlab.com/...` and stored in `git_domains` instead. For example, `trust add myorg` becomes `gitlab.com/myorg` in `git_domains`.
 
 **Behavior:**
 - `add`: Classify the source, check for duplicates (case-insensitive), and append it to the appropriate field in `[trust]`. Creates the section if absent.

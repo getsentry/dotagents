@@ -57,6 +57,35 @@ describe("applyDefaultRepositorySource", () => {
       ),
     ).toBe("https://gitlab.com/group/repo");
   });
+
+  it("expands multi-slash GitLab path when configured for gitlab", () => {
+    expect(applyDefaultRepositorySource("group/subgroup/repo", "gitlab")).toBe(
+      "https://gitlab.com/group/subgroup/repo",
+    );
+  });
+
+  it("expands multi-slash GitLab path with @ref", () => {
+    expect(
+      applyDefaultRepositorySource("group/subgroup/repo@v1.0", "gitlab"),
+    ).toBe("https://gitlab.com/group/subgroup/repo@v1.0");
+  });
+
+  it("expands deeply nested GitLab path", () => {
+    expect(
+      applyDefaultRepositorySource("a/b/c/d/repo", "gitlab"),
+    ).toBe("https://gitlab.com/a/b/c/d/repo");
+  });
+
+  it("does not expand multi-slash path for github", () => {
+    // Multi-slash is not valid for GitHub, returns unchanged
+    expect(applyDefaultRepositorySource("a/b/c", "github")).toBe("a/b/c");
+  });
+
+  it("rejects multi-slash path with leading dash segment", () => {
+    expect(applyDefaultRepositorySource("-bad/group/repo", "gitlab")).toBe(
+      "-bad/group/repo",
+    );
+  });
 });
 
 describe("parseSource", () => {

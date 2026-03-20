@@ -34,6 +34,36 @@ export function extractDomain(url: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Extract domain + path from a git URL, stripping .git suffix and trailing slashes.
+ *
+ * Used for prefix-matching against `git_domains` entries that may include path components
+ * (e.g., `gitlab.com/owner/group`).
+ *
+ * Examples:
+ *   https://gitlab.com/owner/group/repo.git → gitlab.com/owner/group/repo
+ *   git@gitlab.com:owner/group/repo.git     → gitlab.com/owner/group/repo
+ *   https://gitlab.com                      → gitlab.com
+ */
+export function extractDomainPath(url: string): string | undefined {
+  // SCP-style: git@host.com:path
+  const scpMatch = url.match(/^[a-z]+@([^:]+):(.+)$/);
+  if (scpMatch) {
+    const host = scpMatch[1]!;
+    const path = scpMatch[2]!.replace(/\.git$/i, "").replace(/\/+$/, "");
+    return path ? `${host}/${path}` : host;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname) {return undefined;}
+    const path = parsed.pathname.replace(/^\/+/, "").replace(/\/+$/, "").replace(/\.git$/i, "");
+    return path ? `${parsed.hostname}/${path}` : parsed.hostname;
+  } catch {
+    return undefined;
+  }
+}
+
 function formatAllowed(trust: TrustConfig): string {
   const parts: string[] = [];
   if (trust.github_orgs.length > 0) {
@@ -87,9 +117,13 @@ export function validateTrustedSource(
   }
 
   if (parsed.type === "git") {
-    const domain = extractDomain(parsed.url!)?.toLowerCase();
-    if (domain && trust.git_domains.some((d) => d.toLowerCase() === domain)) {return;}
+    const domainPath = extractDomainPath(parsed.url!)?.toLowerCase();
+    if (domainPath && trust.git_domains.some((d) => {
+      const entry = d.toLowerCase();
+      return domainPath === entry || domainPath.startsWith(`${entry}/`);
+    })) {return;}
 
+    const domain = extractDomain(parsed.url!)?.toLowerCase();
     const hint = domain ? `\nRun: npx @sentry/dotagents trust add ${domain}` : "";
     throw new TrustError(
       `Source "${source}" is not trusted. Allowed sources: ${formatAllowed(trust)}.${hint}`,

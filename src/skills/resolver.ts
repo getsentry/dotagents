@@ -82,6 +82,9 @@ export function parseOwnerRepoShorthand(
 /**
  * Expand owner/repo shorthand according to defaultRepositorySource.
  * Returns input unchanged for explicit sources or non-shorthand values.
+ *
+ * When defaultRepositorySource is "gitlab", also handles multi-slash paths
+ * (e.g., `group/subgroup/repo`) since GitLab supports nested groups.
  */
 export function applyDefaultRepositorySource(
   specifier: string,
@@ -90,12 +93,27 @@ export function applyDefaultRepositorySource(
   if (isExplicitSourceSpecifier(specifier)) {return specifier;}
 
   const shorthand = parseOwnerRepoShorthand(specifier);
-  if (!shorthand) {return specifier;}
+  if (shorthand) {
+    const host =
+      defaultRepositorySource === "gitlab" ? "gitlab.com" : "github.com";
+    const refSuffix = shorthand.ref ? `@${shorthand.ref}` : "";
+    return `https://${host}/${shorthand.owner}/${shorthand.repo}${refSuffix}`;
+  }
 
-  const host =
-    defaultRepositorySource === "gitlab" ? "gitlab.com" : "github.com";
-  const refSuffix = shorthand.ref ? `@${shorthand.ref}` : "";
-  return `https://${host}/${shorthand.owner}/${shorthand.repo}${refSuffix}`;
+  // Multi-slash GitLab path: group/subgroup/repo[@ref]
+  if (defaultRepositorySource === "gitlab") {
+    const stripped = stripLeadingAt(specifier);
+    const atIdx = stripped.indexOf("@");
+    const base = atIdx >= 0 ? stripped.slice(0, atIdx) : stripped;
+    const ref = atIdx >= 0 ? stripped.slice(atIdx + 1) : undefined;
+    const parts = base.split("/");
+    if (parts.length >= 3 && parts.every((p) => p && !p.startsWith("-"))) {
+      const refSuffix = ref ? `@${ref}` : "";
+      return `https://gitlab.com/${base}${refSuffix}`;
+    }
+  }
+
+  return specifier;
 }
 
 /**

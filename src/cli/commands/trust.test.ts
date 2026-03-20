@@ -72,6 +72,43 @@ describe("trust", () => {
         value: "owner.co/repo",
       });
     });
+
+    describe("with defaultRepositorySource=gitlab", () => {
+      it("expands bare org name to gitlab.com domain path", () => {
+        expect(classifyTrustSource("myorg", "gitlab")).toEqual({
+          field: "git_domains",
+          value: "gitlab.com/myorg",
+        });
+      });
+
+      it("expands owner/repo to gitlab.com domain path", () => {
+        expect(classifyTrustSource("owner/repo", "gitlab")).toEqual({
+          field: "git_domains",
+          value: "gitlab.com/owner/repo",
+        });
+      });
+
+      it("expands owner/group/repo to gitlab.com domain path", () => {
+        expect(classifyTrustSource("owner/group/repo", "gitlab")).toEqual({
+          field: "git_domains",
+          value: "gitlab.com/owner/group/repo",
+        });
+      });
+
+      it("does not expand sources that already contain dots", () => {
+        expect(classifyTrustSource("gitlab.com", "gitlab")).toEqual({
+          field: "git_domains",
+          value: "gitlab.com",
+        });
+      });
+
+      it("does not expand dotted domain paths", () => {
+        expect(classifyTrustSource("gitlab.com/owner", "gitlab")).toEqual({
+          field: "github_repos",
+          value: "gitlab.com/owner",
+        });
+      });
+    });
   });
 
   describe("runTrustAdd", () => {
@@ -119,6 +156,32 @@ describe("trust", () => {
       await expect(
         runTrustAdd({ scope, source: "GetSentry" }),
       ).rejects.toThrow(/already in/);
+    });
+
+    it("expands gitlab shorthands when defaultRepositorySource=gitlab", async () => {
+      await writeFile(
+        scope.configPath,
+        `version = 1\ndefaultRepositorySource = "gitlab"\n`,
+      );
+
+      await runTrustAdd({ scope, source: "myorg" });
+
+      const config = await loadConfig(scope.configPath);
+      expect(config.trust?.git_domains).toContain("gitlab.com/myorg");
+      expect(config.trust?.github_orgs ?? []).toEqual([]);
+    });
+
+    it("expands gitlab owner/repo when defaultRepositorySource=gitlab", async () => {
+      await writeFile(
+        scope.configPath,
+        `version = 1\ndefaultRepositorySource = "gitlab"\n`,
+      );
+
+      await runTrustAdd({ scope, source: "owner/repo" });
+
+      const config = await loadConfig(scope.configPath);
+      expect(config.trust?.git_domains).toContain("gitlab.com/owner/repo");
+      expect(config.trust?.github_repos ?? []).toEqual([]);
     });
 
     it("inserts [trust] before [[skills]]", async () => {

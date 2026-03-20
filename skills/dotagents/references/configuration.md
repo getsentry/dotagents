@@ -70,9 +70,9 @@ git_domains = ["git.corp.example.com"]
 ```
 
 - GitHub sources match against `github_orgs` (by owner) or `github_repos` (exact owner/repo)
-- Git URL sources match against `git_domains`
+- Git URL sources match against `git_domains` (supports domain path prefixes, e.g., `gitlab.com/myorg`)
 - Local `path:` sources are always allowed
-- A source passes if it matches any rule (org OR repo OR domain)
+- A source passes if it matches any rule (org OR repo OR domain/path prefix)
 
 Trust is validated before any network operations in `add` and `install`.
 

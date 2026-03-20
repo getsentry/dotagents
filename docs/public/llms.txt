@@ -213,7 +213,7 @@ Optional `[trust]` section to restrict allowed skill sources.
 | `allow_all` | boolean | Allow all sources (overrides other fields) |
 | `github_orgs` | string[] | Allowed GitHub org/user names |
 | `github_repos` | string[] | Allowed exact `owner/repo` pairs |
-| `git_domains` | string[] | Allowed domains for `git:` URLs |
+| `git_domains` | string[] | Allowed domains or domain path prefixes for `git:` URLs (e.g., `gitlab.com/myorg`) |
 
 Rules:
 - No `[trust]` section = all sources allowed (backward compatible)
@@ -330,7 +330,7 @@ Show declared MCP servers. Use `--json` for machine-readable output.
 npx @sentry/dotagents trust add <source>
 ```
 
-Add a trusted source to `[trust]` in `agents.toml`. The source type is inferred automatically: contains `/` → `github_repos`, contains `.` → `git_domains`, otherwise → `github_orgs`. Creates the `[trust]` section if absent. Duplicates (case-insensitive) are rejected.
+Add a trusted source to `[trust]` in `agents.toml`. The source type is inferred automatically: contains `/` → `github_repos`, contains `.` → `git_domains`, otherwise → `github_orgs`. When `defaultRepositorySource = "gitlab"`, shorthand sources are expanded to `gitlab.com/...` and stored in `git_domains`. Creates the `[trust]` section if absent. Duplicates (case-insensitive) are rejected.
 
 ### trust remove
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   validateTrustedSource,
   extractDomain,
+  extractDomainPath,
   TrustError,
 } from "./validator.js";
 import type { TrustConfig } from "../config/schema.js";
@@ -136,6 +137,71 @@ describe("validateTrustedSource", () => {
       const gitlabTrust = makeTrust({ git_domains: ["gitlab.com"] });
       expect(() =>
         validateTrustedSource("https://gitlab.com/group/repo", gitlabTrust),
+      ).not.toThrow();
+    });
+  });
+
+  describe("git_domains with path prefixes", () => {
+    it("allows repos under a trusted domain path (https)", () => {
+      const trust = makeTrust({ git_domains: ["gitlab.com/myorg"] });
+      expect(() =>
+        validateTrustedSource("https://gitlab.com/myorg/repo", trust),
+      ).not.toThrow();
+    });
+
+    it("allows repos under a trusted domain path (scp-style)", () => {
+      const trust = makeTrust({ git_domains: ["gitlab.com/myorg"] });
+      expect(() =>
+        validateTrustedSource("git:git@gitlab.com:myorg/repo.git", trust),
+      ).not.toThrow();
+    });
+
+    it("allows nested subgroups under a trusted domain path", () => {
+      const trust = makeTrust({ git_domains: ["gitlab.com/myorg"] });
+      expect(() =>
+        validateTrustedSource(
+          "git:https://gitlab.com/myorg/subgroup/repo.git",
+          trust,
+        ),
+      ).not.toThrow();
+    });
+
+    it("rejects repos outside the trusted path", () => {
+      const trust = makeTrust({ git_domains: ["gitlab.com/myorg"] });
+      expect(() =>
+        validateTrustedSource("https://gitlab.com/evil/repo", trust),
+      ).toThrow(TrustError);
+    });
+
+    it("rejects repos with a prefix-collision on path boundary", () => {
+      const trust = makeTrust({ git_domains: ["gitlab.com/myorg"] });
+      // myorg-evil should NOT match myorg
+      expect(() =>
+        validateTrustedSource("https://gitlab.com/myorg-evil/repo", trust),
+      ).toThrow(TrustError);
+    });
+
+    it("allows exact domain/path match for a specific repo", () => {
+      const trust = makeTrust({ git_domains: ["gitlab.com/myorg/specific-repo"] });
+      expect(() =>
+        validateTrustedSource("https://gitlab.com/myorg/specific-repo", trust),
+      ).not.toThrow();
+    });
+
+    it("rejects sibling repos when only one repo is trusted", () => {
+      const trust = makeTrust({ git_domains: ["gitlab.com/myorg/specific-repo"] });
+      expect(() =>
+        validateTrustedSource("https://gitlab.com/myorg/other-repo", trust),
+      ).toThrow(TrustError);
+    });
+
+    it("domain-only entries still work (backwards compat)", () => {
+      const trust = makeTrust({ git_domains: ["gitlab.com"] });
+      expect(() =>
+        validateTrustedSource("https://gitlab.com/any/repo", trust),
+      ).not.toThrow();
+      expect(() =>
+        validateTrustedSource("git:git@gitlab.com:deep/nested/repo.git", trust),
       ).not.toThrow();
     });
   });
@@ -279,5 +345,49 @@ describe("extractDomain", () => {
 
   it("returns undefined for bare paths", () => {
     expect(extractDomain("/tmp/local-repo")).toBeUndefined();
+  });
+});
+
+describe("extractDomainPath", () => {
+  it("extracts domain/path from https URL", () => {
+    expect(extractDomainPath("https://gitlab.com/owner/group/repo.git")).toBe(
+      "gitlab.com/owner/group/repo",
+    );
+  });
+
+  it("extracts domain/path from scp-style URL", () => {
+    expect(extractDomainPath("git@gitlab.com:owner/group/repo.git")).toBe(
+      "gitlab.com/owner/group/repo",
+    );
+  });
+
+  it("strips .git suffix", () => {
+    expect(extractDomainPath("https://gitlab.com/owner/repo.git")).toBe(
+      "gitlab.com/owner/repo",
+    );
+  });
+
+  it("strips trailing slashes", () => {
+    expect(extractDomainPath("https://gitlab.com/owner/repo/")).toBe(
+      "gitlab.com/owner/repo",
+    );
+  });
+
+  it("returns just domain when no path", () => {
+    expect(extractDomainPath("https://gitlab.com")).toBe("gitlab.com");
+  });
+
+  it("handles ssh:// URLs", () => {
+    expect(extractDomainPath("ssh://git.corp.com/team/repo.git")).toBe(
+      "git.corp.com/team/repo",
+    );
+  });
+
+  it("returns undefined for file:// URLs", () => {
+    expect(extractDomainPath("file:///tmp/repo")).toBeUndefined();
+  });
+
+  it("returns undefined for bare paths", () => {
+    expect(extractDomainPath("/tmp/local-repo")).toBeUndefined();
   });
 });
