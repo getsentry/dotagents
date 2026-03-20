@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
-import { isWildcardDep } from "../../config/schema.js";
+import { isWildcardDep, GITHUB_HTTPS_URL, GITLAB_HTTPS_URL } from "../../config/schema.js";
 import { addSkillToConfig, addWildcardToConfig } from "../../config/writer.js";
 import {
   applyDefaultRepositorySource,
@@ -82,16 +82,16 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
     );
   }
 
-  const parsed = parseSource(hintedSpecifier);
-
-  // Reject bare http:// URLs — well-known sources require HTTPS to prevent MITM.
-  // (GitHub/GitLab http:// URLs are upgraded to HTTPS by parseSource, so those are fine.)
-  if (/^http:\/\//i.test(hintedSpecifier) && parsed.type !== "github" && parsed.type !== "git") {
+  // Reject bare http:// URLs that aren't GitHub/GitLab (those get upgraded to HTTPS).
+  // Well-known sources require HTTPS to prevent MITM attacks.
+  if (/^http:\/\//i.test(hintedSpecifier) && !GITHUB_HTTPS_URL.test(hintedSpecifier) && !GITLAB_HTTPS_URL.test(hintedSpecifier)) {
     throw new AddError(
       `Insecure source "${specifier}". Well-known sources require HTTPS. ` +
         `Use https:// or the git: prefix for git repos.`,
     );
   }
+
+  const parsed = parseSource(hintedSpecifier);
 
   // Store the original source form (shorthand, SSH, HTTPS) — strip inline @ref (stored separately)
   const sourceForStorage = parsed.ref
