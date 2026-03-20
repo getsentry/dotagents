@@ -192,10 +192,9 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
   } else if (parsed.type === "well-known") {
     // Well-known HTTP source — fetch index and download skills
     const baseUrl = parsed.url!;
-    const hostname = new URL(baseUrl).hostname.toLowerCase();
-    const rawPathname = new URL(baseUrl).pathname;
-    const pathname = rawPathname.endsWith("/") ? rawPathname.slice(0, -1) : rawPathname;
-    const cacheKey = `wellknown/${hostname}${pathname}`;
+    const u = new URL(baseUrl);
+    const pathname = u.pathname.endsWith("/") ? u.pathname.slice(0, -1) : u.pathname;
+    const cacheKey = `wellknown/${u.host.toLowerCase()}${pathname}`;
 
     const cached = await ensureWellKnownCached({
       url: baseUrl,

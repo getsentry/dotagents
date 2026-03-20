@@ -12,12 +12,7 @@ import { ensureWellKnownCached } from "../sources/wellknown.js";
 import { resolveLocalSource } from "../sources/local.js";
 import { discoverSkill, discoverAllSkills, type DiscoveredSkill } from "./discovery.js";
 import { loadSkillMd } from "./loader.js";
-
-function stripTrailingSlashes(s: string): string {
-  let end = s.length;
-  while (end > 0 && s[end - 1] === "/") {end--;}
-  return end === s.length ? s : s.slice(0, end);
-}
+import { stripTrailingSlashes } from "../utils/fs.js";
 
 export class ResolveError extends Error {
   constructor(message: string) {
@@ -218,7 +213,7 @@ export function normalizeSource(source: string): string {
     // Normalize: strip trailing slash, lowercase hostname
     try {
       const u = new URL(parsed.url);
-      return `${u.protocol}//${u.hostname.toLowerCase()}${stripTrailingSlashes(u.pathname)}`;
+      return `${u.protocol}//${u.host.toLowerCase()}${stripTrailingSlashes(u.pathname)}`;
     } catch {
       return source;
     }
@@ -232,7 +227,7 @@ export function normalizeSource(source: string): string {
 /** Build a cache key for a well-known URL (e.g. "wellknown/cli.sentry.dev/path"). */
 function wellKnownCacheKey(baseUrl: string): string {
   const u = new URL(baseUrl);
-  return `wellknown/${u.hostname.toLowerCase()}${stripTrailingSlashes(u.pathname)}`;
+  return `wellknown/${u.host.toLowerCase()}${stripTrailingSlashes(u.pathname)}`;
 }
 
 /** Compare two source strings for equivalence (normalizes hosted URLs to owner/repo). */

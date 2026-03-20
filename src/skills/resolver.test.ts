@@ -350,6 +350,12 @@ describe("normalizeSource", () => {
       "https://example.com/Skills",
     );
   });
+
+  it("preserves port in well-known URL normalization", () => {
+    expect(normalizeSource("https://localhost:3000/")).toBe(
+      "https://localhost:3000",
+    );
+  });
 });
 
 describe("sourcesMatch", () => {
@@ -416,6 +422,12 @@ describe("sourcesMatch", () => {
   it("does not match different well-known domains", () => {
     expect(
       sourcesMatch("https://cli.sentry.dev", "https://other.example.com"),
+    ).toBe(false);
+  });
+
+  it("does not match well-known URLs with different ports", () => {
+    expect(
+      sourcesMatch("https://localhost:3000", "https://localhost:4000"),
     ).toBe(false);
   });
 });

@@ -2,29 +2,15 @@ import { join } from "node:path";
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
+import { stripTrailingSlashes } from "../utils/fs.js";
 
-/** Skill names must be safe for use in file paths: alphanumeric, dots, hyphens, underscores. */
-const SAFE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
-/** File names must not contain path separators or traversal sequences. */
-const SAFE_FILE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+/** Names must be safe for use in file paths: alphanumeric, dots, hyphens, underscores. */
+const SAFE_PATH_SEGMENT = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
 const DEFAULT_STATE_DIR = join(homedir(), ".local", "dotagents");
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const FETCH_TIMEOUT_MS = 10_000;
 const MARKER_FILE = ".well-known-fetched";
-
-function stripTrailingSlashes(s: string): string {
-  let end = s.length;
-  while (end > 0 && s[end - 1] === "/") {end--;}
-  return end === s.length ? s : s.slice(0, end);
-}
-
-export class WellKnownError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "WellKnownError";
-  }
-}
 
 export interface WellKnownIndex {
   skills: WellKnownSkillEntry[];
@@ -127,14 +113,14 @@ export async function ensureWellKnownCached(opts: {
 
   for (const skill of index.skills) {
     // Validate skill name to prevent path traversal from untrusted index
-    if (!SAFE_NAME.test(skill.name)) {continue;}
+    if (!SAFE_PATH_SEGMENT.test(skill.name)) {continue;}
 
     const skillDir = join(cacheDir, skill.name);
     await mkdir(skillDir, { recursive: true });
 
     for (const file of skill.files) {
       // Validate file name to prevent path traversal
-      if (!SAFE_FILE.test(file)) {continue;}
+      if (!SAFE_PATH_SEGMENT.test(file)) {continue;}
 
       const fileUrl = `${baseUrl}/.well-known/skills/${skill.name}/${file}`;
       try {

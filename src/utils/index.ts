@@ -1,2 +1,2 @@
 export { exec, ExecError } from "./exec.js";
-export { copyDir } from "./fs.js";
+export { copyDir, stripTrailingSlashes } from "./fs.js";
