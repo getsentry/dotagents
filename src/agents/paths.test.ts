@@ -41,6 +41,10 @@ describe("getUserMcpTarget", () => {
   it("throws for unknown agent", () => {
     expect(() => getUserMcpTarget("emacs")).toThrow("Unknown agent");
   });
+
+  it("throws for pi (no MCP support)", () => {
+    expect(() => getUserMcpTarget("pi")).toThrow("Unknown agent");
+  });
 });
 
 describe("skill discovery paths", () => {
@@ -74,6 +78,12 @@ describe("skill discovery paths", () => {
 
   it("opencode reads .agents/skills/ natively", () => {
     const agent = getAgent("opencode")!;
+    expect(agent.skillsParentDir).toBeUndefined();
+    expect(agent.userSkillsParentDirs).toBeUndefined();
+  });
+
+  it("pi reads .agents/skills/ natively", () => {
+    const agent = getAgent("pi")!;
     expect(agent.skillsParentDir).toBeUndefined();
     expect(agent.userSkillsParentDirs).toBeUndefined();
   });

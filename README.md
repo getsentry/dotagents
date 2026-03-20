@@ -98,8 +98,7 @@ agents = ["claude", "cursor"]
 | `codex` | `.codex` | `.codex/config.toml` | -- |
 | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` |
 | `opencode` | `.claude` | `opencode.json` | -- |
-
-[Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively and needs no configuration.
+| `pi` | `.pi` | -- | -- |
 
 ## Documentation
 

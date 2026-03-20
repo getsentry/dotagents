@@ -57,6 +57,8 @@ export async function writeMcpConfigs(
     if (!agent) {continue;}
 
     const { mcp } = agent;
+    if (!mcp) {continue;}
+
     const { filePath, shared } = resolveTarget(id, mcp);
     if (seen.has(filePath)) {continue;}
     seen.add(filePath);
@@ -96,6 +98,8 @@ export async function verifyMcpConfigs(
     if (!agent) {continue;}
 
     const { mcp } = agent;
+    if (!mcp) {continue;}
+
     const { filePath } = resolveTarget(id, mcp);
     if (seen.has(filePath)) {continue;}
     seen.add(filePath);

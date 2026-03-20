@@ -79,7 +79,7 @@ headers = { X-Api-Key = "${API_KEY}" }
 |-------|----------|-------------|
 | `version` | Yes | Schema version. Always `1`. |
 | `defaultRepositorySource` | No | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. Defaults to `github`. |
-| `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Defaults to `[]`. When set, dotagents creates skills symlinks and MCP config files for each agent. |
+| `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `vscode`, `opencode`, `pi`. Defaults to `[]`. When set, dotagents creates skills symlinks and MCP config files for each agent. |
 | `project` | No | Project metadata. |
 | `symlinks` | No | Symlink configuration (legacy — prefer `agents` for new projects). |
 | `skills` | No | Skill dependencies (array of tables). |
@@ -184,6 +184,7 @@ Hook declarations. Each entry defines a hook that dotagents will configure for a
 | `codex` | Codex | `.codex` | `.codex/config.toml` | TOML (shared) |
 | `vscode` | VS Code Copilot | `.vscode` | `.vscode/mcp.json` | JSON |
 | `opencode` | OpenCode | `.claude` | `opencode.json` | JSON (shared) |
+| `pi` | Pi | `.pi` | -- | -- |
 
 Each agent has its own MCP config format. dotagents translates the universal `[[mcp]]` declarations into the format each tool expects during `install` and `sync`.
 
@@ -671,7 +672,7 @@ dotagents/
         mcp.ts
     agents/
       types.ts             # McpDeclaration, AgentDefinition interfaces
-      registry.ts          # Agent registry (claude, cursor, codex, vscode, opencode)
+      registry.ts          # Agent registry (claude, cursor, codex, vscode, opencode, pi)
       definitions/         # Per-agent definitions (claude.ts, cursor.ts, etc.)
       mcp-writer.ts        # MCP config file generation per agent
       hook-writer.ts       # Hook config file generation per agent

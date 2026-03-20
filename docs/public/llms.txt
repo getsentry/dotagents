@@ -126,7 +126,7 @@ command = "notify-done"
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version. Always `1`. |
 | `defaultRepositorySource` | string | No | `github` | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. |
-| `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Creates symlinks and config files for each. |
+| `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `vscode`, `opencode`, `pi`. Creates symlinks and config files for each. |
 
 ### Skills
 
@@ -385,6 +385,7 @@ Check project health: gitignore setup, installed skills, symlinks, and legacy co
 | `codex` | Codex | `.codex` | (reads `.agents/skills/` natively) | `.codex/config.toml` | Not supported |
 | `vscode` | VS Code Copilot | `.vscode` | (reads `.agents/skills/` natively) | `.vscode/mcp.json` | `.claude/settings.json` |
 | `opencode` | OpenCode | `.claude` | (reads `.agents/skills/` natively) | `opencode.json` | Not supported |
+| `pi` | Pi | `.pi` | (reads `.agents/skills/` natively) | Not supported | Not supported |
 
 Claude and Cursor use symlinks from their config directory to `.agents/skills/`. Codex, VS Code, OpenCode, and Pi read `.agents/skills/` directly.
 
