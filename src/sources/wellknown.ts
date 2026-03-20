@@ -4,8 +4,14 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { stripTrailingSlashes } from "../utils/fs.js";
 
-/** Names must be safe for use in file paths: alphanumeric, dots, hyphens, underscores. */
-const SAFE_PATH_SEGMENT = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+/** Skill names must be safe path segments: alphanumeric, dots, hyphens, underscores. */
+const SAFE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
+/** Check that a file path is safe: no traversal (..), no absolute paths, each segment is safe. */
+function isSafeFilePath(filePath: string): boolean {
+  if (!filePath || filePath.startsWith("/")) {return false;}
+  return filePath.split("/").every((seg) => seg.length > 0 && seg !== ".." && seg !== "." && SAFE_NAME.test(seg));
+}
 
 const DEFAULT_STATE_DIR = join(homedir(), ".local", "dotagents");
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -113,14 +119,14 @@ export async function ensureWellKnownCached(opts: {
 
   for (const skill of index.skills) {
     // Validate skill name to prevent path traversal from untrusted index
-    if (!SAFE_PATH_SEGMENT.test(skill.name)) {continue;}
+    if (!SAFE_NAME.test(skill.name)) {continue;}
 
     const skillDir = join(cacheDir, skill.name);
     await mkdir(skillDir, { recursive: true });
 
     for (const file of skill.files) {
-      // Validate file name to prevent path traversal
-      if (!SAFE_PATH_SEGMENT.test(file)) {continue;}
+      // Validate file path to prevent traversal (allows subdirectories)
+      if (!isSafeFilePath(file)) {continue;}
 
       const fileUrl = `${baseUrl}/.well-known/skills/${skill.name}/${file}`;
       try {
@@ -129,7 +135,11 @@ export async function ensureWellKnownCached(opts: {
         });
         if (!response.ok) {continue;}
         const content = await response.text();
-        await writeFile(join(skillDir, file), content, "utf-8");
+        const filePath = join(skillDir, file);
+        // Ensure parent directory exists for nested files (e.g. prompts/base.md)
+        const parentDir = join(filePath, "..");
+        await mkdir(parentDir, { recursive: true });
+        await writeFile(filePath, content, "utf-8");
       } catch {
         // Skip files that fail to download
       }

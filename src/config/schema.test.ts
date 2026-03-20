@@ -178,6 +178,10 @@ describe("agentsConfigSchema", () => {
     it("rejects bare HTTP URL (HTTPS required for well-known)", () => {
       expect(parseSkill("http://cli.sentry.dev").success).toBe(false);
     });
+
+    it("rejects bare https:// without hostname", () => {
+      expect(parseSkill("https://").success).toBe(false);
+    });
   });
 
   describe("skill name validation", () => {

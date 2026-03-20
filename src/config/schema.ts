@@ -38,7 +38,8 @@ const skillSourceSchema = z.string().check(
     if (GITLAB_HTTPS_URL.test(s)) {return true;}
     if (GITLAB_SSH_URL.test(s)) {return true;}
     // Bare HTTPS URLs (well-known skill sources — HTTPS only to prevent MITM)
-    if (s.startsWith("https://")) {return true;}
+    // Require at least a hostname after the protocol (reject bare "https://")
+    if (/^https:\/\/[^/]+/.test(s)) {return true;}
     // owner/repo or owner/repo@ref (strip npm-style leading @)
     const stripped = s.startsWith("@") ? s.slice(1) : s;
     const base = stripped.includes("@") ? stripped.slice(0, stripped.indexOf("@")) : stripped;
