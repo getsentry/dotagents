@@ -65,11 +65,15 @@ describe("trust", () => {
       });
     });
 
-    it("prefers / over . for classification", () => {
-      // owner.with.dots/repo should be a repo, not a domain
-      expect(classifyTrustSource("owner.co/repo")).toEqual({
-        field: "github_repos",
-        value: "owner.co/repo",
+    it("classifies dotted-domain/path as git_domains", () => {
+      // First segment has a dot → domain path, not GitHub owner/repo
+      expect(classifyTrustSource("gitlab.com/owner")).toEqual({
+        field: "git_domains",
+        value: "gitlab.com/owner",
+      });
+      expect(classifyTrustSource("git.corp.co/team/repo")).toEqual({
+        field: "git_domains",
+        value: "git.corp.co/team/repo",
       });
     });
 
@@ -102,9 +106,9 @@ describe("trust", () => {
         });
       });
 
-      it("does not expand dotted domain paths", () => {
+      it("classifies dotted domain paths as git_domains even with gitlab default", () => {
         expect(classifyTrustSource("gitlab.com/owner", "gitlab")).toEqual({
-          field: "github_repos",
+          field: "git_domains",
           value: "gitlab.com/owner",
         });
       });

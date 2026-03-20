@@ -181,6 +181,26 @@ describe("validateTrustedSource", () => {
       ).toThrow(TrustError);
     });
 
+    it("rejects path traversal attempts in SCP-style URLs", () => {
+      const trust = makeTrust({ git_domains: ["gitlab.com/trusted-org"] });
+      expect(() =>
+        validateTrustedSource(
+          "git:git@gitlab.com:trusted-org/../evil-org/repo.git",
+          trust,
+        ),
+      ).toThrow(TrustError);
+    });
+
+    it("rejects path traversal attempts in HTTPS URLs", () => {
+      const trust = makeTrust({ git_domains: ["gitlab.com/trusted-org"] });
+      expect(() =>
+        validateTrustedSource(
+          "git:https://gitlab.com/trusted-org/../evil-org/repo.git",
+          trust,
+        ),
+      ).toThrow(TrustError);
+    });
+
     it("allows exact domain/path match for a specific repo", () => {
       const trust = makeTrust({ git_domains: ["gitlab.com/myorg/specific-repo"] });
       expect(() =>
@@ -389,5 +409,17 @@ describe("extractDomainPath", () => {
 
   it("returns undefined for bare paths", () => {
     expect(extractDomainPath("/tmp/local-repo")).toBeUndefined();
+  });
+
+  it("normalizes .. segments in SCP-style URLs", () => {
+    expect(
+      extractDomainPath("git@gitlab.com:trusted/../evil/repo.git"),
+    ).toBe("gitlab.com/evil/repo");
+  });
+
+  it("normalizes .. segments in HTTPS URLs", () => {
+    expect(
+      extractDomainPath("https://gitlab.com/trusted/../evil/repo.git"),
+    ).toBe("gitlab.com/evil/repo");
   });
 });

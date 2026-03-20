@@ -26,6 +26,12 @@ export function classifyTrustSource(
   }
 
   if (source.includes("/")) {
+    // If the segment before the first / contains a dot, it's a domain path
+    // (e.g., gitlab.com/owner), not a GitHub owner/repo
+    const firstSegment = source.slice(0, source.indexOf("/"));
+    if (firstSegment.includes(".")) {
+      return { field: "git_domains", value: source };
+    }
     return { field: "github_repos", value: source };
   }
   if (source.includes(".")) {

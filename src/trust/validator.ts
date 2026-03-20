@@ -45,19 +45,33 @@ export function extractDomain(url: string): string | undefined {
  *   git@gitlab.com:owner/group/repo.git     → gitlab.com/owner/group/repo
  *   https://gitlab.com                      → gitlab.com
  */
+/** Normalize path segments, resolving `.` and `..` to prevent traversal bypasses. */
+function normalizePath(raw: string): string {
+  const segments: string[] = [];
+  for (const seg of raw.split("/")) {
+    if (seg === "" || seg === ".") {continue;}
+    if (seg === "..") {
+      segments.pop();
+    } else {
+      segments.push(seg);
+    }
+  }
+  return segments.join("/");
+}
+
 export function extractDomainPath(url: string): string | undefined {
   // SCP-style: git@host.com:path
   const scpMatch = url.match(/^[a-z]+@([^:]+):(.+)$/);
   if (scpMatch) {
     const host = scpMatch[1]!;
-    const path = scpMatch[2]!.replace(/\.git$/i, "").replace(/\/+$/, "");
+    const path = normalizePath(scpMatch[2]!.replace(/\.git$/i, ""));
     return path ? `${host}/${path}` : host;
   }
 
   try {
     const parsed = new URL(url);
     if (!parsed.hostname) {return undefined;}
-    const path = parsed.pathname.replace(/^\/+/, "").replace(/\/+$/, "").replace(/\.git$/i, "");
+    const path = normalizePath(parsed.pathname.replace(/\.git$/i, ""));
     return path ? `${parsed.hostname}/${path}` : parsed.hostname;
   } catch {
     return undefined;
