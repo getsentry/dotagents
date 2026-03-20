@@ -26,7 +26,8 @@ export function extractDomain(url: string): string | undefined {
   // https://host.com/..., ssh://host.com/..., git://host.com/...
   try {
     const parsed = new URL(url);
-    if (parsed.hostname) {return parsed.hostname;}
+    // Use host (includes port) instead of hostname (strips port)
+    if (parsed.host) {return parsed.host;}
   } catch {
     // Not a valid URL — no domain
   }
@@ -70,9 +71,9 @@ export function extractDomainPath(url: string): string | undefined {
 
   try {
     const parsed = new URL(url);
-    if (!parsed.hostname) {return undefined;}
+    if (!parsed.host) {return undefined;}
     const path = normalizePath(parsed.pathname.replace(/\.git$/i, ""));
-    return path ? `${parsed.hostname}/${path}` : parsed.hostname;
+    return path ? `${parsed.host}/${path}` : parsed.host;
   } catch {
     return undefined;
   }
