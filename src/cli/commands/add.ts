@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
-import { isWildcardDep } from "../../config/schema.js";
+import { isWildcardDep, GITHUB_HTTPS_URL, GITLAB_HTTPS_URL } from "../../config/schema.js";
 import { addSkillToConfig, addWildcardToConfig } from "../../config/writer.js";
 import {
   applyDefaultRepositorySource,
@@ -18,6 +18,7 @@ import { discoverAllSkills, discoverSkill } from "../../skills/discovery.js";
 import { resolveLocalSource } from "../../sources/local.js";
 import { loadSkillMd } from "../../skills/loader.js";
 import { ensureCached } from "../../sources/cache.js";
+import { ensureWellKnownCached } from "../../sources/wellknown.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
 import { runInstall } from "./install.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
@@ -81,7 +82,15 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
     );
   }
 
-  // Parse the specifier
+  // Reject bare http:// URLs that aren't GitHub/GitLab (those get upgraded to HTTPS).
+  // Well-known sources require HTTPS to prevent MITM attacks.
+  if (/^http:\/\//i.test(hintedSpecifier) && !GITHUB_HTTPS_URL.test(hintedSpecifier) && !GITLAB_HTTPS_URL.test(hintedSpecifier)) {
+    throw new AddError(
+      `Insecure source "${specifier}". Well-known sources require HTTPS. ` +
+        `Use https:// or the git: prefix for git repos.`,
+    );
+  }
+
   const parsed = parseSource(hintedSpecifier);
 
   // Store the original source form (shorthand, SSH, HTTPS) — strip inline @ref (stored separately)
@@ -187,6 +196,150 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
       // No names — load SKILL.md from root for the name
       const meta = await loadSkillMd(join(localDir, "SKILL.md"));
       skillName = meta.name;
+    }
+  } else if (parsed.type === "well-known") {
+    // Well-known HTTP source — fetch index and download skills
+    const baseUrl = parsed.url!;
+    const u = new URL(baseUrl);
+    const pathname = u.pathname.endsWith("/") ? u.pathname.slice(0, -1) : u.pathname;
+    const cacheKey = `wellknown/${u.host.toLowerCase()}${pathname}`;
+
+    const cached = await ensureWellKnownCached({
+      url: baseUrl,
+      cacheKey,
+    });
+
+    if (!cached) {
+      throw new AddError(
+        `No skills found at ${baseUrl}. If this is a git repository, use the git: prefix: git:${baseUrl}`,
+      );
+    }
+
+    if (namesOverride?.length) {
+      // User specified name(s), verify each exists
+      for (const name of namesOverride) {
+        const found = await discoverSkill(cached.cacheDir, name);
+        if (!found) {
+          throw new AddError(
+            `Skill "${name}" not found in ${sourceForStorage}. ` +
+              `Use 'npx @sentry/dotagents add ${sourceForStorage}' without --name to see available skills.`,
+          );
+        }
+      }
+
+      if (namesOverride.length === 1) {
+        skillName = namesOverride[0]!;
+      } else {
+        // Multiple names — skip existing, add the rest
+        const toAdd: string[] = [];
+        for (const name of namesOverride) {
+          if (config.skills.some((s) => s.name === name)) {
+            console.warn(
+              chalk.yellow(`Skipping "${name}": already exists in agents.toml`),
+            );
+          } else {
+            toAdd.push(name);
+          }
+        }
+
+        if (toAdd.length === 0) {
+          throw new AddError(
+            "All specified skills already exist in agents.toml.",
+          );
+        }
+
+        for (const name of toAdd) {
+          await addSkillToConfig(configPath, name, {
+            source: sourceForStorage,
+            ...refOpts,
+          });
+        }
+        await runInstall({ scope });
+        return toAdd;
+      }
+    } else {
+      // Discover all skills and pick
+      const skills = await discoverAllSkills(cached.cacheDir);
+      if (skills.length === 0) {
+        throw new AddError(`No skills found in ${sourceForStorage}.`);
+      }
+      if (skills.length === 1) {
+        skillName = skills[0]!.meta.name;
+      } else if (interactive) {
+        const mode = await clack.select({
+          message: `Multiple skills found in ${sourceForStorage}. How would you like to add them?`,
+          options: [
+            {
+              label: "All",
+              value: "all" as const,
+              hint: "Wildcard entry — automatically includes new skills added upstream",
+            },
+            {
+              label: "Select specific skills",
+              value: "pick" as const,
+              hint: "Choose individual skills to add",
+            },
+          ],
+        });
+
+        if (clack.isCancel(mode)) {
+          throw new AddCancelledError();
+        }
+
+        if (mode === "all") {
+          return addWildcard();
+        }
+
+        const selected = await clack.multiselect({
+          message: "Select which skills to add:",
+          options: skills
+            .toSorted((a, b) => a.meta.name.localeCompare(b.meta.name))
+            .map((s) => {
+              const lastSlash = s.path.lastIndexOf("/");
+              const parentPath = lastSlash === -1 ? "" : s.path.slice(0, lastSlash);
+              const pathHint = STANDARD_PARENTS.has(parentPath)
+                ? ""
+                : chalk.dim(`(${s.path}) `);
+              return {
+                label: s.meta.name,
+                value: s.meta.name,
+                hint: pathHint + s.meta.description,
+              };
+            }),
+          required: true,
+        });
+
+        if (clack.isCancel(selected)) {
+          throw new AddCancelledError();
+        }
+
+        if (selected.length === 1) {
+          skillName = selected[0]!;
+        } else {
+          const added: string[] = [];
+          for (const name of selected) {
+            if (config.skills.some((s) => s.name === name)) {continue;}
+            await addSkillToConfig(configPath, name, {
+              source: sourceForStorage,
+              ...refOpts,
+            });
+            added.push(name);
+          }
+          if (added.length === 0) {
+            throw new AddError(
+              "All selected skills already exist in agents.toml.",
+            );
+          }
+          await runInstall({ scope });
+          return added;
+        }
+      } else {
+        const names = skills.map((s) => s.meta.name).toSorted();
+        throw new AddError(
+          `Multiple skills found in ${sourceForStorage}: ${names.join(", ")}. ` +
+            `Specify skill names as arguments, use --skill to specify which ones, or --all for all skills.`,
+        );
+      }
     }
   } else {
     // Git source — clone and discover

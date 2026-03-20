@@ -8,9 +8,11 @@ import {
   type WildcardSkillDependency,
 } from "../config/schema.js";
 import { ensureCached } from "../sources/cache.js";
+import { ensureWellKnownCached } from "../sources/wellknown.js";
 import { resolveLocalSource } from "../sources/local.js";
 import { discoverSkill, discoverAllSkills, type DiscoveredSkill } from "./discovery.js";
 import { loadSkillMd } from "./loader.js";
+import { stripTrailingSlashes } from "../utils/fs.js";
 
 export class ResolveError extends Error {
   constructor(message: string) {
@@ -42,7 +44,17 @@ export interface ResolvedLocalSkill {
   skillDir: string;
 }
 
-export type ResolvedSkill = ResolvedGitSkill | ResolvedLocalSkill;
+export interface ResolvedWellKnownSkill {
+  type: "well-known";
+  /** Original source string */
+  source: string;
+  /** Resolved HTTP URL */
+  resolvedUrl: string;
+  /** Absolute path to the cached skill directory */
+  skillDir: string;
+}
+
+export type ResolvedSkill = ResolvedGitSkill | ResolvedLocalSkill | ResolvedWellKnownSkill;
 
 export function isExplicitSourceSpecifier(specifier: string): boolean {
   return (
@@ -120,7 +132,7 @@ export function applyDefaultRepositorySource(
  * Parse a source string into its components.
  */
 export function parseSource(source: string): {
-  type: "github" | "git" | "local";
+  type: "github" | "git" | "local" | "well-known";
   url?: string;
   /** Original URL to use for cloning (preserves SSH/HTTPS protocol). Undefined for owner/repo shorthand. */
   cloneUrl?: string;
@@ -173,6 +185,12 @@ export function parseSource(source: string): {
     };
   }
 
+  // Bare HTTPS URL not matching GitHub/GitLab — candidate for well-known
+  // Only HTTPS — http:// is rejected to prevent MITM attacks
+  if (/^https:\/\//i.test(source)) {
+    return { type: "well-known", url: stripTrailingSlashes(source) };
+  }
+
   // owner/repo or owner/repo@ref — shorthand, no cloneUrl
   const stripped = stripLeadingAt(source);
   const atIdx = stripped.indexOf("@");
@@ -192,10 +210,25 @@ export function parseSource(source: string): {
 /** Normalize hosted sources to canonical owner/repo form for comparison/dedup. */
 export function normalizeSource(source: string): string {
   const parsed = parseSource(source);
+  if (parsed.type === "well-known" && parsed.url) {
+    // Normalize: strip trailing slash, lowercase hostname
+    try {
+      const u = new URL(parsed.url);
+      return `${u.protocol}//${u.host.toLowerCase()}${stripTrailingSlashes(u.pathname)}`;
+    } catch {
+      return source;
+    }
+  }
   if (parsed.owner && parsed.repo) {
     return `${parsed.owner}/${parsed.repo}`;
   }
   return source;
+}
+
+/** Build a cache key for a well-known URL (e.g. "wellknown/cli.sentry.dev/path"). */
+function wellKnownCacheKey(baseUrl: string): string {
+  const u = new URL(baseUrl);
+  return `wellknown/${u.host.toLowerCase()}${stripTrailingSlashes(u.pathname)}`;
 }
 
 /** Compare two source strings for equivalence (normalizes hosted URLs to owner/repo). */
@@ -226,6 +259,36 @@ export async function resolveSkill(
     const projectRoot = opts?.projectRoot || process.cwd();
     const skillDir = await resolveLocalSource(projectRoot, parsed.path!);
     return { type: "local", source: dep.source, skillDir };
+  }
+
+  if (parsed.type === "well-known") {
+    const baseUrl = parsed.url!;
+    const cached = await ensureWellKnownCached({
+      url: baseUrl,
+      cacheKey: wellKnownCacheKey(baseUrl),
+      ttlMs: opts?.ttlMs,
+    });
+
+    if (!cached) {
+      throw new ResolveError(
+        `No skills found at ${baseUrl}. If this is a git repository, use the git: prefix: git:${baseUrl}`,
+      );
+    }
+
+    const discovered = await discoverSkill(cached.cacheDir, skillName);
+    if (!discovered) {
+      throw new ResolveError(
+        `Skill "${skillName}" not found in ${dep.source}. ` +
+          `Tried conventional directories. Use the 'path' field to specify the location explicitly.`,
+      );
+    }
+
+    return {
+      type: "well-known",
+      source: dep.source,
+      resolvedUrl: baseUrl,
+      skillDir: join(cached.cacheDir, discovered.path),
+    };
   }
 
   // Git source (GitHub or generic git)
@@ -315,6 +378,34 @@ export async function resolveWildcardSkills(
           type: "local" as const,
           source: dep.source,
           skillDir: join(skillDir, d.path),
+        },
+      }));
+  }
+
+  if (parsed.type === "well-known") {
+    const baseUrl = parsed.url!;
+    const cached = await ensureWellKnownCached({
+      url: baseUrl,
+      cacheKey: wellKnownCacheKey(baseUrl),
+      ttlMs: opts?.ttlMs,
+    });
+
+    if (!cached) {
+      return [];
+    }
+
+    const discovered = await discoverAllSkills(cached.cacheDir);
+    return discovered
+      .filter(
+        (d) => !excludeSet.has(d.meta.name) && VALID_SKILL_NAME.test(d.meta.name),
+      )
+      .map((d) => ({
+        name: d.meta.name,
+        resolved: {
+          type: "well-known" as const,
+          source: dep.source,
+          resolvedUrl: baseUrl,
+          skillDir: join(cached.cacheDir, d.path),
         },
       }));
   }

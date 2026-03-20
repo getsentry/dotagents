@@ -245,6 +245,20 @@ source = "myorg/monorepo"
 path = "tools/agent-skills/my-skill"
 ```
 
+#### `https://<domain>` -- well-known HTTP discovery
+
+For skill servers that serve skills via the `.well-known/skills/` convention. dotagents fetches `{url}/.well-known/skills/index.json` to discover available skills, then downloads each skill's files.
+
+```toml
+[[skills]]
+name = "error-tracking"
+source = "https://cli.sentry.dev"
+```
+
+Any bare `https://` URL that doesn't match GitHub or GitLab patterns is treated as a well-known source candidate. If the well-known endpoint doesn't exist, the error message suggests using the `git:` prefix.
+
+Skills are cached locally with the same 24h TTL as git sources. On fetch failure with existing cache, stale cache is used (same offline behavior as git).
+
 #### `git:<url>` -- non-GitHub git
 
 For self-hosted GitLab, corporate git servers, etc. Same discovery logic applies.
@@ -292,6 +306,10 @@ source = "getsentry/warden"
 resolved_url = "https://github.com/getsentry/warden.git"
 resolved_path = ".claude/skills/warden-skill"
 
+[skills.error-tracking]
+source = "https://cli.sentry.dev"
+resolved_url = "https://cli.sentry.dev"
+
 [skills.my-custom-skill]
 source = "path:../shared-skills/my-custom-skill"
 ```
@@ -301,7 +319,7 @@ source = "path:../shared-skills/my-custom-skill"
 | Field | Present For | Description |
 |-------|-------------|-------------|
 | `source` | All | Original source specifier from agents.toml. |
-| `resolved_url` | Git sources | Resolved git clone URL. |
+| `resolved_url` | Git and well-known sources | Resolved clone URL or HTTP base URL. |
 | `resolved_path` | Git sources | Subdirectory within the repo where the skill was discovered. |
 | `resolved_ref` | Git sources (optional) | The ref that was resolved (tag/branch name). Omitted when using default branch. |
 

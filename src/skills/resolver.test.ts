@@ -271,6 +271,30 @@ describe("parseSource", () => {
     expect(result.ref).toBe("packages/foo@1.0.0");
     expect(result.cloneUrl).toBe("git@github.com:org/repo");
   });
+
+  it("parses bare HTTPS URL as well-known", () => {
+    const result = parseSource("https://cli.sentry.dev");
+    expect(result.type).toBe("well-known");
+    expect(result.url).toBe("https://cli.sentry.dev");
+  });
+
+  it("parses bare HTTPS URL with path as well-known", () => {
+    const result = parseSource("https://example.com/skills");
+    expect(result.type).toBe("well-known");
+    expect(result.url).toBe("https://example.com/skills");
+  });
+
+  it("strips trailing slash from well-known URL", () => {
+    const result = parseSource("https://cli.sentry.dev/");
+    expect(result.type).toBe("well-known");
+    expect(result.url).toBe("https://cli.sentry.dev");
+  });
+
+  it("does not parse http:// URL as well-known (HTTPS required)", () => {
+    const result = parseSource("http://localhost:3000");
+    // http:// falls through to owner/repo shorthand — not classified as well-known
+    expect(result.type).not.toBe("well-known");
+  });
 });
 
 describe("normalizeSource", () => {
@@ -312,6 +336,24 @@ describe("normalizeSource", () => {
     expect(normalizeSource("path:../my-skill")).toBe("path:../my-skill");
     expect(normalizeSource("git:https://example.com/repo.git")).toBe(
       "git:https://example.com/repo.git",
+    );
+  });
+
+  it("normalizes well-known URL (strips trailing slash, lowercases hostname)", () => {
+    expect(normalizeSource("https://CLI.Sentry.Dev/")).toBe(
+      "https://cli.sentry.dev",
+    );
+  });
+
+  it("normalizes well-known URL with path", () => {
+    expect(normalizeSource("https://Example.Com/Skills/")).toBe(
+      "https://example.com/Skills",
+    );
+  });
+
+  it("preserves port in well-known URL normalization", () => {
+    expect(normalizeSource("https://localhost:3000/")).toBe(
+      "https://localhost:3000",
     );
   });
 });
@@ -363,5 +405,29 @@ describe("sourcesMatch", () => {
 
   it("does not match different owners", () => {
     expect(sourcesMatch("getsentry/skills", "anthropics/skills")).toBe(false);
+  });
+
+  it("matches well-known URLs with different casing", () => {
+    expect(
+      sourcesMatch("https://CLI.Sentry.Dev", "https://cli.sentry.dev"),
+    ).toBe(true);
+  });
+
+  it("matches well-known URL with and without trailing slash", () => {
+    expect(
+      sourcesMatch("https://cli.sentry.dev/", "https://cli.sentry.dev"),
+    ).toBe(true);
+  });
+
+  it("does not match different well-known domains", () => {
+    expect(
+      sourcesMatch("https://cli.sentry.dev", "https://other.example.com"),
+    ).toBe(false);
+  });
+
+  it("does not match well-known URLs with different ports", () => {
+    expect(
+      sourcesMatch("https://localhost:3000", "https://localhost:4000"),
+    ).toBe(false);
   });
 });

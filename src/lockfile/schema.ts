@@ -7,11 +7,16 @@ const lockedGitSkillSchema = z.object({
   resolved_ref: z.string().optional(),
 });
 
+const lockedWellKnownSkillSchema = z.object({
+  source: z.string(),
+  resolved_url: z.string(),
+});
+
 const lockedLocalSkillSchema = z.object({
   source: z.string(),
 });
 
-const lockedSkillSchema = z.union([lockedGitSkillSchema, lockedLocalSkillSchema]);
+const lockedSkillSchema = z.union([lockedGitSkillSchema, lockedWellKnownSkillSchema, lockedLocalSkillSchema]);
 
 export type LockedSkill = z.infer<typeof lockedSkillSchema>;
 
