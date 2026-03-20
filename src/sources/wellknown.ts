@@ -3,6 +3,11 @@ import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 
+/** Skill names must be safe for use in file paths: alphanumeric, dots, hyphens, underscores. */
+const SAFE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+/** File names must not contain path separators or traversal sequences. */
+const SAFE_FILE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
 const DEFAULT_STATE_DIR = join(homedir(), ".local", "dotagents");
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const FETCH_TIMEOUT_MS = 10_000;
@@ -121,10 +126,16 @@ export async function ensureWellKnownCached(opts: {
   }
 
   for (const skill of index.skills) {
+    // Validate skill name to prevent path traversal from untrusted index
+    if (!SAFE_NAME.test(skill.name)) {continue;}
+
     const skillDir = join(cacheDir, skill.name);
     await mkdir(skillDir, { recursive: true });
 
     for (const file of skill.files) {
+      // Validate file name to prevent path traversal
+      if (!SAFE_FILE.test(file)) {continue;}
+
       const fileUrl = `${baseUrl}/.well-known/skills/${skill.name}/${file}`;
       try {
         const response = await fetch(fileUrl, {

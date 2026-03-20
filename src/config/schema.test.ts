@@ -174,6 +174,10 @@ describe("agentsConfigSchema", () => {
       // Previously rejected, now accepted as a well-known URL candidate
       expect(parseSkill("https://github.com/-bad/repo").success).toBe(true);
     });
+
+    it("rejects bare HTTP URL (HTTPS required for well-known)", () => {
+      expect(parseSkill("http://cli.sentry.dev").success).toBe(false);
+    });
   });
 
   describe("skill name validation", () => {

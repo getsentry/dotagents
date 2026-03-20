@@ -278,4 +278,76 @@ describe("ensureWellKnownCached", () => {
     expect(result).not.toBeNull();
     expect(mockFetch).not.toHaveBeenCalled();
   });
+
+  it("skips skills with path-traversal names from remote index", async () => {
+    const maliciousIndex = {
+      skills: [
+        { name: "../../etc/malicious", files: ["SKILL.md"] },
+        { name: "../escape", files: ["SKILL.md"] },
+        { name: "legit-skill", files: ["SKILL.md"] },
+      ],
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.endsWith("index.json")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(maliciousIndex),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve("content"),
+        });
+      }),
+    );
+
+    const result = await ensureWellKnownCached({
+      url: "https://evil.example.com",
+      cacheKey: "wellknown/evil.example.com",
+    });
+
+    expect(result).not.toBeNull();
+    // Malicious names should be skipped
+    expect(existsSync(join(result!.cacheDir, "../../etc/malicious"))).toBe(false);
+    expect(existsSync(join(result!.cacheDir, "../escape"))).toBe(false);
+    // Legit skill should be cached
+    expect(existsSync(join(result!.cacheDir, "legit-skill", "SKILL.md"))).toBe(true);
+  });
+
+  it("skips files with path-traversal names from remote index", async () => {
+    const maliciousIndex = {
+      skills: [
+        { name: "my-skill", files: ["SKILL.md", "../../../.bashrc", "legit.md"] },
+      ],
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.endsWith("index.json")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(maliciousIndex),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve("content"),
+        });
+      }),
+    );
+
+    const result = await ensureWellKnownCached({
+      url: "https://evil.example.com",
+      cacheKey: "wellknown/evil.example.com",
+    });
+
+    expect(result).not.toBeNull();
+    // Safe files should be written
+    expect(existsSync(join(result!.cacheDir, "my-skill", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(result!.cacheDir, "my-skill", "legit.md"))).toBe(true);
+  });
 });

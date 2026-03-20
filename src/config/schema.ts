@@ -37,8 +37,8 @@ const skillSourceSchema = z.string().check(
     // GitLab HTTPS or SSH URLs
     if (GITLAB_HTTPS_URL.test(s)) {return true;}
     if (GITLAB_SSH_URL.test(s)) {return true;}
-    // Bare HTTP(S) URLs (well-known skill sources)
-    if (s.startsWith("http://") || s.startsWith("https://")) {return true;}
+    // Bare HTTPS URLs (well-known skill sources — HTTPS only to prevent MITM)
+    if (s.startsWith("https://")) {return true;}
     // owner/repo or owner/repo@ref (strip npm-style leading @)
     const stripped = s.startsWith("@") ? s.slice(1) : s;
     const base = stripped.includes("@") ? stripped.slice(0, stripped.indexOf("@")) : stripped;
@@ -47,7 +47,7 @@ const skillSourceSchema = z.string().check(
       parts.length === 2 &&
       parts.every((p) => p.length > 0 && !p.startsWith("-"))
     );
-  }, "Must be owner/repo, owner/repo@ref, GitHub/GitLab URL, https://<domain>, git:<url> (with https/git/ssh protocol), or path:<relative>"),
+  }, "Must be owner/repo, owner/repo@ref, GitHub/GitLab URL, https://<domain> (well-known), git:<url> (with https/git/ssh protocol), or path:<relative>"),
 );
 
 export type SkillSource = z.infer<typeof skillSourceSchema>;
