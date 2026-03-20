@@ -210,17 +210,22 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
         await copyDir(resolved.skillDir, destDir);
       }
 
-      const lockEntry: LockedSkill =
-        resolved.type === "git"
-          ? {
-              source: dep.source,
-              resolved_url: resolved.resolvedUrl,
-              resolved_path: resolved.resolvedPath,
-              ...(resolved.resolvedRef ? { resolved_ref: resolved.resolvedRef } : {}),
-            }
-          : {
-              source: dep.source,
-            };
+      let lockEntry: LockedSkill;
+      if (resolved.type === "git") {
+        lockEntry = {
+          source: dep.source,
+          resolved_url: resolved.resolvedUrl,
+          resolved_path: resolved.resolvedPath,
+          ...(resolved.resolvedRef ? { resolved_ref: resolved.resolvedRef } : {}),
+        };
+      } else if (resolved.type === "well-known") {
+        lockEntry = {
+          source: dep.source,
+          resolved_url: resolved.resolvedUrl,
+        };
+      } else {
+        lockEntry = { source: dep.source };
+      }
 
       newLock.skills[name] = lockEntry;
       installed.push(name);

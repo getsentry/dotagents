@@ -166,8 +166,13 @@ describe("agentsConfigSchema", () => {
       );
     });
 
-    it("rejects GitHub URL with dash-prefixed owner", () => {
-      expect(parseSkill("https://github.com/-bad/repo").success).toBe(false);
+    it("accepts bare HTTPS URL (well-known source)", () => {
+      expect(parseSkill("https://cli.sentry.dev").success).toBe(true);
+    });
+
+    it("accepts HTTPS URL with dash-prefixed owner (treated as well-known)", () => {
+      // Previously rejected, now accepted as a well-known URL candidate
+      expect(parseSkill("https://github.com/-bad/repo").success).toBe(true);
     });
   });
 

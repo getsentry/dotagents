@@ -130,7 +130,7 @@ export function validateTrustedSource(
     );
   }
 
-  if (parsed.type === "git") {
+  if (parsed.type === "git" || parsed.type === "well-known") {
     const domainPath = extractDomainPath(parsed.url!)?.toLowerCase();
     if (domainPath && trust.git_domains.some((d) => {
       const entry = d.toLowerCase();

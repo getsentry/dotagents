@@ -226,6 +226,43 @@ describe("validateTrustedSource", () => {
     });
   });
 
+  describe("well-known sources", () => {
+    it("allows well-known URL when domain is trusted", () => {
+      const trust = makeTrust({ git_domains: ["cli.sentry.dev"] });
+      expect(() =>
+        validateTrustedSource("https://cli.sentry.dev", trust),
+      ).not.toThrow();
+    });
+
+    it("allows well-known URL with path when domain is trusted", () => {
+      const trust = makeTrust({ git_domains: ["example.com/skills"] });
+      expect(() =>
+        validateTrustedSource("https://example.com/skills", trust),
+      ).not.toThrow();
+    });
+
+    it("rejects well-known URL when domain is not trusted", () => {
+      const trust = makeTrust({ git_domains: ["other.example.com"] });
+      expect(() =>
+        validateTrustedSource("https://cli.sentry.dev", trust),
+      ).toThrow(TrustError);
+    });
+
+    it("suggests trust add for rejected well-known source", () => {
+      const trust = makeTrust({ git_domains: ["other.example.com"] });
+      expect(() =>
+        validateTrustedSource("https://cli.sentry.dev", trust),
+      ).toThrow(/dotagents trust add cli\.sentry\.dev/);
+    });
+
+    it("matches well-known domains case-insensitively", () => {
+      const trust = makeTrust({ git_domains: ["cli.sentry.dev"] });
+      expect(() =>
+        validateTrustedSource("https://CLI.Sentry.Dev", trust),
+      ).not.toThrow();
+    });
+  });
+
   describe("local sources", () => {
     it("always allows path: sources even with restrictive trust", () => {
       const trust = makeTrust({ github_orgs: ["getsentry"] });
