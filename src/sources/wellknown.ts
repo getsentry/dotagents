@@ -8,6 +8,12 @@ const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const FETCH_TIMEOUT_MS = 10_000;
 const MARKER_FILE = ".well-known-fetched";
 
+function stripTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s[end - 1] === "/") {end--;}
+  return end === s.length ? s : s.slice(0, end);
+}
+
 export class WellKnownError extends Error {
   constructor(message: string) {
     super(message);
@@ -32,7 +38,7 @@ export interface WellKnownSkillEntry {
 export async function fetchWellKnownIndex(
   baseUrl: string,
 ): Promise<WellKnownIndex | null> {
-  const indexUrl = `${baseUrl.replace(/\/+$/, "")}/.well-known/skills/index.json`;
+  const indexUrl = `${stripTrailingSlashes(baseUrl)}/.well-known/skills/index.json`;
   try {
     const response = await fetch(indexUrl, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -87,7 +93,7 @@ export async function ensureWellKnownCached(opts: {
     return { cacheDir };
   }
 
-  const baseUrl = opts.url.replace(/\/+$/, "");
+  const baseUrl = stripTrailingSlashes(opts.url);
   const index = await fetchWellKnownIndex(baseUrl);
 
   if (!index) {
