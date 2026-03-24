@@ -22,17 +22,24 @@ export class GitError extends Error {
   }
 }
 
+/** Hex-only string of 7-40 chars — looks like a commit SHA. */
+const SHA_LIKE = /^[0-9a-f]{7,40}$/;
+
 /**
  * Clone a repo with --depth=1 into the given directory.
  * If ref is provided, clones that specific ref.
+ *
+ * Commit SHAs can't be passed to `git clone --branch`, so for SHA-like refs
+ * we clone the default branch first, then fetch the specific commit.
  */
 export async function clone(
   url: string,
   dest: string,
   ref?: string,
 ): Promise<void> {
+  const isSha = ref && SHA_LIKE.test(ref);
   const args = ["clone", "--depth=1"];
-  if (ref) {
+  if (ref && !isSha) {
     args.push("--branch", ref);
   }
   args.push("--", url, dest);
@@ -57,6 +64,11 @@ export async function clone(
       throw new GitError(`Failed to clone ${url}: ${stderr}`);
     }
     throw err;
+  }
+
+  // For SHA refs, fetch the specific commit after the initial clone
+  if (isSha) {
+    await fetchRef(dest, ref);
   }
 }
 
