@@ -102,6 +102,20 @@ describe("clone", () => {
     ]);
   });
 
+  it("handles uppercase SHA refs", async () => {
+    const sha = "405638A2EE3F131B910BE238AF499EAC5C86E92C";
+    await clone("https://github.com/owner/repo.git", "/tmp/dest", sha);
+
+    expect(mockExec).toHaveBeenCalledTimes(3);
+    expect(mockExec).toHaveBeenNthCalledWith(1, "git", [
+      "clone",
+      "--depth=1",
+      "--",
+      "https://github.com/owner/repo.git",
+      "/tmp/dest",
+    ]);
+  });
+
   it("does not treat refs with non-hex chars as SHAs", async () => {
     // "release-v1" has non-hex chars, even though length > 7
     await clone("https://github.com/owner/repo.git", "/tmp/dest", "release-v1");

@@ -23,7 +23,7 @@ export class GitError extends Error {
 }
 
 /** Hex-only string of 7-40 chars — looks like a commit SHA. */
-const SHA_LIKE = /^[0-9a-f]{7,40}$/;
+const SHA_LIKE = /^[0-9a-f]{7,40}$/i;
 
 /**
  * Clone a repo with --depth=1 into the given directory.
