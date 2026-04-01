@@ -143,11 +143,11 @@ export async function findCommitOlderThan(
   try {
     await exec("git", ["fetch", "--unshallow", "--", "origin"], { cwd: repoDir });
   } catch (err) {
+    if (!(err instanceof ExecError)) {throw err;}
     // --unshallow fails on a complete (non-shallow) repository — that's fine
-    if (err instanceof ExecError && !/unshallow on a complete repository/i.test(err.stderr)) {
+    if (!/unshallow on a complete repository/i.test(err.stderr)) {
       throw new GitError(`Failed to fetch history for age gate: ${err.stderr}`);
     }
-    if (!(err instanceof ExecError)) {throw err;}
   }
 
   // Find the newest commit at or before the cutoff.

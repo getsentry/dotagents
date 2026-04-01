@@ -465,19 +465,16 @@ export async function resolveWildcardSkills(
  */
 export function isSourceExcluded(source: string, exclude?: string[]): boolean {
   if (!exclude?.length) {return false;}
-  // Strip git: prefix for matching
   const normalized = source.replace(/^git:/, "");
   for (const raw of exclude) {
     const pattern = raw.replace(/^git:/, "");
-    if (pattern.endsWith("/*")) {
-      const prefix = pattern.slice(0, -2);
-      if (normalized.startsWith(`${prefix}/`)) {return true;}
-    } else if (pattern.includes("/")) {
+    if (pattern.includes("/") && !pattern.endsWith("/*")) {
       // Exact org/repo match
       if (normalized === pattern) {return true;}
     } else {
-      // Bare org name — match as prefix
-      if (normalized.startsWith(`${pattern}/`)) {return true;}
+      // Bare org ("myorg") or wildcard ("myorg/*") — both match as prefix
+      const prefix = pattern.replace(/\/\*$/, "");
+      if (normalized.startsWith(`${prefix}/`)) {return true;}
     }
   }
   return false;
