@@ -249,6 +249,8 @@ export async function resolveSkill(
     ttlMs?: number;
     /** When set, resolve to the newest commit at least this many minutes old. */
     minimumReleaseAge?: number;
+    /** Sources excluded from the age gate (org or org/repo patterns). */
+    updateExclude?: string[];
   },
 ): Promise<ResolvedSkill> {
   const sourceForResolve = applyDefaultRepositorySource(
@@ -302,12 +304,13 @@ export async function resolveSkill(
       ? `${parsed.owner}/${parsed.repo}`
       : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
 
+  const excluded = isSourceExcluded(dep.source, opts?.updateExclude);
   const cached = await ensureCached({
     url: cloneUrl,
     cacheKey,
     ref,
     ttlMs: opts?.ttlMs,
-    minimumReleaseAge: opts?.minimumReleaseAge,
+    minimumReleaseAge: excluded ? undefined : opts?.minimumReleaseAge,
   });
 
   // Discover the skill within the repo
@@ -359,6 +362,8 @@ export async function resolveWildcardSkills(
     ttlMs?: number;
     /** When set, resolve to the newest commit at least this many minutes old. */
     minimumReleaseAge?: number;
+    /** Sources excluded from the age gate (org or org/repo patterns). */
+    updateExclude?: string[];
   },
 ): Promise<NamedResolvedSkill[]> {
   const sourceForResolve = applyDefaultRepositorySource(
@@ -424,12 +429,13 @@ export async function resolveWildcardSkills(
       ? `${parsed.owner}/${parsed.repo}`
       : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
 
+  const excluded = isSourceExcluded(dep.source, opts?.updateExclude);
   const cached = await ensureCached({
     url: cloneUrl,
     cacheKey,
     ref,
     ttlMs: opts?.ttlMs,
-    minimumReleaseAge: opts?.minimumReleaseAge,
+    minimumReleaseAge: excluded ? undefined : opts?.minimumReleaseAge,
   });
 
   const discovered = await discoverAllSkills(cached.repoDir);
@@ -450,4 +456,29 @@ export async function resolveWildcardSkills(
         skillDir: join(cached.repoDir, d.path),
       },
     }));
+}
+
+/**
+ * Check if a source string matches any pattern in the exclude list.
+ * Patterns: "org" matches "org/anything", "org/repo" is exact match,
+ * "org/*" matches "org/anything" (explicit wildcard).
+ */
+export function isSourceExcluded(source: string, exclude?: string[]): boolean {
+  if (!exclude?.length) {return false;}
+  // Strip git: prefix for matching
+  const normalized = source.replace(/^git:/, "");
+  for (const raw of exclude) {
+    const pattern = raw.replace(/^git:/, "");
+    if (pattern.endsWith("/*")) {
+      const prefix = pattern.slice(0, -2);
+      if (normalized.startsWith(`${prefix}/`)) {return true;}
+    } else if (pattern.includes("/")) {
+      // Exact org/repo match
+      if (normalized === pattern) {return true;}
+    } else {
+      // Bare org name — match as prefix
+      if (normalized.startsWith(`${pattern}/`)) {return true;}
+    }
+  }
+  return false;
 }

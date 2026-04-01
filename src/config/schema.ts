@@ -148,6 +148,7 @@ export type HookConfig = z.infer<typeof hookSchema>;
 
 const updateConfigSchema = z.object({
   minimum_release_age: z.number().int().min(0).optional(),
+  exclude: z.array(z.string()).default([]),
 });
 
 export type UpdateConfig = z.infer<typeof updateConfigSchema>;

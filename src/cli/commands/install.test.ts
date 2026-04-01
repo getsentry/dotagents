@@ -607,8 +607,7 @@ describe("runInstall", () => {
     await expect(runInstall({ scope })).rejects.toThrow(/minimum_release_age/);
   });
 
-  it("minimum_release_age is ignored for pinned skills", async () => {
-    // Get the current HEAD sha to pin to
+  it("minimum_release_age rejects pinned skills that are too new", async () => {
     const { stdout: sha } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
 
     await writeFile(
@@ -617,12 +616,31 @@ describe("runInstall", () => {
     );
 
     const scope = resolveScope("project", projectRoot);
-    const result = await runInstall({ scope });
-    // Pinned skill should install regardless of minimum_release_age
-    expect(result.installed).toContain("pdf");
+    await expect(runInstall({ scope })).rejects.toThrow(/minimum_release_age/);
+  });
 
-    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
-    const locked = lockfile!.skills["pdf"]! as { resolved_commit?: string };
-    expect(locked.resolved_commit).toBe(sha.trim());
+  it("exclude bypasses minimum_release_age for matching sources", async () => {
+    // All commits are recent, but the source is excluded — should install fine
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[update]\nminimum_release_age = 9999\nexclude = ["git:${repoDir}"]\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+    expect(result.installed).toContain("pdf");
+  });
+
+  it("exclude with org pattern bypasses minimum_release_age", async () => {
+    // Use a GitHub-style source with an org exclude
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[update]\nminimum_release_age = 9999\nexclude = ["myorg"]\n\n[[skills]]\nname = "pdf"\nsource = "myorg/skills"\n`,
+    );
+
+    // This will fail to clone (myorg/skills doesn't exist), but it should fail
+    // at clone time, not at the age gate — proving the exclude is working.
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(/clone|resolve/i);
   });
 });

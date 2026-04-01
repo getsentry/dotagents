@@ -72,7 +72,7 @@ async function expandSkills(
     defaultRepositorySource: RepositorySource;
   },
   lockfile: Lockfile | null,
-  opts: { frozen?: boolean; force?: boolean; projectRoot: string; minimumReleaseAge?: number },
+  opts: { frozen?: boolean; force?: boolean; projectRoot: string; minimumReleaseAge?: number; updateExclude?: string[] },
 ): Promise<ExpandedSkill[]> {
   const regularDeps = config.skills.filter((d) => !isWildcardDep(d));
   const wildcardDeps = config.skills.filter(isWildcardDep);
@@ -111,6 +111,7 @@ async function expandSkills(
         ...(opts.force ? { ttlMs: 0 } : {}),
         defaultRepositorySource: config.defaultRepositorySource,
         minimumReleaseAge: opts.minimumReleaseAge,
+        updateExclude: opts.updateExclude,
       });
       for (const { name, resolved } of named) {
         if (explicitNames.has(name)) {continue;} // explicit wins
@@ -155,6 +156,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     }
 
     const minimumReleaseAge = config.update?.minimum_release_age;
+    const updateExclude = config.update?.exclude;
     const expanded = await expandSkills(
       {
         skills: config.skills,
@@ -162,7 +164,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
         defaultRepositorySource: config.defaultRepositorySource,
       },
       lockfile,
-      { frozen, force, projectRoot: scope.root, minimumReleaseAge },
+      { frozen, force, projectRoot: scope.root, minimumReleaseAge, updateExclude },
     );
 
     if (frozen) {
@@ -192,6 +194,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
         ...(force ? { ttlMs: 0 } : {}),
         defaultRepositorySource: config.defaultRepositorySource,
         minimumReleaseAge,
+        updateExclude,
       };
 
       let resolved: ResolvedSkill;

@@ -426,6 +426,28 @@ describe("agentsConfigSchema", () => {
       });
       expect(result.success).toBe(false);
     });
+
+    it("parses exclude list", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        update: { minimum_release_age: 4320, exclude: ["myorg", "other/repo"] },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.update?.exclude).toEqual(["myorg", "other/repo"]);
+      }
+    });
+
+    it("defaults exclude to empty array", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        update: { minimum_release_age: 4320 },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.update?.exclude).toEqual([]);
+      }
+    });
   });
 
   describe("backward compatibility", () => {

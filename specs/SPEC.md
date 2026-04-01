@@ -89,21 +89,24 @@ headers = { X-Api-Key = "${API_KEY}" }
 
 #### `[update]`
 
-Optional section to control how unpinned skills are updated.
+Optional section to control how skills are updated.
 
 ```toml
 [update]
 minimum_release_age = 4320  # 3 days in minutes
+exclude = ["myorg", "myorg/internal-skills"]
 ```
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `minimum_release_age` | No | Minimum age in **minutes** a commit must have before it's eligible for install. Only applies to unpinned git skills (no `ref`). When set, dotagents resolves to the newest commit whose committer date is at least this many minutes old. If no qualifying commit exists (repo is younger than the threshold), install fails with an error. When absent, current behavior — always use HEAD. |
+| `minimum_release_age` | No | Minimum age in **minutes** a commit must have before it's eligible for install. Applies to all git skills (pinned and unpinned). For unpinned skills, resolves to the newest qualifying commit. For pinned skills (`ref`), rejects if the pinned commit is too new. Install fails with an error if no qualifying commit exists. When absent, current behavior — always use HEAD. |
+| `exclude` | No | Sources excluded from the age gate. Accepts org names (`"myorg"` matches all repos), org/repo (`"myorg/skills"` exact match), or org wildcards (`"myorg/*"`). Defaults to `[]`. |
 
 **Semantics:**
 - `[update]` absent → no age gating (default behavior)
-- `minimum_release_age` set → for unpinned git skills, unshallow the repo and resolve to the newest qualifying commit
-- Pinned skills (`ref` set), local skills (`path:`), and well-known skills are unaffected
+- `minimum_release_age` set → for git skills, enforce commit age. Unpinned skills resolve to the newest qualifying commit; pinned skills error if the ref is too new
+- `exclude` → listed sources bypass the age gate entirely (useful for internal/trusted repos)
+- Local skills (`path:`) and well-known skills are unaffected
 - The age check uses the git committer date, which reflects when code landed on the branch
 
 #### `[trust]`

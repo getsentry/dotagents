@@ -32,7 +32,7 @@ export async function ensureCached(opts: {
   cacheKey: string;
   ref?: string;
   ttlMs?: number;
-  /** When set, resolve to the newest commit at least this many minutes old. Ignored when ref is set. */
+  /** When set, resolve to the newest commit at least this many minutes old. */
   minimumReleaseAge?: number;
 }): Promise<CacheResult> {
   const stateDir = process.env["DOTAGENTS_STATE_DIR"] || DEFAULT_STATE_DIR;
@@ -57,10 +57,16 @@ export async function ensureCached(opts: {
     await clone(opts.url, repoDir, opts.ref);
   }
 
-  // Age gate: for unpinned sources, find the newest commit old enough
-  if (!opts.ref && opts.minimumReleaseAge) {
+  // Age gate: reject or resolve to an older commit when HEAD is too new
+  if (opts.minimumReleaseAge) {
     const age = minutesOld(await headCommitDate(repoDir));
     if (age < opts.minimumReleaseAge) {
+      if (opts.ref) {
+        // Pinned skill — can't resolve to a different commit, just reject
+        throw new CacheError(
+          `ref "${opts.ref}" is ${Math.floor(age)} minutes old, minimum_release_age requires ${opts.minimumReleaseAge}`,
+        );
+      }
       const older = await findCommitOlderThan(repoDir, opts.minimumReleaseAge);
       if (!older) {
         throw new CacheError(
