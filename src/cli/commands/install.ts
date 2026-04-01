@@ -106,13 +106,19 @@ async function expandSkills(
         expanded.push({ name, dep: wDep });
       }
     } else {
-      const named = await resolveWildcardSkills(wDep, {
-        projectRoot: opts.projectRoot,
-        ...(opts.force ? { ttlMs: 0 } : {}),
-        defaultRepositorySource: config.defaultRepositorySource,
-        minimumReleaseAge: opts.minimumReleaseAge,
-        updateExclude: opts.updateExclude,
-      });
+      let named;
+      try {
+        named = await resolveWildcardSkills(wDep, {
+          projectRoot: opts.projectRoot,
+          ...(opts.force ? { ttlMs: 0 } : {}),
+          defaultRepositorySource: config.defaultRepositorySource,
+          minimumReleaseAge: opts.minimumReleaseAge,
+          updateExclude: opts.updateExclude,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new InstallError(`Failed to resolve wildcard source "${wDep.source}": ${msg}`);
+      }
       for (const { name, resolved } of named) {
         if (explicitNames.has(name)) {continue;} // explicit wins
 
