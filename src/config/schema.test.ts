@@ -383,30 +383,30 @@ describe("agentsConfigSchema", () => {
     });
   });
 
-  describe("update section", () => {
+  describe("minimum_release_age", () => {
     it("is undefined when absent", () => {
       const result = agentsConfigSchema.safeParse({ version: 1 });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.update).toBeUndefined();
+        expect(result.data.minimum_release_age).toBeUndefined();
       }
     });
 
     it("parses minimum_release_age", () => {
       const result = agentsConfigSchema.safeParse({
         version: 1,
-        update: { minimum_release_age: 4320 },
+        minimum_release_age: 4320,
       });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.update?.minimum_release_age).toBe(4320);
+        expect(result.data.minimum_release_age).toBe(4320);
       }
     });
 
     it("accepts minimum_release_age = 0", () => {
       const result = agentsConfigSchema.safeParse({
         version: 1,
-        update: { minimum_release_age: 0 },
+        minimum_release_age: 0,
       });
       expect(result.success).toBe(true);
     });
@@ -414,7 +414,7 @@ describe("agentsConfigSchema", () => {
     it("rejects negative minimum_release_age", () => {
       const result = agentsConfigSchema.safeParse({
         version: 1,
-        update: { minimum_release_age: -1 },
+        minimum_release_age: -1,
       });
       expect(result.success).toBe(false);
     });
@@ -422,7 +422,7 @@ describe("agentsConfigSchema", () => {
     it("rejects non-integer minimum_release_age", () => {
       const result = agentsConfigSchema.safeParse({
         version: 1,
-        update: { minimum_release_age: 1.5 },
+        minimum_release_age: 1.5,
       });
       expect(result.success).toBe(false);
     });
@@ -430,22 +430,23 @@ describe("agentsConfigSchema", () => {
     it("parses minimum_release_age_exclude", () => {
       const result = agentsConfigSchema.safeParse({
         version: 1,
-        update: { minimum_release_age: 4320, minimum_release_age_exclude: ["myorg", "other/repo"] },
+        minimum_release_age: 4320,
+        minimum_release_age_exclude: ["myorg", "other/repo"],
       });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.update?.minimum_release_age_exclude).toEqual(["myorg", "other/repo"]);
+        expect(result.data.minimum_release_age_exclude).toEqual(["myorg", "other/repo"]);
       }
     });
 
     it("defaults minimum_release_age_exclude to empty array", () => {
       const result = agentsConfigSchema.safeParse({
         version: 1,
-        update: { minimum_release_age: 4320 },
+        minimum_release_age: 4320,
       });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.update?.minimum_release_age_exclude).toEqual([]);
+        expect(result.data.minimum_release_age_exclude).toEqual([]);
       }
     });
   });

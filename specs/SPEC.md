@@ -85,25 +85,11 @@ headers = { X-Api-Key = "${API_KEY}" }
 | `skills` | No | Skill dependencies (array of tables). |
 | `mcp` | No | MCP server declarations (array of tables). Generates agent-specific config files during install/sync. |
 | `trust` | No | Trusted source restrictions. When absent, all sources allowed. See `[trust]` below. |
-| `update` | No | Update policy configuration. See `[update]` below. |
-
-#### `[update]`
-
-Optional section to control how skills are updated.
-
-```toml
-[update]
-minimum_release_age = 4320  # 3 days in minutes
-minimum_release_age_exclude = ["myorg", "myorg/internal-skills"]
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `minimum_release_age` | No | Minimum age in **minutes** a commit must have before it's eligible for install. Applies to all git skills (pinned and unpinned). For unpinned skills, resolves to the newest qualifying commit. For pinned skills (`ref`), rejects if the pinned commit is too new. Install fails with an error if no qualifying commit exists. When absent, current behavior — always use HEAD. |
+| `minimum_release_age` | No | Minimum age in **minutes** a commit must have before it's eligible for install. Applies to all git skills (pinned and unpinned). For unpinned skills, resolves to the newest qualifying commit. For pinned skills (`ref`), rejects if the pinned commit is too new. Install fails with an error if no qualifying commit exists. When absent, always uses HEAD. |
 | `minimum_release_age_exclude` | No | Sources excluded from the age gate. Accepts org names (`"myorg"` matches all repos), org/repo (`"myorg/skills"` exact match), or org wildcards (`"myorg/*"`). Defaults to `[]`. |
 
-**Semantics:**
-- `[update]` absent → no age gating (default behavior)
+**Age gate semantics:**
+- `minimum_release_age` absent → no age gating (default behavior)
 - `minimum_release_age` set → for git skills, enforce commit age. Unpinned skills resolve to the newest qualifying commit; pinned skills error if the ref is too new
 - `minimum_release_age_exclude` → listed sources bypass the age gate entirely (useful for internal/trusted repos)
 - Local skills (`path:`) and well-known skills are unaffected

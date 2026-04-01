@@ -581,7 +581,7 @@ describe("runInstall", () => {
     // Install with minimum_release_age = 1 — should skip the brand-new commit and use the old one
     await writeFile(
       join(projectRoot, "agents.toml"),
-      `version = 1\n\n[update]\nminimum_release_age = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+      `version = 1\nminimum_release_age = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
 
     const scope = resolveScope("project", projectRoot);
@@ -600,7 +600,7 @@ describe("runInstall", () => {
     // All commits in repoDir are recent (created in beforeEach)
     await writeFile(
       join(projectRoot, "agents.toml"),
-      `version = 1\n\n[update]\nminimum_release_age = 9999\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+      `version = 1\nminimum_release_age = 9999\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
 
     const scope = resolveScope("project", projectRoot);
@@ -612,7 +612,7 @@ describe("runInstall", () => {
 
     await writeFile(
       join(projectRoot, "agents.toml"),
-      `version = 1\n\n[update]\nminimum_release_age = 9999\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\nref = "${sha.trim()}"\n`,
+      `version = 1\nminimum_release_age = 9999\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\nref = "${sha.trim()}"\n`,
     );
 
     const scope = resolveScope("project", projectRoot);
@@ -623,7 +623,7 @@ describe("runInstall", () => {
     // All commits are recent, but the source is excluded — should install fine
     await writeFile(
       join(projectRoot, "agents.toml"),
-      `version = 1\n\n[update]\nminimum_release_age = 9999\nminimum_release_age_exclude = ["git:${repoDir}"]\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+      `version = 1\nminimum_release_age = 9999\nminimum_release_age_exclude = ["git:${repoDir}"]\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
 
     const scope = resolveScope("project", projectRoot);
@@ -635,7 +635,7 @@ describe("runInstall", () => {
     // Use a GitHub-style source with an org exclude
     await writeFile(
       join(projectRoot, "agents.toml"),
-      `version = 1\n\n[update]\nminimum_release_age = 9999\nminimum_release_age_exclude = ["myorg"]\n\n[[skills]]\nname = "pdf"\nsource = "myorg/skills"\n`,
+      `version = 1\nminimum_release_age = 9999\nminimum_release_age_exclude = ["myorg"]\n\n[[skills]]\nname = "pdf"\nsource = "myorg/skills"\n`,
     );
 
     // This will fail to clone (myorg/skills doesn't exist), but it should fail

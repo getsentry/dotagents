@@ -161,8 +161,8 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       throw new InstallError("--frozen requires agents.lock to exist.");
     }
 
-    const minimumReleaseAge = config.update?.minimum_release_age;
-    const minimumReleaseAgeExclude = config.update?.minimum_release_age_exclude;
+    const minimumReleaseAge = config.minimum_release_age;
+    const minimumReleaseAgeExclude = config.minimum_release_age_exclude;
     const expanded = await expandSkills(
       {
         skills: config.skills,
