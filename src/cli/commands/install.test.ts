@@ -619,11 +619,11 @@ describe("runInstall", () => {
     await expect(runInstall({ scope })).rejects.toThrow(/minimum_release_age/);
   });
 
-  it("exclude bypasses minimum_release_age for matching sources", async () => {
+  it("minimum_release_age_exclude bypasses age gate for matching sources", async () => {
     // All commits are recent, but the source is excluded — should install fine
     await writeFile(
       join(projectRoot, "agents.toml"),
-      `version = 1\n\n[update]\nminimum_release_age = 9999\nexclude = ["git:${repoDir}"]\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+      `version = 1\n\n[update]\nminimum_release_age = 9999\nminimum_release_age_exclude = ["git:${repoDir}"]\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
 
     const scope = resolveScope("project", projectRoot);
@@ -631,11 +631,11 @@ describe("runInstall", () => {
     expect(result.installed).toContain("pdf");
   });
 
-  it("exclude with org pattern bypasses minimum_release_age", async () => {
+  it("minimum_release_age_exclude with org pattern bypasses age gate", async () => {
     // Use a GitHub-style source with an org exclude
     await writeFile(
       join(projectRoot, "agents.toml"),
-      `version = 1\n\n[update]\nminimum_release_age = 9999\nexclude = ["myorg"]\n\n[[skills]]\nname = "pdf"\nsource = "myorg/skills"\n`,
+      `version = 1\n\n[update]\nminimum_release_age = 9999\nminimum_release_age_exclude = ["myorg"]\n\n[[skills]]\nname = "pdf"\nsource = "myorg/skills"\n`,
     );
 
     // This will fail to clone (myorg/skills doesn't exist), but it should fail

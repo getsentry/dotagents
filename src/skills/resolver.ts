@@ -250,7 +250,7 @@ export async function resolveSkill(
     /** When set, resolve to the newest commit at least this many minutes old. */
     minimumReleaseAge?: number;
     /** Sources excluded from the age gate (org or org/repo patterns). */
-    updateExclude?: string[];
+    minimumReleaseAgeExclude?: string[];
   },
 ): Promise<ResolvedSkill> {
   const sourceForResolve = applyDefaultRepositorySource(
@@ -304,7 +304,7 @@ export async function resolveSkill(
       ? `${parsed.owner}/${parsed.repo}`
       : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
 
-  const excluded = isSourceExcluded(dep.source, opts?.updateExclude);
+  const excluded = isSourceExcluded(dep.source, opts?.minimumReleaseAgeExclude);
   const cached = await ensureCached({
     url: cloneUrl,
     cacheKey,
@@ -363,7 +363,7 @@ export async function resolveWildcardSkills(
     /** When set, resolve to the newest commit at least this many minutes old. */
     minimumReleaseAge?: number;
     /** Sources excluded from the age gate (org or org/repo patterns). */
-    updateExclude?: string[];
+    minimumReleaseAgeExclude?: string[];
   },
 ): Promise<NamedResolvedSkill[]> {
   const sourceForResolve = applyDefaultRepositorySource(
@@ -429,7 +429,7 @@ export async function resolveWildcardSkills(
       ? `${parsed.owner}/${parsed.repo}`
       : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
 
-  const excluded = isSourceExcluded(dep.source, opts?.updateExclude);
+  const excluded = isSourceExcluded(dep.source, opts?.minimumReleaseAgeExclude);
   const cached = await ensureCached({
     url: cloneUrl,
     cacheKey,

@@ -72,7 +72,7 @@ async function expandSkills(
     defaultRepositorySource: RepositorySource;
   },
   lockfile: Lockfile | null,
-  opts: { frozen?: boolean; force?: boolean; projectRoot: string; minimumReleaseAge?: number; updateExclude?: string[] },
+  opts: { frozen?: boolean; force?: boolean; projectRoot: string; minimumReleaseAge?: number; minimumReleaseAgeExclude?: string[] },
 ): Promise<ExpandedSkill[]> {
   const regularDeps = config.skills.filter((d) => !isWildcardDep(d));
   const wildcardDeps = config.skills.filter(isWildcardDep);
@@ -113,7 +113,7 @@ async function expandSkills(
           ...(opts.force ? { ttlMs: 0 } : {}),
           defaultRepositorySource: config.defaultRepositorySource,
           minimumReleaseAge: opts.minimumReleaseAge,
-          updateExclude: opts.updateExclude,
+          minimumReleaseAgeExclude: opts.minimumReleaseAgeExclude,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -162,7 +162,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     }
 
     const minimumReleaseAge = config.update?.minimum_release_age;
-    const updateExclude = config.update?.exclude;
+    const minimumReleaseAgeExclude = config.update?.minimum_release_age_exclude;
     const expanded = await expandSkills(
       {
         skills: config.skills,
@@ -170,7 +170,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
         defaultRepositorySource: config.defaultRepositorySource,
       },
       lockfile,
-      { frozen, force, projectRoot: scope.root, minimumReleaseAge, updateExclude },
+      { frozen, force, projectRoot: scope.root, minimumReleaseAge, minimumReleaseAgeExclude },
     );
 
     if (frozen) {
@@ -200,7 +200,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
         ...(force ? { ttlMs: 0 } : {}),
         defaultRepositorySource: config.defaultRepositorySource,
         minimumReleaseAge,
-        updateExclude,
+        minimumReleaseAgeExclude,
       };
 
       let resolved: ResolvedSkill;
