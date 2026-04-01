@@ -5,6 +5,8 @@ const lockedGitSkillSchema = z.object({
   resolved_url: z.string(),
   resolved_path: z.string(),
   resolved_ref: z.string().optional(),
+  /** Informational only — records the commit installed. Not used for resolution. */
+  resolved_commit: z.string().optional(),
 });
 
 const lockedWellKnownSkillSchema = z.object({

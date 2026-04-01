@@ -83,8 +83,8 @@ describe("runInstall", () => {
     expect(lockfile).not.toBeNull();
     expect(lockfile!.skills["pdf"]).toBeDefined();
     expect(lockfile!.skills["pdf"]!.source).toBeDefined();
-    // No commit or integrity fields in v1
-    expect("commit" in lockfile!.skills["pdf"]!).toBe(false);
+    // resolved_commit is informational, should be present for git skills
+    expect("resolved_commit" in lockfile!.skills["pdf"]!).toBe(true);
     expect("integrity" in lockfile!.skills["pdf"]!).toBe(false);
   });
 
@@ -552,5 +552,95 @@ describe("runInstall", () => {
 
     // Should not auto-create .gitignore (only init does that)
     expect(existsSync(join(projectRoot, ".gitignore"))).toBe(false);
+  });
+
+  it("minimum_release_age resolves to an older commit when HEAD is too new", async () => {
+    // Create an old commit (backdated) then a new one
+    await exec("git", ["rm", "-rf", "pdf", "skills"], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "clear"], { cwd: repoDir });
+
+    // Create the old commit with a backdated author date
+    await mkdir(join(repoDir, "pdf"), { recursive: true });
+    await writeFile(join(repoDir, "pdf", "SKILL.md"), SKILL_MD("pdf"));
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "old commit", "--date", "2020-01-01T00:00:00"], {
+      cwd: repoDir,
+      env: { ...process.env, GIT_COMMITTER_DATE: "2020-01-01T00:00:00" },
+    });
+
+    const { stdout: oldSha } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
+
+    // Create a brand new commit (today)
+    await writeFile(join(repoDir, "pdf", "SKILL.md"), `${SKILL_MD("pdf")}\nupdated`);
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "new commit"], { cwd: repoDir });
+
+    const { stdout: newSha } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
+    expect(oldSha.trim()).not.toBe(newSha.trim());
+
+    // Install with minimum_release_age = 1 — should skip the brand-new commit and use the old one
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[update]\nminimum_release_age = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+    expect(result.installed).toContain("pdf");
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile).not.toBeNull();
+    expect(lockfile!.skills["pdf"]!).toBeDefined();
+    // Should have resolved to the old commit, not HEAD
+    const locked = lockfile!.skills["pdf"]! as { resolved_commit?: string };
+    expect(locked.resolved_commit).toBe(oldSha.trim());
+  });
+
+  it("minimum_release_age throws when repo is younger than threshold", async () => {
+    // All commits in repoDir are recent (created in beforeEach)
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[update]\nminimum_release_age = 9999\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(/minimum_release_age/);
+  });
+
+  it("minimum_release_age rejects pinned skills that are too new", async () => {
+    const { stdout: sha } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[update]\nminimum_release_age = 9999\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\nref = "${sha.trim()}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(/minimum_release_age/);
+  });
+
+  it("exclude bypasses minimum_release_age for matching sources", async () => {
+    // All commits are recent, but the source is excluded — should install fine
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[update]\nminimum_release_age = 9999\nexclude = ["git:${repoDir}"]\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+    expect(result.installed).toContain("pdf");
+  });
+
+  it("exclude with org pattern bypasses minimum_release_age", async () => {
+    // Use a GitHub-style source with an org exclude
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[update]\nminimum_release_age = 9999\nexclude = ["myorg"]\n\n[[skills]]\nname = "pdf"\nsource = "myorg/skills"\n`,
+    );
+
+    // This will fail to clone (myorg/skills doesn't exist), but it should fail
+    // at clone time, not at the age gate — proving the exclude is working.
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(/clone|resolve/i);
   });
 });

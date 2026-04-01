@@ -72,7 +72,7 @@ async function expandSkills(
     defaultRepositorySource: RepositorySource;
   },
   lockfile: Lockfile | null,
-  opts: { frozen?: boolean; force?: boolean; projectRoot: string },
+  opts: { frozen?: boolean; force?: boolean; projectRoot: string; minimumReleaseAge?: number; updateExclude?: string[] },
 ): Promise<ExpandedSkill[]> {
   const regularDeps = config.skills.filter((d) => !isWildcardDep(d));
   const wildcardDeps = config.skills.filter(isWildcardDep);
@@ -106,11 +106,19 @@ async function expandSkills(
         expanded.push({ name, dep: wDep });
       }
     } else {
-      const named = await resolveWildcardSkills(wDep, {
-        projectRoot: opts.projectRoot,
-        ...(opts.force ? { ttlMs: 0 } : {}),
-        defaultRepositorySource: config.defaultRepositorySource,
-      });
+      let named;
+      try {
+        named = await resolveWildcardSkills(wDep, {
+          projectRoot: opts.projectRoot,
+          ...(opts.force ? { ttlMs: 0 } : {}),
+          defaultRepositorySource: config.defaultRepositorySource,
+          minimumReleaseAge: opts.minimumReleaseAge,
+          updateExclude: opts.updateExclude,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new InstallError(`Failed to resolve wildcard source "${wDep.source}": ${msg}`);
+      }
       for (const { name, resolved } of named) {
         if (explicitNames.has(name)) {continue;} // explicit wins
 
@@ -153,6 +161,8 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       throw new InstallError("--frozen requires agents.lock to exist.");
     }
 
+    const minimumReleaseAge = config.update?.minimum_release_age;
+    const updateExclude = config.update?.exclude;
     const expanded = await expandSkills(
       {
         skills: config.skills,
@@ -160,7 +170,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
         defaultRepositorySource: config.defaultRepositorySource,
       },
       lockfile,
-      { frozen, force, projectRoot: scope.root },
+      { frozen, force, projectRoot: scope.root, minimumReleaseAge, updateExclude },
     );
 
     if (frozen) {
@@ -189,6 +199,8 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
         projectRoot: scope.root,
         ...(force ? { ttlMs: 0 } : {}),
         defaultRepositorySource: config.defaultRepositorySource,
+        minimumReleaseAge,
+        updateExclude,
       };
 
       let resolved: ResolvedSkill;
@@ -217,6 +229,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
           resolved_url: resolved.resolvedUrl,
           resolved_path: resolved.resolvedPath,
           ...(resolved.resolvedRef ? { resolved_ref: resolved.resolvedRef } : {}),
+          resolved_commit: resolved.commit,
         };
       } else if (resolved.type === "well-known") {
         lockEntry = {

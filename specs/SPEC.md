@@ -85,6 +85,29 @@ headers = { X-Api-Key = "${API_KEY}" }
 | `skills` | No | Skill dependencies (array of tables). |
 | `mcp` | No | MCP server declarations (array of tables). Generates agent-specific config files during install/sync. |
 | `trust` | No | Trusted source restrictions. When absent, all sources allowed. See `[trust]` below. |
+| `update` | No | Update policy configuration. See `[update]` below. |
+
+#### `[update]`
+
+Optional section to control how skills are updated.
+
+```toml
+[update]
+minimum_release_age = 4320  # 3 days in minutes
+exclude = ["myorg", "myorg/internal-skills"]
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `minimum_release_age` | No | Minimum age in **minutes** a commit must have before it's eligible for install. Applies to all git skills (pinned and unpinned). For unpinned skills, resolves to the newest qualifying commit. For pinned skills (`ref`), rejects if the pinned commit is too new. Install fails with an error if no qualifying commit exists. When absent, current behavior — always use HEAD. |
+| `exclude` | No | Sources excluded from the age gate. Accepts org names (`"myorg"` matches all repos), org/repo (`"myorg/skills"` exact match), or org wildcards (`"myorg/*"`). Defaults to `[]`. |
+
+**Semantics:**
+- `[update]` absent → no age gating (default behavior)
+- `minimum_release_age` set → for git skills, enforce commit age. Unpinned skills resolve to the newest qualifying commit; pinned skills error if the ref is too new
+- `exclude` → listed sources bypass the age gate entirely (useful for internal/trusted repos)
+- Local skills (`path:`) and well-known skills are unaffected
+- The age check uses the git committer date, which reflects when code landed on the branch
 
 #### `[trust]`
 
@@ -322,6 +345,7 @@ source = "path:../shared-skills/my-custom-skill"
 | `resolved_url` | Git and well-known sources | Resolved clone URL or HTTP base URL. |
 | `resolved_path` | Git sources | Subdirectory within the repo where the skill was discovered. |
 | `resolved_ref` | Git sources (optional) | The ref that was resolved (tag/branch name). Omitted when using default branch. |
+| `resolved_commit` | Git sources (optional) | Full 40-char commit SHA that was installed. **Informational only** — not used for resolution. The lockfile is not checked in, so this field must never be relied on for locking behavior. |
 
 ---
 

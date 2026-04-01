@@ -383,6 +383,73 @@ describe("agentsConfigSchema", () => {
     });
   });
 
+  describe("update section", () => {
+    it("is undefined when absent", () => {
+      const result = agentsConfigSchema.safeParse({ version: 1 });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.update).toBeUndefined();
+      }
+    });
+
+    it("parses minimum_release_age", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        update: { minimum_release_age: 4320 },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.update?.minimum_release_age).toBe(4320);
+      }
+    });
+
+    it("accepts minimum_release_age = 0", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        update: { minimum_release_age: 0 },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects negative minimum_release_age", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        update: { minimum_release_age: -1 },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects non-integer minimum_release_age", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        update: { minimum_release_age: 1.5 },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("parses exclude list", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        update: { minimum_release_age: 4320, exclude: ["myorg", "other/repo"] },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.update?.exclude).toEqual(["myorg", "other/repo"]);
+      }
+    });
+
+    it("defaults exclude to empty array", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        update: { minimum_release_age: 4320 },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.update?.exclude).toEqual([]);
+      }
+    });
+  });
+
   describe("backward compatibility", () => {
     it("parses config without agents or mcp fields", () => {
       const result = agentsConfigSchema.safeParse({

@@ -247,6 +247,10 @@ export async function resolveSkill(
     defaultRepositorySource?: RepositorySource;
     /** Override cache TTL (pass 0 to force refresh) */
     ttlMs?: number;
+    /** When set, resolve to the newest commit at least this many minutes old. */
+    minimumReleaseAge?: number;
+    /** Sources excluded from the age gate (org or org/repo patterns). */
+    updateExclude?: string[];
   },
 ): Promise<ResolvedSkill> {
   const sourceForResolve = applyDefaultRepositorySource(
@@ -300,11 +304,13 @@ export async function resolveSkill(
       ? `${parsed.owner}/${parsed.repo}`
       : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
 
+  const excluded = isSourceExcluded(dep.source, opts?.updateExclude);
   const cached = await ensureCached({
     url: cloneUrl,
     cacheKey,
     ref,
     ttlMs: opts?.ttlMs,
+    minimumReleaseAge: excluded ? undefined : opts?.minimumReleaseAge,
   });
 
   // Discover the skill within the repo
@@ -354,6 +360,10 @@ export async function resolveWildcardSkills(
     defaultRepositorySource?: RepositorySource;
     /** Override cache TTL (pass 0 to force refresh) */
     ttlMs?: number;
+    /** When set, resolve to the newest commit at least this many minutes old. */
+    minimumReleaseAge?: number;
+    /** Sources excluded from the age gate (org or org/repo patterns). */
+    updateExclude?: string[];
   },
 ): Promise<NamedResolvedSkill[]> {
   const sourceForResolve = applyDefaultRepositorySource(
@@ -419,11 +429,13 @@ export async function resolveWildcardSkills(
       ? `${parsed.owner}/${parsed.repo}`
       : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
 
+  const excluded = isSourceExcluded(dep.source, opts?.updateExclude);
   const cached = await ensureCached({
     url: cloneUrl,
     cacheKey,
     ref,
     ttlMs: opts?.ttlMs,
+    minimumReleaseAge: excluded ? undefined : opts?.minimumReleaseAge,
   });
 
   const discovered = await discoverAllSkills(cached.repoDir);
@@ -444,4 +456,26 @@ export async function resolveWildcardSkills(
         skillDir: join(cached.repoDir, d.path),
       },
     }));
+}
+
+/**
+ * Check if a source string matches any pattern in the exclude list.
+ * Patterns: "org" matches "org/anything", "org/repo" is exact match,
+ * "org/*" matches "org/anything" (explicit wildcard).
+ */
+export function isSourceExcluded(source: string, exclude?: string[]): boolean {
+  if (!exclude?.length) {return false;}
+  const normalized = source.replace(/^git:/, "");
+  for (const raw of exclude) {
+    const pattern = raw.replace(/^git:/, "");
+    if (pattern.includes("/") && !pattern.endsWith("/*")) {
+      // Exact org/repo match
+      if (normalized === pattern) {return true;}
+    } else {
+      // Bare org ("myorg") or wildcard ("myorg/*") — both match as prefix
+      const prefix = pattern.replace(/\/\*$/, "");
+      if (normalized.startsWith(`${prefix}/`)) {return true;}
+    }
+  }
+  return false;
 }

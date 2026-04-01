@@ -5,6 +5,7 @@ import {
   parseSource,
   normalizeSource,
   sourcesMatch,
+  isSourceExcluded,
 } from "./resolver.js";
 
 describe("parseOwnerRepoShorthand", () => {
@@ -429,5 +430,39 @@ describe("sourcesMatch", () => {
     expect(
       sourcesMatch("https://localhost:3000", "https://localhost:4000"),
     ).toBe(false);
+  });
+});
+
+describe("isSourceExcluded", () => {
+  it("returns false with no exclude list", () => {
+    expect(isSourceExcluded("getsentry/skills")).toBe(false);
+    expect(isSourceExcluded("getsentry/skills", [])).toBe(false);
+  });
+
+  it("matches bare org name", () => {
+    expect(isSourceExcluded("getsentry/skills", ["getsentry"])).toBe(true);
+    expect(isSourceExcluded("getsentry/other", ["getsentry"])).toBe(true);
+  });
+
+  it("does not match different org", () => {
+    expect(isSourceExcluded("anthropics/skills", ["getsentry"])).toBe(false);
+  });
+
+  it("matches exact org/repo", () => {
+    expect(isSourceExcluded("getsentry/skills", ["getsentry/skills"])).toBe(true);
+  });
+
+  it("does not match different repo in same org", () => {
+    expect(isSourceExcluded("getsentry/other", ["getsentry/skills"])).toBe(false);
+  });
+
+  it("matches wildcard org/*", () => {
+    expect(isSourceExcluded("getsentry/skills", ["getsentry/*"])).toBe(true);
+    expect(isSourceExcluded("getsentry/other", ["getsentry/*"])).toBe(true);
+  });
+
+  it("strips git: prefix for matching", () => {
+    expect(isSourceExcluded("git:getsentry/skills", ["getsentry"])).toBe(true);
+    expect(isSourceExcluded("git:getsentry/skills", ["getsentry/skills"])).toBe(true);
   });
 });

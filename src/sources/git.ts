@@ -115,6 +115,68 @@ export async function headCommit(repoDir: string): Promise<string> {
 }
 
 /**
+ * Get the committer date of HEAD as a Date.
+ * Uses committer date (not author date) to reflect when the commit landed on the branch,
+ * which aligns with "release age" semantics (survives cherry-picks and merges).
+ */
+export async function headCommitDate(repoDir: string): Promise<Date> {
+  const { stdout } = await exec("git", ["log", "-1", "--format=%cI", "HEAD"], { cwd: repoDir });
+  return new Date(stdout.trim());
+}
+
+/**
+ * Find the newest commit on the current branch whose committer date is at least
+ * `minAgeMinutes` minutes old. Unshallows the repo to search full history.
+ *
+ * Returns the SHA, or `null` if no qualifying commit exists (repo is younger
+ * than the threshold).
+ */
+export async function findCommitOlderThan(
+  repoDir: string,
+  minAgeMinutes: number,
+): Promise<string | null> {
+  const cutoff = new Date(Date.now() - minAgeMinutes * 60 * 1000);
+  const iso = cutoff.toISOString();
+
+  // Unshallow to get full history — needed to find commits older than the cutoff.
+  // Only called when HEAD is too new, so the extra fetch is acceptable.
+  try {
+    await exec("git", ["fetch", "--unshallow", "--", "origin"], { cwd: repoDir });
+  } catch (err) {
+    if (!(err instanceof ExecError)) {throw err;}
+    // --unshallow fails on a complete (non-shallow) repository — that's fine
+    if (!/unshallow on a complete repository/i.test(err.stderr)) {
+      throw new GitError(`Failed to fetch history for age gate: ${err.stderr}`);
+    }
+  }
+
+  // Find the newest commit at or before the cutoff.
+  // Use HEAD (not FETCH_HEAD) — after the prior fetchAndReset, HEAD is at the
+  // latest commit and --unshallow made full history available behind it.
+  const { stdout } = await exec(
+    "git",
+    ["log", "--format=%H", "--before", iso, "-1", "HEAD"],
+    { cwd: repoDir },
+  );
+  const sha = stdout.trim();
+  return sha || null;
+}
+
+/**
+ * Checkout a local ref (commit, branch, tag). No fetch — the ref must already exist locally.
+ */
+export async function checkout(repoDir: string, ref: string): Promise<void> {
+  try {
+    await exec("git", ["checkout", ref], { cwd: repoDir });
+  } catch (err) {
+    if (err instanceof ExecError) {
+      throw new GitError(`Failed to checkout ${ref} in ${repoDir}: ${err.stderr}`);
+    }
+    throw err;
+  }
+}
+
+/**
  * Check if a directory is a git repository.
  */
 export function isGitRepo(dir: string): boolean {
