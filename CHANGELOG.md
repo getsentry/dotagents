@@ -1,4 +1,10 @@
 # Changelog
+## 1.8.0
+
+### Internal Changes 🔧
+
+- (config) Move minimum_release_age to top-level fields by @gricha in [6342cec3](https://github.com/getsentry/dotagents/commit/6342cec39304947fabebb823ad91ae541790009a)
+
 ## 1.7.0
 
 ### Internal Changes 🔧
