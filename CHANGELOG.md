@@ -1,4 +1,10 @@
 # Changelog
+## 1.7.0
+
+### Internal Changes 🔧
+
+- (update) Rename exclude to minimum_release_age_exclude by @gricha in [dd3e9cf1](https://github.com/getsentry/dotagents/commit/dd3e9cf169cb5173bf9463b8e3ed8db6b19b3f10)
+
 ## 1.6.0
 
 ### New Features ✨
