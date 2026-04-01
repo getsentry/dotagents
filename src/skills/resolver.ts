@@ -247,6 +247,8 @@ export async function resolveSkill(
     defaultRepositorySource?: RepositorySource;
     /** Override cache TTL (pass 0 to force refresh) */
     ttlMs?: number;
+    /** When set, resolve to the newest commit at least this many minutes old. */
+    minimumReleaseAge?: number;
   },
 ): Promise<ResolvedSkill> {
   const sourceForResolve = applyDefaultRepositorySource(
@@ -305,6 +307,7 @@ export async function resolveSkill(
     cacheKey,
     ref,
     ttlMs: opts?.ttlMs,
+    minimumReleaseAge: opts?.minimumReleaseAge,
   });
 
   // Discover the skill within the repo
@@ -354,6 +357,8 @@ export async function resolveWildcardSkills(
     defaultRepositorySource?: RepositorySource;
     /** Override cache TTL (pass 0 to force refresh) */
     ttlMs?: number;
+    /** When set, resolve to the newest commit at least this many minutes old. */
+    minimumReleaseAge?: number;
   },
 ): Promise<NamedResolvedSkill[]> {
   const sourceForResolve = applyDefaultRepositorySource(
@@ -424,6 +429,7 @@ export async function resolveWildcardSkills(
     cacheKey,
     ref,
     ttlMs: opts?.ttlMs,
+    minimumReleaseAge: opts?.minimumReleaseAge,
   });
 
   const discovered = await discoverAllSkills(cached.repoDir);

@@ -146,6 +146,12 @@ const hookSchema = z.object({
 
 export type HookConfig = z.infer<typeof hookSchema>;
 
+const updateConfigSchema = z.object({
+  minimum_release_age: z.number().int().min(0).optional(),
+});
+
+export type UpdateConfig = z.infer<typeof updateConfigSchema>;
+
 const trustConfigSchema = z.object({
   allow_all: z.boolean().default(false),
   github_orgs: z.array(z.string()).default([]),
@@ -168,6 +174,7 @@ export const agentsConfigSchema = z.object({
   mcp: z.array(mcpSchema).default([]),
   hooks: z.array(hookSchema).default([]),
   trust: trustConfigSchema.optional(),
+  update: updateConfigSchema.optional(),
 });
 
 export type AgentsConfig = z.infer<typeof agentsConfigSchema>;

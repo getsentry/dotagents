@@ -85,6 +85,26 @@ headers = { X-Api-Key = "${API_KEY}" }
 | `skills` | No | Skill dependencies (array of tables). |
 | `mcp` | No | MCP server declarations (array of tables). Generates agent-specific config files during install/sync. |
 | `trust` | No | Trusted source restrictions. When absent, all sources allowed. See `[trust]` below. |
+| `update` | No | Update policy configuration. See `[update]` below. |
+
+#### `[update]`
+
+Optional section to control how unpinned skills are updated.
+
+```toml
+[update]
+minimum_release_age = 4320  # 3 days in minutes
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `minimum_release_age` | No | Minimum age in **minutes** a commit must have before it's eligible for install. Only applies to unpinned git skills (no `ref`). When set, dotagents resolves to the newest commit whose committer date is at least this many minutes old. If no qualifying commit exists (repo is younger than the threshold), install fails with an error. When absent, current behavior — always use HEAD. |
+
+**Semantics:**
+- `[update]` absent → no age gating (default behavior)
+- `minimum_release_age` set → for unpinned git skills, unshallow the repo and resolve to the newest qualifying commit
+- Pinned skills (`ref` set), local skills (`path:`), and well-known skills are unaffected
+- The age check uses the git committer date, which reflects when code landed on the branch
 
 #### `[trust]`
 
@@ -322,6 +342,7 @@ source = "path:../shared-skills/my-custom-skill"
 | `resolved_url` | Git and well-known sources | Resolved clone URL or HTTP base URL. |
 | `resolved_path` | Git sources | Subdirectory within the repo where the skill was discovered. |
 | `resolved_ref` | Git sources (optional) | The ref that was resolved (tag/branch name). Omitted when using default branch. |
+| `resolved_commit` | Git sources (optional) | Full 40-char commit SHA that was installed. **Informational only** — not used for resolution. The lockfile is not checked in, so this field must never be relied on for locking behavior. |
 
 ---
 

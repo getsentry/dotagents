@@ -5,7 +5,7 @@ vi.mock("../utils/exec.js", () => ({
   ExecError: Error,
 }));
 
-import { clone } from "./git.js";
+import { clone, headCommitDate, findCommitOlderThan } from "./git.js";
 import { exec } from "../utils/exec.js";
 
 const mockExec = vi.mocked(exec);
@@ -143,5 +143,71 @@ describe("clone", () => {
       "https://github.com/owner/repo.git",
       "/tmp/dest",
     ]);
+  });
+});
+
+describe("headCommitDate", () => {
+  it("returns the committer date of HEAD", async () => {
+    mockExec.mockResolvedValueOnce({ stdout: "2026-03-15T10:30:00+00:00\n", stderr: "" });
+
+    const date = await headCommitDate("/tmp/repo");
+
+    expect(mockExec).toHaveBeenCalledWith(
+      "git",
+      ["log", "-1", "--format=%cI", "HEAD"],
+      { cwd: "/tmp/repo" },
+    );
+    expect(date.toISOString()).toBe("2026-03-15T10:30:00.000Z");
+  });
+});
+
+describe("findCommitOlderThan", () => {
+  it("returns SHA when a qualifying commit exists", async () => {
+    const sha = "abc123def456789012345678901234567890abcd";
+    // First call: fetch --unshallow
+    mockExec.mockResolvedValueOnce({ stdout: "", stderr: "" });
+    // Second call: git log --before
+    mockExec.mockResolvedValueOnce({ stdout: `${sha}\n`, stderr: "" });
+
+    const result = await findCommitOlderThan("/tmp/repo", 3);
+
+    expect(result).toBe(sha);
+    expect(mockExec).toHaveBeenNthCalledWith(
+      1,
+      "git",
+      ["fetch", "--unshallow", "--", "origin"],
+      { cwd: "/tmp/repo" },
+    );
+    expect(mockExec).toHaveBeenNthCalledWith(
+      2,
+      "git",
+      expect.arrayContaining(["log", "--format=%H", "--before", expect.any(String), "-1", "HEAD"]),
+      { cwd: "/tmp/repo" },
+    );
+  });
+
+  it("returns null when no qualifying commit exists", async () => {
+    // fetch --unshallow succeeds
+    mockExec.mockResolvedValueOnce({ stdout: "", stderr: "" });
+    // git log returns empty (repo younger than threshold)
+    mockExec.mockResolvedValueOnce({ stdout: "", stderr: "" });
+
+    const result = await findCommitOlderThan("/tmp/repo", 30);
+
+    expect(result).toBeNull();
+  });
+
+  it("tolerates already-unshallowed repos", async () => {
+    const sha = "abc123def456789012345678901234567890abcd";
+    // fetch --unshallow fails because repo is already complete
+    const err = new Error("fatal: --unshallow on a complete repository does not make sense") as Error & { stderr: string };
+    err.stderr = "fatal: --unshallow on a complete repository does not make sense";
+    mockExec.mockRejectedValueOnce(err);
+    // git log --before
+    mockExec.mockResolvedValueOnce({ stdout: `${sha}\n`, stderr: "" });
+
+    const result = await findCommitOlderThan("/tmp/repo", 3);
+
+    expect(result).toBe(sha);
   });
 });
