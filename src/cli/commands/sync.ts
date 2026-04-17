@@ -1,6 +1,6 @@
 import { join, resolve } from "node:path";
 import { existsSync } from "node:fs";
-import { readdir } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
@@ -35,6 +35,7 @@ export interface SyncOptions {
 export interface SyncResult {
   issues: SyncIssue[];
   adopted: string[];
+  pruned: string[];
   gitignoreUpdated: boolean;
   symlinksRepaired: number;
   mcpRepaired: number;
@@ -46,26 +47,26 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const { configPath, lockPath, agentsDir, skillsDir } = scope;
 
   let config = await loadConfig(configPath);
-  const lockfile = await loadLockfile(lockPath);
+  let lockfile = await loadLockfile(lockPath);
   // Build declared names from explicit entries + wildcard-expanded lockfile entries
   const declaredNames = new Set(
     config.skills.filter((s) => !isWildcardDep(s)).map((s) => s.name),
   );
   if (lockfile) {
-    // Add concrete skill names from wildcard sources
-    const wildcardSources = new Set(
-      config.skills
-        .filter(isWildcardDep)
-        .map((s) => normalizeSource(s.source)),
-    );
     for (const [name, locked] of Object.entries(lockfile.skills)) {
-      if (wildcardSources.has(normalizeSource(locked.source))) {
+      const wildcardDep = config.skills.find(
+        (s): s is Extract<typeof s, { name: "*" }> =>
+          isWildcardDep(s) &&
+          normalizeSource(s.source) === normalizeSource(locked.source),
+      );
+      if (wildcardDep && !wildcardDep.exclude.includes(name)) {
         declaredNames.add(name);
       }
     }
   }
   const issues: SyncIssue[] = [];
   const adopted: string[] = [];
+  const pruned: string[] = [];
 
   // 1. Adopt orphaned skills (installed but not in agents.toml)
   if (existsSync(skillsDir)) {
@@ -74,6 +75,14 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     for (const entry of entries) {
       if (!entry.isDirectory()) {continue;}
       if (declaredNames.has(entry.name)) {continue;}
+
+      const locked = lockfile?.skills[entry.name];
+      if (locked && !isInPlaceSkill(locked.source)) {
+        await removeStaleManagedSkill(skillsDir, entry.name);
+        delete lockfile!.skills[entry.name];
+        pruned.push(entry.name);
+        continue;
+      }
 
       const sourcePrefix = scope.scope === "user" ? "path:skills/" : "path:.agents/skills/";
       const source = `${sourcePrefix}${entry.name}`;
@@ -84,11 +93,14 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       adopted.push(entry.name);
     }
 
-    if (adopted.length > 0) {
-      await writeLockfile(lockPath, {
+    if (adopted.length > 0 || pruned.length > 0) {
+      lockfile = {
         version: 1,
         skills: { ...lockfile?.skills, ...adoptedLockEntries },
-      });
+      };
+      await writeLockfile(lockPath, lockfile);
+    }
+    if (adopted.length > 0) {
       config = await loadConfig(configPath);
     }
   }
@@ -218,11 +230,16 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   return {
     issues,
     adopted,
+    pruned,
     gitignoreUpdated,
     symlinksRepaired,
     mcpRepaired,
     hooksRepaired,
   };
+}
+
+async function removeStaleManagedSkill(skillsDir: string, name: string): Promise<void> {
+  await rm(join(skillsDir, name), { recursive: true, force: true });
 }
 
 export default async function sync(_args: string[], flags?: { user?: boolean }): Promise<void> {
@@ -242,6 +259,10 @@ export default async function sync(_args: string[], flags?: { user?: boolean }):
 
   if (result.adopted.length > 0) {
     console.log(chalk.green(`Adopted ${result.adopted.length} orphan(s): ${result.adopted.join(", ")}`));
+  }
+
+  if (result.pruned.length > 0) {
+    console.log(chalk.green(`Pruned ${result.pruned.length} stale managed skill(s): ${result.pruned.join(", ")}`));
   }
 
   if (scope.scope === "project" && result.gitignoreUpdated) {

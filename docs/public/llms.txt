@@ -290,7 +290,7 @@ When the argument is a source specifier (e.g. `owner/repo`, a URL) instead of a 
 npx @sentry/dotagents sync
 ```
 
-Reconcile project state without network access: adopt orphaned skills (installed but not declared), regenerate `.agents/.gitignore`, check for missing skills, repair symlinks, verify/repair MCP and hook configs. Reports issues as warnings or errors.
+Reconcile project state without network access: adopt truly local orphaned skills, prune stale managed skills removed from config, regenerate `.agents/.gitignore`, check for missing skills, repair symlinks, and verify/repair MCP and hook configs. Reports issues as warnings or errors.
 
 ### mcp add
 

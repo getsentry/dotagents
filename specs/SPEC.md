@@ -459,13 +459,14 @@ dotagents sync
 ```
 
 **Behavior:**
-1. Adopt orphaned skills (installed but not in `agents.toml`) into config
-2. Regenerate `.agents/.gitignore`
-3. Warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
-4. Check for missing skills (in `agents.toml` but not installed)
-5. Create/verify/repair symlinks
-6. Verify and repair MCP config files for declared agents
-7. Verify and repair hook config files for declared agents
+1. Adopt orphaned local skills (installed but not in `agents.toml`, and not previously managed) into config
+2. Prune stale managed skills that were removed from config but still exist on disk locally
+3. Regenerate `.agents/.gitignore`
+4. Warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
+5. Check for missing skills (in `agents.toml` but not installed)
+6. Create/verify/repair symlinks
+7. Verify and repair MCP config files for declared agents
+8. Verify and repair hook config files for declared agents
 
 ### `dotagents mcp`
 
