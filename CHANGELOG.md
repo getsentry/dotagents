@@ -1,4 +1,15 @@
 # Changelog
+## 1.9.0
+
+### Bug Fixes 🐛
+
+- (sync) Prune stale managed skills during sync by @gricha in [#87](https://github.com/getsentry/dotagents/pull/87)
+
+### Internal Changes 🔧
+
+- Bump vite to fix security vulnerabilities by @gricha in [#85](https://github.com/getsentry/dotagents/pull/85)
+- Bump transitive deps to fix security vulnerabilities by @gricha in [#84](https://github.com/getsentry/dotagents/pull/84)
+
 ## 1.8.0
 
 ### Internal Changes 🔧
