@@ -48,7 +48,7 @@ npx @sentry/dotagents install
 | `remove <name\|source> [-y]` | Remove a skill or all skills from a source |
 | `install` | Install all dependencies from `agents.toml` |
 | `list` | Show installed skills and their status |
-| `sync` | Reconcile gitignore, symlinks, and verify state |
+| `sync` | Reconcile state offline: adopt local skills, prune stale managed ones, repair configs |
 | `mcp` | Manage MCP server declarations |
 | `trust` | Manage trusted sources |
 | `doctor` | Check project health and fix issues |

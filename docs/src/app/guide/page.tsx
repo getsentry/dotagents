@@ -142,7 +142,8 @@ npx @sentry/dotagents install || echo "dotagents install failed"
           fetch anything from the network. Instead, it:
         </p>
         <ul>
-          <li>Adopts orphaned skills (installed but not declared)</li>
+          <li>Adopts truly local orphaned skills (installed but not declared)</li>
+          <li>Prunes stale managed skills removed from config</li>
           <li>
             Regenerates <code>.agents/.gitignore</code>
           </li>

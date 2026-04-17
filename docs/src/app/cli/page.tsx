@@ -186,7 +186,7 @@ export default function CliPage() {
         <CliCommand
           name="sync"
           synopsis="dotagents sync"
-          description="Reconcile project state without network access. Adopts orphaned skills, regenerates gitignore, repairs symlinks and MCP/hook configs. Reports issues as warnings or errors."
+          description="Reconcile project state without network access. Adopts local orphaned skills, prunes stale managed skills removed from config, regenerates gitignore, and repairs symlinks plus MCP/hook configs. Reports issues as warnings or errors."
         />
 
         <CliCommand

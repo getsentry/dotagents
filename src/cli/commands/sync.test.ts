@@ -4,10 +4,13 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runSync } from "./sync.js";
+import { runInstall } from "./install.js";
+import { runRemove } from "./remove.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { loadConfig } from "../../config/loader.js";
 import { resolveScope } from "../../scope.js";
+import { exec } from "../../utils/exec.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -89,6 +92,150 @@ describe("runSync", () => {
     const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.adopted).toContain("stray");
     expect(result.issues).toHaveLength(0);
+  });
+
+  it("prunes stale managed skills removed from config instead of re-adopting them", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      "version = 1\n",
+    );
+    const managedDir = join(projectRoot, ".agents", "skills", "pdf");
+    await mkdir(managedDir, { recursive: true });
+    await writeFile(join(managedDir, "SKILL.md"), SKILL_MD("pdf"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        pdf: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "pdf",
+        },
+      },
+    });
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.adopted).toHaveLength(0);
+    expect(result.pruned).toEqual(["pdf"]);
+    expect(existsSync(managedDir)).toBe(false);
+
+    const config = await loadConfig(join(projectRoot, "agents.toml"));
+    expect(config.skills).toHaveLength(0);
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile).not.toBeNull();
+    expect(lockfile!.skills["pdf"]).toBeUndefined();
+  });
+
+  it("prunes wildcard skills newly excluded from config", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "org/repo"\nexclude = ["review"]\n`,
+    );
+    const reviewDir = join(projectRoot, ".agents", "skills", "review");
+    await mkdir(reviewDir, { recursive: true });
+    await writeFile(join(reviewDir, "SKILL.md"), SKILL_MD("review"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        review: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "skills/review",
+        },
+      },
+    });
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.adopted).toHaveLength(0);
+    expect(result.pruned).toEqual(["review"]);
+    expect(existsSync(reviewDir)).toBe(false);
+  });
+
+  it("prunes stale managed skills after a collaborator removes the dependency and another collaborator pulls", async () => {
+    const skillRepo = join(tmpDir, "skill-repo");
+    const projectOrigin = join(tmpDir, "project-origin.git");
+    const projectSeed = join(tmpDir, "project-seed");
+    const aliceRepo = join(tmpDir, "alice");
+    const bobRepo = join(tmpDir, "bob");
+    const aliceStateDir = join(tmpDir, "alice-state");
+    const bobStateDir = join(tmpDir, "bob-state");
+
+    const previousStateDir = process.env["DOTAGENTS_STATE_DIR"];
+
+    await mkdir(skillRepo, { recursive: true });
+    await exec("git", ["init"], { cwd: skillRepo });
+    await exec("git", ["config", "user.email", "test@example.com"], { cwd: skillRepo });
+    await exec("git", ["config", "user.name", "Test User"], { cwd: skillRepo });
+    await mkdir(join(skillRepo, "pdf"), { recursive: true });
+    await writeFile(join(skillRepo, "pdf", "SKILL.md"), SKILL_MD("pdf"));
+    await exec("git", ["add", "."], { cwd: skillRepo });
+    await exec("git", ["commit", "-m", "initial skill"], { cwd: skillRepo });
+
+    await exec("git", ["init", "--bare", projectOrigin], { cwd: tmpDir });
+    await mkdir(projectSeed, { recursive: true });
+    await exec("git", ["init", "-b", "main"], { cwd: projectSeed });
+    await exec("git", ["config", "user.email", "test@example.com"], { cwd: projectSeed });
+    await exec("git", ["config", "user.name", "Test User"], { cwd: projectSeed });
+    await writeFile(
+      join(projectSeed, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${skillRepo}"\n`,
+    );
+    await exec("git", ["add", "agents.toml"], { cwd: projectSeed });
+    await exec("git", ["commit", "-m", "initial project config"], { cwd: projectSeed });
+    await exec("git", ["remote", "add", "origin", projectOrigin], { cwd: projectSeed });
+    await exec("git", ["push", "-u", "origin", "main"], { cwd: projectSeed });
+
+    await exec("git", ["clone", projectOrigin, aliceRepo], { cwd: tmpDir });
+    await exec("git", ["clone", projectOrigin, bobRepo], { cwd: tmpDir });
+    await exec("git", ["config", "user.email", "alice@example.com"], { cwd: aliceRepo });
+    await exec("git", ["config", "user.name", "Alice"], { cwd: aliceRepo });
+    await exec("git", ["config", "user.email", "bob@example.com"], { cwd: bobRepo });
+    await exec("git", ["config", "user.name", "Bob"], { cwd: bobRepo });
+
+    try {
+      process.env["DOTAGENTS_STATE_DIR"] = aliceStateDir;
+      await runInstall({ scope: resolveScope("project", aliceRepo) });
+
+      process.env["DOTAGENTS_STATE_DIR"] = bobStateDir;
+      await runInstall({ scope: resolveScope("project", bobRepo) });
+
+      const bobSkillDir = join(bobRepo, ".agents", "skills", "pdf");
+      expect(existsSync(bobSkillDir)).toBe(true);
+
+      process.env["DOTAGENTS_STATE_DIR"] = aliceStateDir;
+      await runRemove({ scope: resolveScope("project", aliceRepo), skillName: "pdf" });
+      await exec("git", ["add", "agents.toml"], { cwd: aliceRepo });
+      await exec("git", ["commit", "-m", "remove pdf"], { cwd: aliceRepo });
+      await exec("git", ["push", "origin", "main"], { cwd: aliceRepo });
+
+      await exec("git", ["pull", "--ff-only", "origin", "main"], { cwd: bobRepo });
+
+      const bobConfig = await loadConfig(join(bobRepo, "agents.toml"));
+      expect(bobConfig.skills).toHaveLength(0);
+      expect(existsSync(bobSkillDir)).toBe(true);
+
+      const bobLockBeforeSync = await loadLockfile(join(bobRepo, "agents.lock"));
+      expect(bobLockBeforeSync!.skills["pdf"]).toBeDefined();
+
+      process.env["DOTAGENTS_STATE_DIR"] = bobStateDir;
+      const result = await runSync({ scope: resolveScope("project", bobRepo) });
+
+      expect(result.adopted).toHaveLength(0);
+      expect(result.pruned).toEqual(["pdf"]);
+      expect(existsSync(bobSkillDir)).toBe(false);
+
+      const bobLockAfterSync = await loadLockfile(join(bobRepo, "agents.lock"));
+      expect(bobLockAfterSync).not.toBeNull();
+      expect(bobLockAfterSync!.skills["pdf"]).toBeUndefined();
+    } finally {
+      if (previousStateDir === undefined) {
+        delete process.env["DOTAGENTS_STATE_DIR"];
+      } else {
+        process.env["DOTAGENTS_STATE_DIR"] = previousStateDir;
+      }
+    }
   });
 
   it("detects missing skills", async () => {

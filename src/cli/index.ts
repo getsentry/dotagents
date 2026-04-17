@@ -31,7 +31,7 @@ Commands:
   install     Install dependencies from agents.toml
   add         Add a skill dependency
   remove      Remove a skill or all skills from a source
-  sync        Reconcile gitignore, symlinks, verify state
+  sync        Reconcile state offline and repair generated config
   list        Show installed skills
   mcp         Manage MCP server declarations
   trust       Manage trusted sources
