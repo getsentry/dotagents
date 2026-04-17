@@ -187,8 +187,8 @@ describe("runSync", () => {
     await exec("git", ["remote", "add", "origin", projectOrigin], { cwd: projectSeed });
     await exec("git", ["push", "-u", "origin", "main"], { cwd: projectSeed });
 
-    await exec("git", ["clone", projectOrigin, aliceRepo], { cwd: tmpDir });
-    await exec("git", ["clone", projectOrigin, bobRepo], { cwd: tmpDir });
+    await exec("git", ["clone", "--branch", "main", projectOrigin, aliceRepo], { cwd: tmpDir });
+    await exec("git", ["clone", "--branch", "main", projectOrigin, bobRepo], { cwd: tmpDir });
     await exec("git", ["config", "user.email", "alice@example.com"], { cwd: aliceRepo });
     await exec("git", ["config", "user.name", "Alice"], { cwd: aliceRepo });
     await exec("git", ["config", "user.email", "bob@example.com"], { cwd: bobRepo });
