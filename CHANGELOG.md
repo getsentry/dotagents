@@ -1,4 +1,10 @@
 # Changelog
+## 1.10.0
+
+### Bug Fixes 🐛
+
+- (cache) Refresh unpinned repos after ref checkouts by @gricha in [#88](https://github.com/getsentry/dotagents/pull/88)
+
 ## 1.9.0
 
 ### Bug Fixes 🐛
