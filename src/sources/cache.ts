@@ -1,10 +1,11 @@
 import { join } from "node:path";
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { clone, fetchAndReset, fetchRef, headCommit, headCommitDate, findCommitOlderThan, checkout, isGitRepo } from "./git.js";
 
 const DEFAULT_STATE_DIR = join(homedir(), ".local", "dotagents");
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const DEFAULT_HEAD_MARKER = join(".git", "dotagents-default-head");
 
 export class CacheError extends Error {
   constructor(message: string) {
@@ -47,14 +48,19 @@ export async function ensureCached(opts: {
     if (needsRefresh) {
       if (opts.ref) {
         await fetchRef(repoDir, opts.ref);
+        await invalidateDefaultHead(repoDir);
       } else {
         await fetchAndReset(repoDir);
+        await recordDefaultHead(repoDir);
       }
     }
   } else {
     // Not cached yet — clone
     await mkdir(join(stateDir, opts.cacheKey, ".."), { recursive: true });
     await clone(opts.url, repoDir, opts.ref);
+    if (!opts.ref) {
+      await recordDefaultHead(repoDir);
+    }
   }
 
   // Age gate: reject or resolve to an older commit when HEAD is too new
@@ -74,6 +80,7 @@ export async function ensureCached(opts: {
         );
       }
       await checkout(repoDir, older);
+      await invalidateDefaultHead(repoDir);
     }
   }
 
@@ -87,11 +94,30 @@ function minutesOld(date: Date): number {
 
 async function isStale(repoDir: string, ttlMs: number): Promise<boolean> {
   try {
-    const gitDir = join(repoDir, ".git", "FETCH_HEAD");
-    const s = await stat(gitDir);
-    return Date.now() - s.mtimeMs > ttlMs;
+    const markerPath = join(repoDir, DEFAULT_HEAD_MARKER);
+    const [marker, recordedHead, currentHead] = await Promise.all([
+      stat(markerPath),
+      readFile(markerPath, "utf-8"),
+      headCommit(repoDir),
+    ]);
+
+    if (Date.now() - marker.mtimeMs > ttlMs) {
+      return true;
+    }
+
+    return recordedHead.trim() !== currentHead;
   } catch {
-    // No FETCH_HEAD yet — consider stale
+    // Missing marker or unreadable state — consider stale
     return true;
   }
+}
+
+async function recordDefaultHead(repoDir: string): Promise<void> {
+  const markerPath = join(repoDir, DEFAULT_HEAD_MARKER);
+  await writeFile(markerPath, await headCommit(repoDir), "utf-8");
+}
+
+async function invalidateDefaultHead(repoDir: string): Promise<void> {
+  const markerPath = join(repoDir, DEFAULT_HEAD_MARKER);
+  await rm(markerPath, { force: true });
 }
