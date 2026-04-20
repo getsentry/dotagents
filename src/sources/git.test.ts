@@ -5,7 +5,7 @@ vi.mock("../utils/exec.js", () => ({
   ExecError: Error,
 }));
 
-import { clone, headCommitDate, findCommitOlderThan } from "./git.js";
+import { clone, fetchAndReset, fetchRef, headCommitDate, findCommitOlderThan } from "./git.js";
 import { exec } from "../utils/exec.js";
 
 const mockExec = vi.mocked(exec);
@@ -59,6 +59,7 @@ describe("clone", () => {
     // Second call: fetch the specific SHA
     expect(mockExec).toHaveBeenNthCalledWith(2, "git", [
       "fetch",
+      "--force",
       "--depth=1",
       "--",
       "origin",
@@ -146,6 +147,44 @@ describe("clone", () => {
   });
 });
 
+describe("fetchAndReset", () => {
+  it("force-fetches origin before resetting to FETCH_HEAD", async () => {
+    await fetchAndReset("/tmp/repo");
+
+    expect(mockExec).toHaveBeenNthCalledWith(1, "git", [
+      "fetch",
+      "--force",
+      "--depth=1",
+      "--",
+      "origin",
+    ], { cwd: "/tmp/repo" });
+    expect(mockExec).toHaveBeenNthCalledWith(2, "git", [
+      "reset",
+      "--hard",
+      "FETCH_HEAD",
+    ], { cwd: "/tmp/repo" });
+  });
+});
+
+describe("fetchRef", () => {
+  it("force-fetches the requested ref before checkout", async () => {
+    await fetchRef("/tmp/repo", "v0");
+
+    expect(mockExec).toHaveBeenNthCalledWith(1, "git", [
+      "fetch",
+      "--force",
+      "--depth=1",
+      "--",
+      "origin",
+      "v0",
+    ], { cwd: "/tmp/repo" });
+    expect(mockExec).toHaveBeenNthCalledWith(2, "git", [
+      "checkout",
+      "FETCH_HEAD",
+    ], { cwd: "/tmp/repo" });
+  });
+});
+
 describe("headCommitDate", () => {
   it("returns the committer date of HEAD", async () => {
     mockExec.mockResolvedValueOnce({ stdout: "2026-03-15T10:30:00+00:00\n", stderr: "" });
@@ -175,7 +214,7 @@ describe("findCommitOlderThan", () => {
     expect(mockExec).toHaveBeenNthCalledWith(
       1,
       "git",
-      ["fetch", "--unshallow", "--", "origin"],
+      ["fetch", "--force", "--unshallow", "--", "origin"],
       { cwd: "/tmp/repo" },
     );
     expect(mockExec).toHaveBeenNthCalledWith(
