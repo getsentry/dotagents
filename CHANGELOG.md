@@ -1,4 +1,10 @@
 # Changelog
+## 1.11.0
+
+### Bug Fixes 🐛
+
+- (git) Force cached repo fetches by @gricha in [#89](https://github.com/getsentry/dotagents/pull/89)
+
 ## 1.10.0
 
 ### Bug Fixes 🐛
