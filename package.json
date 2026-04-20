@@ -1,6 +1,6 @@
 {
   "name": "@sentry/dotagents",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "description": "Shared tooling for coding agents",
   "type": "module",
   "main": "dist/index.js",
