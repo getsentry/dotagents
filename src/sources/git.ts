@@ -77,7 +77,7 @@ export async function clone(
  */
 export async function fetchAndReset(repoDir: string): Promise<void> {
   try {
-    await exec("git", ["fetch", "--depth=1", "--", "origin"], { cwd: repoDir });
+    await exec("git", ["fetch", "--force", "--depth=1", "--", "origin"], { cwd: repoDir });
     await exec("git", ["reset", "--hard", "FETCH_HEAD"], { cwd: repoDir });
   } catch (err) {
     if (err instanceof ExecError) {
@@ -92,7 +92,7 @@ export async function fetchAndReset(repoDir: string): Promise<void> {
  */
 export async function fetchRef(repoDir: string, ref: string): Promise<void> {
   try {
-    await exec("git", ["fetch", "--depth=1", "--", "origin", ref], {
+    await exec("git", ["fetch", "--force", "--depth=1", "--", "origin", ref], {
       cwd: repoDir,
     });
     await exec("git", ["checkout", "FETCH_HEAD"], { cwd: repoDir });
@@ -141,7 +141,7 @@ export async function findCommitOlderThan(
   // Unshallow to get full history — needed to find commits older than the cutoff.
   // Only called when HEAD is too new, so the extra fetch is acceptable.
   try {
-    await exec("git", ["fetch", "--unshallow", "--", "origin"], { cwd: repoDir });
+    await exec("git", ["fetch", "--force", "--unshallow", "--", "origin"], { cwd: repoDir });
   } catch (err) {
     if (!(err instanceof ExecError)) {throw err;}
     // --unshallow fails on a complete (non-shallow) repository — that's fine
