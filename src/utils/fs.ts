@@ -13,6 +13,11 @@ export async function copyDir(src: string, dest: string): Promise<void> {
   });
 }
 
+/** Whether a skill source points to its own install location (adopted orphan). */
+export function isInPlaceSkill(source: string): boolean {
+  return source.startsWith("path:.agents/skills/") || source.startsWith("path:skills/");
+}
+
 /** Strip trailing `/` characters from a string. */
 export function stripTrailingSlashes(s: string): string {
   let end = s.length;

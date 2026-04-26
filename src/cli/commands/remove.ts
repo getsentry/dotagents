@@ -12,6 +12,7 @@ import { writeAgentsGitignore } from "../../gitignore/writer.js";
 import { sourcesMatch, parseOwnerRepoShorthand, isExplicitSourceSpecifier } from "../../skills/resolver.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
+import { isInPlaceSkill } from "../../utils/fs.js";
 
 export class RemoveError extends Error {
   constructor(message: string) {
@@ -153,7 +154,7 @@ async function updateProjectGitignore(scope: ScopeRoot): Promise<void> {
   const managedNames = allNames.filter((name) => {
     const dep = config.skills.find((s) => s.name === name);
     if (!dep || isWildcardDep(dep)) {return true;}
-    return !dep.source.startsWith("path:.agents/skills/") && !dep.source.startsWith("path:skills/");
+    return !isInPlaceSkill(dep.source);
   });
   await writeAgentsGitignore(scope.agentsDir, managedNames);
 }

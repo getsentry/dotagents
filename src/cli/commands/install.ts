@@ -19,7 +19,7 @@ import {
   type ResolvedSkill,
 } from "../../skills/resolver.js";
 import { validateTrustedSource, TrustError } from "../../trust/index.js";
-import { copyDir } from "../../utils/fs.js";
+import { copyDir, isInPlaceSkill } from "../../utils/fs.js";
 import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
@@ -28,11 +28,6 @@ import { writeHookConfigs, toHookDeclarations, projectHookResolver } from "../..
 import { userMcpResolver } from "../../agents/paths.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
-
-/** A skill whose source points to its own install location (adopted orphan). */
-function isInPlaceSkill(source: string): boolean {
-  return source.startsWith("path:.agents/skills/") || source.startsWith("path:skills/");
-}
 
 export class InstallError extends Error {
   constructor(message: string) {

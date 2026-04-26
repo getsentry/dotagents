@@ -16,11 +16,7 @@ import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookRes
 import { userMcpResolver } from "../../agents/paths.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
-
-/** A skill whose source points to its own install location (adopted orphan). */
-function isInPlaceSkill(source: string): boolean {
-  return source.startsWith("path:.agents/skills/") || source.startsWith("path:skills/");
-}
+import { isInPlaceSkill } from "../../utils/fs.js";
 
 export interface SyncIssue {
   type: "symlink" | "missing" | "mcp" | "hooks";

@@ -13,6 +13,7 @@ import { verifySymlinks } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { exec } from "../../utils/exec.js";
+import { isInPlaceSkill } from "../../utils/fs.js";
 
 export interface DoctorCheck {
   name: string;
@@ -272,7 +273,7 @@ function getManagedSkillNames(
   return allNames.filter((name) => {
     const dep = config.skills.find((s) => s.name === name);
     if (!dep || isWildcardDep(dep)) {return true;}
-    return !dep.source.startsWith("path:.agents/skills/") && !dep.source.startsWith("path:skills/");
+    return !isInPlaceSkill(dep.source);
   });
 }
 
