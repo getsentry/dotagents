@@ -44,7 +44,6 @@ export class InstallError extends Error {
 export interface InstallOptions {
   scope: ScopeRoot;
   frozen?: boolean;
-  force?: boolean;
 }
 
 export interface InstallResult {
@@ -330,7 +329,6 @@ export default async function install(args: string[], flags?: { user?: boolean }
     args,
     options: {
       frozen: { type: "boolean" },
-      force: { type: "boolean" },
     },
     strict: true,
   });
@@ -345,7 +343,6 @@ export default async function install(args: string[], flags?: { user?: boolean }
     const result = await runInstall({
       scope,
       frozen: values["frozen"],
-      force: values["force"],
     });
 
     if (result.installed.length > 0) {
