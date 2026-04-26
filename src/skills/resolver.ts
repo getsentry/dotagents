@@ -309,7 +309,6 @@ export async function resolveSkill(
     url: cloneUrl,
     cacheKey,
     ref,
-    ttlMs: opts?.ttlMs,
     minimumReleaseAge: excluded ? undefined : opts?.minimumReleaseAge,
   });
 
@@ -434,7 +433,6 @@ export async function resolveWildcardSkills(
     url: cloneUrl,
     cacheKey,
     ref,
-    ttlMs: opts?.ttlMs,
     minimumReleaseAge: excluded ? undefined : opts?.minimumReleaseAge,
   });
 
