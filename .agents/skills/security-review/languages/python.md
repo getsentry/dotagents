@@ -70,11 +70,16 @@ mark_safe(user_input)                  # FLAG: If user_input is user-controlled
 format_html() with unescaped input     # CHECK: Depends on usage
 
 # SQL Injection
-User.objects.raw(f"SELECT * FROM users WHERE name = '{user_input}'")  # FLAG
-User.objects.extra(where=[f"name = '{user_input}'"])  # FLAG (deprecated)
-cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")  # FLAG
-RawSQL(f"SELECT * FROM x WHERE y = '{input}'")  # FLAG
-connection.execute(query % user_input)  # FLAG
+# BAD: User.objects.raw(f"SELECT * FROM users WHERE name = '{user_input}'")  # FLAG
+User.objects.raw("SELECT * FROM users WHERE name = %s", [user_input])
+# BAD: User.objects.extra(where=[f"name = '{user_input}'"])  # FLAG (deprecated)
+User.objects.filter(name=user_input)
+# BAD: cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")  # FLAG
+cursor.execute("SELECT * FROM users WHERE id = %s", [user_id])
+# BAD: RawSQL(f"SELECT * FROM x WHERE y = '{input}'")  # FLAG
+RawSQL("SELECT * FROM x WHERE y = %s", [input])
+# BAD: connection.execute(query % user_input)  # FLAG
+connection.execute(query, user_input)
 
 # Command Injection
 os.system(f"cmd {user_input}")  # FLAG
@@ -139,8 +144,10 @@ render_template_string(user_input)  # FLAG: SSTI vulnerability
 {{ variable|safe }}  # FLAG in templates
 
 # SQL Injection
-db.engine.execute(f"SELECT * FROM users WHERE name = '{user_input}'")  # FLAG
-text(f"SELECT * FROM users WHERE id = {user_id}")  # FLAG
+# BAD: db.engine.execute(f"SELECT * FROM users WHERE name = '{user_input}'")  # FLAG
+db.engine.execute(text("SELECT * FROM users WHERE name = :name"), {"name": user_input})
+# BAD: text(f"SELECT * FROM users WHERE id = {user_id}")  # FLAG
+text("SELECT * FROM users WHERE id = :id")
 
 # SSTI (Server-Side Template Injection)
 render_template_string(user_controlled_template)  # FLAG: Critical
@@ -180,8 +187,10 @@ db.query(User).filter(User.id == user_id).first()
 
 ```python
 # SQL Injection (same as Flask/SQLAlchemy)
-db.execute(f"SELECT * FROM users WHERE id = {user_id}")  # FLAG
-text(f"SELECT * FROM users WHERE name = '{name}'")  # FLAG
+# BAD: db.execute(f"SELECT * FROM users WHERE id = {user_id}")  # FLAG
+db.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id})
+# BAD: text(f"SELECT * FROM users WHERE name = '{name}'")  # FLAG
+text("SELECT * FROM users WHERE name = :name")
 
 # Response without validation
 @app.get("/data")
@@ -303,12 +312,14 @@ session.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id})
 
 ```python
 # String interpolation in queries
-session.execute(f"SELECT * FROM users WHERE name = '{name}'")
-session.execute("SELECT * FROM users WHERE name = '%s'" % name)
-session.execute("SELECT * FROM users WHERE name = '" + name + "'")
+# BAD: session.execute(f"SELECT * FROM users WHERE name = '{name}'")
+# BAD: session.execute("SELECT * FROM users WHERE name = '%s'" % name)
+# BAD: session.execute("SELECT * FROM users WHERE name = '" + name + "'")
+session.execute(text("SELECT * FROM users WHERE name = :name"), {"name": name})
 
 # text() with interpolation
-session.execute(text(f"SELECT * FROM users WHERE id = {user_id}"))
+# BAD: session.execute(text(f"SELECT * FROM users WHERE id = {user_id}"))
+session.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id})
 ```
 
 ---

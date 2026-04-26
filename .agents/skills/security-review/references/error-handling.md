@@ -323,7 +323,8 @@ process.on('unhandledRejection', (reason, promise) => {
 @app.route('/api/search')
 def search():
     try:
-        results = db.execute(f"SELECT * FROM items WHERE name = '{query}'")
+        # BAD: SQL injection vulnerability - f"SELECT * FROM items WHERE name = '{query}'"
+        results = db.execute("SELECT * FROM items WHERE name = %s", (query,))
         return jsonify(results)
     except Exception as e:
         return jsonify({'error': str(e)}), 500

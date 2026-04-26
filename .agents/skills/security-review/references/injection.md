@@ -56,21 +56,31 @@ switch(tableName) {
 
 ```python
 # VULNERABLE: String concatenation
-query = "SELECT * FROM users WHERE name = '" + user_input + "'"
+# BAD: query = "SELECT * FROM users WHERE name = '" + user_input + "'"
+query = "SELECT * FROM users WHERE name = %s"
+cursor.execute(query, (user_input,))
 
 # VULNERABLE: f-string interpolation
-query = f"SELECT * FROM users WHERE id = {user_id}"
+# BAD: query = f"SELECT * FROM users WHERE id = {user_id}"
+query = "SELECT * FROM users WHERE id = %s"
+cursor.execute(query, (user_id,))
 
 # VULNERABLE: format() method
-query = "SELECT * FROM users WHERE name = '{}'".format(user_input)
+# BAD: query = "SELECT * FROM users WHERE name = '{}'".format(user_input)
+query = "SELECT * FROM users WHERE name = %s"
+cursor.execute(query, (user_input,))
 ```
 
 ```javascript
 // VULNERABLE: Template literal
-const query = `SELECT * FROM users WHERE id = ${userId}`;
+// BAD: const query = `SELECT * FROM users WHERE id = ${userId}`;
+const query = 'SELECT * FROM users WHERE id = $1';
+const result = await client.query(query, [userId]);
 
 // VULNERABLE: String concatenation
-const query = "SELECT * FROM users WHERE name = '" + userName + "'";
+// BAD: const query = "SELECT * FROM users WHERE name = '" + userName + "'";
+const query = 'SELECT * FROM users WHERE name = $1';
+const result = await client.query(query, [userName]);
 ```
 
 ### ORM Safety Considerations
@@ -81,10 +91,12 @@ const query = "SELECT * FROM users WHERE name = '" + userName + "'";
 User.objects.filter(username=user_input)
 
 # VULNERABLE: raw() with interpolation
-User.objects.raw(f"SELECT * FROM users WHERE name = '{user_input}'")
+# BAD: User.objects.raw(f"SELECT * FROM users WHERE name = '{user_input}'")
+User.objects.raw("SELECT * FROM users WHERE name = %s", [user_input])
 
 # VULNERABLE: extra() with unvalidated input
-User.objects.extra(where=[f"name = '{user_input}'"])
+# BAD: User.objects.extra(where=[f"name = '{user_input}'"])
+User.objects.filter(name=user_input)
 ```
 
 **SQLAlchemy**
@@ -93,7 +105,8 @@ User.objects.extra(where=[f"name = '{user_input}'"])
 session.query(User).filter(User.name == user_input)
 
 # VULNERABLE: text() with interpolation
-session.execute(text(f"SELECT * FROM users WHERE name = '{user_input}'"))
+# BAD: session.execute(text(f"SELECT * FROM users WHERE name = '{user_input}'"))
+session.execute(text("SELECT * FROM users WHERE name = :name"), {"name": user_input})
 ```
 
 ---
