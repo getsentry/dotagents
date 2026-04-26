@@ -537,7 +537,7 @@ describe("runInstall", () => {
     await expect(runInstall({ scope, frozen: true })).rejects.toThrow(InstallError);
   });
 
-  it("warns when agents.lock is not in root .gitignore", async () => {
+  it("does not auto-create root .gitignore", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
@@ -546,7 +546,7 @@ describe("runInstall", () => {
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    // Should not auto-create .gitignore (only init does that)
+    // Only init creates .gitignore — install should not
     expect(existsSync(join(projectRoot, ".gitignore"))).toBe(false);
   });
 
