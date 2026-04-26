@@ -1,7 +1,5 @@
 version = 1
 
-# check them in for easy reusability
-gitignore = false
 agents = ["claude", "cursor"]
 
 [trust]

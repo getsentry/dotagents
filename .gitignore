@@ -4,3 +4,5 @@ dist/
 .DS_Store
 docs/out/
 docs/.next/
+agents.lock
+.agents/.gitignore
