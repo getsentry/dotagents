@@ -1,4 +1,10 @@
 # Changelog
+## 1.12.0
+
+### Bug Fixes 🐛
+
+- (cache) Remove 24h TTL from git source cache by @gricha in [#92](https://github.com/getsentry/dotagents/pull/92)
+
 ## 1.11.0
 
 ### Bug Fixes 🐛
