@@ -30,7 +30,7 @@ describe("ensureCached", () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("reuses a fresh unpinned cache when HEAD still matches the recorded default commit", async () => {
+  it("picks up upstream changes on repeated calls", async () => {
     await writeFile(join(repoDir, "README.md"), "first\n");
     await exec("git", ["add", "README.md"], { cwd: repoDir });
     await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
@@ -39,19 +39,26 @@ describe("ensureCached", () => {
     const first = await ensureCached({
       url: remoteDir,
       cacheKey: "test/repo",
-      ttlMs: 60_000,
     });
+
+    // Push a new commit upstream
+    await writeFile(join(repoDir, "README.md"), "second\n");
+    await exec("git", ["add", "README.md"], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "second"], { cwd: repoDir });
+    await exec("git", ["push", "origin", "main"], { cwd: repoDir });
+    const { stdout } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
+    const latestCommit = stdout.trim();
 
     const second = await ensureCached({
       url: remoteDir,
       cacheKey: "test/repo",
-      ttlMs: 60_000,
     });
 
-    expect(second.commit).toBe(first.commit);
+    expect(second.commit).toBe(latestCommit);
+    expect(second.commit).not.toBe(first.commit);
   });
 
-  it("refreshes an unpinned cache after a pinned ref fetch updated FETCH_HEAD", async () => {
+  it("refreshes an unpinned cache after a pinned ref fetch", async () => {
     await writeFile(join(repoDir, "README.md"), "first\n");
     await exec("git", ["add", "README.md"], { cwd: repoDir });
     await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
@@ -63,7 +70,6 @@ describe("ensureCached", () => {
     const first = await ensureCached({
       url: remoteDir,
       cacheKey: "test/repo",
-      ttlMs: 60_000,
     });
 
     await writeFile(join(repoDir, "README.md"), "second\n");
@@ -77,14 +83,12 @@ describe("ensureCached", () => {
       url: remoteDir,
       cacheKey: "test/repo",
       ref: "stable",
-      ttlMs: 60_000,
     });
     expect(pinned.commit).toBe(initialCommit);
 
     const unpinned = await ensureCached({
       url: remoteDir,
       cacheKey: "test/repo",
-      ttlMs: 60_000,
     });
 
     expect(first.commit).toBe(initialCommit);
@@ -112,7 +116,6 @@ describe("ensureCached", () => {
     const ageGated = await ensureCached({
       url: remoteDir,
       cacheKey: "test/repo",
-      ttlMs: 60_000,
       minimumReleaseAge: 1,
     });
     expect(ageGated.commit).toBe(oldCommit);
@@ -120,7 +123,6 @@ describe("ensureCached", () => {
     const unpinned = await ensureCached({
       url: remoteDir,
       cacheKey: "test/repo",
-      ttlMs: 60_000,
     });
     expect(unpinned.commit).toBe(latestCommit);
   });

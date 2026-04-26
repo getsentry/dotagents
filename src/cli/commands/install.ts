@@ -72,7 +72,7 @@ async function expandSkills(
     defaultRepositorySource: RepositorySource;
   },
   lockfile: Lockfile | null,
-  opts: { frozen?: boolean; force?: boolean; projectRoot: string; minimumReleaseAge?: number; minimumReleaseAgeExclude?: string[] },
+  opts: { frozen?: boolean; projectRoot: string; minimumReleaseAge?: number; minimumReleaseAgeExclude?: string[] },
 ): Promise<ExpandedSkill[]> {
   const regularDeps = config.skills.filter((d) => !isWildcardDep(d));
   const wildcardDeps = config.skills.filter(isWildcardDep);
@@ -110,7 +110,6 @@ async function expandSkills(
       try {
         named = await resolveWildcardSkills(wDep, {
           projectRoot: opts.projectRoot,
-          ...(opts.force ? { ttlMs: 0 } : {}),
           defaultRepositorySource: config.defaultRepositorySource,
           minimumReleaseAge: opts.minimumReleaseAge,
           minimumReleaseAgeExclude: opts.minimumReleaseAgeExclude,
@@ -141,7 +140,7 @@ async function expandSkills(
 }
 
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
-  const { scope, frozen, force } = opts;
+  const { scope, frozen } = opts;
   const { configPath, lockPath, agentsDir, skillsDir } = scope;
 
   // 1. Read config
@@ -170,7 +169,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
         defaultRepositorySource: config.defaultRepositorySource,
       },
       lockfile,
-      { frozen, force, projectRoot: scope.root, minimumReleaseAge, minimumReleaseAgeExclude },
+      { frozen, projectRoot: scope.root, minimumReleaseAge, minimumReleaseAgeExclude },
     );
 
     if (frozen) {
@@ -197,7 +196,6 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
 
       const resolveOpts = {
         projectRoot: scope.root,
-        ...(force ? { ttlMs: 0 } : {}),
         defaultRepositorySource: config.defaultRepositorySource,
         minimumReleaseAge,
         minimumReleaseAgeExclude,

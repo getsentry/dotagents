@@ -400,10 +400,7 @@ describe("runInstall", () => {
     await exec("git", ["rm", "-rf", "skills/review"], { cwd: repoDir });
     await exec("git", ["commit", "-m", "remove review"], { cwd: repoDir });
 
-    // Clear state dir so the git cache is busted
-    await rm(stateDir, { recursive: true });
-
-    // Re-install
+    // Re-install — should fetch latest without needing --force or cache bust
     const second = await runInstall({ scope });
     expect(second.installed).toContain("pdf");
     expect(second.installed).not.toContain("review");
@@ -445,7 +442,6 @@ describe("runInstall", () => {
     // Also remove "review" from upstream so it gets pruned
     await exec("git", ["rm", "-rf", "skills/review"], { cwd: repoDir });
     await exec("git", ["commit", "-m", "remove review"], { cwd: repoDir });
-    await rm(stateDir, { recursive: true });
 
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -552,6 +548,39 @@ describe("runInstall", () => {
 
     // Should not auto-create .gitignore (only init does that)
     expect(existsSync(join(projectRoot, ".gitignore"))).toBe(false);
+  });
+
+  it("picks up upstream skill changes without --force", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+
+    // First install
+    const first = await runInstall({ scope });
+    expect(first.installed).toContain("pdf");
+
+    const original = await readFile(
+      join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"),
+      "utf-8",
+    );
+
+    // Update the skill upstream
+    await writeFile(join(repoDir, "pdf", "SKILL.md"), `${SKILL_MD("pdf")}\nupdated content`);
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "update pdf skill"], { cwd: repoDir });
+
+    // Re-install — should pick up the change without --force or cache bust
+    await runInstall({ scope });
+
+    const updated = await readFile(
+      join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"),
+      "utf-8",
+    );
+    expect(updated).toContain("updated content");
+    expect(updated).not.toBe(original);
   });
 
   it("minimum_release_age resolves to an older commit when HEAD is too new", async () => {
