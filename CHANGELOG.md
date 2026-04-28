@@ -1,4 +1,14 @@
 # Changelog
+## 1.13.0
+
+### Internal Changes 🔧
+
+- (install) Remove --force flag by @gricha in [3559490e](https://github.com/getsentry/dotagents/commit/3559490e250dce84a526207186febdb1ffa0a70e)
+- Remove low-value tests and fix misleading names by @gricha in [d897964c](https://github.com/getsentry/dotagents/commit/d897964cd686e6e88662f2fd4824ea8c9e943a9b)
+- Stop checking in managed skills by @gricha in [f2bf518b](https://github.com/getsentry/dotagents/commit/f2bf518b4e575d95769f8717f085e22f5a150fad)
+- Remove dead type exports from public API by @gricha in [506742c2](https://github.com/getsentry/dotagents/commit/506742c2cc6857172abe974b613f998dfb553dac)
+- Extract isInPlaceSkill to shared util by @gricha in [251ab53a](https://github.com/getsentry/dotagents/commit/251ab53a5684f946375e0f035d32285f17316d63)
+
 ## 1.12.0
 
 ### Bug Fixes 🐛
