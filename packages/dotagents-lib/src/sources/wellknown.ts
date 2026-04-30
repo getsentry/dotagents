@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { stripTrailingSlashes } from "../utils/fs.js";
+import { validateCacheKey } from "./cache.js";
 
 /** Skill names must be safe path segments: alphanumeric, dots, hyphens, underscores. */
 const SAFE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
@@ -88,6 +89,7 @@ export async function ensureWellKnownCached(opts: {
   cacheKey: string;
   ttlMs?: number;
 }): Promise<WellKnownCacheResult | null> {
+  validateCacheKey(opts.cacheKey);
   const ttl = opts.ttlMs ?? DEFAULT_TTL_MS;
   const cacheDir = join(opts.stateDir, opts.cacheKey);
 

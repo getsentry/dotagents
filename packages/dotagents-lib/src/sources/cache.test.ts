@@ -2,8 +2,34 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ensureCached } from "./cache.js";
+import { ensureCached, validateCacheKey, CacheError } from "./cache.js";
 import { exec } from "../utils/exec.js";
+
+describe("validateCacheKey", () => {
+  it.each([
+    ["empty string", ""],
+    ["absolute unix path", "/etc/passwd"],
+    ["absolute windows path", "C:\\Windows\\System32"],
+    ["parent traversal", "owner/../../etc"],
+    ["leading parent", "../escape"],
+    ["bare parent", ".."],
+    ["bare current", "."],
+    ["embedded dot segment", "owner/./repo"],
+    ["backslash", "owner\\repo"],
+    ["double slash", "owner//repo"],
+  ])("rejects %s", (_label, key) => {
+    expect(() => validateCacheKey(key)).toThrow(CacheError);
+  });
+
+  it.each([
+    "owner/repo",
+    "owner-with-dash/repo.with.dots",
+    "git.corp.example.com/team/skills",
+    "wellknown/cli.sentry.dev/path",
+  ])("accepts %s", (key) => {
+    expect(() => validateCacheKey(key)).not.toThrow();
+  });
+});
 
 describe("ensureCached", () => {
   let tmpDir: string;

@@ -44,6 +44,8 @@ export type { GitErrorDetails } from "./sources/git.js";
 export {
   ensureCached,
   CacheError,
+  sanitizeCacheKey,
+  validateCacheKey,
 } from "./sources/cache.js";
 export type { CacheResult } from "./sources/cache.js";
 export { ensureWellKnownCached } from "./sources/wellknown.js";

@@ -19,6 +19,7 @@ import {
   loadSkillMd,
   ensureCached,
   ensureWellKnownCached,
+  sanitizeCacheKey,
   validateTrustedSource,
   TrustError,
   GitError,
@@ -354,7 +355,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
     const cacheKey =
       parsed.type === "github"
         ? `${parsed.owner}/${parsed.repo}`
-        : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
+        : sanitizeCacheKey(url);
 
     const cached = await ensureCached({
       stateDir: getCacheStateDir(),

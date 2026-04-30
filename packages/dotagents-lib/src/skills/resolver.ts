@@ -6,7 +6,7 @@ import {
   GITLAB_SSH_URL,
   type RepositorySource,
 } from "../sources/repository-source.js";
-import { ensureCached } from "../sources/cache.js";
+import { ensureCached, sanitizeCacheKey } from "../sources/cache.js";
 import { ensureWellKnownCached } from "../sources/wellknown.js";
 import { resolveLocalSource } from "../sources/local.js";
 import { discoverSkill, discoverAllSkills, type DiscoveredSkill } from "./discovery.js";
@@ -324,7 +324,7 @@ export async function resolveSkill(
   const cacheKey =
     parsed.type === "github"
       ? `${parsed.owner}/${parsed.repo}`
-      : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
+      : sanitizeCacheKey(url);
 
   const excluded = isSourceExcluded(dep.source, opts.minimumReleaseAgeExclude);
   const cached = await ensureCached({
@@ -445,7 +445,7 @@ export async function resolveWildcardSkills(
   const cacheKey =
     parsed.type === "github"
       ? `${parsed.owner}/${parsed.repo}`
-      : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
+      : sanitizeCacheKey(url);
 
   const excluded = isSourceExcluded(dep.source, opts.minimumReleaseAgeExclude);
   const cached = await ensureCached({
