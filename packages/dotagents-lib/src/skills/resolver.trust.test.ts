@@ -65,6 +65,21 @@ describe("resolveSkill with trust opt", () => {
     expect(ensureWellKnownCached).not.toHaveBeenCalled();
   });
 
+  it("validates the expanded source under a non-default host (regression: shorthand+gitlab bypass)", async () => {
+    // User trusts GitHub's "anthropics" but configures gitlab as the default host.
+    // Shorthand "anthropics/skills" must NOT pass trust here — the actual clone
+    // would target gitlab.com/anthropics/skills, which the policy never authorized.
+    await expect(
+      resolveSkill(
+        "foo",
+        { source: "anthropics/skills" },
+        { trust: allowOnlyAnthropics, defaultRepositorySource: "gitlab" },
+      ),
+    ).rejects.toBeInstanceOf(TrustError);
+
+    expect(ensureCached).not.toHaveBeenCalled();
+  });
+
   it("does NOT enforce trust when the opt is omitted (today's behavior)", async () => {
     // No trust opt → resolver should proceed to network. Mock throws a sentinel
     // so we can verify network was attempted (rather than trust short-circuiting).

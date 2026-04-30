@@ -263,12 +263,15 @@ export async function resolveSkill(
     trust?: TrustPolicy;
   },
 ): Promise<ResolvedSkill> {
-  if (opts?.trust) {validateTrustedSource(dep.source, opts.trust);}
-
   const sourceForResolve = applyDefaultRepositorySource(
     dep.source,
     opts?.defaultRepositorySource,
   );
+  // Validate the EXPANDED source so that owner/repo shorthand under a non-default
+  // host (e.g. defaultRepositorySource: "gitlab") is checked against the actual
+  // clone URL, not the shorthand's implicit github.com mapping.
+  if (opts?.trust) {validateTrustedSource(sourceForResolve, opts.trust);}
+
   const parsed = parseSource(sourceForResolve);
 
   if (parsed.type === "local") {
@@ -379,12 +382,14 @@ export async function resolveWildcardSkills(
     trust?: TrustPolicy;
   },
 ): Promise<NamedResolvedSkill[]> {
-  if (opts?.trust) {validateTrustedSource(dep.source, opts.trust);}
-
   const sourceForResolve = applyDefaultRepositorySource(
     dep.source,
     opts?.defaultRepositorySource,
   );
+  // See note on resolveSkill: validate the expanded source so shorthand under a
+  // non-default host can't bypass the policy.
+  if (opts?.trust) {validateTrustedSource(sourceForResolve, opts.trust);}
+
   const parsed = parseSource(sourceForResolve);
   const excludeSet = new Set(dep.exclude);
 
