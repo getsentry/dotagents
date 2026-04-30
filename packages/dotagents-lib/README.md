@@ -11,7 +11,7 @@ Reusable core for [SKILL.md](https://www.anthropic.com/engineering/skills) loadi
 - **Trust** — `validateTrustedSource`, `extractDomain`, `TrustError`, `TrustPolicy`.
 - **Source-host primitives** — `clone`, `fetchAndReset`, `fetchRef`, `headCommit`, `isGitRepo`, `GitError`, `exec`, `ExecError`.
 
-See [the spec](../../openspec/specs/skill-resolution/spec.md) for the full public surface and the contract each entry point upholds.
+See `src/index.ts` for the full public surface.
 
 ## Versioning
 
