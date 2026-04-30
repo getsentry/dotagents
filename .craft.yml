@@ -9,8 +9,16 @@ artifactProvider:
       CI:
         - npm-package
 targets:
-  # Craft's npm target publishes every *.tgz file from the npm-package artifact,
-  # so this single entry handles both @sentry/dotagents and @sentry/dotagents-lib.
+  # Publish lib first, host second, so end-users running `npm install @sentry/dotagents`
+  # never hit a window where the host's `dependencies["@sentry/dotagents-lib"]` range
+  # can't be resolved on the registry. craft runs targets in declared order; each
+  # `includeNames` regex selects exactly one tarball from the artifact bundle.
   - name: npm
+    id: "@sentry/dotagents-lib"
+    includeNames: /^sentry-dotagents-lib-\d.*\.tgz$/
+    access: public
+  - name: npm
+    id: "@sentry/dotagents"
+    includeNames: /^sentry-dotagents-\d.*\.tgz$/
     access: public
   - name: github

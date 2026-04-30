@@ -17,16 +17,16 @@ Releases are driven by [getsentry/craft](https://github.com/getsentry/craft) via
    - The host's published `package.json` contains no `workspace:` references.
    - `dependencies["@sentry/dotagents-lib"]` is a concrete range matching the lib's actual version.
    - The unpacked CLI runs end-to-end against the unpacked lib.
-4. Craft's `npm` target publishes every `*.tgz` in the artifact — both packages go up in a single release run.
+4. Craft has two `npm` targets in `.craft.yml`, each filtered to one tarball via `includeNames`. Targets run in declared order: **`@sentry/dotagents-lib` first, then `@sentry/dotagents`**. By the time the host's publish starts, the lib is already on the registry, so an end-user `npm install @sentry/dotagents` mid-release will always resolve.
 5. Craft tags the commit and creates the GitHub release.
 
-## Why lock-step?
+## Why lock-step + ordered publish?
 
-A consumer running `npm install @sentry/dotagents` must install a published version of the lib. If the lib were unpublished or out-of-sync, the install would either fail or pull a mismatched pair. Lock-step avoids both failure modes:
+A consumer running `npm install @sentry/dotagents` must install a published version of the lib. If the lib were unpublished or out-of-sync, the install would either fail or pull a mismatched pair. Three guardrails:
 
-- Same version on both packages on every release.
-- Single CI run publishes both, so there is no window where one is on npm without the other.
-- The pack-time invariant check (`scripts/verify-pack.mjs`) fails the build if `workspace:` references leak through or versions drift.
+- **Lock-step versions.** `bump-version.mjs` updates both `package.json`s atomically, so versions can't drift mid-bump.
+- **Pack-time invariants.** `scripts/verify-pack.mjs` fails CI if the host's tarball still has `workspace:` references or if `dependencies["@sentry/dotagents-lib"]` doesn't match the lib's actual version.
+- **Ordered publish.** Two filtered `npm` targets in `.craft.yml` (lib first, host second) eliminate the few-second window where one is on npm without the other. Pattern modeled on `getsentry/junior`.
 
 ## Manually bumping versions
 
