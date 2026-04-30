@@ -7,3 +7,8 @@ docs/out/
 docs/.next/
 agents.lock
 .agents/.gitignore
+
+# openspec local install artifacts (per-machine, not project source)
+.agents/skills/openspec-*/
+.claude/commands/opsx/
+.cursor/commands/opsx-*.md
