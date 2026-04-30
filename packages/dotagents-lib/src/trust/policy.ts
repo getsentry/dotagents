@@ -1,9 +1,8 @@
 /**
  * Structural shape that any trust policy must satisfy for the lib to enforce it.
  *
- * The host's `TrustConfig` (defined in `@sentry/dotagents`) structurally satisfies
- * this interface. Other lib consumers can construct a `TrustPolicy` directly without
- * adopting the host's `agents.toml` config layer.
+ * Callers construct a `TrustPolicy` directly, or pass through any object that
+ * structurally matches (e.g. a host-defined zod-validated config type).
  */
 export interface TrustPolicy {
   /** When true, all sources are allowed (bypass other rules). */

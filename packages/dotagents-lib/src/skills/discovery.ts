@@ -14,9 +14,18 @@ export interface DiscoveredSkill {
  * The root dir (".") is scanned flat (direct children only) to avoid
  * walking the entire repo. Other dirs are scanned recursively to handle
  * categorized layouts like skills/.curated/<name>/.
+ *
+ * Lib default is the canonical agentskills.io layout (`skills/`). Hosts
+ * with their own conventions (e.g. dotagents' `.agents/skills/`, Claude
+ * Code's `.claude/skills/`) pass them via the `scanDirs` option.
  */
 const ROOT_SCAN_DIR = ".";
-const RECURSIVE_SCAN_DIRS = ["skills", ".agents/skills", ".claude/skills"];
+const DEFAULT_RECURSIVE_SCAN_DIRS: readonly string[] = ["skills"];
+
+export interface DiscoveryOpts {
+  /** Recursive scan dirs, in priority order. Defaults to `["skills"]`. */
+  scanDirs?: readonly string[];
+}
 
 interface SkillDir {
   /** Absolute path to the directory containing SKILL.md */
@@ -60,10 +69,13 @@ async function walkSkillDirs(baseDir: string, relPrefix = ""): Promise<SkillDir[
 }
 
 /** All scan dirs in priority order, with their scan mode. */
-const ALL_SCAN_DIRS: Array<{ dir: string; recursive: boolean }> = [
-  { dir: ROOT_SCAN_DIR, recursive: false },
-  ...RECURSIVE_SCAN_DIRS.map((dir) => ({ dir, recursive: true })),
-];
+function buildScanDirs(opts?: DiscoveryOpts): Array<{ dir: string; recursive: boolean }> {
+  const recursive = opts?.scanDirs ?? DEFAULT_RECURSIVE_SCAN_DIRS;
+  return [
+    { dir: ROOT_SCAN_DIR, recursive: false },
+    ...recursive.map((dir) => ({ dir, recursive: true })),
+  ];
+}
 
 /**
  * List skill directories within a scan dir.
@@ -110,8 +122,9 @@ async function listSkillDirs(
 export async function discoverSkill(
   repoDir: string,
   skillName: string,
+  opts?: DiscoveryOpts,
 ): Promise<DiscoveredSkill | null> {
-  for (const { dir: scanDir, recursive } of ALL_SCAN_DIRS) {
+  for (const { dir: scanDir, recursive } of buildScanDirs(opts)) {
     const skillDirs = await listSkillDirs(repoDir, scanDir, recursive);
 
     // Within each scan dir: prefer dir-name match, fall back to frontmatter match
@@ -152,10 +165,11 @@ export async function discoverSkill(
  */
 export async function discoverAllSkills(
   repoDir: string,
+  opts?: DiscoveryOpts,
 ): Promise<DiscoveredSkill[]> {
   const found = new Map<string, DiscoveredSkill>();
 
-  for (const { dir: scanDir, recursive } of ALL_SCAN_DIRS) {
+  for (const { dir: scanDir, recursive } of buildScanDirs(opts)) {
     const skillDirs = await listSkillDirs(repoDir, scanDir, recursive);
 
     for (const { absPath, relPath } of skillDirs) {

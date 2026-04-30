@@ -247,35 +247,41 @@ export function sourcesMatch(a: string, b: string): boolean {
 /**
  * Resolve a skill dependency to a concrete directory on disk.
  */
+export interface ResolveOpts {
+  /** Cache root directory. Required — host owns this. */
+  stateDir: string;
+  projectRoot?: string;
+  defaultRepositorySource?: RepositorySource;
+  /** Extra recursive directories to scan when looking for SKILL.md inside a source. */
+  scanDirs?: readonly string[];
+  /** Override cache TTL for well-known sources (pass 0 to force refresh). */
+  ttlMs?: number;
+  /** When set, resolve to the newest commit at least this many minutes old. */
+  minimumReleaseAge?: number;
+  /** Sources excluded from the age gate (org or org/repo patterns). */
+  minimumReleaseAgeExclude?: string[];
+  /** When provided, validate the source against the policy BEFORE any network access. */
+  trust?: TrustPolicy;
+}
+
 export async function resolveSkill(
   skillName: string,
   dep: { source: string; ref?: string; path?: string },
-  opts?: {
-    projectRoot?: string;
-    defaultRepositorySource?: RepositorySource;
-    /** Override cache TTL (pass 0 to force refresh) */
-    ttlMs?: number;
-    /** When set, resolve to the newest commit at least this many minutes old. */
-    minimumReleaseAge?: number;
-    /** Sources excluded from the age gate (org or org/repo patterns). */
-    minimumReleaseAgeExclude?: string[];
-    /** When provided, validate the source against the policy BEFORE any network access. */
-    trust?: TrustPolicy;
-  },
+  opts: ResolveOpts,
 ): Promise<ResolvedSkill> {
   const sourceForResolve = applyDefaultRepositorySource(
     dep.source,
-    opts?.defaultRepositorySource,
+    opts.defaultRepositorySource,
   );
   // Validate the EXPANDED source so that owner/repo shorthand under a non-default
   // host (e.g. defaultRepositorySource: "gitlab") is checked against the actual
   // clone URL, not the shorthand's implicit github.com mapping.
-  if (opts?.trust) {validateTrustedSource(sourceForResolve, opts.trust);}
+  if (opts.trust) {validateTrustedSource(sourceForResolve, opts.trust);}
 
   const parsed = parseSource(sourceForResolve);
 
   if (parsed.type === "local") {
-    const projectRoot = opts?.projectRoot || process.cwd();
+    const projectRoot = opts.projectRoot || process.cwd();
     const skillDir = await resolveLocalSource(projectRoot, parsed.path!);
     return { type: "local", source: dep.source, skillDir };
   }
@@ -283,9 +289,10 @@ export async function resolveSkill(
   if (parsed.type === "well-known") {
     const baseUrl = parsed.url!;
     const cached = await ensureWellKnownCached({
+      stateDir: opts.stateDir,
       url: baseUrl,
       cacheKey: wellKnownCacheKey(baseUrl),
-      ttlMs: opts?.ttlMs,
+      ttlMs: opts.ttlMs,
     });
 
     if (!cached) {
@@ -294,7 +301,7 @@ export async function resolveSkill(
       );
     }
 
-    const discovered = await discoverSkill(cached.cacheDir, skillName);
+    const discovered = await discoverSkill(cached.cacheDir, skillName, { scanDirs: opts.scanDirs });
     if (!discovered) {
       throw new ResolveError(
         `Skill "${skillName}" not found in ${dep.source}. ` +
@@ -319,12 +326,13 @@ export async function resolveSkill(
       ? `${parsed.owner}/${parsed.repo}`
       : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
 
-  const excluded = isSourceExcluded(dep.source, opts?.minimumReleaseAgeExclude);
+  const excluded = isSourceExcluded(dep.source, opts.minimumReleaseAgeExclude);
   const cached = await ensureCached({
+    stateDir: opts.stateDir,
     url: cloneUrl,
     cacheKey,
     ref,
-    minimumReleaseAge: excluded ? undefined : opts?.minimumReleaseAge,
+    minimumReleaseAge: excluded ? undefined : opts.minimumReleaseAge,
   });
 
   // Discover the skill within the repo
@@ -334,7 +342,7 @@ export async function resolveSkill(
     const meta = await loadSkillMd(join(cached.repoDir, dep.path, "SKILL.md"));
     discovered = { path: dep.path, meta };
   } else {
-    discovered = await discoverSkill(cached.repoDir, skillName);
+    discovered = await discoverSkill(cached.repoDir, skillName, { scanDirs: opts.scanDirs });
   }
 
   if (!discovered) {
@@ -369,34 +377,23 @@ export const VALID_SKILL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
  */
 export async function resolveWildcardSkills(
   dep: WildcardDependencyInput,
-  opts?: {
-    projectRoot?: string;
-    defaultRepositorySource?: RepositorySource;
-    /** Override cache TTL (pass 0 to force refresh) */
-    ttlMs?: number;
-    /** When set, resolve to the newest commit at least this many minutes old. */
-    minimumReleaseAge?: number;
-    /** Sources excluded from the age gate (org or org/repo patterns). */
-    minimumReleaseAgeExclude?: string[];
-    /** When provided, validate the source against the policy BEFORE any network access. */
-    trust?: TrustPolicy;
-  },
+  opts: ResolveOpts,
 ): Promise<NamedResolvedSkill[]> {
   const sourceForResolve = applyDefaultRepositorySource(
     dep.source,
-    opts?.defaultRepositorySource,
+    opts.defaultRepositorySource,
   );
   // See note on resolveSkill: validate the expanded source so shorthand under a
   // non-default host can't bypass the policy.
-  if (opts?.trust) {validateTrustedSource(sourceForResolve, opts.trust);}
+  if (opts.trust) {validateTrustedSource(sourceForResolve, opts.trust);}
 
   const parsed = parseSource(sourceForResolve);
   const excludeSet = new Set(dep.exclude);
 
   if (parsed.type === "local") {
-    const projectRoot = opts?.projectRoot || process.cwd();
+    const projectRoot = opts.projectRoot || process.cwd();
     const skillDir = await resolveLocalSource(projectRoot, parsed.path!);
-    const discovered = await discoverAllSkills(skillDir);
+    const discovered = await discoverAllSkills(skillDir, { scanDirs: opts.scanDirs });
     return discovered
       .filter(
         (d) =>
@@ -415,16 +412,17 @@ export async function resolveWildcardSkills(
   if (parsed.type === "well-known") {
     const baseUrl = parsed.url!;
     const cached = await ensureWellKnownCached({
+      stateDir: opts.stateDir,
       url: baseUrl,
       cacheKey: wellKnownCacheKey(baseUrl),
-      ttlMs: opts?.ttlMs,
+      ttlMs: opts.ttlMs,
     });
 
     if (!cached) {
       return [];
     }
 
-    const discovered = await discoverAllSkills(cached.cacheDir);
+    const discovered = await discoverAllSkills(cached.cacheDir, { scanDirs: opts.scanDirs });
     return discovered
       .filter(
         (d) => !excludeSet.has(d.meta.name) && VALID_SKILL_NAME.test(d.meta.name),
@@ -449,15 +447,16 @@ export async function resolveWildcardSkills(
       ? `${parsed.owner}/${parsed.repo}`
       : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
 
-  const excluded = isSourceExcluded(dep.source, opts?.minimumReleaseAgeExclude);
+  const excluded = isSourceExcluded(dep.source, opts.minimumReleaseAgeExclude);
   const cached = await ensureCached({
+    stateDir: opts.stateDir,
     url: cloneUrl,
     cacheKey,
     ref,
-    minimumReleaseAge: excluded ? undefined : opts?.minimumReleaseAge,
+    minimumReleaseAge: excluded ? undefined : opts.minimumReleaseAge,
   });
 
-  const discovered = await discoverAllSkills(cached.repoDir);
+  const discovered = await discoverAllSkills(cached.repoDir, { scanDirs: opts.scanDirs });
 
   return discovered
     .filter(

@@ -1,7 +1,5 @@
 /**
  * Default repository host used when expanding `owner/repo` shorthand specifiers.
- *
- * The host's `agents.toml` `defaultRepositorySource` field uses this type.
  */
 export type RepositorySource = "github" | "gitlab";
 

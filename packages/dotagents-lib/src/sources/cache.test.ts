@@ -17,8 +17,6 @@ describe("ensureCached", () => {
     remoteDir = join(tmpDir, "remote.git");
     repoDir = join(tmpDir, "repo");
 
-    process.env["DOTAGENTS_STATE_DIR"] = stateDir;
-
     await exec("git", ["init", "--bare", "--initial-branch=main", remoteDir]);
     await exec("git", ["clone", remoteDir, repoDir]);
     await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
@@ -26,7 +24,6 @@ describe("ensureCached", () => {
   });
 
   afterEach(async () => {
-    delete process.env["DOTAGENTS_STATE_DIR"];
     await rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -37,6 +34,7 @@ describe("ensureCached", () => {
     await exec("git", ["push", "origin", "main"], { cwd: repoDir });
 
     const first = await ensureCached({
+      stateDir,
       url: remoteDir,
       cacheKey: "test/repo",
     });
@@ -50,6 +48,7 @@ describe("ensureCached", () => {
     const latestCommit = stdout.trim();
 
     const second = await ensureCached({
+      stateDir,
       url: remoteDir,
       cacheKey: "test/repo",
     });
@@ -68,6 +67,7 @@ describe("ensureCached", () => {
     await exec("git", ["push", "origin", "main", "stable"], { cwd: repoDir });
 
     const first = await ensureCached({
+      stateDir,
       url: remoteDir,
       cacheKey: "test/repo",
     });
@@ -80,6 +80,7 @@ describe("ensureCached", () => {
     const latestCommit = latestStdout.trim();
 
     const pinned = await ensureCached({
+      stateDir,
       url: remoteDir,
       cacheKey: "test/repo",
       ref: "stable",
@@ -87,6 +88,7 @@ describe("ensureCached", () => {
     expect(pinned.commit).toBe(initialCommit);
 
     const unpinned = await ensureCached({
+      stateDir,
       url: remoteDir,
       cacheKey: "test/repo",
     });
@@ -114,6 +116,7 @@ describe("ensureCached", () => {
     const latestCommit = latestStdout.trim();
 
     const ageGated = await ensureCached({
+      stateDir,
       url: remoteDir,
       cacheKey: "test/repo",
       minimumReleaseAge: 1,
@@ -121,6 +124,7 @@ describe("ensureCached", () => {
     expect(ageGated.commit).toBe(oldCommit);
 
     const unpinned = await ensureCached({
+      stateDir,
       url: remoteDir,
       cacheKey: "test/repo",
     });

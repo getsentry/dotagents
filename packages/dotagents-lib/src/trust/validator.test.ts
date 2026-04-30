@@ -248,11 +248,17 @@ describe("validateTrustedSource", () => {
       ).toThrow(TrustError);
     });
 
-    it("suggests trust add for rejected well-known source", () => {
+    it("exposes domain details on rejected well-known source", () => {
       const trust = makeTrust({ git_domains: ["other.example.com"] });
-      expect(() =>
-        validateTrustedSource("https://cli.sentry.dev", trust),
-      ).toThrow(/dotagents trust add cli\.sentry\.dev/);
+      try {
+        validateTrustedSource("https://cli.sentry.dev", trust);
+        throw new Error("expected TrustError");
+      } catch (err) {
+        expect(err).toBeInstanceOf(TrustError);
+        const e = err as TrustError;
+        expect(e.details.kind).toBe("well-known");
+        expect(e.details.domain).toBe("cli.sentry.dev");
+      }
     });
 
     it("matches well-known domains case-insensitively", () => {
@@ -353,21 +359,31 @@ describe("validateTrustedSource", () => {
       );
     });
 
-    it("suggests dotagents trust add for GitHub sources", () => {
+    it("exposes owner+repo details on rejected GitHub sources", () => {
       const trust = makeTrust({ github_orgs: ["getsentry"] });
-      expect(() => validateTrustedSource("evil/repo", trust)).toThrow(
-        /dotagents trust add evil/,
-      );
-      expect(() => validateTrustedSource("evil/repo", trust)).toThrow(
-        /dotagents trust add evil\/repo/,
-      );
+      try {
+        validateTrustedSource("evil/repo", trust);
+        throw new Error("expected TrustError");
+      } catch (err) {
+        expect(err).toBeInstanceOf(TrustError);
+        const e = err as TrustError;
+        expect(e.details.kind).toBe("github");
+        expect(e.details.owner).toBe("evil");
+        expect(e.details.repo).toBe("repo");
+      }
     });
 
-    it("suggests dotagents trust add for git domain sources", () => {
+    it("exposes domain details on rejected git domain sources", () => {
       const trust = makeTrust({ git_domains: ["git.corp.com"] });
-      expect(() =>
-        validateTrustedSource("git:https://evil.com/repo.git", trust),
-      ).toThrow(/dotagents trust add evil\.com/);
+      try {
+        validateTrustedSource("git:https://evil.com/repo.git", trust);
+        throw new Error("expected TrustError");
+      } catch (err) {
+        expect(err).toBeInstanceOf(TrustError);
+        const e = err as TrustError;
+        expect(e.details.kind).toBe("git");
+        expect(e.details.domain).toBe("evil.com");
+      }
     });
   });
 });

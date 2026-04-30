@@ -1,29 +1,6 @@
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import { clone, fetchAndReset, fetchRef, headCommit, headCommitDate, findCommitOlderThan, checkout, isGitRepo } from "./git.js";
-
-const DOTAGENTS_DEFAULT_STATE_DIR = join(homedir(), ".local", "dotagents");
-
-let configuredStateDir: string | undefined;
-
-/**
- * Override the cache directory for the rest of the process.
- *
- * Resolution order on every cache read: `configureCache` value → `DOTAGENTS_STATE_DIR` env var → `~/.local/dotagents/`.
- *
- * Pass `undefined` to clear the override.
- */
-export function configureCache(opts: { stateDir?: string | undefined }): void {
-  configuredStateDir = opts.stateDir;
-}
-
-/** Resolve the active cache state directory. */
-export function getStateDir(): string {
-  if (configuredStateDir) {return configuredStateDir;}
-  if (process.env["DOTAGENTS_STATE_DIR"]) {return process.env["DOTAGENTS_STATE_DIR"];}
-  return DOTAGENTS_DEFAULT_STATE_DIR;
-}
 
 export class CacheError extends Error {
   constructor(message: string) {
@@ -46,10 +23,15 @@ export interface CacheResult {
  * A shallow `git fetch --depth=1` is essentially free when already at
  * the latest commit, so there is no TTL — callers always get fresh state.
  *
- * Cache layout (default):
- *   ~/.local/dotagents/<owner>/<repo>/          -- shallow clone
+ * The caller MUST supply the cache root directory (`stateDir`); the lib
+ * does not impose a default. Hosts typically resolve this from their own
+ * convention (e.g. `~/.local/<host>/`) plus an optional env var override.
+ *
+ * Cache layout:  `<stateDir>/<cacheKey>/`  -- shallow clone
  */
 export async function ensureCached(opts: {
+  /** Cache root directory. Required — host owns this. */
+  stateDir: string;
   url: string;
   /** Cache key, e.g. "anthropics/skills" or "git.corp.example.com/team/skills" */
   cacheKey: string;
@@ -57,9 +39,7 @@ export async function ensureCached(opts: {
   /** When set, resolve to the newest commit at least this many minutes old. */
   minimumReleaseAge?: number;
 }): Promise<CacheResult> {
-  const stateDir = getStateDir();
-
-  const repoDir = join(stateDir, opts.cacheKey);
+  const repoDir = join(opts.stateDir, opts.cacheKey);
 
   if (isGitRepo(repoDir)) {
     if (opts.ref) {
@@ -69,7 +49,7 @@ export async function ensureCached(opts: {
     }
   } else {
     // Not cached yet — clone
-    await mkdir(join(stateDir, opts.cacheKey, ".."), { recursive: true });
+    await mkdir(join(opts.stateDir, opts.cacheKey, ".."), { recursive: true });
     await clone(opts.url, repoDir, opts.ref);
   }
 

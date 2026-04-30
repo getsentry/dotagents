@@ -25,8 +25,6 @@ describe("resolveSkill integration", () => {
     await mkdir(projectRoot, { recursive: true });
 
     // Point cache to temp dir
-    process.env["DOTAGENTS_STATE_DIR"] = stateDir;
-
     // Create a local git repo that looks like a skill repository
     await mkdir(repoDir, { recursive: true });
     await exec("git", ["init"], { cwd: repoDir });
@@ -64,7 +62,6 @@ description: Code review skill
   });
 
   afterEach(async () => {
-    delete process.env["DOTAGENTS_STATE_DIR"];
     await rm(tmpDir, { recursive: true });
   });
 
@@ -84,7 +81,7 @@ description: A local skill
     const result = await resolveSkill(
       "my-skill",
       { source: "path:local-skills/my-skill" },
-      { projectRoot },
+      { stateDir, projectRoot },
     );
 
     expect(result.type).toBe("local");
@@ -95,7 +92,7 @@ description: A local skill
     const result = await resolveSkill(
       "pdf",
       { source: `git:${repoDir}` },
-      { projectRoot },
+      { stateDir, projectRoot },
     );
 
     expect(result.type).toBe("git");
@@ -110,7 +107,7 @@ description: A local skill
     const result = await resolveSkill(
       "review",
       { source: `git:${repoDir}` },
-      { projectRoot },
+      { stateDir, projectRoot },
     );
 
     expect(result.type).toBe("git");
@@ -123,7 +120,7 @@ description: A local skill
     const result = await resolveSkill(
       "pdf",
       { source: `git:${repoDir}`, path: "pdf" },
-      { projectRoot },
+      { stateDir, projectRoot },
     );
 
     expect(result.type).toBe("git");
@@ -137,7 +134,7 @@ description: A local skill
       resolveSkill(
         "nonexistent",
         { source: `git:${repoDir}` },
-        { projectRoot },
+        { stateDir, projectRoot },
       ),
     ).rejects.toThrow(/not found/);
   });
@@ -147,14 +144,14 @@ description: A local skill
     const result1 = await resolveSkill(
       "pdf",
       { source: `git:${repoDir}` },
-      { projectRoot },
+      { stateDir, projectRoot },
     );
 
     // Second resolve — should reuse cache (same commit)
     const result2 = await resolveSkill(
       "review",
       { source: `git:${repoDir}` },
-      { projectRoot },
+      { stateDir, projectRoot },
     );
 
     expect(result1.type).toBe("git");
@@ -180,8 +177,6 @@ describe("resolveWildcardSkills integration", () => {
     await mkdir(stateDir, { recursive: true });
     await mkdir(projectRoot, { recursive: true });
 
-    process.env["DOTAGENTS_STATE_DIR"] = stateDir;
-
     // Create a local git repo with multiple skills
     await mkdir(repoDir, { recursive: true });
     await exec("git", ["init"], { cwd: repoDir });
@@ -205,14 +200,13 @@ describe("resolveWildcardSkills integration", () => {
   });
 
   afterEach(async () => {
-    delete process.env["DOTAGENTS_STATE_DIR"];
     await rm(tmpDir, { recursive: true });
   });
 
   it("discovers all skills from a git source", async () => {
     const results = await resolveWildcardSkills(
       { source: `git:${repoDir}`, exclude: [] },
-      { projectRoot },
+      { stateDir, projectRoot },
     );
 
     const names = results.map((r) => r.name).toSorted();
@@ -223,7 +217,7 @@ describe("resolveWildcardSkills integration", () => {
   it("filters excluded skills", async () => {
     const results = await resolveWildcardSkills(
       { source: `git:${repoDir}`, exclude: ["review"] },
-      { projectRoot },
+      { stateDir, projectRoot },
     );
 
     expect(results).toHaveLength(1);
@@ -233,7 +227,7 @@ describe("resolveWildcardSkills integration", () => {
   it("returns empty array when all skills excluded", async () => {
     const results = await resolveWildcardSkills(
       { source: `git:${repoDir}`, exclude: ["pdf", "review"] },
-      { projectRoot },
+      { stateDir, projectRoot },
     );
 
     expect(results).toHaveLength(0);
@@ -250,7 +244,7 @@ describe("resolveWildcardSkills integration", () => {
 
     const results = await resolveWildcardSkills(
       { source: `path:local-repo`, exclude: [] },
-      { projectRoot },
+      { stateDir, projectRoot },
     );
 
     expect(results).toHaveLength(1);
@@ -261,7 +255,7 @@ describe("resolveWildcardSkills integration", () => {
   it("each resolved skill has correct commit and path", async () => {
     const results = await resolveWildcardSkills(
       { source: `git:${repoDir}`, exclude: [] },
-      { projectRoot },
+      { stateDir, projectRoot },
     );
 
     const pdf = results.find((r) => r.name === "pdf")!;

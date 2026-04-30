@@ -1,8 +1,30 @@
 import { parseSource } from "../skills/resolver.js";
 import type { TrustPolicy } from "./policy.js";
 
+/**
+ * Structured details on why a source failed trust validation.
+ *
+ * The lib never adds CLI hints or vendor copy to the error message — hosts
+ * read these fields and render whatever guidance is appropriate for their
+ * surface (`npx <host-cli> trust add ...`, a UI prompt, a structured log).
+ */
+export interface TrustErrorDetails {
+  /** The original source string that was rejected. */
+  source: string;
+  /** What kind of source it is, after parsing. */
+  kind: "github" | "git" | "well-known";
+  /** Owner segment when applicable (e.g. GitHub org). */
+  owner?: string;
+  /** Repo segment when applicable. */
+  repo?: string;
+  /** Hostname (or host+port) of the offending URL. */
+  domain?: string;
+  /** A snapshot of the policy that rejected the source. */
+  allowed: TrustPolicy;
+}
+
 export class TrustError extends Error {
-  constructor(message: string) {
+  constructor(message: string, public readonly details: TrustErrorDetails) {
     super(message);
     this.name = "TrustError";
   }
@@ -124,10 +146,14 @@ export function validateTrustedSource(
     if (trust.github_repos.some((r) => r.toLowerCase() === repo)) {return;}
 
     throw new TrustError(
-      `Source "${source}" is not trusted. ` +
-        `Allowed sources: ${formatAllowed(trust)}.\n` +
-        `Run: npx @sentry/dotagents trust add ${parsed.owner!} ` +
-        `(or \`npx @sentry/dotagents trust add ${parsed.owner!}/${parsed.repo!}\` for just this repo)`,
+      `Source "${source}" is not trusted. Allowed sources: ${formatAllowed(trust)}.`,
+      {
+        source,
+        kind: "github",
+        owner: parsed.owner!,
+        repo: parsed.repo!,
+        allowed: trust,
+      },
     );
   }
 
@@ -139,9 +165,14 @@ export function validateTrustedSource(
     })) {return;}
 
     const domain = extractDomain(parsed.url!)?.toLowerCase();
-    const hint = domain ? `\nRun: npx @sentry/dotagents trust add ${domain}` : "";
     throw new TrustError(
-      `Source "${source}" is not trusted. Allowed sources: ${formatAllowed(trust)}.${hint}`,
+      `Source "${source}" is not trusted. Allowed sources: ${formatAllowed(trust)}.`,
+      {
+        source,
+        kind: parsed.type,
+        domain,
+        allowed: trust,
+      },
     );
   }
 }

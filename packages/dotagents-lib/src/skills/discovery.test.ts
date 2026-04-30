@@ -45,19 +45,21 @@ describe("discoverSkill", () => {
     expect(result!.path).toBe("skills/review");
   });
 
-  it("finds skill in .agents/skills/ directory", async () => {
+  it("finds skill in a caller-supplied scan dir (.agents/skills/)", async () => {
     await mkdir(join(repoDir, ".agents", "skills", "lint"), { recursive: true });
     await writeFile(
       join(repoDir, ".agents", "skills", "lint", "SKILL.md"),
       SKILL_MD("lint"),
     );
 
-    const result = await discoverSkill(repoDir, "lint");
+    const result = await discoverSkill(repoDir, "lint", {
+      scanDirs: [".agents/skills"],
+    });
     expect(result).not.toBeNull();
     expect(result!.path).toBe(".agents/skills/lint");
   });
 
-  it("finds skill in .claude/skills/ directory", async () => {
+  it("finds skill in a caller-supplied scan dir (.claude/skills/)", async () => {
     await mkdir(join(repoDir, ".claude", "skills", "commit"), {
       recursive: true,
     });
@@ -66,9 +68,22 @@ describe("discoverSkill", () => {
       SKILL_MD("commit"),
     );
 
-    const result = await discoverSkill(repoDir, "commit");
+    const result = await discoverSkill(repoDir, "commit", {
+      scanDirs: [".claude/skills"],
+    });
     expect(result).not.toBeNull();
     expect(result!.path).toBe(".claude/skills/commit");
+  });
+
+  it("does not scan .agents/skills/ by default (host convention)", async () => {
+    await mkdir(join(repoDir, ".agents", "skills", "lint"), { recursive: true });
+    await writeFile(
+      join(repoDir, ".agents", "skills", "lint", "SKILL.md"),
+      SKILL_MD("lint"),
+    );
+
+    const result = await discoverSkill(repoDir, "lint");
+    expect(result).toBeNull();
   });
 
   it("prefers root-level over skills/ directory", async () => {

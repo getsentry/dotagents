@@ -11,7 +11,8 @@ import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
 import { resolveScope, isInsideGitRepo, findGitDir, type ScopeRoot } from "../../scope.js";
 import type { TrustConfig } from "../../config/schema.js";
-import { TrustError } from "@sentry/dotagents-lib";
+import { GitError, TrustError } from "@sentry/dotagents-lib";
+import { formatGitError, formatTrustError } from "../errors.js";
 import { runInstall } from "./install.js";
 
 const BOOTSTRAP_SKILL = { name: "dotagents", source: "getsentry/dotagents" } as const;
@@ -320,7 +321,17 @@ export default async function init(args: string[], flags?: { user?: boolean }): 
     await runInit({ scope, force: values["force"], agents });
   } catch (err) {
     if (err instanceof CancelledError) {return;}
-    if (err instanceof InitError || err instanceof TrustError) {
+    if (err instanceof TrustError) {
+      console.error(chalk.red(formatTrustError(err)));
+      process.exitCode = 1;
+      return;
+    }
+    if (err instanceof GitError) {
+      console.error(chalk.red(formatGitError(err)));
+      process.exitCode = 1;
+      return;
+    }
+    if (err instanceof InitError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

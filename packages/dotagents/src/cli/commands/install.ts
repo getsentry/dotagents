@@ -19,9 +19,12 @@ import {
   type ResolvedSkill,
   validateTrustedSource,
   TrustError,
+  GitError,
   copyDir,
 } from "@sentry/dotagents-lib";
 import { isInPlaceSkill } from "../../utils/fs.js";
+import { getCacheStateDir, HOST_SCAN_DIRS } from "../cache.js";
+import { formatGitError, formatTrustError } from "../errors.js";
 import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
@@ -105,6 +108,8 @@ async function expandSkills(
       let named;
       try {
         named = await resolveWildcardSkills(wDep, {
+          stateDir: getCacheStateDir(),
+          scanDirs: HOST_SCAN_DIRS,
           projectRoot: opts.projectRoot,
           defaultRepositorySource: config.defaultRepositorySource,
           minimumReleaseAge: opts.minimumReleaseAge,
@@ -191,6 +196,8 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       validateTrustedSource(sourceForTrust, config.trust);
 
       const resolveOpts = {
+        stateDir: getCacheStateDir(),
+        scanDirs: HOST_SCAN_DIRS,
         projectRoot: scope.root,
         defaultRepositorySource: config.defaultRepositorySource,
         minimumReleaseAge,
@@ -356,7 +363,17 @@ export default async function install(args: string[], flags?: { user?: boolean }
       console.log(chalk.yellow(`  warn: ${w.message}`));
     }
   } catch (err) {
-    if (err instanceof ScopeError || err instanceof InstallError || err instanceof TrustError) {
+    if (err instanceof TrustError) {
+      console.error(chalk.red(formatTrustError(err)));
+      process.exitCode = 1;
+      return;
+    }
+    if (err instanceof GitError) {
+      console.error(chalk.red(formatGitError(err)));
+      process.exitCode = 1;
+      return;
+    }
+    if (err instanceof ScopeError || err instanceof InstallError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

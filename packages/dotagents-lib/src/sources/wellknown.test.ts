@@ -136,11 +136,9 @@ describe("ensureWellKnownCached", () => {
     vi.restoreAllMocks();
     tmpDir = await mkdtemp(join(tmpdir(), "dotagents-wellknown-"));
     stateDir = join(tmpDir, "state");
-    process.env["DOTAGENTS_STATE_DIR"] = stateDir;
   });
 
   afterEach(async () => {
-    delete process.env["DOTAGENTS_STATE_DIR"];
     await rm(tmpDir, { recursive: true });
   });
 
@@ -171,6 +169,7 @@ describe("ensureWellKnownCached", () => {
     );
 
     const result = await ensureWellKnownCached({
+      stateDir,
       url: "https://cli.sentry.dev",
       cacheKey: "wellknown/cli.sentry.dev",
     });
@@ -194,6 +193,7 @@ describe("ensureWellKnownCached", () => {
     );
 
     const result = await ensureWellKnownCached({
+      stateDir,
       url: "https://cli.sentry.dev",
       cacheKey: "wellknown/cli.sentry.dev",
     });
@@ -220,6 +220,7 @@ describe("ensureWellKnownCached", () => {
     );
 
     const first = await ensureWellKnownCached({
+      stateDir,
       url: "https://cli.sentry.dev",
       cacheKey: "wellknown/cli.sentry.dev",
       ttlMs: 0, // Force stale
@@ -233,6 +234,7 @@ describe("ensureWellKnownCached", () => {
     );
 
     const second = await ensureWellKnownCached({
+      stateDir,
       url: "https://cli.sentry.dev",
       cacheKey: "wellknown/cli.sentry.dev",
       ttlMs: 0, // Force stale
@@ -261,6 +263,7 @@ describe("ensureWellKnownCached", () => {
     );
 
     await ensureWellKnownCached({
+      stateDir,
       url: "https://cli.sentry.dev",
       cacheKey: "wellknown/cli.sentry.dev",
     });
@@ -270,6 +273,7 @@ describe("ensureWellKnownCached", () => {
     vi.stubGlobal("fetch", mockFetch);
 
     const result = await ensureWellKnownCached({
+      stateDir,
       url: "https://cli.sentry.dev",
       cacheKey: "wellknown/cli.sentry.dev",
       ttlMs: 60_000, // 1 minute — cache is fresh
@@ -305,6 +309,7 @@ describe("ensureWellKnownCached", () => {
     );
 
     const result = await ensureWellKnownCached({
+      stateDir,
       url: "https://evil.example.com",
       cacheKey: "wellknown/evil.example.com",
     });
@@ -341,6 +346,7 @@ describe("ensureWellKnownCached", () => {
     );
 
     const result = await ensureWellKnownCached({
+      stateDir,
       url: "https://evil.example.com",
       cacheKey: "wellknown/evil.example.com",
     });

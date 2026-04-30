@@ -7,8 +7,6 @@ vi.mock("../sources/cache.js", () => ({
   ensureCached: vi.fn(async () => {
     throw new Error("ensureCached should not be called when trust rejects");
   }),
-  configureCache: vi.fn(),
-  getStateDir: vi.fn(() => "/tmp/dotagents-test-cache"),
 }));
 
 vi.mock("../sources/wellknown.js", () => ({
@@ -34,6 +32,8 @@ const allowOnlyAnthropics: TrustPolicy = {
   git_domains: [],
 };
 
+const STATE_DIR = "/tmp/dotagents-trust-test-cache";
+
 describe("resolveSkill with trust opt", () => {
   afterEach(() => {
     vi.clearAllMocks();
@@ -44,7 +44,7 @@ describe("resolveSkill with trust opt", () => {
       resolveSkill(
         "foo",
         { source: "evil-org/evil-skills" },
-        { trust: allowOnlyAnthropics },
+        { stateDir: STATE_DIR, trust: allowOnlyAnthropics },
       ),
     ).rejects.toBeInstanceOf(TrustError);
 
@@ -57,7 +57,7 @@ describe("resolveSkill with trust opt", () => {
       resolveSkill(
         "foo",
         { source: "https://untrusted.example.com/skills" },
-        { trust: allowOnlyAnthropics },
+        { stateDir: STATE_DIR, trust: allowOnlyAnthropics },
       ),
     ).rejects.toBeInstanceOf(TrustError);
 
@@ -73,7 +73,7 @@ describe("resolveSkill with trust opt", () => {
       resolveSkill(
         "foo",
         { source: "anthropics/skills" },
-        { trust: allowOnlyAnthropics, defaultRepositorySource: "gitlab" },
+        { stateDir: STATE_DIR, trust: allowOnlyAnthropics, defaultRepositorySource: "gitlab" },
       ),
     ).rejects.toBeInstanceOf(TrustError);
 
@@ -84,7 +84,7 @@ describe("resolveSkill with trust opt", () => {
     // No trust opt → resolver should proceed to network. Mock throws a sentinel
     // so we can verify network was attempted (rather than trust short-circuiting).
     await expect(
-      resolveSkill("foo", { source: "evil-org/evil-skills" }),
+      resolveSkill("foo", { source: "evil-org/evil-skills" }, { stateDir: STATE_DIR }),
     ).rejects.toThrowError(/ensureCached should not be called/);
 
     expect(ensureCached).toHaveBeenCalledTimes(1);
@@ -100,7 +100,7 @@ describe("resolveWildcardSkills with trust opt", () => {
     await expect(
       resolveWildcardSkills(
         { source: "evil-org/evil-skills" },
-        { trust: allowOnlyAnthropics },
+        { stateDir: STATE_DIR, trust: allowOnlyAnthropics },
       ),
     ).rejects.toBeInstanceOf(TrustError);
 
@@ -110,7 +110,7 @@ describe("resolveWildcardSkills with trust opt", () => {
 
   it("does NOT enforce trust when the opt is omitted", async () => {
     await expect(
-      resolveWildcardSkills({ source: "evil-org/evil-skills" }),
+      resolveWildcardSkills({ source: "evil-org/evil-skills" }, { stateDir: STATE_DIR }),
     ).rejects.toThrowError(/ensureCached should not be called/);
 
     expect(ensureCached).toHaveBeenCalledTimes(1);

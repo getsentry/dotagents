@@ -2,7 +2,6 @@ import { join } from "node:path";
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { stripTrailingSlashes } from "../utils/fs.js";
-import { getStateDir } from "./cache.js";
 
 /** Skill names must be safe path segments: alphanumeric, dots, hyphens, underscores. */
 const SAFE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
@@ -74,20 +73,23 @@ export interface WellKnownCacheResult {
 /**
  * Ensure skills from a well-known HTTP source are cached locally.
  *
- * Cache layout:
- *   ~/.local/dotagents/wellknown/<hostname>/<skillName>/SKILL.md
+ * The caller MUST supply the cache root directory (`stateDir`); the lib
+ * does not impose a default.
+ *
+ * Cache layout:  `<stateDir>/<cacheKey>/<skillName>/SKILL.md`
  *
  * Uses a TTL-based marker file for freshness. On fetch failure with
  * existing cache, returns stale cache (same offline behavior as git).
  */
 export async function ensureWellKnownCached(opts: {
+  /** Cache root directory. Required — host owns this. */
+  stateDir: string;
   url: string;
   cacheKey: string;
   ttlMs?: number;
 }): Promise<WellKnownCacheResult | null> {
-  const stateDir = getStateDir();
   const ttl = opts.ttlMs ?? DEFAULT_TTL_MS;
-  const cacheDir = join(stateDir, opts.cacheKey);
+  const cacheDir = join(opts.stateDir, opts.cacheKey);
 
   if (existsSync(cacheDir) && !(await isStale(cacheDir, ttl))) {
     return { cacheDir };

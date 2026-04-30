@@ -15,8 +15,25 @@ function toSshCloneUrl(url: string): string | undefined {
   return `git@${host.toLowerCase()}:${path.endsWith(".git") ? path : `${path}.git`}`;
 }
 
+/**
+ * Structured details on why a git operation failed.
+ *
+ * Hosts inspect `kind` to render whatever guidance is appropriate for their
+ * surface. The lib never embeds CLI hints or vendor copy in the message.
+ */
+export interface GitErrorDetails {
+  /** Classifies the failure for host-specific recovery hints. */
+  kind: "auth-required" | "other";
+  /** The HTTPS clone URL that was attempted. */
+  url?: string;
+  /** When the failure looked like missing auth, an SSH-form URL the host can suggest. */
+  sshUrl?: string;
+  /** Raw stderr from git, if available. */
+  stderr?: string;
+}
+
 export class GitError extends Error {
-  constructor(message: string) {
+  constructor(message: string, public readonly details?: GitErrorDetails) {
     super(message);
     this.name = "GitError";
   }
@@ -56,12 +73,15 @@ export async function clone(
           /could not read Username/i.test(stderr))
       ) {
         throw new GitError(
-          `Failed to clone ${url}: authentication required.\n` +
-            `Hint: for private repos, use the SSH URL instead:\n` +
-            `  npx @sentry/dotagents add ${sshUrl}`,
+          `Failed to clone ${url}: authentication required.`,
+          { kind: "auth-required", url, sshUrl, stderr },
         );
       }
-      throw new GitError(`Failed to clone ${url}: ${stderr}`);
+      throw new GitError(`Failed to clone ${url}: ${stderr}`, {
+        kind: "other",
+        url,
+        stderr,
+      });
     }
     throw err;
   }

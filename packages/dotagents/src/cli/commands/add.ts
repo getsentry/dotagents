@@ -21,7 +21,10 @@ import {
   ensureWellKnownCached,
   validateTrustedSource,
   TrustError,
+  GitError,
 } from "@sentry/dotagents-lib";
+import { getCacheStateDir, HOST_SCAN_DIRS } from "../cache.js";
+import { formatGitError, formatTrustError } from "../errors.js";
 import { runInstall } from "./install.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
@@ -155,7 +158,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
     if (namesOverride?.length) {
       // User specified name(s), verify each exists in the local directory
       for (const name of namesOverride) {
-        const found = await discoverSkill(localDir, name);
+        const found = await discoverSkill(localDir, name, { scanDirs: HOST_SCAN_DIRS });
         if (!found) {
           throw new AddError(
             `Skill "${name}" not found in ${sourceForStorage}. ` +
@@ -207,6 +210,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
     const cacheKey = `wellknown/${u.host.toLowerCase()}${pathname}`;
 
     const cached = await ensureWellKnownCached({
+      stateDir: getCacheStateDir(),
       url: baseUrl,
       cacheKey,
     });
@@ -220,7 +224,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
     if (namesOverride?.length) {
       // User specified name(s), verify each exists
       for (const name of namesOverride) {
-        const found = await discoverSkill(cached.cacheDir, name);
+        const found = await discoverSkill(cached.cacheDir, name, { scanDirs: HOST_SCAN_DIRS });
         if (!found) {
           throw new AddError(
             `Skill "${name}" not found in ${sourceForStorage}. ` +
@@ -261,7 +265,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
       }
     } else {
       // Discover all skills and pick
-      const skills = await discoverAllSkills(cached.cacheDir);
+      const skills = await discoverAllSkills(cached.cacheDir, { scanDirs: HOST_SCAN_DIRS });
       if (skills.length === 0) {
         throw new AddError(`No skills found in ${sourceForStorage}.`);
       }
@@ -353,6 +357,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
         : url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
 
     const cached = await ensureCached({
+      stateDir: getCacheStateDir(),
       url: cloneUrl,
       cacheKey,
       ref: effectiveRef,
@@ -361,7 +366,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
     if (namesOverride?.length) {
       // User specified name(s), verify each exists
       for (const name of namesOverride) {
-        const found = await discoverSkill(cached.repoDir, name);
+        const found = await discoverSkill(cached.repoDir, name, { scanDirs: HOST_SCAN_DIRS });
         if (!found) {
           throw new AddError(
             `Skill "${name}" not found in ${sourceForStorage}. ` +
@@ -402,7 +407,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
       }
     } else {
       // Discover all skills and pick
-      const skills = await discoverAllSkills(cached.repoDir);
+      const skills = await discoverAllSkills(cached.repoDir, { scanDirs: HOST_SCAN_DIRS });
       if (skills.length === 0) {
         throw new AddError(`No skills found in ${sourceForStorage}.`);
       }
@@ -576,11 +581,17 @@ export default async function add(
     }
   } catch (err) {
     if (err instanceof AddCancelledError) {return;}
-    if (
-      err instanceof ScopeError ||
-      err instanceof AddError ||
-      err instanceof TrustError
-    ) {
+    if (err instanceof TrustError) {
+      console.error(chalk.red(formatTrustError(err)));
+      process.exitCode = 1;
+      return;
+    }
+    if (err instanceof GitError) {
+      console.error(chalk.red(formatGitError(err)));
+      process.exitCode = 1;
+      return;
+    }
+    if (err instanceof ScopeError || err instanceof AddError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

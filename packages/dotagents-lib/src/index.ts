@@ -4,7 +4,7 @@ export type { SkillMeta } from "./skills/loader.js";
 
 // Skill discovery
 export { discoverSkill, discoverAllSkills } from "./skills/discovery.js";
-export type { DiscoveredSkill } from "./skills/discovery.js";
+export type { DiscoveredSkill, DiscoveryOpts } from "./skills/discovery.js";
 
 // Source-string grammar + resolution
 export {
@@ -28,6 +28,7 @@ export type {
   ResolvedWellKnownSkill,
   NamedResolvedSkill,
   WildcardDependencyInput,
+  ResolveOpts,
 } from "./skills/resolver.js";
 
 // Sources / cache
@@ -39,9 +40,9 @@ export {
   isGitRepo,
   GitError,
 } from "./sources/git.js";
+export type { GitErrorDetails } from "./sources/git.js";
 export {
   ensureCached,
-  configureCache,
   CacheError,
 } from "./sources/cache.js";
 export type { CacheResult } from "./sources/cache.js";
@@ -64,6 +65,7 @@ export {
   TrustError,
 } from "./trust/validator.js";
 export type { TrustPolicy } from "./trust/policy.js";
+export type { TrustErrorDetails } from "./trust/validator.js";
 
 // General-purpose utilities used by callers
 export { exec, ExecError } from "./utils/exec.js";

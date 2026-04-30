@@ -1,5 +1,6 @@
 export { clone, fetchAndReset, fetchRef, headCommit, isGitRepo, GitError } from "./git.js";
-export { ensureCached, configureCache, CacheError } from "./cache.js";
+export type { GitErrorDetails } from "./git.js";
+export { ensureCached, CacheError } from "./cache.js";
 export type { CacheResult } from "./cache.js";
 export { ensureWellKnownCached } from "./wellknown.js";
 export { resolveLocalSource, LocalSourceError } from "./local.js";
