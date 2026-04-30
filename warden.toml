@@ -8,8 +8,8 @@ ignorePaths = ["dist/**"]
 [[skills]]
 name = "find-bugs"
 remote = "getsentry/skills"
-paths = ["src/**/*.ts"]
-ignorePaths = ["src/**/*.test.ts"]
+paths = ["packages/*/src/**/*.ts"]
+ignorePaths = ["packages/*/src/**/*.test.ts"]
 
 [[skills.triggers]]
 type = "pull_request"
@@ -18,8 +18,8 @@ actions = ["opened", "synchronize", "reopened"]
 [[skills]]
 name = "security-review"
 remote = "getsentry/sentry-skills"
-paths = ["src/**/*.ts"]
-ignorePaths = ["src/**/*.test.ts"]
+paths = ["packages/*/src/**/*.ts"]
+ignorePaths = ["packages/*/src/**/*.test.ts"]
 
 [[skills.triggers]]
 type = "pull_request"

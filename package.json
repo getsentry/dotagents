@@ -1,45 +1,29 @@
 {
-  "name": "@sentry/dotagents",
+  "name": "dotagents-monorepo",
   "version": "1.13.0",
-  "description": "Shared tooling for coding agents",
+  "description": "Shared tooling for coding agents (workspace root)",
+  "private": true,
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "bin": {
-    "dotagents": "dist/cli/index.js"
-  },
   "scripts": {
-    "dev": "tsx src/cli/index.ts",
-    "build": "tsc",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "lint": "oxlint src --deny-warnings",
-    "typecheck": "tsc --noEmit",
-    "check": "pnpm lint && pnpm typecheck && pnpm test"
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "dev": "pnpm --filter @sentry/dotagents dev"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged"
   },
   "lint-staged": {
-    "*.ts": [
+    "packages/*/src/**/*.ts": [
       "oxlint --deny-warnings"
     ]
   },
-  "files": [
-    "dist/",
-    "README.md",
-    "LICENSE"
-  ],
   "packageManager": "pnpm@10.28.2",
   "license": "MIT",
   "engines": {
     "node": ">=20"
-  },
-  "dependencies": {
-    "@clack/prompts": "^1.0.1",
-    "chalk": "^5.6.2",
-    "smol-toml": "^1.6.0",
-    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.2.1",

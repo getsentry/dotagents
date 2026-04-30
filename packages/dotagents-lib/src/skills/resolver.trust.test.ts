@@ -1,0 +1,103 @@
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { resolveSkill, resolveWildcardSkills } from "./resolver.js";
+import { TrustError } from "../trust/validator.js";
+import type { TrustPolicy } from "../trust/policy.js";
+
+vi.mock("../sources/cache.js", () => ({
+  ensureCached: vi.fn(async () => {
+    throw new Error("ensureCached should not be called when trust rejects");
+  }),
+  configureCache: vi.fn(),
+  getStateDir: vi.fn(() => "/tmp/dotagents-test-cache"),
+}));
+
+vi.mock("../sources/wellknown.js", () => ({
+  ensureWellKnownCached: vi.fn(async () => {
+    throw new Error("ensureWellKnownCached should not be called when trust rejects");
+  }),
+}));
+
+vi.mock("../sources/local.js", () => ({
+  resolveLocalSource: vi.fn(async () => {
+    throw new Error("resolveLocalSource should not be called when trust rejects");
+  }),
+  LocalSourceError: class extends Error {},
+}));
+
+import { ensureCached } from "../sources/cache.js";
+import { ensureWellKnownCached } from "../sources/wellknown.js";
+
+const allowOnlyAnthropics: TrustPolicy = {
+  allow_all: false,
+  github_orgs: ["anthropics"],
+  github_repos: [],
+  git_domains: [],
+};
+
+describe("resolveSkill with trust opt", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("blocks a disallowed source BEFORE any network access", async () => {
+    await expect(
+      resolveSkill(
+        "foo",
+        { source: "evil-org/evil-skills" },
+        { trust: allowOnlyAnthropics },
+      ),
+    ).rejects.toBeInstanceOf(TrustError);
+
+    expect(ensureCached).not.toHaveBeenCalled();
+    expect(ensureWellKnownCached).not.toHaveBeenCalled();
+  });
+
+  it("blocks a disallowed well-known source BEFORE any network access", async () => {
+    await expect(
+      resolveSkill(
+        "foo",
+        { source: "https://untrusted.example.com/skills" },
+        { trust: allowOnlyAnthropics },
+      ),
+    ).rejects.toBeInstanceOf(TrustError);
+
+    expect(ensureCached).not.toHaveBeenCalled();
+    expect(ensureWellKnownCached).not.toHaveBeenCalled();
+  });
+
+  it("does NOT enforce trust when the opt is omitted (today's behavior)", async () => {
+    // No trust opt → resolver should proceed to network. Mock throws a sentinel
+    // so we can verify network was attempted (rather than trust short-circuiting).
+    await expect(
+      resolveSkill("foo", { source: "evil-org/evil-skills" }),
+    ).rejects.toThrowError(/ensureCached should not be called/);
+
+    expect(ensureCached).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("resolveWildcardSkills with trust opt", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("blocks a disallowed source BEFORE any network access", async () => {
+    await expect(
+      resolveWildcardSkills(
+        { source: "evil-org/evil-skills" },
+        { trust: allowOnlyAnthropics },
+      ),
+    ).rejects.toBeInstanceOf(TrustError);
+
+    expect(ensureCached).not.toHaveBeenCalled();
+    expect(ensureWellKnownCached).not.toHaveBeenCalled();
+  });
+
+  it("does NOT enforce trust when the opt is omitted", async () => {
+    await expect(
+      resolveWildcardSkills({ source: "evil-org/evil-skills" }),
+    ).rejects.toThrowError(/ensureCached should not be called/);
+
+    expect(ensureCached).toHaveBeenCalledTimes(1);
+  });
+});

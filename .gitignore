@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.tsbuildinfo
+*.tgz
 .DS_Store
 docs/out/
 docs/.next/

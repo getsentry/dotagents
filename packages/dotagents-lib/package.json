@@ -1,0 +1,30 @@
+{
+  "name": "@sentry/dotagents-lib",
+  "version": "1.13.0",
+  "description": "Reusable core for SKILL.md loading, source resolution, and trust validation — the library powering @sentry/dotagents.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint src --deny-warnings",
+    "typecheck": "tsc -b --emitDeclarationOnly"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,6 +1,7 @@
 minVersion: "2.21.2"
 changelog:
   policy: auto
+preReleaseCommand: node scripts/bump-version.mjs
 artifactProvider:
   name: github
   config:
@@ -8,6 +9,8 @@ artifactProvider:
       CI:
         - npm-package
 targets:
+  # Craft's npm target publishes every *.tgz file from the npm-package artifact,
+  # so this single entry handles both @sentry/dotagents and @sentry/dotagents-lib.
   - name: npm
     access: public
   - name: github
