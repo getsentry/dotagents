@@ -116,6 +116,9 @@ async function expandSkills(
           minimumReleaseAgeExclude: opts.minimumReleaseAgeExclude,
         });
       } catch (err) {
+        // Let GitError and TrustError bubble — they carry structured details
+        // (auth-required SSH hint, allowed-source list) the outer handler renders.
+        if (err instanceof GitError || err instanceof TrustError) {throw err;}
         const msg = err instanceof Error ? err.message : String(err);
         throw new InstallError(`Failed to resolve wildcard source "${wDep.source}": ${msg}`);
       }
@@ -211,6 +214,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
         try {
           resolved = await resolveSkill(name, dep, resolveOpts);
         } catch (err) {
+          if (err instanceof GitError || err instanceof TrustError) {throw err;}
           const msg = err instanceof Error ? err.message : String(err);
           throw new InstallError(`Failed to resolve skill "${name}": ${msg}`);
         }

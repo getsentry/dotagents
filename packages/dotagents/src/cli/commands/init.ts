@@ -108,8 +108,10 @@ export async function runInit(opts: InitOptions): Promise<void> {
     try {
       await runInstall({ scope });
     } catch (err) {
-      // Re-throw trust errors — these are policy violations, not transient failures
-      if (err instanceof TrustError) {throw err;}
+      // Re-throw structured errors — TrustError is a policy violation, GitError
+      // carries the auth-required SSH hint. Both deserve a hard fail with the
+      // formatted message rather than the generic "could not install" copy.
+      if (err instanceof TrustError || err instanceof GitError) {throw err;}
       console.log(chalk.yellow("Could not install skills. Run `npx @sentry/dotagents install` to install them later."));
     }
   }
