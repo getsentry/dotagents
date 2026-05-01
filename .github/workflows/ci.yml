@@ -31,7 +31,7 @@ jobs:
       - run: pnpm test
 
   build:
-    name: Build
+    name: Build & Pack
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -44,12 +44,19 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
       - run: pnpm build
 
       - name: Verify CLI runs
-        run: node dist/cli/index.js --help
+        run: node packages/dotagents/dist/cli/index.js --help
 
-      - run: npm pack
+      - name: Pack both packages
+        run: |
+          pnpm --filter "@sentry/dotagents-lib" pack --pack-destination "$GITHUB_WORKSPACE"
+          pnpm --filter "@sentry/dotagents" pack --pack-destination "$GITHUB_WORKSPACE"
+
+      - name: Verify packed tarballs
+        run: node scripts/verify-pack.mjs
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

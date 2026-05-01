@@ -1,8 +1,18 @@
 node_modules/
 dist/
 *.tsbuildinfo
+*.tgz
 .DS_Store
 docs/out/
 docs/.next/
 agents.lock
 .agents/.gitignore
+
+# openspec local install artifacts (per-machine, not project source)
+openspec/
+.agents/skills/openspec-*/
+.claude/commands/opsx/
+.cursor/commands/opsx-*.md
+
+# Claude Code session artifacts
+.claude/scheduled_tasks.lock

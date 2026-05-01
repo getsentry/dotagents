@@ -1,6 +1,7 @@
 minVersion: "2.21.2"
 changelog:
   policy: auto
+preReleaseCommand: node scripts/bump-version.mjs
 artifactProvider:
   name: github
   config:
@@ -8,6 +9,16 @@ artifactProvider:
       CI:
         - npm-package
 targets:
+  # Publish lib first, host second, so end-users running `npm install @sentry/dotagents`
+  # never hit a window where the host's `dependencies["@sentry/dotagents-lib"]` range
+  # can't be resolved on the registry. craft runs targets in declared order; each
+  # `includeNames` regex selects exactly one tarball from the artifact bundle.
   - name: npm
+    id: "@sentry/dotagents-lib"
+    includeNames: /^sentry-dotagents-lib-\d.*\.tgz$/
+    access: public
+  - name: npm
+    id: "@sentry/dotagents"
+    includeNames: /^sentry-dotagents-\d.*\.tgz$/
     access: public
   - name: github

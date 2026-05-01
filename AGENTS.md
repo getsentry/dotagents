@@ -12,23 +12,32 @@ See `specs/SPEC.md` for the full design.
 
 ## Architecture
 
+This repo is a pnpm workspace with two packages, versioned in lock-step (see `RELEASING.md`).
+
 ```
-src/
-├── index.ts              # Library entry point
-├── scope.ts              # Project/user scope resolution
-├── cli/
-│   ├── index.ts          # CLI entry point, command routing
-│   └── commands/         # init, install, add, remove, update, sync, list, mcp
-├── agents/               # Agent definitions, MCP/hook config writers
-├── config/               # agents.toml schema, loader, writer
-├── lockfile/             # agents.lock schema, loader, writer
-├── skills/               # SKILL.md loader, discovery, resolver
-├── sources/              # git.ts, local.ts, cache.ts
-├── symlinks/             # Symlink creation/management
-├── trust/                # Trust policy validation
-├── gitignore/            # .agents/.gitignore generation
-└── utils/                # exec.ts, hash.ts, fs.ts
+packages/
+├── dotagents/            # @sentry/dotagents — the host CLI + agents.toml orchestrator
+│   └── src/
+│       ├── index.ts          # Library entry point (re-exports lib symbols with @deprecated)
+│       ├── scope.ts          # Project/user scope resolution
+│       ├── cli/              # CLI entry point + commands (init, install, add, remove, sync, list, mcp, doctor, trust)
+│       ├── agents/           # Agent definitions, MCP/hook config writers
+│       ├── config/           # agents.toml schema, loader, writer
+│       ├── lockfile/         # agents.lock schema, loader, writer
+│       ├── symlinks/         # Symlink creation/management
+│       ├── gitignore/        # .agents/.gitignore generation
+│       └── utils/            # isInPlaceSkill (host-specific path conventions)
+│
+└── dotagents-lib/        # @sentry/dotagents-lib — the reusable core
+    └── src/
+        ├── index.ts          # Public API of the lib
+        ├── skills/           # SKILL.md loader, discovery, resolver (parseSource, etc.)
+        ├── sources/          # git.ts, cache.ts (configureCache), local.ts, wellknown.ts, repository-source.ts
+        ├── trust/            # Trust validation (validateTrustedSource), TrustPolicy interface
+        └── utils/            # exec.ts, fs.ts (copyDir, stripTrailingSlashes)
 ```
+
+The host depends on the lib via `workspace:^` (rewritten at pack time). For cross-workspace typecheck, the host's `tsconfig.json` declares a project reference to the lib (composite mode); the host's `vitest.config.ts` aliases `@sentry/dotagents-lib` directly to the lib's source so tests run without a build step.
 
 ## Principles
 
