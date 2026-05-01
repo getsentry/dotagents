@@ -13,3 +13,6 @@ openspec/
 .agents/skills/openspec-*/
 .claude/commands/opsx/
 .cursor/commands/opsx-*.md
+
+# Claude Code session artifacts
+.claude/scheduled_tasks.lock
