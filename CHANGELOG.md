@@ -1,4 +1,10 @@
 # Changelog
+## 1.14.0
+
+### Internal Changes 🔧
+
+- Extract dotagents-lib as a separate workspace package by @gricha in [#97](https://github.com/getsentry/dotagents/pull/97)
+
 ## 1.13.0
 
 ### Internal Changes 🔧
