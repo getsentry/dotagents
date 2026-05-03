@@ -521,6 +521,33 @@ describe("parseSource strict shorthand", () => {
   });
 });
 
+describe("normalizeSource gracefully handles malformed inputs", () => {
+  // normalizeSource is called from dedup / comparison paths that should not
+  // crash on stale or hand-edited config. parseSource throwing on malformed
+  // shorthand must not propagate up to those callers.
+  it("returns input as-is when parseSource throws empty-sha", () => {
+    expect(normalizeSource("owner/repo@")).toBe("owner/repo@");
+  });
+
+  it("returns input as-is when parseSource throws multi-segment-shorthand", () => {
+    expect(normalizeSource("owner/repo/nested")).toBe("owner/repo/nested");
+  });
+
+  it("still normalizes valid inputs", () => {
+    expect(normalizeSource("https://github.com/owner/repo")).toBe("owner/repo");
+  });
+});
+
+describe("sourcesMatch gracefully handles malformed inputs", () => {
+  it("returns false (not throws) when one side is malformed", () => {
+    expect(sourcesMatch("owner/repo", "owner/repo@")).toBe(false);
+  });
+
+  it("matches two equally-malformed inputs as opaque strings", () => {
+    expect(sourcesMatch("owner/repo@", "owner/repo@")).toBe(true);
+  });
+});
+
 describe("parseOwnerRepoShorthand strict (mirrors parseSource)", () => {
   it("returns undefined for empty SHA after @", () => {
     expect(parseOwnerRepoShorthand("owner/repo@")).toBeUndefined();

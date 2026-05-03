@@ -264,6 +264,39 @@ allowed-tools: [Read, Grep, Glob]
     expect(meta.allowedTools).toEqual(["Read", "Grep", "Glob"]);
   });
 
+  it("preserves empty-array signal: allowed-tools: [] returns []", async () => {
+    // Explicit empty YAML array is "deny all" — must NOT collapse to undefined.
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `---
+name: deny-all
+description: Explicit empty allow-list
+allowed-tools: []
+---
+`,
+    );
+
+    const meta = await loadSkillMd(skillMd);
+    expect(meta.allowedTools).toEqual([]);
+  });
+
+  it("treats empty/whitespace string allowed-tools as absent (likely a typo)", async () => {
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `---
+name: empty-string
+description: Field present but empty
+allowed-tools: "   "
+---
+`,
+    );
+
+    const meta = await loadSkillMd(skillMd);
+    expect(meta.allowedTools).toBeUndefined();
+  });
+
   it("warns and skips non-string entries in YAML array", async () => {
     const skillMd = join(dir, "SKILL.md");
     await writeFile(

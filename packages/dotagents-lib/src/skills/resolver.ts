@@ -263,9 +263,22 @@ export function parseSource(source: string): {
   };
 }
 
-/** Normalize hosted sources to canonical owner/repo form for comparison/dedup. */
+/**
+ * Normalize hosted sources to canonical owner/repo form for comparison/dedup.
+ *
+ * Best-effort: malformed inputs that `parseSource` rejects are returned as-is
+ * so dedup and comparison paths don't crash on stale or hand-edited config.
+ * Real install/add paths still call `parseSource` directly and surface the
+ * error to the user.
+ */
 export function normalizeSource(source: string): string {
-  const parsed = parseSource(source);
+  let parsed;
+  try {
+    parsed = parseSource(source);
+  } catch (err) {
+    if (err instanceof ParseSourceError) {return source;}
+    throw err;
+  }
   if (parsed.type === "well-known" && parsed.url) {
     // Normalize: strip trailing slash, lowercase hostname
     try {

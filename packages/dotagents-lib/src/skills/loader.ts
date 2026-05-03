@@ -100,10 +100,15 @@ function parseAllowedTools(
 ): ToolName[] | undefined {
   if (raw === undefined || raw === null) {return undefined;}
 
+  // Track whether the field was declared as an array specifically. An empty
+  // array is "deny all" (explicit signal); an empty/whitespace string is more
+  // likely a typo and we treat it as absent.
   let tokens: string[];
+  let isArrayForm = false;
   if (typeof raw === "string") {
     tokens = raw.split(/\s+/).filter(Boolean);
   } else if (Array.isArray(raw)) {
+    isArrayForm = true;
     tokens = [];
     for (const entry of raw) {
       if (typeof entry === "string" && entry.trim().length > 0) {
@@ -117,7 +122,11 @@ function parseAllowedTools(
     return undefined;
   }
 
-  if (tokens.length === 0) {return undefined;}
+  // Empty/whitespace string: treat as absent (likely a typo).
+  // Empty array: deliberate "deny all" — preserve the empty signal.
+  if (tokens.length === 0) {
+    return isArrayForm ? [] : undefined;
+  }
 
   const accepted: ToolName[] = [];
   for (const token of tokens) {
@@ -127,7 +136,6 @@ function parseAllowedTools(
       onWarning?.(`allowed-tools: unknown tool '${token}' (ignored)`);
     }
   }
-  // Keep the empty-array signal: declared-but-no-recognized-tokens is
-  // semantically distinct from field-absent (the latter returns undefined).
+  // Declared-but-no-recognized-tokens stays distinct from field-absent.
   return accepted;
 }
