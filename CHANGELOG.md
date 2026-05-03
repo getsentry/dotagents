@@ -1,4 +1,10 @@
 # Changelog
+## 1.15.0
+
+### New Features ✨
+
+- (lib) Expose discovery, parsing, and tool-name primitives by @gricha in [#98](https://github.com/getsentry/dotagents/pull/98)
+
 ## 1.14.0
 
 ### Internal Changes 🔧
