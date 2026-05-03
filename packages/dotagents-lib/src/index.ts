@@ -1,6 +1,10 @@
 // SKILL.md loading
 export { loadSkillMd, SkillLoadError } from "./skills/loader.js";
-export type { SkillMeta } from "./skills/loader.js";
+export type { SkillMeta, LoadSkillMdOptions } from "./skills/loader.js";
+
+// Tool name vocabulary (allowed-tools frontmatter)
+export { TOOL_NAMES, isToolName } from "./skills/tool-name.js";
+export type { ToolName } from "./skills/tool-name.js";
 
 // Skill discovery
 export { discoverSkill, discoverAllSkills } from "./skills/discovery.js";
@@ -19,8 +23,10 @@ export {
   isSourceExcluded,
   stripLeadingAt,
   ResolveError,
+  ParseSourceError,
   VALID_SKILL_NAME,
 } from "./skills/resolver.js";
+export type { ParseSourceErrorKind } from "./skills/resolver.js";
 export type {
   ResolvedSkill,
   ResolvedGitSkill,
@@ -68,6 +74,16 @@ export {
 } from "./trust/validator.js";
 export type { TrustPolicy } from "./trust/policy.js";
 export type { TrustErrorDetails } from "./trust/validator.js";
+
+// Git name safety
+export {
+  validateGitNameSafety,
+  GitNameSafetyError,
+} from "./sources/name-safety.js";
+export type {
+  GitNameSafetyField,
+  GitNameSafetyReason,
+} from "./sources/name-safety.js";
 
 // General-purpose utilities used by callers
 export { exec, ExecError } from "./utils/exec.js";

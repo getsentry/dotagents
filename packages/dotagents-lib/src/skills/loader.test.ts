@@ -93,4 +93,130 @@ name: my-skill
 
     await expect(loadSkillMd(skillMd)).rejects.toThrow(SkillLoadError);
   });
+
+  it("folds multi-line plain scalars with single spaces", async () => {
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `---
+name: composition-patterns
+description:
+  React composition patterns that scale.
+  Use when refactoring components with boolean prop proliferation.
+---
+Content.
+`,
+    );
+
+    const meta = await loadSkillMd(skillMd);
+    expect(meta.description).toBe(
+      "React composition patterns that scale. Use when refactoring components with boolean prop proliferation.",
+    );
+  });
+
+  it("parses nested object frontmatter values", async () => {
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `---
+name: with-metadata
+description: Has nested metadata
+metadata:
+  author: vercel
+  version: '1.0.0'
+---
+Content.
+`,
+    );
+
+    const meta = await loadSkillMd(skillMd);
+    expect(meta["metadata"]).toEqual({ author: "vercel", version: "1.0.0" });
+  });
+
+  it("parses array frontmatter values", async () => {
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `---
+name: with-tags
+description: Has tags
+tags:
+  - frontend
+  - react
+---
+Content.
+`,
+    );
+
+    const meta = await loadSkillMd(skillMd);
+    expect(meta["tags"]).toEqual(["frontend", "react"]);
+  });
+
+  it("parses allowed-tools into ToolName array", async () => {
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `---
+name: tool-skill
+description: Uses allowed-tools
+allowed-tools: Read Grep Glob
+---
+Content.
+`,
+    );
+
+    const meta = await loadSkillMd(skillMd);
+    expect(meta.allowedTools).toEqual(["Read", "Grep", "Glob"]);
+  });
+
+  it("warns and drops unknown allowed-tools tokens", async () => {
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `---
+name: tool-skill
+description: Mixed tools
+allowed-tools: Read Magic Grep
+---
+Content.
+`,
+    );
+
+    const warnings: string[] = [];
+    const meta = await loadSkillMd(skillMd, {
+      onWarning: (msg) => warnings.push(msg),
+    });
+
+    expect(meta.allowedTools).toEqual(["Read", "Grep"]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("Magic");
+  });
+
+  it("leaves allowedTools undefined when field is absent", async () => {
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `---
+name: no-tools
+description: No allowed-tools field
+---
+`,
+    );
+
+    const meta = await loadSkillMd(skillMd);
+    expect(meta.allowedTools).toBeUndefined();
+  });
+
+  it("throws SkillLoadError when frontmatter is not a YAML object (e.g. plain string)", async () => {
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `---
+just-a-string
+---
+`,
+    );
+
+    await expect(loadSkillMd(skillMd)).rejects.toThrow(SkillLoadError);
+  });
 });
