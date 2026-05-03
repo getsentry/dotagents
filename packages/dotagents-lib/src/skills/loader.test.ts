@@ -207,6 +207,84 @@ description: No allowed-tools field
     expect(meta.allowedTools).toBeUndefined();
   });
 
+  it("returns empty array (not undefined) when every token is unrecognized", async () => {
+    // A skill that DECLARES allowed-tools but uses unknown names is
+    // semantically distinct from a skill that omits the field entirely.
+    // Authorization gates that treat undefined as "unrestricted" must be
+    // able to see the empty-array signal.
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `---
+name: future-tool-skill
+description: Uses tools we don't know about yet
+allowed-tools: FutureTool AnotherUnknownTool
+---
+`,
+    );
+
+    const warnings: string[] = [];
+    const meta = await loadSkillMd(skillMd, { onWarning: (m) => warnings.push(m) });
+    expect(meta.allowedTools).toEqual([]);
+    expect(warnings).toHaveLength(2);
+  });
+
+  it("parses YAML array form of allowed-tools", async () => {
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `---
+name: array-tools
+description: Uses YAML list syntax
+allowed-tools:
+  - Read
+  - Grep
+  - Glob
+---
+`,
+    );
+
+    const meta = await loadSkillMd(skillMd);
+    expect(meta.allowedTools).toEqual(["Read", "Grep", "Glob"]);
+  });
+
+  it("parses YAML flow-array form of allowed-tools", async () => {
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `---
+name: flow-array-tools
+description: Uses YAML flow-array syntax
+allowed-tools: [Read, Grep, Glob]
+---
+`,
+    );
+
+    const meta = await loadSkillMd(skillMd);
+    expect(meta.allowedTools).toEqual(["Read", "Grep", "Glob"]);
+  });
+
+  it("warns and skips non-string entries in YAML array", async () => {
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `---
+name: bad-array
+description: Has non-string entry
+allowed-tools:
+  - Read
+  - 42
+  - Grep
+---
+`,
+    );
+
+    const warnings: string[] = [];
+    const meta = await loadSkillMd(skillMd, { onWarning: (m) => warnings.push(m) });
+    expect(meta.allowedTools).toEqual(["Read", "Grep"]);
+    expect(warnings.some((w) => w.includes("non-string"))).toBe(true);
+  });
+
   it("throws SkillLoadError when frontmatter is not a YAML object (e.g. plain string)", async () => {
     const skillMd = join(dir, "SKILL.md");
     await writeFile(

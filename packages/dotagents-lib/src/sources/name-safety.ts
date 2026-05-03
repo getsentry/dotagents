@@ -68,11 +68,14 @@ function validateSegment(field: GitNameSafetyField, value: string): void {
       `${field} cannot start with '-' (would inject a git flag): ${JSON.stringify(value)}`,
     );
   }
-  if (value === "." || value === "..") {
+  // Reject any consecutive-dot pattern. The exact `.` and `..` cases are the
+  // common ones, but `foo..bar`, `..foo`, etc. would also bypass directory
+  // boundaries when joined into a filesystem path.
+  if (value === "." || value.includes("..")) {
     throw new GitNameSafetyError(
       field,
       "traversal",
-      `${field} cannot be a path-traversal segment: ${JSON.stringify(value)}`,
+      `${field} contains a path-traversal pattern: ${JSON.stringify(value)}`,
     );
   }
   if (!SAFE_NAME_PATTERN.test(value)) {

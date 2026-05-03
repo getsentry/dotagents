@@ -78,23 +78,45 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Parse the `allowed-tools` frontmatter field into `ToolName[]`. The agentskills.io
- * spec defines this as a space-delimited string. Unknown tokens are reported via
- * `onWarning` and dropped — graceful degradation matches host behavior and avoids
- * forcing lib bumps for every new tool name added upstream.
+ * Parse the `allowed-tools` frontmatter field into `ToolName[]`.
  *
- * Returns `undefined` when the field is absent or has an unrecognized shape.
+ * The agentskills.io spec defines this as a space-delimited string, but with
+ * a real YAML parser, frontmatter authors can also use YAML's native list
+ * syntax (`- Read\n  - Grep` or `[Read, Grep]`) which parses to a JS array.
+ * Both shapes are accepted.
+ *
+ * Unknown tokens are reported via `onWarning` and dropped. When the field is
+ * present but every token is unrecognized, returns an empty array (rather
+ * than `undefined`) so authorization gates can distinguish "field declared
+ * but values not understood" from "no restriction declared at all" — the
+ * latter is treated as unrestricted by most hosts.
+ *
+ * Returns `undefined` only when the field is genuinely absent or shaped in
+ * a way the lib can't interpret (e.g. an object).
  */
 function parseAllowedTools(
   raw: unknown,
   onWarning?: (message: string) => void,
 ): ToolName[] | undefined {
   if (raw === undefined || raw === null) {return undefined;}
-  if (typeof raw !== "string") {
-    onWarning?.(`allowed-tools must be a string, got ${typeof raw}; ignoring`);
+
+  let tokens: string[];
+  if (typeof raw === "string") {
+    tokens = raw.split(/\s+/).filter(Boolean);
+  } else if (Array.isArray(raw)) {
+    tokens = [];
+    for (const entry of raw) {
+      if (typeof entry === "string" && entry.trim().length > 0) {
+        tokens.push(entry.trim());
+      } else {
+        onWarning?.(`allowed-tools: skipping non-string entry ${JSON.stringify(entry)}`);
+      }
+    }
+  } else {
+    onWarning?.(`allowed-tools must be a string or array, got ${typeof raw}; ignoring`);
     return undefined;
   }
-  const tokens = raw.split(/\s+/).filter(Boolean);
+
   if (tokens.length === 0) {return undefined;}
 
   const accepted: ToolName[] = [];
@@ -105,5 +127,7 @@ function parseAllowedTools(
       onWarning?.(`allowed-tools: unknown tool '${token}' (ignored)`);
     }
   }
-  return accepted.length > 0 ? accepted : undefined;
+  // Keep the empty-array signal: declared-but-no-recognized-tokens is
+  // semantically distinct from field-absent (the latter returns undefined).
+  return accepted;
 }

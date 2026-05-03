@@ -78,6 +78,24 @@ describe("validateGitNameSafety", () => {
     }
   });
 
+  it("rejects embedded '..' in a segment", () => {
+    try {
+      validateGitNameSafety({ repo: "foo..bar" });
+      throw new Error("expected to throw");
+    } catch (err) {
+      expect((err as GitNameSafetyError).reason).toBe("traversal");
+    }
+  });
+
+  it("rejects embedded '..' in owner segment", () => {
+    try {
+      validateGitNameSafety({ owner: "..foo" });
+      throw new Error("expected to throw");
+    } catch (err) {
+      expect((err as GitNameSafetyError).reason).toBe("traversal");
+    }
+  });
+
   it("rejects invalid characters", () => {
     try {
       validateGitNameSafety({ owner: "weird name" });
