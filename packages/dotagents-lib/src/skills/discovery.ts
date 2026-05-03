@@ -22,23 +22,31 @@ export interface DiscoveredSkill {
 const ROOT_SCAN_DIR = ".";
 const DEFAULT_RECURSIVE_SCAN_DIRS: readonly string[] = ["skills"];
 
+const DEFAULT_MARKER_FILE = "SKILL.md";
+
 export interface DiscoveryOpts {
   /** Recursive scan dirs, in priority order. Defaults to `["skills"]`. */
   scanDirs?: readonly string[];
+  /**
+   * Filename that marks a skill directory. Default `"SKILL.md"`. Hosts that
+   * also discover agents (e.g. warden) pass `"AGENT.md"` here.
+   * Marketplace-format discovery is unaffected; it remains SKILL-specific.
+   */
+  markerFile?: string;
 }
 
 interface SkillDir {
-  /** Absolute path to the directory containing SKILL.md */
+  /** Absolute path to the directory containing the marker file */
   absPath: string;
   /** Relative path from the scan root to this directory */
   relPath: string;
 }
 
 /**
- * Recursively walk a directory tree finding all directories that contain SKILL.md.
- * Stops descending into a directory once SKILL.md is found (skill dirs are leaf nodes).
+ * Recursively walk a directory tree finding all directories that contain the marker file.
+ * Stops descending into a directory once the marker is found (skill dirs are leaf nodes).
  */
-async function walkSkillDirs(baseDir: string, relPrefix = ""): Promise<SkillDir[]> {
+async function walkSkillDirs(baseDir: string, markerFile: string, relPrefix = ""): Promise<SkillDir[]> {
   if (!existsSync(baseDir)) {return [];}
 
   let entries;
@@ -55,12 +63,12 @@ async function walkSkillDirs(baseDir: string, relPrefix = ""): Promise<SkillDir[
     const absPath = join(baseDir, entry.name);
     const relPath = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
 
-    if (existsSync(join(absPath, "SKILL.md"))) {
+    if (existsSync(join(absPath, markerFile))) {
       // This is a skill directory — collect it and don't descend further
       direct.push({ absPath, relPath });
     } else {
       // Not a skill — recurse into it to find nested skills
-      const children = await walkSkillDirs(absPath, relPath);
+      const children = await walkSkillDirs(absPath, markerFile, relPath);
       nested.push(...children);
     }
   }
@@ -85,11 +93,12 @@ async function listSkillDirs(
   repoDir: string,
   scanDir: string,
   recursive: boolean,
+  markerFile: string,
 ): Promise<SkillDir[]> {
   const absDir = join(repoDir, scanDir);
-  if (recursive) {return walkSkillDirs(absDir);}
+  if (recursive) {return walkSkillDirs(absDir, markerFile);}
 
-  // Flat scan: only direct children with SKILL.md
+  // Flat scan: only direct children with the marker file
   if (!existsSync(absDir)) {return [];}
   let entries;
   try {
@@ -101,13 +110,13 @@ async function listSkillDirs(
   for (const entry of entries) {
     if (!entry.isDirectory()) {continue;}
     const absPath = join(absDir, entry.name);
-    if (existsSync(join(absPath, "SKILL.md"))) {
+    if (existsSync(join(absPath, markerFile))) {
       results.push({ absPath, relPath: entry.name });
     }
   }
 
   // Check if the root directory itself is a skill (single-skill repo pattern)
-  if (scanDir === ROOT_SCAN_DIR && existsSync(join(absDir, "SKILL.md"))) {
+  if (scanDir === ROOT_SCAN_DIR && existsSync(join(absDir, markerFile))) {
     results.push({ absPath: absDir, relPath: "." });
   }
 
@@ -117,15 +126,16 @@ async function listSkillDirs(
 /**
  * Discover a specific skill by name within a repo directory.
  * Scans conventional directories in priority order, recursing into
- * subdirectories until SKILL.md is found.
+ * subdirectories until the marker file is found.
  */
 export async function discoverSkill(
   repoDir: string,
   skillName: string,
   opts?: DiscoveryOpts,
 ): Promise<DiscoveredSkill | null> {
+  const markerFile = opts?.markerFile ?? DEFAULT_MARKER_FILE;
   for (const { dir: scanDir, recursive } of buildScanDirs(opts)) {
-    const skillDirs = await listSkillDirs(repoDir, scanDir, recursive);
+    const skillDirs = await listSkillDirs(repoDir, scanDir, recursive, markerFile);
 
     // Within each scan dir: prefer dir-name match, fall back to frontmatter match
     let dirNameMatch: DiscoveredSkill | null = null;
@@ -136,7 +146,7 @@ export async function discoverSkill(
       const fullRelPath = scanDir === ROOT_SCAN_DIR ? relPath : `${scanDir}/${relPath}`;
 
       try {
-        const meta = await loadSkillMd(join(absPath, "SKILL.md"));
+        const meta = await loadSkillMd(join(absPath, markerFile));
         if (!dirNameMatch && dirName === skillName) {
           dirNameMatch = { path: fullRelPath, meta };
         } else if (!frontmatterMatch && meta.name === skillName) {
@@ -152,7 +162,8 @@ export async function discoverSkill(
     if (frontmatterMatch) {return frontmatterMatch;}
   }
 
-  // Marketplace format
+  // Marketplace format hardcodes SKILL.md — it's a SKILL-specific distribution
+  // convention, not a generic catalog.
   const marketplaceSkill = await tryMarketplaceFormat(repoDir, skillName);
   if (marketplaceSkill) {return marketplaceSkill;}
 
@@ -167,14 +178,15 @@ export async function discoverAllSkills(
   repoDir: string,
   opts?: DiscoveryOpts,
 ): Promise<DiscoveredSkill[]> {
+  const markerFile = opts?.markerFile ?? DEFAULT_MARKER_FILE;
   const found = new Map<string, DiscoveredSkill>();
 
   for (const { dir: scanDir, recursive } of buildScanDirs(opts)) {
-    const skillDirs = await listSkillDirs(repoDir, scanDir, recursive);
+    const skillDirs = await listSkillDirs(repoDir, scanDir, recursive, markerFile);
 
     for (const { absPath, relPath } of skillDirs) {
       try {
-        const meta = await loadSkillMd(join(absPath, "SKILL.md"));
+        const meta = await loadSkillMd(join(absPath, markerFile));
         // First match wins (higher priority scan dirs are checked first)
         if (found.has(meta.name)) {continue;}
         const fullRelPath = scanDir === ROOT_SCAN_DIR ? relPath : `${scanDir}/${relPath}`;
@@ -185,7 +197,7 @@ export async function discoverAllSkills(
     }
   }
 
-  // Marketplace format: plugins/*/skills/*/SKILL.md
+  // Marketplace format hardcodes SKILL.md (see discoverSkill).
   const marketplaceSkills = await scanMarketplaceFormat(repoDir);
   for (const skill of marketplaceSkills) {
     if (!found.has(skill.meta.name)) {

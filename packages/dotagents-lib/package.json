@@ -26,5 +26,8 @@
   "license": "MIT",
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "yaml": "^2.8.3"
   }
 }

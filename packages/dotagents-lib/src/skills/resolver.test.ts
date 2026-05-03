@@ -6,6 +6,7 @@ import {
   normalizeSource,
   sourcesMatch,
   isSourceExcluded,
+  ParseSourceError,
 } from "./resolver.js";
 
 describe("parseOwnerRepoShorthand", () => {
@@ -292,9 +293,10 @@ describe("parseSource", () => {
   });
 
   it("does not parse http:// URL as well-known (HTTPS required)", () => {
-    const result = parseSource("http://localhost:3000");
-    // http:// falls through to owner/repo shorthand — not classified as well-known
-    expect(result.type).not.toBe("well-known");
+    // http:// falls through to the shorthand branch, where the URL's path
+    // structure trips the multi-segment-shorthand strictness check. Either
+    // way, http:// is rejected.
+    expect(() => parseSource("http://localhost:3000")).toThrow(ParseSourceError);
   });
 });
 
@@ -464,5 +466,102 @@ describe("isSourceExcluded", () => {
   it("strips git: prefix for matching", () => {
     expect(isSourceExcluded("git:getsentry/skills", ["getsentry"])).toBe(true);
     expect(isSourceExcluded("git:getsentry/skills", ["getsentry/skills"])).toBe(true);
+  });
+});
+
+describe("parseSource strict shorthand", () => {
+  it("throws ParseSourceError on empty SHA after @", () => {
+    expect(() => parseSource("owner/repo@")).toThrow(ParseSourceError);
+    try {
+      parseSource("owner/repo@");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ParseSourceError);
+      expect((err as ParseSourceError).kind).toBe("empty-sha");
+    }
+  });
+
+  it("throws ParseSourceError on empty SHA in scoped shorthand", () => {
+    try {
+      parseSource("@owner/repo@");
+      throw new Error("expected to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ParseSourceError);
+      expect((err as ParseSourceError).kind).toBe("empty-sha");
+    }
+  });
+
+  it("throws ParseSourceError on multi-segment shorthand", () => {
+    try {
+      parseSource("owner/repo/nested");
+      throw new Error("expected to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ParseSourceError);
+      expect((err as ParseSourceError).kind).toBe("multi-segment-shorthand");
+    }
+  });
+
+  it("still parses valid github shorthand without throwing", () => {
+    expect(() => parseSource("owner/repo")).not.toThrow();
+    expect(() => parseSource("owner/repo@abc123")).not.toThrow();
+    expect(() => parseSource("@owner/repo")).not.toThrow();
+  });
+
+  it("still parses GitHub URLs without throwing (URL form unaffected)", () => {
+    expect(() => parseSource("https://github.com/owner/repo@abc")).not.toThrow();
+    expect(() => parseSource("git@github.com:owner/repo.git@abc")).not.toThrow();
+  });
+
+  it("GitLab nested groups via applyDefaultRepositorySource go through URL form, not shorthand", () => {
+    const expanded = applyDefaultRepositorySource("group/sub/repo", "gitlab");
+    expect(() => parseSource(expanded)).not.toThrow();
+    const parsed = parseSource(expanded);
+    expect(parsed.type).toBe("git");
+    expect(parsed.owner).toBe("group/sub");
+    expect(parsed.repo).toBe("repo");
+  });
+});
+
+describe("normalizeSource gracefully handles malformed inputs", () => {
+  // normalizeSource is called from dedup / comparison paths that should not
+  // crash on stale or hand-edited config. parseSource throwing on malformed
+  // shorthand must not propagate up to those callers.
+  it("returns input as-is when parseSource throws empty-sha", () => {
+    expect(normalizeSource("owner/repo@")).toBe("owner/repo@");
+  });
+
+  it("returns input as-is when parseSource throws multi-segment-shorthand", () => {
+    expect(normalizeSource("owner/repo/nested")).toBe("owner/repo/nested");
+  });
+
+  it("still normalizes valid inputs", () => {
+    expect(normalizeSource("https://github.com/owner/repo")).toBe("owner/repo");
+  });
+});
+
+describe("sourcesMatch gracefully handles malformed inputs", () => {
+  it("returns false (not throws) when one side is malformed", () => {
+    expect(sourcesMatch("owner/repo", "owner/repo@")).toBe(false);
+  });
+
+  it("matches two equally-malformed inputs as opaque strings", () => {
+    expect(sourcesMatch("owner/repo@", "owner/repo@")).toBe(true);
+  });
+});
+
+describe("parseOwnerRepoShorthand strict (mirrors parseSource)", () => {
+  it("returns undefined for empty SHA after @", () => {
+    expect(parseOwnerRepoShorthand("owner/repo@")).toBeUndefined();
+  });
+
+  it("returns undefined for multi-segment shorthand", () => {
+    expect(parseOwnerRepoShorthand("owner/repo/nested")).toBeUndefined();
+  });
+
+  it("still parses valid shorthand", () => {
+    expect(parseOwnerRepoShorthand("owner/repo@abc")).toEqual({
+      owner: "owner",
+      repo: "repo",
+      ref: "abc",
+    });
   });
 });

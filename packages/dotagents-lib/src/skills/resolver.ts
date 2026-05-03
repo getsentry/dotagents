@@ -29,6 +29,27 @@ export class ResolveError extends Error {
   }
 }
 
+/**
+ * Thrown when `parseSource` is asked to parse a malformed shorthand specifier
+ * that previously produced a silent partial parse.
+ *
+ *  - `empty-sha`: input ends with `@` and nothing after (`owner/repo@`).
+ *  - `multi-segment-shorthand`: shorthand has more than two slash-separated
+ *    segments (`owner/repo/nested`). GitLab nested groups are unaffected
+ *    because they go through `applyDefaultRepositorySource` first.
+ */
+export type ParseSourceErrorKind = "empty-sha" | "multi-segment-shorthand";
+
+export class ParseSourceError extends Error {
+  readonly kind: ParseSourceErrorKind;
+
+  constructor(message: string, kind: ParseSourceErrorKind) {
+    super(message);
+    this.name = "ParseSourceError";
+    this.kind = kind;
+  }
+}
+
 export interface ResolvedGitSkill {
   type: "git";
   /** Original source string */
@@ -88,6 +109,10 @@ export function parseOwnerRepoShorthand(
   const atIdx = stripped.indexOf("@");
   const base = atIdx >= 0 ? stripped.slice(0, atIdx) : stripped;
   const ref = atIdx >= 0 ? stripped.slice(atIdx + 1) : undefined;
+
+  // Empty SHA after `@` is malformed shorthand, not a valid no-pin parse.
+  if (atIdx >= 0 && ref === "") {return undefined;}
+
   const parts = base.split("/");
   if (parts.length !== 2) {return undefined;}
 
@@ -204,7 +229,30 @@ export function parseSource(source: string): {
   const atIdx = stripped.indexOf("@");
   const base = atIdx === -1 ? stripped : stripped.slice(0, atIdx);
   const ref = atIdx === -1 ? undefined : stripped.slice(atIdx + 1);
-  const [owner, repo] = base.split("/");
+
+  // Empty SHA after `@` was previously returning `ref: ''` which downstream
+  // code treats as no-pin. Throw instead so a typo doesn't silently fall back
+  // to the tip of the default branch.
+  if (atIdx >= 0 && ref === "") {
+    throw new ParseSourceError(
+      `Invalid source: ${source} (empty SHA after @)`,
+      "empty-sha",
+    );
+  }
+
+  const parts = base.split("/");
+  // Multi-segment shorthand silently dropped trailing segments. Throw so
+  // `owner/repo/nested` doesn't resolve as `owner/repo` against the user's
+  // intent. (GitLab nested groups go through applyDefaultRepositorySource
+  // first and arrive here as URL form, not shorthand.)
+  if (parts.length > 2) {
+    throw new ParseSourceError(
+      `Invalid source: ${source} (multi-segment shorthand; use a full URL for nested groups)`,
+      "multi-segment-shorthand",
+    );
+  }
+
+  const [owner, repo] = parts;
 
   return {
     type: "github",
@@ -215,9 +263,22 @@ export function parseSource(source: string): {
   };
 }
 
-/** Normalize hosted sources to canonical owner/repo form for comparison/dedup. */
+/**
+ * Normalize hosted sources to canonical owner/repo form for comparison/dedup.
+ *
+ * Best-effort: malformed inputs that `parseSource` rejects are returned as-is
+ * so dedup and comparison paths don't crash on stale or hand-edited config.
+ * Real install/add paths still call `parseSource` directly and surface the
+ * error to the user.
+ */
 export function normalizeSource(source: string): string {
-  const parsed = parseSource(source);
+  let parsed;
+  try {
+    parsed = parseSource(source);
+  } catch (err) {
+    if (err instanceof ParseSourceError) {return source;}
+    throw err;
+  }
   if (parsed.type === "well-known" && parsed.url) {
     // Normalize: strip trailing slash, lowercase hostname
     try {

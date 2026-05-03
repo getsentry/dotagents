@@ -410,3 +410,73 @@ describe("discoverAllSkills", () => {
     );
   });
 });
+
+const AGENT_MD = (name: string) => `---
+name: ${name}
+description: Agent ${name}
+---
+# ${name}
+`;
+
+describe("markerFile opt", () => {
+  let repoDir: string;
+
+  beforeEach(async () => {
+    repoDir = await mkdtemp(join(tmpdir(), "dotagents-marker-"));
+  });
+
+  afterEach(async () => {
+    await rm(repoDir, { recursive: true });
+  });
+
+  it("default marker discovers SKILL.md but not AGENT.md", async () => {
+    await mkdir(join(repoDir, "skills", "skill-a"), { recursive: true });
+    await writeFile(join(repoDir, "skills", "skill-a", "SKILL.md"), SKILL_MD("skill-a"));
+    await mkdir(join(repoDir, "skills", "agent-a"), { recursive: true });
+    await writeFile(join(repoDir, "skills", "agent-a", "AGENT.md"), AGENT_MD("agent-a"));
+
+    const results = await discoverAllSkills(repoDir);
+    expect(results.map((r) => r.meta.name)).toEqual(["skill-a"]);
+  });
+
+  it("override marker discovers AGENT.md but not SKILL.md", async () => {
+    await mkdir(join(repoDir, "agents", "skill-a"), { recursive: true });
+    await writeFile(join(repoDir, "agents", "skill-a", "SKILL.md"), SKILL_MD("skill-a"));
+    await mkdir(join(repoDir, "agents", "agent-a"), { recursive: true });
+    await writeFile(join(repoDir, "agents", "agent-a", "AGENT.md"), AGENT_MD("agent-a"));
+
+    const results = await discoverAllSkills(repoDir, {
+      scanDirs: ["agents"],
+      markerFile: "AGENT.md",
+    });
+    expect(results.map((r) => r.meta.name)).toEqual(["agent-a"]);
+  });
+
+  it("discoverSkill respects override marker", async () => {
+    await mkdir(join(repoDir, "agents", "my-agent"), { recursive: true });
+    await writeFile(join(repoDir, "agents", "my-agent", "AGENT.md"), AGENT_MD("my-agent"));
+
+    const result = await discoverSkill(repoDir, "my-agent", {
+      scanDirs: ["agents"],
+      markerFile: "AGENT.md",
+    });
+    expect(result?.meta.name).toBe("my-agent");
+  });
+
+  it("marker opt does not affect marketplace discovery (which is SKILL-specific)", async () => {
+    // Marketplace structure with SKILL.md
+    await mkdir(join(repoDir, ".claude-plugin"), { recursive: true });
+    await writeFile(join(repoDir, ".claude-plugin", "marketplace.json"), "{}");
+    await mkdir(join(repoDir, "plugins", "p", "skills", "marketplace-skill"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(repoDir, "plugins", "p", "skills", "marketplace-skill", "SKILL.md"),
+      SKILL_MD("marketplace-skill"),
+    );
+
+    // Even with markerFile=AGENT.md, marketplace plugin scan still finds SKILL.md skills.
+    const results = await discoverAllSkills(repoDir, { markerFile: "AGENT.md" });
+    expect(results.map((r) => r.meta.name)).toContain("marketplace-skill");
+  });
+});
