@@ -1,4 +1,8 @@
 # Changelog
+## 1.16.0
+
+- Update post-merge hook installation command by @jvanderwee in [#96](https://github.com/getsentry/dotagents/pull/96)
+
 ## 1.15.0
 
 ### New Features ✨
