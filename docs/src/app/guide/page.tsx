@@ -121,7 +121,7 @@ dotagents trust add git.corp.example.com`}</code>
         <pre>
           <code>{`#!/bin/sh
 # .git/hooks/post-merge
-npx @sentry/dotagents install || echo "dotagents install failed"
+npx --yes @sentry/dotagents install || echo "dotagents install failed"
 `}</code>
         </pre>
         <p>
