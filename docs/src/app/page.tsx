@@ -50,8 +50,8 @@ export default function Home() {
             <h3>One command to install</h3>
             <p>
               <code>agents.toml</code> is committed, managed skills are
-              gitignored. Collaborators run <code>install</code> and get the
-              same setup.
+              gitignored. Collaborators run <code>install</code> to fetch or
+              refresh skills.
             </p>
           </div>
           <div className="feature">
@@ -179,8 +179,8 @@ export default function Home() {
       <section className="section" id="adding-skills">
         <h2>Adding Skills</h2>
         <p>
-          Use <code>dotagents add</code> to install skills from git repos or
-          local directories.
+          Use <code>dotagents add</code> to install skills from git repos,
+          well-known HTTPS sources, or local directories.
         </p>
         <pre>
           <code>{`# Add a single skill from a GitHub repo
@@ -197,6 +197,9 @@ dotagents add https://gitlab.com/group/repo --name find-bugs
 
 # From a non-GitHub git server
 dotagents add git:https://git.corp.dev/team/skills --name review
+
+# From a well-known HTTPS source
+dotagents add https://cli.sentry.dev --name error-tracking
 
 # From a local directory
 dotagents add path:./my-skills/custom`}</code>

@@ -104,24 +104,14 @@ export default function CliPage() {
 
         <CliCommand
           name="install"
-          synopsis="dotagents install [--force]"
-          description="Install all skill dependencies from agents.toml. Resolves sources, copies skills, writes lockfile, creates symlinks, generates MCP and hook configs. Always fetches latest unless a ref is pinned."
-          options={[
-            {
-              flag: "--force",
-              description:
-                "Re-resolve and re-install all skills, ignoring cache",
-            },
-          ]}
-          examples={[
-            "dotagents install",
-            "dotagents install --force    # bypass cache",
-          ]}
+          synopsis="dotagents install"
+          description="Install and refresh skill dependencies from agents.toml. Resolves sources, copies skills, writes the lockfile, creates symlinks, and generates MCP and hook configs. There is no separate update command."
+          examples={["dotagents install"]}
         />
 
         <CliCommand
           name="add"
-          synopsis="dotagents add <source> [--name <name>] [--ref <ref>] [--all]"
+          synopsis="dotagents add <source> [skill...] [--name <name>] [--skill <name>] [--ref <ref>] [--all]"
           description={
             <>
               Add a skill dependency and install it. Auto-discovers skills in
@@ -136,7 +126,11 @@ export default function CliPage() {
           options={[
             {
               flag: "--name <name>",
-              description: "Specify which skill to add (alias: --skill)",
+              description: "Specify which skill to add (repeatable; alias: --skill)",
+            },
+            {
+              flag: "--skill <name>",
+              description: "Alias for --name",
             },
             {
               flag: "--ref <ref>",
@@ -155,7 +149,7 @@ export default function CliPage() {
             "# All skills from a repo",
             "dotagents add getsentry/skills --all",
             "",
-            "# Pinned to a version",
+            "# Pinned to a ref",
             "dotagents add getsentry/warden@v1.0.0",
             "",
             "# Explicit GitLab URL",
@@ -163,6 +157,9 @@ export default function CliPage() {
             "",
             "# Non-GitHub git server",
             "dotagents add git:https://git.corp.dev/team/skills --name review",
+            "",
+            "# Well-known HTTPS source",
+            "dotagents add https://cli.sentry.dev --name error-tracking",
             "",
             "# Local directory",
             "dotagents add path:./my-skills/custom",
@@ -387,6 +384,24 @@ dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"
             </tr>
             <tr>
               <td>
+                <strong>GitLab URL</strong>
+              </td>
+              <td>
+                <code>https://gitlab.com/group/repo</code>
+              </td>
+              <td>Explicit GitLab source</td>
+            </tr>
+            <tr>
+              <td>
+                <strong>Well-known HTTPS</strong>
+              </td>
+              <td>
+                <code>https://cli.sentry.dev</code>
+              </td>
+              <td>HTTP source using .well-known skill discovery</td>
+            </tr>
+            <tr>
+              <td>
                 <strong>Local</strong>
               </td>
               <td>
@@ -435,6 +450,26 @@ dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"
                 <code>codex</code>, <code>vscode</code>,{" "}
                 <code>opencode</code>
               </td>
+            </tr>
+            <tr>
+              <td>
+                <code>minimum_release_age</code>
+              </td>
+              <td>integer</td>
+              <td>--</td>
+              <td>
+                Minimum commit age, in minutes, before a git skill can install.
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <code>minimum_release_age_exclude</code>
+              </td>
+              <td>string[]</td>
+              <td>
+                <code>[]</code>
+              </td>
+              <td>Sources that bypass the minimum release age gate.</td>
             </tr>
             <tr>
               <td>

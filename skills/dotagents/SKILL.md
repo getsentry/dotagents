@@ -37,7 +37,7 @@ npx @sentry/dotagents add getsentry/skills --all
 # Add a pinned skill
 npx @sentry/dotagents add getsentry/warden@v1.0.0
 
-# Install all dependencies from agents.toml
+# Install or refresh all dependencies from agents.toml
 npx @sentry/dotagents install
 
 # List installed skills
@@ -71,6 +71,7 @@ For full options and flags, read [references/cli-reference.md](references/cli-re
 | GitHub SSH | `git@github.com:owner/repo.git` | SSH clone URL |
 | GitHub HTTPS | `https://github.com/owner/repo` | Full HTTPS URL |
 | Git URL | `git:https://git.corp.dev/team/skills` | Any non-GitHub git remote |
+| Well-known HTTPS | `https://cli.sentry.dev` | HTTP source using `.well-known/skills/` |
 | Local path | `path:./my-skills/custom` | Relative to project root |
 
 ## Key Concepts
@@ -83,3 +84,4 @@ For full options and flags, read [references/cli-reference.md](references/cli-re
 - **Hooks**: `[[hooks]]` declarations write tool-event hooks to each agent's config
 - **Gitignore**: Managed skills are always gitignored; custom in-place skills are tracked
 - **User scope**: `--user` flag manages skills in `~/.agents/` shared across all projects
+- **Updates**: Run `npx @sentry/dotagents install` to refresh managed skills; there is no `update` command

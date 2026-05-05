@@ -33,7 +33,9 @@ path = "plugins/sentry-skills/skills/find-bugs"
 | GitHub pinned | `getsentry/skills@v1.0.0` | Same, checked out at `v1.0.0` |
 | GitHub HTTPS | `https://github.com/owner/repo` | URL used directly |
 | GitHub SSH | `git@github.com:owner/repo.git` | SSH clone |
+| GitLab HTTPS | `https://gitlab.com/group/repo` | URL used directly |
 | Git URL | `git:https://git.corp.dev/team/skills` | Any non-GitHub git remote |
+| Well-known HTTPS | `https://cli.sentry.dev` | HTTP source using `.well-known/skills/` |
 | Local | `path:./my-skills/custom` | Relative to project root |
 
 **Skill name rules:** Must start with alphanumeric, contain only `[a-zA-Z0-9._-]`.
@@ -160,6 +162,17 @@ User-scope symlinks go to `~/.claude/skills/` and `~/.cursor/skills/`.
 
 When no `agents.toml` exists and you're not inside a git repo, dotagents falls back to user scope automatically.
 
+## Minimum Release Age
+
+Use `minimum_release_age` to require git commits to age before install. The value is in minutes. Local and well-known HTTPS sources are not affected.
+
+```toml
+minimum_release_age = 60
+minimum_release_age_exclude = ["getsentry/*"]
+```
+
+Use `minimum_release_age_exclude` for trusted sources that can bypass the age gate.
+
 ## Gitignore
 
 dotagents always manages gitignore. It generates `.agents/.gitignore` listing managed (remote) skills. In-place skills (`path:.agents/skills/...`) are never gitignored since they must be tracked in git.
@@ -173,8 +186,8 @@ If these entries are missing, `install` and `sync` warn. Run `npx @sentry/dotage
 ## Caching
 
 - Cache location: `~/.local/dotagents/` (override with `DOTAGENTS_STATE_DIR`)
-- Shallow clone per repo, refreshed after 24-hour TTL
-- Use `npx @sentry/dotagents install --force` to bypass cache
+- Git sources use shallow clones and refresh on every install
+- Well-known HTTPS sources refresh after a 24-hour TTL
 
 ## Troubleshooting
 

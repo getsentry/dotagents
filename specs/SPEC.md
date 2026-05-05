@@ -147,7 +147,7 @@ Trust is checked before any network work in both `dotagents add` and `dotagents 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | Yes | Skill name. Must start with alphanumeric and contain only `[a-zA-Z0-9._-]`. |
-| `source` | Yes | Skill source. `owner/repo` (resolved via `defaultRepositorySource`), `owner/repo@ref`, `https://github.com/owner/repo`, `https://gitlab.com/group/repo`, `git:<url>`, or `path:<relative>`. |
+| `source` | Yes | Skill source. `owner/repo` (resolved via `defaultRepositorySource`), `owner/repo@ref`, GitHub/GitLab URLs, well-known `https://<domain>` sources, `git:<url>`, or `path:<relative>`. |
 | `ref` | No | Git ref (tag, branch, or SHA). Can also be specified inline as `owner/repo@ref`. Defaults to repo's default branch. |
 | `path` | No | Explicit subdirectory path to the skill within the repo. Only needed when automatic discovery fails. |
 
@@ -311,11 +311,13 @@ version = 1
 source = "getsentry/skills"
 resolved_url = "https://github.com/getsentry/skills.git"
 resolved_path = "plugins/sentry-skills/skills/find-bugs"
+resolved_commit = "0123456789abcdef0123456789abcdef01234567"
 
 [skills.warden-skill]
 source = "getsentry/warden"
 resolved_url = "https://github.com/getsentry/warden.git"
 resolved_path = ".claude/skills/warden-skill"
+resolved_commit = "89abcdef0123456789abcdef0123456789abcdef"
 
 [skills.error-tracking]
 source = "https://cli.sentry.dev"
@@ -339,7 +341,7 @@ source = "path:../shared-skills/my-custom-skill"
 
 ## CLI Commands
 
-The CLI binary is `dotagents`. Currently runs via `tsx` during development; will be compiled with Bun for standalone distribution.
+The CLI binary is `dotagents`. During development, run it with `pnpm dev -- <command>` or `tsx`. Published packages are built with `tsc` and run on Node.js 20+.
 
 ### `dotagents init`
 
@@ -368,7 +370,7 @@ dotagents init [--force] [--agents claude,cursor]
 Install all dependencies from `agents.toml`.
 
 ```
-dotagents install [--force]
+dotagents install
 ```
 
 **Behavior:**
@@ -383,9 +385,6 @@ dotagents install [--force]
 6. Create/verify symlinks (legacy `[symlinks]` and agent-specific)
 7. Write MCP config files for each declared agent
 8. Print summary
-
-**Flags:**
-- `--force`: Re-resolve everything, ignore cache.
 
 ### `dotagents add <specifier>`
 
@@ -578,7 +577,8 @@ Source string
 Cache location: `~/.local/dotagents/` (overridable via `DOTAGENTS_STATE_DIR`)
 
 Structure:
-- `owner/repo/` — shallow clone, refreshed per TTL (default 24h)
+- `owner/repo/` -- shallow git clone, refreshed on every install
+- `<https-domain>/` -- well-known HTTPS cache, refreshed after a 24-hour TTL
 
 Git operations (all non-interactive: `GIT_TERMINAL_PROMPT=0`, SSH `BatchMode=yes`):
 - Initial: `git clone --depth=1`
@@ -590,7 +590,7 @@ A valid skill directory must contain:
 - `SKILL.md` with YAML frontmatter (delimited by `---`)
 - Frontmatter must include `name` (string) and `description` (string)
 
-The YAML frontmatter is parsed with a minimal key-value parser (no external YAML dependency). Supports simple `key: value` pairs and quoted values.
+The YAML frontmatter is parsed with the `yaml` package. `allowed-tools` can be a space-delimited string or a YAML list.
 
 ---
 
@@ -676,73 +676,54 @@ For each target in the array, dotagents creates `<target>/skills/ -> .agents/ski
 
 ```
 dotagents/
-  AGENTS.md                # Agent instructions
-  CLAUDE.md -> AGENTS.md   # Symlink
-  agents.toml              # Self-dogfooding
-  agents.lock              # Tracks managed skills (gitignored)
-  warden.toml              # Warden config for code analysis
-  package.json
-  tsconfig.json
-  vitest.config.ts
-  .gitignore
+  AGENTS.md                  # Agent instructions
+  CLAUDE.md -> AGENTS.md     # Symlink
+  agents.toml                # Self-dogfooding
+  agents.lock                # Tracks managed skills (gitignored)
+  warden.toml                # Warden config for code analysis
+  package.json               # pnpm workspace root
+  pnpm-workspace.yaml
   specs/
-    SPEC.md                # This file
-  src/
-    index.ts               # Library entry point (re-exports all modules)
-    scope.ts               # Project/user scope resolution
-    cli/
-      index.ts             # CLI entry point, command routing
-      commands/
-        init.ts
-        install.ts
-        add.ts
-        remove.ts
-        sync.ts
-        list.ts
-        mcp.ts
-    agents/
-      types.ts             # McpDeclaration, AgentDefinition interfaces
-      registry.ts          # Agent registry (claude, cursor, codex, vscode, opencode)
-      definitions/         # Per-agent definitions (claude.ts, cursor.ts, etc.)
-      mcp-writer.ts        # MCP config file generation per agent
-      hook-writer.ts       # Hook config file generation per agent
-      paths.ts             # Agent config path resolution
-      errors.ts            # Agent-specific error types
-      index.ts             # Re-exports
-    config/
-      schema.ts            # Zod schemas for agents.toml
-      loader.ts            # TOML parse + validate
-      writer.ts            # TOML modification (add/remove skills, MCP, hooks)
-      index.ts             # Re-exports
-    lockfile/
-      schema.ts            # Zod schemas for agents.lock
-      loader.ts            # Parse + validate lockfile
-      writer.ts            # Serialize lockfile (deterministic sorting)
-      index.ts             # Re-exports
-    skills/
-      loader.ts            # Parse SKILL.md YAML frontmatter
-      discovery.ts         # Scan conventional dirs + marketplace format
-      resolver.ts          # Source specifier -> resolved skill on disk
-      index.ts             # Re-exports
-    sources/
-      git.ts               # Git clone/fetch/checkout (shallow, non-interactive)
-      local.ts             # Local path resolution
-      cache.ts             # Global cache (~/.local/dotagents/) with TTL
-      index.ts             # Re-exports
-    symlinks/
-      manager.ts           # Create/verify/repair symlinks, directory migration
-      index.ts             # Re-exports
-    trust/
-      validator.ts         # Trust policy enforcement
-      index.ts             # Re-exports
-    gitignore/
-      writer.ts            # Generate .agents/.gitignore
-      index.ts             # Re-exports
-    utils/
-      exec.ts              # Child process execution (non-interactive git)
-      hash.ts              # Deterministic SHA-256 directory hashing
-      fs.ts                # copyDir helper
-      index.ts             # Re-exports
+    SPEC.md                  # This file
+  docs/                      # Next.js docs site
+  packages/
+    dotagents/               # @sentry/dotagents CLI and host library
+      src/
+        index.ts             # Host public API re-exports
+        scope.ts             # Project/user scope resolution
+        cli/
+          index.ts           # CLI entry point, command routing
+          update-notifier.ts # npm update check
+          commands/
+            init.ts
+            install.ts
+            add.ts
+            remove.ts
+            sync.ts
+            list.ts
+            mcp.ts
+            trust.ts
+            doctor.ts
+        agents/
+          types.ts           # McpDeclaration, AgentDefinition interfaces
+          registry.ts        # Agent registry (claude, cursor, codex, vscode, opencode)
+          definitions/       # Per-agent definitions
+          mcp-writer.ts      # MCP config file generation per agent
+          hook-writer.ts     # Hook config file generation per agent
+          paths.ts           # Agent config path resolution
+          errors.ts          # Agent-specific error types
+        config/              # agents.toml schema, loader, writer
+        lockfile/            # agents.lock schema, loader, writer
+        symlinks/            # Symlink create/verify/repair
+        gitignore/           # .agents/.gitignore generation
+        utils/               # Host-local helpers
+    dotagents-lib/           # @sentry/dotagents-lib reusable core
+      src/
+        index.ts             # Library public API
+        skills/              # SKILL.md loader, discovery, resolver
+        sources/             # git, cache, local, well-known source handling
+        trust/               # Trust policy validation
+        utils/               # exec and filesystem helpers
 ```
 
 ## Dependencies
@@ -755,6 +736,7 @@ dotagents/
 | `zod` | Runtime schema validation (v4, imported as `zod/v4`) |
 | `chalk` | Terminal colors |
 | `@clack/prompts` | Interactive CLI prompts |
+| `yaml` | SKILL.md frontmatter parsing in `@sentry/dotagents-lib` |
 
 ### Dev
 
@@ -768,38 +750,30 @@ dotagents/
 | `lint-staged` | Run oxlint on staged files |
 | `@types/node` | Node.js type definitions |
 
-No git library -- uses `git` CLI directly with non-interactive mode. No YAML library -- uses minimal key-value parser for SKILL.md frontmatter.
+No git library -- dotagents uses the `git` CLI directly with non-interactive mode. SKILL.md frontmatter is parsed with the `yaml` package.
 
 ## Build and Distribution
 
-### Current (Development)
+### Development
 
 ```bash
 pnpm dev -- init          # Run via tsx
-npx tsx src/cli/index.ts  # Direct execution
+npx tsx packages/dotagents/src/cli/index.ts  # Direct execution
 ```
 
-### Planned (Bun Compile)
-
-Standalone binary with no runtime dependencies:
+### Package Build
 
 ```bash
-bun build src/cli/index.ts --compile --outfile dist/dotagents
+pnpm build
 ```
 
-### Platform Matrix
+Both workspace packages build TypeScript into `dist/`. The CLI package exposes `dist/cli/index.js` as the `dotagents` binary.
 
-Build per-platform binaries via GitHub Actions:
+### Distribution
 
-| Platform | Target |
-|----------|--------|
-| macOS arm64 | `darwin-arm64` |
-| macOS x64 | `darwin-x64` |
-| Linux x64 | `linux-x64` |
-| Linux arm64 | `linux-arm64` |
+npm is the supported distribution channel:
 
-### Distribution Channels
-
-1. **GitHub Releases**: Per-platform binaries attached to releases
-2. **Install script**: `curl -fsSL https://dotagents.dev/install.sh | sh` (detects platform, downloads binary)
-3. **npm** (fallback): `npx dotagents` for users with Node.js
+```bash
+npm install -g @sentry/dotagents
+npx @sentry/dotagents <command>
+```
