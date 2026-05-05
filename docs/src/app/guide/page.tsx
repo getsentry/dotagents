@@ -32,7 +32,8 @@ export default function GuidePage() {
 
         <h3>2. Add Skills</h3>
         <p>
-          Install skills from GitHub repos, git URLs, or local directories.
+          Install skills from GitHub repos, git URLs, well-known HTTPS sources,
+          or local directories.
         </p>
         <pre>
           <code>{`# Add a single skill
@@ -42,7 +43,10 @@ dotagents add getsentry/skills --name find-bugs
 dotagents add getsentry/skills --all
 
 # Pin to a specific ref
-dotagents add getsentry/warden@v1.0.0`}</code>
+dotagents add getsentry/warden@v1.0.0
+
+# Add from a well-known HTTPS source
+dotagents add https://cli.sentry.dev --name error-tracking`}</code>
         </pre>
         <p>
           Each skill is copied into <code>.agents/skills/</code> and symlinked
@@ -54,15 +58,14 @@ dotagents add getsentry/warden@v1.0.0`}</code>
         <h3>3. Install</h3>
         <p>
           After cloning the repo or pulling changes, run <code>install</code>{" "}
-          to fetch skills. Managed skills are gitignored, so every collaborator
-          needs to run this once.
+          to fetch or refresh managed skills. Managed skills are gitignored, so
+          collaborators run this command locally.
         </p>
         <pre>
           <code>dotagents install</code>
         </pre>
         <p>
-          This always fetches the latest skills. There is no separate update
-          step.
+          This is also the update path. There is no separate update command.
         </p>
       </section>
 
@@ -114,7 +117,7 @@ dotagents trust add git.corp.example.com`}</code>
       <section className="section" id="git-hooks">
         <h2>Auto-install with Git Hooks</h2>
         <p>
-          Since managed skills are gitignored, collaborators need to run{" "}
+          Since managed skills are gitignored, run{" "}
           <code>dotagents install</code> after pulling. A{" "}
           <code>post-merge</code> hook automates this:
         </p>
@@ -204,6 +207,8 @@ dotagents --user install`}</code>
         <pre>
           <code>{`version = 1
 agents = ["claude", "cursor"]
+minimum_release_age = 60
+minimum_release_age_exclude = ["getsentry/*"]
 
 [trust]
 github_orgs = ["getsentry"]
@@ -217,6 +222,11 @@ source = "getsentry/skills"
 [[skills]]
 name = "warden-skill"
 source = "getsentry/warden@v1.0.0"
+
+# Well-known HTTPS source
+[[skills]]
+name = "error-tracking"
+source = "https://cli.sentry.dev"
 
 # Wildcard: all skills from a repo
 [[skills]]

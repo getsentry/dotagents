@@ -130,7 +130,8 @@ version = 1
 [skills.find-bugs]
 source = "getsentry/skills"
 resolved_url = "https://github.com/getsentry/skills.git"
-resolved_path = "plugins/sentry-skills/skills/find-bugs"`}</code>
+resolved_path = "plugins/sentry-skills/skills/find-bugs"
+resolved_commit = "0123456789abcdef0123456789abcdef01234567"`}</code>
         </pre>
         <table>
           <thead>
@@ -150,7 +151,7 @@ resolved_path = "plugins/sentry-skills/skills/find-bugs"`}</code>
               <td>
                 <code>resolved_url</code>
               </td>
-              <td>Resolved git clone URL</td>
+              <td>Resolved git clone URL or HTTP base URL</td>
             </tr>
             <tr>
               <td>
@@ -163,6 +164,12 @@ resolved_path = "plugins/sentry-skills/skills/find-bugs"`}</code>
                 <code>resolved_ref</code>
               </td>
               <td>Resolved ref name (omitted for default branch)</td>
+            </tr>
+            <tr>
+              <td>
+                <code>resolved_commit</code>
+              </td>
+              <td>Installed commit SHA. Informational only</td>
             </tr>
           </tbody>
         </table>
@@ -179,16 +186,13 @@ resolved_path = "plugins/sentry-skills/skills/find-bugs"`}</code>
           <code>DOTAGENTS_STATE_DIR</code>).
         </p>
         <ul>
-          <li>
-            Shallow clone per repo, refreshed after a 24-hour TTL
-          </li>
+          <li>Shallow clone per git source</li>
           <li>
             All git operations are non-interactive (
             <code>GIT_TERMINAL_PROMPT=0</code>)
           </li>
-          <li>
-            Use <code>dotagents install --force</code> to bypass cache
-          </li>
+          <li>Git sources refresh on every install</li>
+          <li>Well-known HTTPS sources use a 24-hour TTL</li>
         </ul>
       </section>
     </>

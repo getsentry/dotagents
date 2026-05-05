@@ -22,7 +22,7 @@ npx @sentry/dotagents add getsentry/skills find-bugs code-review commit
 # Add all skills from a repo
 npx @sentry/dotagents add getsentry/skills --all
 
-# Install all declared skills
+# Install or refresh all declared skills
 npx @sentry/dotagents install
 ```
 
@@ -42,7 +42,7 @@ And a lockfile (`agents.lock`) tracking which skills are managed. Both `agents.l
 ## How It Works
 
 1. Declare skill dependencies in `agents.toml` at the project root (or `~/.agents/agents.toml` for user scope)
-2. `install` clones repos (always fetching latest), discovers skills by convention, and copies them into `.agents/skills/`
+2. `install` clones or refreshes sources, discovers skills by convention, and copies them into `.agents/skills/`
 3. `agents.lock` tracks which skills are managed (gitignored automatically)
 4. Managed skills are gitignored. Collaborators run `npx @sentry/dotagents install` after cloning. Custom skills in `.agents/skills/` are tracked by git normally.
 5. Symlinks connect `.agents/skills/` to each agent's expected location (`.claude/skills/`, `.cursor/skills/`, etc.)
@@ -55,6 +55,8 @@ Full example with all sections:
 ```toml
 version = 1
 agents = ["claude", "cursor"]
+minimum_release_age = 60
+minimum_release_age_exclude = ["getsentry/*"]
 
 [project]
 name = "my-project"
@@ -79,6 +81,11 @@ source = "getsentry/skills@v1.0.0"
 [[skills]]
 name = "internal"
 source = "git:https://git.corp.dev/repo"
+
+# Well-known HTTPS source
+[[skills]]
+name = "error-tracking"
+source = "https://cli.sentry.dev"
 
 # Local directory
 [[skills]]
@@ -127,6 +134,8 @@ command = "notify-done"
 | `version` | integer | Yes | -- | Schema version. Always `1`. |
 | `defaultRepositorySource` | string | No | `github` | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. |
 | `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Creates symlinks and config files for each. |
+| `minimum_release_age` | integer | No | -- | Minimum commit age, in minutes, before a git skill can install. |
+| `minimum_release_age_exclude` | string[] | No | `[]` | Sources that bypass the minimum release age gate. Supports org names, `org/repo`, and `org/*`. |
 
 ### Skills
 
@@ -246,14 +255,10 @@ Create `agents.toml` and `.agents/skills/` directory. Automatically includes the
 ### install
 
 ```
-npx @sentry/dotagents install [--force]
+npx @sentry/dotagents install
 ```
 
-Install all dependencies from `agents.toml`. Always fetches latest skills (TTL-based cache refresh). Resolves sources, copies skills, writes lockfile, creates symlinks, generates MCP and hook configs. There is no separate update step.
-
-| Flag | Description |
-|------|-------------|
-| `--force` | Re-resolve and re-install all skills, ignoring cache |
+Install and refresh dependencies from `agents.toml`. Resolves sources, copies skills, writes the lockfile, creates symlinks, and generates MCP and hook configs. There is no separate update command.
 
 ### add
 
@@ -454,14 +459,16 @@ version = 1
 source = "getsentry/skills"
 resolved_url = "https://github.com/getsentry/skills.git"
 resolved_path = "plugins/sentry-skills/skills/find-bugs"
+resolved_commit = "0123456789abcdef0123456789abcdef01234567"
 ```
 
 | Field | Present For | Description |
 |-------|-------------|-------------|
 | `source` | All | Original source from `agents.toml` |
-| `resolved_url` | Git sources | Resolved git clone URL |
+| `resolved_url` | Git and well-known sources | Resolved git clone URL or HTTP base URL |
 | `resolved_path` | Git sources | Subdirectory within repo where skill was found |
 | `resolved_ref` | Git sources (optional) | Resolved ref name (omitted for default branch) |
+| `resolved_commit` | Git sources (optional) | Full commit SHA that was installed. Informational only; install does not use it for locking. |
 
 Local `path:` skills have `source` only.
 
@@ -469,9 +476,9 @@ Local `path:` skills have `source` only.
 
 Location: `~/.local/dotagents/` (override: `DOTAGENTS_STATE_DIR`)
 
-- Shallow clone per repo, refreshed after 24-hour TTL
+- Git sources use shallow clones and refresh on every install
+- Well-known HTTPS sources refresh after a 24-hour TTL
 - All git operations are non-interactive (`GIT_TERMINAL_PROMPT=0`)
-- Use `npx @sentry/dotagents install --force` to bypass cache
 
 ## Environment Variables
 
@@ -492,9 +499,9 @@ Custom skills created directly in `.agents/skills/` are not gitignored. They're 
 
 `.agents/.gitignore` is regenerated on every `install`, `add`, `remove`, and `sync`.
 
-## Update Strategy
+## Refresh Strategy
 
-`npx @sentry/dotagents install` always fetches the latest skills (with a TTL-based cache), unless a ref is pinned. There is no separate update command. Collaborators run `npx @sentry/dotagents install` after cloning.
+Run `npx @sentry/dotagents install` after cloning or pulling changes. It fetches or refreshes managed skills unless a ref is pinned. There is no separate update command.
 
 ## Links
 

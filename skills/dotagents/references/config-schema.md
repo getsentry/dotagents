@@ -5,6 +5,9 @@
 ```toml
 version = 1                     # Required, must be 1
 agents = ["claude", "cursor"]   # Optional, agent targets
+defaultRepositorySource = "github" # Optional, github or gitlab
+minimum_release_age = 60        # Optional, minutes
+minimum_release_age_exclude = ["getsentry/*"] # Optional
 
 [project]                       # Optional
 [trust]                         # Optional
@@ -18,7 +21,10 @@ agents = ["claude", "cursor"]   # Optional, agent targets
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version, must be `1` |
+| `defaultRepositorySource` | string | No | `github` | Host for shorthand `owner/repo` sources. Valid values: `github`, `gitlab` |
 | `agents` | string[] | No | `[]` | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `opencode` |
+| `minimum_release_age` | integer | No | -- | Minimum commit age, in minutes, before a git skill can install |
+| `minimum_release_age_exclude` | string[] | No | `[]` | Sources that bypass `minimum_release_age` |
 
 ## Project Section
 
@@ -51,7 +57,7 @@ path = "tools/my-skill"         # Optional, subdirectory within repo
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | Yes | Unique identifier. Pattern: `^[a-zA-Z0-9][a-zA-Z0-9._-]*$` |
-| `source` | string | Yes | `owner/repo`, `owner/repo@ref`, `git:url`, or `path:relative` |
+| `source` | string | Yes | `owner/repo`, `owner/repo@ref`, GitHub/GitLab URL, `https://<domain>`, `git:url`, or `path:relative` |
 | `ref` | string | No | Tag, branch, or commit SHA to pin |
 | `path` | string | No | Subdirectory containing the skill within the source repo |
 
@@ -146,18 +152,20 @@ Auto-generated. Do not edit manually. Gitignored automatically.
 version = 1
 
 [skills.find-bugs]
-source = "getsentry/skills"
+source = "getsentry/skills@v1.0.0"
 resolved_url = "https://github.com/getsentry/skills.git"
 resolved_path = "plugins/sentry-skills/skills/find-bugs"
 resolved_ref = "v1.0.0"
+resolved_commit = "0123456789abcdef0123456789abcdef01234567"
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `source` | string | Original source from `agents.toml` |
-| `resolved_url` | string | Resolved git URL |
+| `resolved_url` | string | Resolved git URL or well-known HTTP base URL |
 | `resolved_path` | string | Subdirectory within repo |
 | `resolved_ref` | string | Ref that was resolved (omitted for default branch) |
+| `resolved_commit` | string | Full commit SHA that was installed. Informational only |
 
 Local path skills have `source` only.
 

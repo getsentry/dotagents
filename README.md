@@ -6,11 +6,11 @@ Shared tooling for coding agents. Declare skills, MCP servers, and hooks in `age
 
 **One source of truth.** Skills live in `.agents/skills/` and symlink into `.claude/skills/`, `.cursor/skills/`, or wherever your tools expect them. No copy-pasting between directories.
 
-**One command to install.** `agents.toml` is committed, managed skills are gitignored. Collaborators run `dotagents install` and get the same setup.
+**One command to install.** `agents.toml` is committed, managed skills are gitignored. Collaborators run `dotagents install` to fetch or refresh skills.
 
 **Shareable.** Skills are directories with a `SKILL.md`. Host them in any git repo, discover them automatically, install with one command.
 
-**Multi-agent.** Configure Claude, Cursor, Codex, VS Code, OpenCode, and Pi from a single `agents.toml` -- skills, MCP servers, and hooks.
+**Multi-agent.** Configure Claude, Cursor, Codex, VS Code, and OpenCode from a single `agents.toml` -- skills, MCP servers, and hooks where supported. Pi reads `.agents/skills/` directly.
 
 ## Quick Start
 
@@ -33,7 +33,7 @@ npx @sentry/dotagents add getsentry/skills --all
 
 This creates an `agents.toml` at your project root and an `agents.lock` tracking installed skills.
 
-After cloning a project that already has `agents.toml`, run `install` to fetch everything:
+After cloning a project that already has `agents.toml`, run `install` to fetch skills. Run it again to refresh managed skills:
 
 ```bash
 npx @sentry/dotagents install
@@ -57,7 +57,7 @@ All commands accept `--user` to operate on user scope (`~/.agents/`) instead of 
 
 ## Source Formats
 
-Skills can come from GitHub, GitLab, any git server, or local directories:
+Skills can come from GitHub, GitLab, any git server, well-known HTTPS skill sources, or local directories:
 
 ```toml
 [[skills]]
@@ -75,6 +75,10 @@ source = "https://gitlab.com/group/repo" # GitLab URL
 [[skills]]
 name = "internal"
 source = "git:https://git.corp.dev/repo" # Any git server
+
+[[skills]]
+name = "error-tracking"
+source = "https://cli.sentry.dev"        # Well-known HTTPS source
 
 [[skills]]
 name = "local"

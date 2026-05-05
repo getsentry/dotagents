@@ -39,22 +39,17 @@ npx @sentry/dotagents --user init
 
 ### `install`
 
-Install all skill dependencies declared in `agents.toml`.
+Install or refresh skill dependencies declared in `agents.toml`. There is no separate `update` command.
 
 ```bash
 npx @sentry/dotagents install
-npx @sentry/dotagents install --force
 ```
-
-| Flag | Description |
-|------|-------------|
-| `--force` | Re-resolve and re-install all skills, ignoring cache |
 
 **Workflow:**
 1. Load config and lockfile
 2. Expand wildcard entries (discover all skills from source)
 3. Validate trust for each skill source
-4. Resolve skills (always fetches latest)
+4. Resolve skills (refreshing sources through the cache)
 5. Copy skills into `.agents/skills/<name>/`
 6. Write/update lockfile
 7. Generate `.agents/.gitignore`
@@ -75,6 +70,7 @@ npx @sentry/dotagents add getsentry/skills --all                    # Add all as
 npx @sentry/dotagents add getsentry/warden@v1.0.0                   # Pinned ref (inline)
 npx @sentry/dotagents add getsentry/skills --ref v2.0.0             # Pinned ref (flag)
 npx @sentry/dotagents add git:https://git.corp.dev/team/skills      # Non-GitHub git URL
+npx @sentry/dotagents add https://cli.sentry.dev --name error-tracking # Well-known HTTPS source
 npx @sentry/dotagents add path:./my-skills/custom                   # Local path
 ```
 
@@ -91,6 +87,7 @@ npx @sentry/dotagents add path:./my-skills/custom                   # Local path
 - `https://github.com/owner/repo` -- GitHub HTTPS URL
 - `git@github.com:owner/repo.git` -- GitHub SSH URL
 - `git:https://...` -- Non-GitHub git URL
+- `https://<domain>` -- Well-known HTTP skill source
 - `path:../relative` -- Local filesystem path
 
 When a repo contains multiple skills, dotagents auto-discovers them. If only one skill is found, it's added automatically. If multiple are found and no names are given, an interactive picker is shown (TTY) or skills are listed (non-TTY).
@@ -107,13 +104,13 @@ Remove a skill dependency.
 npx @sentry/dotagents remove find-bugs
 ```
 
-Removes from `agents.toml`, deletes `.agents/skills/<name>/`, updates lockfile, and regenerates `.gitignore`.
+Removes from `agents.toml`, deletes `.agents/skills/<name>/`, updates the lockfile, and regenerates `.agents/.gitignore`.
 
 For skills sourced from a wildcard entry (`name = "*"`), interactively prompts whether to add the skill to the wildcard's `exclude` list. If declined, the removal is cancelled.
 
 ### `sync`
 
-Reconcile project state without network access: adopt orphans, repair symlinks and configs.
+Reconcile project state without network access: adopt local orphans, prune stale managed skills, and repair symlinks and configs.
 
 ```bash
 npx @sentry/dotagents sync
@@ -122,10 +119,11 @@ npx @sentry/dotagents sync
 **Actions performed:**
 1. Adopt orphaned skills (installed but not declared in config)
 2. Regenerate `.agents/.gitignore`
-3. Check for missing skills
-4. Repair agent symlinks
-5. Verify/repair MCP configs
-6. Verify/repair hook configs
+3. Prune stale managed skills removed from config
+4. Check for missing skills
+5. Repair agent symlinks
+6. Verify/repair MCP configs
+7. Verify/repair hook configs
 
 Reports issues as warnings (missing MCP/hook configs) or errors (missing skills).
 
