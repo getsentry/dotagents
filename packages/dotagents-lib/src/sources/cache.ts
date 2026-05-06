@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { clone, fetchAndReset, fetchRef, headCommit, headCommitDate, findCommitOlderThan, checkout, isGitRepo } from "./git.js";
 
 export class CacheError extends Error {
@@ -63,6 +63,29 @@ export interface CacheResult {
   commit: string;
 }
 
+const cacheLocks = new Map<string, Promise<void>>();
+
+async function withCacheLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const previous = cacheLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const next = previous.catch(() => {}).then(() => current);
+
+  cacheLocks.set(key, next);
+  await previous.catch(() => {});
+
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (cacheLocks.get(key) === next) {
+      cacheLocks.delete(key);
+    }
+  }
+}
+
 /**
  * Get or populate the global cache for a git source.
  *
@@ -89,40 +112,43 @@ export async function ensureCached(opts: {
   validateCacheKey(opts.cacheKey);
   const repoDir = join(opts.stateDir, opts.cacheKey);
 
-  if (isGitRepo(repoDir)) {
-    if (opts.ref) {
-      await fetchRef(repoDir, opts.ref);
-    } else {
-      await fetchAndReset(repoDir);
-    }
-  } else {
-    // Not cached yet — clone
-    await mkdir(join(opts.stateDir, opts.cacheKey, ".."), { recursive: true });
-    await clone(opts.url, repoDir, opts.ref);
-  }
-
-  // Age gate: reject or resolve to an older commit when HEAD is too new
-  if (opts.minimumReleaseAge) {
-    const age = minutesOld(await headCommitDate(repoDir));
-    if (age < opts.minimumReleaseAge) {
+  return withCacheLock(repoDir, async () => {
+    if (isGitRepo(repoDir)) {
       if (opts.ref) {
-        // Pinned skill — can't resolve to a different commit, just reject
-        throw new CacheError(
-          `ref "${opts.ref}" is ${Math.floor(age)} minutes old, minimum_release_age requires ${opts.minimumReleaseAge}`,
-        );
+        await fetchRef(repoDir, opts.ref);
+      } else {
+        await fetchAndReset(repoDir);
       }
-      const older = await findCommitOlderThan(repoDir, opts.minimumReleaseAge);
-      if (!older) {
-        throw new CacheError(
-          `minimum_release_age is ${opts.minimumReleaseAge} minutes but no commit that old exists in ${opts.cacheKey}`,
-        );
-      }
-      await checkout(repoDir, older);
+    } else {
+      // Remove an interrupted or stale non-git cache dir before cloning.
+      await rm(repoDir, { recursive: true, force: true });
+      await mkdir(join(opts.stateDir, opts.cacheKey, ".."), { recursive: true });
+      await clone(opts.url, repoDir, opts.ref);
     }
-  }
 
-  const commit = await headCommit(repoDir);
-  return { repoDir, commit };
+    // Age gate: reject or resolve to an older commit when HEAD is too new
+    if (opts.minimumReleaseAge) {
+      const age = minutesOld(await headCommitDate(repoDir));
+      if (age < opts.minimumReleaseAge) {
+        if (opts.ref) {
+          // Pinned skill — can't resolve to a different commit, just reject
+          throw new CacheError(
+            `ref "${opts.ref}" is ${Math.floor(age)} minutes old, minimum_release_age requires ${opts.minimumReleaseAge}`,
+          );
+        }
+        const older = await findCommitOlderThan(repoDir, opts.minimumReleaseAge);
+        if (!older) {
+          throw new CacheError(
+            `minimum_release_age is ${opts.minimumReleaseAge} minutes but no commit that old exists in ${opts.cacheKey}`,
+          );
+        }
+        await checkout(repoDir, older);
+      }
+    }
+
+    const commit = await headCommit(repoDir);
+    return { repoDir, commit };
+  });
 }
 
 function minutesOld(date: Date): number {

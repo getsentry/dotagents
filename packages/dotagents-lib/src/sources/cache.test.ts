@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ensureCached, validateCacheKey, CacheError } from "./cache.js";
@@ -81,6 +81,50 @@ describe("ensureCached", () => {
 
     expect(second.commit).toBe(latestCommit);
     expect(second.commit).not.toBe(first.commit);
+  });
+
+  it("serializes concurrent first-time clones for the same cache key", async () => {
+    await writeFile(join(repoDir, "README.md"), "first\n");
+    await exec("git", ["add", "README.md"], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
+    await exec("git", ["push", "origin", "main"], { cwd: repoDir });
+    const { stdout } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
+    const latestCommit = stdout.trim();
+
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        ensureCached({
+          stateDir,
+          url: remoteDir,
+          cacheKey: "test/repo",
+        }),
+      ),
+    );
+
+    expect(results.map((result) => result.commit)).toEqual(
+      Array.from({ length: 5 }, () => latestCommit),
+    );
+  });
+
+  it("replaces stale non-git cache directories before cloning", async () => {
+    await writeFile(join(repoDir, "README.md"), "first\n");
+    await exec("git", ["add", "README.md"], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
+    await exec("git", ["push", "origin", "main"], { cwd: repoDir });
+    const { stdout } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
+    const latestCommit = stdout.trim();
+
+    const staleDir = join(stateDir, "test", "repo");
+    await mkdir(staleDir, { recursive: true });
+    await writeFile(join(staleDir, "partial-clone"), "stale\n");
+
+    const result = await ensureCached({
+      stateDir,
+      url: remoteDir,
+      cacheKey: "test/repo",
+    });
+
+    expect(result.commit).toBe(latestCommit);
   });
 
   it("refreshes an unpinned cache after a pinned ref fetch", async () => {
