@@ -1,4 +1,14 @@
 # Changelog
+## 1.16.1
+
+### Bug Fixes 🐛
+
+- (lib) Serialize git cache updates by @gricha in [#101](https://github.com/getsentry/dotagents/pull/101)
+
+### Documentation 📚
+
+- Update dotagents docs for install refresh flow by @gricha in [#100](https://github.com/getsentry/dotagents/pull/100)
+
 ## 1.16.0
 
 - Update post-merge hook installation command by @jvanderwee in [#96](https://github.com/getsentry/dotagents/pull/96)
