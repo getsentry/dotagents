@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
@@ -235,6 +235,20 @@ describe("writeMcpConfigs", () => {
     expect(content.mcp.github).toBeDefined();
     // User's custom server should NOT be deleted
     expect(content.mcp["my-custom-server"]).toEqual({ type: "local", command: ["my-tool"] });
+  });
+
+  it("does not rewrite unchanged shared config files", async () => {
+    const filePath = join(dir, ".claude.json");
+    const resolver = () => ({ filePath, shared: true });
+
+    await writeMcpConfigs(["claude"], [HTTP_SERVER], resolver);
+    const first = await stat(filePath, { bigint: true });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await writeMcpConfigs(["claude"], [HTTP_SERVER], resolver);
+    const second = await stat(filePath, { bigint: true });
+
+    expect(second.mtimeNs).toBe(first.mtimeNs);
   });
 
   it("interpolates env refs in claude HTTP headers/URL with ${VAR} syntax", async () => {
