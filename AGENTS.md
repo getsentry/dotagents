@@ -76,13 +76,3 @@ pnpm check
 ```
 
 Or individually: `pnpm lint && pnpm typecheck && pnpm test`
-
-## Before Creating a PR
-
-Run warden to check for bugs and code quality issues:
-
-```bash
-warden
-```
-
-The `warden-skill` is available in this project (installed via dotagents) and provides guidance on warden configuration and usage.

@@ -39,8 +39,9 @@ export function projectMcpResolver(projectRoot: string): McpTargetResolver {
 
 /**
  * Write MCP config files for each agent.
- * - Dedicated files (shared=false): written fresh each time.
- * - Shared files (shared=true): read existing, merge dotagents servers under the root key, write back.
+ * - Dedicated files (shared=false): generated from scratch.
+ * - Shared files (shared=true): read existing and merge dotagents servers under the root key.
+ * - Files are only written when the serialized output changes.
  */
 export async function writeMcpConfigs(
   agentIds: string[],
@@ -131,7 +132,7 @@ async function freshWrite(
   servers: Record<string, unknown>,
 ): Promise<void> {
   const doc = { [spec.rootKey]: servers };
-  await writeFile(filePath, serialize(doc, spec.format), "utf-8");
+  await writeFileIfChanged(filePath, serialize(doc, spec.format));
 }
 
 async function mergeWrite(
@@ -142,7 +143,7 @@ async function mergeWrite(
   const existing = existsSync(filePath) ? await readExisting(filePath, spec) : {};
   const prev = (existing[spec.rootKey] ?? {}) as Record<string, unknown>;
   existing[spec.rootKey] = { ...prev, ...servers };
-  await writeFile(filePath, serialize(existing, spec.format), "utf-8");
+  await writeFileIfChanged(filePath, serialize(existing, spec.format));
 }
 
 async function readExisting(
@@ -161,4 +162,18 @@ function serialize(doc: Record<string, unknown>, format: "json" | "toml"): strin
     return `${tomlStringify(doc)}\n`;
   }
   return `${JSON.stringify(doc, null, 2)}\n`;
+}
+
+async function writeFileIfChanged(filePath: string, content: string): Promise<void> {
+  try {
+    if ((await readFile(filePath, "utf-8")) === content) {return;}
+  } catch (err) {
+    if (!isNotFoundError(err)) {throw err;}
+  }
+
+  await writeFile(filePath, content, "utf-8");
+}
+
+function isNotFoundError(err: unknown): boolean {
+  return err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT";
 }
