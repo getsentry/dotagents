@@ -1,4 +1,10 @@
 # Changelog
+## 1.17.0
+
+### Bug Fixes 🐛
+
+- (agents) Skip unchanged MCP config writes by @gricha in [#103](https://github.com/getsentry/dotagents/pull/103)
+
 ## 1.16.1
 
 ### Bug Fixes 🐛
