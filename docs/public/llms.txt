@@ -300,16 +300,17 @@ Reconcile project state without network access: adopt truly local orphaned skill
 ### mcp add
 
 ```
-npx @sentry/dotagents mcp add <name> --command <cmd> [--args <a>...] [--env <VAR>...]
+npx @sentry/dotagents mcp add <name> --command "<cmd> [args...]" [--env <VAR>...]
 npx @sentry/dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]
 ```
 
 Add an MCP server declaration to `agents.toml` and run `install` to generate agent configs. Specify exactly one transport: `--command` for stdio or `--url` for HTTP.
 
+Put stdio command arguments inside the `--command` string. dotagents splits that string into `command` and `args` in `agents.toml`.
+
 | Flag | Description |
 |------|-------------|
-| `--command <cmd>` | Command to execute (stdio transport) |
-| `--args <arg>` | Command argument (repeatable) |
+| `--command "<cmd> [args...]"` | Command string to execute (stdio transport) |
 | `--url <url>` | Server URL (HTTP transport) |
 | `--header <Key:Value>` | HTTP header (repeatable, url servers only) |
 | `--env <VAR>` | Environment variable name to pass through (repeatable) |

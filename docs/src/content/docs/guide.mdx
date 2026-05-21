@@ -1,0 +1,212 @@
+---
+title: Guide
+description: Set up and use dotagents in your project.
+---
+
+## Setup
+
+Run these commands at the root of your repository.
+
+### 1. Initialize
+
+Create `agents.toml` and the `.agents/skills/` directory. Interactive setup
+prompts for the agent tools you use, such as Claude, Cursor, Codex, VS Code, or
+OpenCode.
+
+```shell
+npx @sentry/dotagents init
+```
+
+This also adds `agents.lock` and `.agents/.gitignore` to your root
+`.gitignore`. These are generated files that should not be committed.
+
+By default, `init` declares the `dotagents` skill from `getsentry/dotagents` so
+agent tools can discover CLI guidance. It then runs `install` best-effort.
+
+### 2. Add Skills
+
+Install skills from GitHub repos, git URLs, well-known HTTPS sources, or local
+directories.
+
+```shell
+# Add a single skill
+dotagents add getsentry/skills find-bugs
+
+# Add all skills from a repo
+dotagents add getsentry/skills --all
+
+# Pin to a specific ref
+dotagents add getsentry/warden@v1.0.0
+
+# Add from a well-known HTTPS source
+dotagents add https://cli.sentry.dev error-tracking
+```
+
+Each skill is copied into `.agents/skills/` and symlinked to where your agent
+tools expect them. See the [CLI reference](/cli/#source-formats) for all source
+formats.
+
+### 3. Install
+
+After cloning the repo or pulling changes, run `install` to fetch or refresh
+managed skills. Managed skills are gitignored, so collaborators run this command
+locally.
+
+```shell
+dotagents install
+```
+
+This is also the update path. There is no separate update command.
+
+## What Gets Gitignored
+
+dotagents manages gitignore automatically. Two generated files are kept out of
+version control:
+
+- `agents.lock` tracks which skills are managed.
+- `.agents/.gitignore` excludes managed skill directories.
+
+Custom skills you create directly in `.agents/skills/` are not gitignored. They
+are tracked by git normally, so collaborators get them without running install.
+
+## Trust Policies
+
+By default, any source is allowed. For teams, add a `[trust]` section to
+restrict which sources can provide skills. Trust is validated before any network
+operations.
+
+```shell
+# Trust a GitHub org
+dotagents trust add getsentry
+
+# Trust a specific repo
+dotagents trust add external-org/specific-repo
+
+# Trust a self-hosted git server
+dotagents trust add git.corp.example.com
+```
+
+See the [Security page](/security/) for the full trust configuration reference.
+
+## Auto-install with Git Hooks
+
+Since managed skills are gitignored, run `dotagents install` after pulling. A
+`post-merge` hook automates this:
+
+```shell
+#!/bin/sh
+# .git/hooks/post-merge
+npx --yes @sentry/dotagents install || echo "dotagents install failed"
+```
+
+Make it executable:
+
+```shell
+chmod +x .git/hooks/post-merge
+```
+
+Git hooks are not shared through git. Tools like
+[lefthook](https://github.com/evilmartians/lefthook) or
+[husky](https://typicode.github.io/husky/) can set them up for the whole team.
+
+## Keeping Things in Sync
+
+Use `dotagents sync` for offline repair. It does not fetch anything from the
+network. Instead, it:
+
+- Adopts local orphaned skills, meaning installed skills that are not declared.
+- Prunes stale managed skills removed from config.
+- Regenerates `.agents/.gitignore`.
+- Repairs broken symlinks.
+- Fixes MCP and hook configs.
+
+## Diagnosing Issues
+
+Use `dotagents doctor` to check project health. It identifies configuration
+issues and can fix them automatically.
+
+```shell
+dotagents doctor        # check for issues
+dotagents doctor --fix  # auto-fix what it can
+```
+
+Checks for missing gitignore entries, legacy config fields, missing skills, and
+broken symlinks. It is especially useful when migrating from an older version.
+
+## Personal Skills
+
+Project skills live in `agents.toml` and are shared with your team. Personal
+skills apply to all your projects. Use them for tools and workflows only you
+need.
+
+Use `--user` to manage personal skills:
+
+```shell
+dotagents --user init
+dotagents --user add getsentry/skills --all
+dotagents --user install
+```
+
+Personal skills live in `~/.agents/` and symlink to `~/.claude/skills/` and
+`~/.cursor/skills/`. Override the location with `DOTAGENTS_HOME`.
+
+When you run dotagents outside a git repo without an `agents.toml`, it falls
+back to user scope automatically.
+
+<a id="configuration"></a>
+
+## Full Configuration Example
+
+`agents.toml` with skills, wildcards, MCP servers, and hooks:
+
+```toml
+version = 1
+agents = ["claude", "cursor"]
+minimum_release_age = 60
+minimum_release_age_exclude = ["getsentry/*"]
+
+[trust]
+github_orgs = ["getsentry"]
+
+# Individual skill
+[[skills]]
+name = "find-bugs"
+source = "getsentry/skills"
+
+# Pinned to a ref
+[[skills]]
+name = "warden-skill"
+source = "getsentry/warden@v1.0.0"
+
+# Well-known HTTPS source
+[[skills]]
+name = "error-tracking"
+source = "https://cli.sentry.dev"
+
+# Wildcard: all skills from a repo
+[[skills]]
+name = "*"
+source = "myorg/skills"
+exclude = ["deprecated-skill"]
+
+# MCP server (stdio)
+[[mcp]]
+name = "github"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = ["GITHUB_TOKEN"]
+
+# MCP server (HTTP with OAuth)
+[[mcp]]
+name = "remote-api"
+url = "https://mcp.example.com/sse"
+
+# Hooks
+[[hooks]]
+event = "PreToolUse"
+matcher = "Bash"
+command = "my-lint-check"
+```
+
+See the [CLI reference](/cli/#configuration-agentstoml) for all fields and
+options.

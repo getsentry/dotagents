@@ -1,0 +1,400 @@
+---
+title: CLI
+description: dotagents CLI reference.
+---
+
+## Usage
+
+```shell
+dotagents [--user] <command> [options]
+```
+
+## Global Options
+
+- `--user` operates on user scope (`~/.agents/`) instead of the current project.
+- `--help`, `-h` shows help.
+- `--version`, `-V` shows version.
+
+## Commands
+
+<a id="init"></a>
+
+### `dotagents init`
+
+```shell
+dotagents init [--agents claude,cursor] [--force]
+```
+
+Initialize a new project with `agents.toml` and `.agents/skills/`. Interactive
+mode prompts for agent targets and trust policy. Sets up gitignore entries
+automatically.
+
+By default, `init` declares the `dotagents` skill from `getsentry/dotagents` so
+agents can discover CLI guidance. It then runs `install` best-effort.
+
+Options:
+
+- `--agents <list>` comma-separated agent targets (`claude`, `cursor`, `codex`,
+  `vscode`, `opencode`).
+- `--force` overwrites existing `agents.toml`.
+
+Examples:
+
+```shell
+dotagents init
+dotagents init --agents claude,cursor
+dotagents --user init
+```
+
+<a id="install"></a>
+
+### `dotagents install`
+
+```shell
+dotagents install
+```
+
+Install and refresh skill dependencies from `agents.toml`. Resolves sources,
+copies skills, writes the lockfile, creates symlinks, and generates MCP and
+hook configs. There is no separate update command.
+
+Example:
+
+```shell
+dotagents install
+```
+
+<a id="add"></a>
+
+### `dotagents add`
+
+```shell
+dotagents add <specifier> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]
+```
+
+Add one or more skill dependencies and install them. dotagents auto-discovers
+skills in the source. When a source has one skill, it is added automatically.
+When multiple skills are found, interactive mode shows a picker. In
+non-interactive mode, pass skill names as positional arguments, use `--skill`, or
+use `--all`.
+
+Shorthand `owner/repo` resolves through `defaultRepositorySource` in
+`agents.toml`.
+
+Options:
+
+- `--skill <name>` specifies which skill to add. Repeatable. Alias: `--name`.
+- `--ref <ref>` pins to a specific tag, branch, or commit.
+- `--all` adds all skills from the source as a wildcard entry (`name = "*"`).
+
+Do not mix positional skill names and `--skill` or `--name` flags in the same
+command.
+
+Examples:
+
+```shell
+# Single skill from GitHub
+dotagents add getsentry/skills find-bugs
+
+# All skills from a repo
+dotagents add getsentry/skills --all
+
+# Pinned to a ref
+dotagents add getsentry/warden@v1.0.0
+
+# Explicit GitLab URL
+dotagents add https://gitlab.com/group/repo find-bugs
+
+# Non-GitHub git server
+dotagents add git:https://git.corp.dev/team/skills review
+
+# Well-known HTTPS source
+dotagents add https://cli.sentry.dev error-tracking
+
+# Local directory
+dotagents add path:./my-skills/custom
+```
+
+<a id="remove"></a>
+
+### `dotagents remove`
+
+```shell
+dotagents remove <name|source> [-y]
+```
+
+Remove a skill from `agents.toml`, delete it from disk, and update the lockfile.
+You can also pass a source to remove all skills from that source. When removing
+a skill provided by a wildcard source, dotagents can add that skill to the
+wildcard `exclude` list.
+
+Options:
+
+- `-y`, `--yes` skips confirmation when removing by source or excluding a
+  wildcard-provided skill.
+
+Example:
+
+```shell
+dotagents remove find-bugs
+dotagents remove getsentry/skills -y
+```
+
+<a id="sync"></a>
+
+### `dotagents sync`
+
+```shell
+dotagents sync
+```
+
+Reconcile project state without network access. Adopts local orphaned skills,
+prunes stale managed skills removed from config, regenerates gitignore, and
+repairs symlinks plus MCP/hook configs. Reports issues as warnings or errors.
+
+<a id="mcp-add"></a>
+
+### `dotagents mcp add`
+
+```shell
+dotagents mcp add <name> --command "<cmd> [args...]" [--env <VAR>...]
+dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]
+```
+
+Add an MCP server declaration to `agents.toml` and run `install` to generate
+agent configs. Specify exactly one transport: `--command` for stdio or `--url`
+for HTTP.
+
+Options:
+
+- `--command "<cmd> [args...]"` is the command string to execute for stdio
+  transport.
+- `--url <url>` is the server URL for HTTP transport.
+- `--header <Key:Value>` adds an HTTP header. Repeatable. URL servers only.
+- `--env <VAR>` passes through an environment variable. Repeatable.
+
+Examples:
+
+```shell
+# Stdio server
+dotagents mcp add github --command "npx -y @modelcontextprotocol/server-github" --env GITHUB_TOKEN
+
+# HTTP server with auth header
+dotagents mcp add remote --url https://mcp.example.com/sse --header "Authorization:Bearer tok"
+```
+
+<a id="mcp-remove"></a>
+
+### `dotagents mcp remove`
+
+```shell
+dotagents mcp remove <name>
+```
+
+Remove an MCP server declaration from `agents.toml` and run `install` to
+regenerate agent configs.
+
+Example:
+
+```shell
+dotagents mcp remove github
+```
+
+<a id="mcp-list"></a>
+
+### `dotagents mcp list`
+
+```shell
+dotagents mcp list [--json]
+```
+
+Show declared MCP servers. Use `--json` for machine-readable output.
+
+Examples:
+
+```shell
+dotagents mcp list
+dotagents mcp list --json
+```
+
+<a id="trust-add"></a>
+
+### `dotagents trust add`
+
+```shell
+dotagents trust add <source>
+```
+
+Add a trusted source to `[trust]` in `agents.toml`. The type is inferred
+automatically: `owner/repo` for repos, names with `.` for domains, and bare
+names for GitHub orgs.
+
+When `defaultRepositorySource = "gitlab"`, shorthand trust sources are stored as
+GitLab domain rules.
+
+Examples:
+
+```shell
+dotagents trust add getsentry
+dotagents trust add external-org/specific-repo
+dotagents trust add git.corp.example.com
+```
+
+<a id="trust-remove"></a>
+
+### `dotagents trust remove`
+
+```shell
+dotagents trust remove <source>
+```
+
+Remove a trusted source from `[trust]` in `agents.toml`. Matching is
+case-insensitive.
+
+Example:
+
+```shell
+dotagents trust remove getsentry
+```
+
+<a id="trust-list"></a>
+
+### `dotagents trust list`
+
+```shell
+dotagents trust list [--json]
+```
+
+Show trusted sources with their type. Use `--json` for machine-readable output.
+
+Examples:
+
+```shell
+dotagents trust list
+dotagents trust list --json
+```
+
+<a id="doctor"></a>
+
+### `dotagents doctor`
+
+```shell
+dotagents doctor [--fix]
+```
+
+Check project health and fix issues. Verifies gitignore setup, installed
+skills, symlinks, and detects legacy config fields. Useful for migrating to a
+new version of dotagents.
+
+Options:
+
+- `--fix` auto-fixes issues where possible.
+
+Examples:
+
+```shell
+dotagents doctor          # check for issues
+dotagents doctor --fix    # fix what it can
+```
+
+<a id="list"></a>
+
+### `dotagents list`
+
+```shell
+dotagents list [--json]
+```
+
+Show installed skills and status. Use `--json` for machine-readable output.
+
+Status output:
+
+- `✓` means installed and present in the lockfile. JSON status: `ok`.
+- `✗` means declared but not installed. JSON status: `missing`.
+- `?` means installed but not in the lockfile. JSON status: `unlocked`.
+
+## Source Formats
+
+| Format | Example | Description |
+| --- | --- | --- |
+| GitHub | `getsentry/skills` | Auto-discovers skills by name |
+| GitHub URL | `https://github.com/getsentry/skills` | Explicit GitHub source |
+| GitHub SSH | `git@github.com:getsentry/skills.git` | GitHub over SSH |
+| Pinned | `getsentry/skills@v1.0.0` | Locked to a specific ref |
+| Git URL | `git:https://git.corp.dev/repo` | Non-GitHub git servers |
+| GitLab URL | `https://gitlab.com/group/repo` | Explicit GitLab source |
+| GitLab SSH | `git@gitlab.com:group/repo.git` | GitLab over SSH |
+| Well-known HTTPS | `https://cli.sentry.dev` | HTTP source using .well-known skill discovery |
+| Local | `path:./my-skills/custom` | Local directory, relative to project root |
+
+<a id="configuration"></a>
+
+## Configuration (agents.toml)
+
+### Top-level Fields
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `version` | integer | -- | Schema version. Always `1`. |
+| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `opencode` |
+| `minimum_release_age` | integer | -- | Minimum commit age, in minutes, before a git skill can install. |
+| `minimum_release_age_exclude` | string[] | `[]` | Sources that bypass the minimum release age gate. Supports org names, `org/repo`, and `org/*`. |
+| `defaultRepositorySource` | string | `github` | Host used for shorthand `owner/repo` sources. Valid values: `github` or `gitlab`. |
+
+### Skills
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | string | Yes | Skill identifier. Use `"*"` for wildcard. |
+| `source` | string | Yes | `owner/repo`, `owner/repo@ref`, GitHub/GitLab URL, `git:url`, or `path:relative` |
+| `ref` | string | No | Tag, branch, or commit SHA to pin |
+| `path` | string | No | Subdirectory within repo, when auto-discovery fails |
+| `exclude` | string[] | No | Skills to skip. Wildcard entries only. |
+
+### MCP Servers
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | string | Yes | Unique server identifier |
+| `command` | string | Stdio | Command to execute |
+| `args` | string[] | No | Command arguments |
+| `url` | string | HTTP | Server URL |
+| `headers` | table | No | HTTP headers for URL servers, not needed with OAuth |
+| `env` | string[] | No | Environment variable names to pass through |
+
+### Hooks
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `event` | string | Yes | `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop` |
+| `matcher` | string | No | Tool name filter |
+| `command` | string | Yes | Shell command to execute |
+
+## Scopes
+
+### Project Scope (default)
+
+Operates on the current project. Requires `agents.toml` at the project root.
+Skills go to `.agents/skills/` and the lockfile goes to `agents.lock`.
+
+### User Scope
+
+Manages skills shared across all projects. Files live in `~/.agents/`, and you
+can override that with `DOTAGENTS_HOME`. Symlinks go to `~/.claude/skills/` and
+`~/.cursor/skills/`.
+
+```shell
+dotagents --user init
+dotagents --user add getsentry/skills --all
+dotagents --user install
+```
+
+When no `agents.toml` exists and you are not inside a git repo, dotagents falls
+back to user scope automatically.
+
+## Environment Variables
+
+| Variable | Description |
+| --- | --- |
+| `DOTAGENTS_STATE_DIR` | Override cache location. Default: `~/.local/dotagents`. |
+| `DOTAGENTS_HOME` | Override user-scope location. Default: `~/.agents`. |

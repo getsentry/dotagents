@@ -1,0 +1,260 @@
+.dotagents-brand {
+  display: block;
+  font-family: var(--__sl-font-mono);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  margin-bottom: 0.95rem;
+  text-transform: lowercase;
+}
+
+.dotagents-headline {
+  display: block;
+  font-size: 3.35rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.02;
+}
+
+.hero:has(.dotagents-brand) {
+  gap: 1.35rem;
+  grid-template-columns: minmax(0, 1fr) !important;
+  justify-items: center;
+  padding-block: 2.25rem 1.25rem;
+  text-align: center;
+}
+
+.hero:has(.dotagents-brand) .stack {
+  align-items: center;
+  justify-self: center;
+  max-width: 48rem;
+  text-align: center !important;
+}
+
+.hero:has(.dotagents-brand) .copy {
+  align-items: center !important;
+}
+
+.hero:has(.dotagents-brand) h1 {
+  max-width: 18ch;
+}
+
+.hero:has(.dotagents-brand) .tagline {
+  max-width: 43rem;
+}
+
+.hero:has(.dotagents-brand) .actions {
+  justify-content: center !important;
+}
+
+.hero:has(.dotagents-brand) .tagline code {
+  background: var(--ve-code-bg, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--ve-line-soft, rgba(255, 255, 255, 0.12));
+  border-radius: 4px;
+  color: var(--ve-text, var(--sl-color-white));
+  padding: 0.12em 0.35em;
+}
+
+.dotagents-proof {
+  margin: 0 auto;
+  max-width: 43rem;
+  width: 100%;
+}
+
+.dotagents-config-card,
+.dotagents-terminal {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015)),
+    var(--ve-bg-card, #0b0b0c);
+  border: 1px solid var(--ve-line, rgba(255, 255, 255, 0.14));
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dotagents-config-card {
+  width: 100%;
+}
+
+.dotagents-config-header,
+.dotagents-terminal-bar {
+  align-items: center;
+  border-bottom: 1px solid var(--ve-line-soft, rgba(255, 255, 255, 0.09));
+  display: flex;
+  gap: 0.45rem;
+  min-height: 1.95rem;
+  padding: 0 0.85rem;
+}
+
+.dotagents-config-header span,
+.dotagents-terminal-bar span {
+  background: var(--ve-line-strong, rgba(255, 255, 255, 0.24));
+  border-radius: 999px;
+  height: 0.48rem;
+  width: 0.48rem;
+}
+
+.dotagents-config-header span:nth-child(1),
+.dotagents-terminal-bar span:nth-child(1) {
+  background: #f87171;
+}
+
+.dotagents-terminal-bar span:nth-child(2) {
+  background: #facc15;
+}
+
+.dotagents-terminal-bar span:nth-child(3) {
+  background: #4ade80;
+}
+
+.dotagents-config-header strong {
+  color: var(--ve-text, var(--sl-color-white));
+  font-family: var(--__sl-font-mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.dotagents-config-card pre,
+.dotagents-terminal pre {
+  background: transparent;
+  border: 0;
+  margin: 0;
+  overflow-x: auto;
+  padding: 0.9rem;
+  white-space: pre-wrap;
+}
+
+.dotagents-config-card code,
+.dotagents-terminal code {
+  background: transparent;
+  border: 0;
+  color: var(--ve-text-secondary, var(--sl-color-gray-2));
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  padding: 0;
+  white-space: pre-wrap;
+}
+
+.dotagents-home {
+  display: grid;
+  gap: 3rem;
+  margin-top: 0.5rem;
+}
+
+.dotagents-section {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.dotagents-section-heading {
+  max-width: 47rem;
+}
+
+.sl-markdown-content .dotagents-section h2 {
+  border-bottom: 0;
+  margin: 0 0 0.5rem;
+  padding-bottom: 0;
+}
+
+.dotagents-section p {
+  color: var(--ve-text-secondary, var(--sl-color-gray-2));
+}
+
+.dotagents-card-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sl-markdown-content a.dotagents-card {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--ve-line-soft, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  color: var(--ve-text-secondary, var(--sl-color-gray-2));
+  display: grid;
+  gap: 0.6rem;
+  min-height: 9rem;
+  padding: 1rem;
+  text-decoration: none;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+
+.sl-markdown-content a.dotagents-card:hover {
+  background: rgba(255, 255, 255, 0.045);
+  border-color: var(--ve-line-strong, rgba(255, 255, 255, 0.2));
+  color: var(--ve-text-secondary, var(--sl-color-gray-2));
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+.dotagents-card strong {
+  color: var(--ve-text, var(--sl-color-white));
+  font-size: 1rem;
+}
+
+.dotagents-card span {
+  line-height: 1.55;
+}
+
+.dotagents-install-section {
+  align-items: start;
+  grid-template-columns: minmax(0, 0.85fr) minmax(18rem, 1fr);
+}
+
+.dotagents-terminal {
+  min-width: 0;
+}
+
+.dotagents-terminal code {
+  font-size: 0.82rem;
+}
+
+@media (max-width: 50rem) {
+  body:has(.dotagents-brand) {
+    overflow-x: hidden;
+  }
+
+  .dotagents-headline {
+    font-size: 2.1rem;
+  }
+
+  .hero:has(.dotagents-brand) {
+    padding-block: 2.25rem 1.25rem;
+  }
+
+  .hero:has(.dotagents-brand) h1,
+  .hero:has(.dotagents-brand) .tagline {
+    margin-inline: auto;
+    max-width: min(100%, 22rem);
+  }
+
+  .hero:has(.dotagents-brand) .actions {
+    gap: 0.75rem;
+    max-width: 22rem;
+  }
+
+  .hero:has(.dotagents-brand) .sl-link-button {
+    min-width: 0;
+  }
+
+  .dotagents-proof {
+    max-width: 100%;
+  }
+
+  .dotagents-config-card code,
+  .dotagents-terminal code {
+    font-size: 0.68rem;
+  }
+
+  .dotagents-card-grid,
+  .dotagents-install-section {
+    grid-template-columns: 1fr;
+  }
+}

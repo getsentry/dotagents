@@ -1,0 +1,118 @@
+---
+title: dotagents
+description: Shared tooling for coding agents.
+template: splash
+hero:
+  title: '<span class="dotagents-brand">dotagents</span><span class="dotagents-headline">One Config for Your Coding Agents</span>'
+  tagline: 'Declare skills, MCP servers, and hooks in <code>agents.toml</code>. dotagents installs shared skills and writes each tool''s local config.'
+  actions:
+    - text: Get Started
+      link: /guide/
+---
+
+<div className="dotagents-home">
+  <section className="dotagents-proof" aria-label="Example agents.toml">
+    <div className="dotagents-config-card">
+      <div className="dotagents-config-header">
+        <span></span>
+        <strong>agents.toml</strong>
+      </div>
+      <pre><code>{`version = 1
+agents = ["claude", "cursor", "codex", "vscode"]
+
+[trust]
+github_orgs = ["getsentry"]
+
+[[skills]]
+name = "find-bugs"
+source = "getsentry/skills"
+
+[[skills]]
+name = "commit"
+source = "getsentry/skills"`}</code></pre>
+    </div>
+  </section>
+
+  <section className="dotagents-section">
+    <div className="dotagents-section-heading">
+      <h2 id="why-dotagents">What dotagents manages</h2>
+      <p>Keep generated agent state out of git. Commit one TOML file, then let each developer install the same skills and config locally.</p>
+    </div>
+
+    <div className="dotagents-card-grid">
+      <a className="dotagents-card" href="/guide/#adding-skills">
+        <strong>Skills</strong>
+        <span>Install `SKILL.md` directories from GitHub, GitLab, git URLs, well-known HTTPS sources, or local paths.</span>
+      </a>
+      <a className="dotagents-card" href="/cli/#mcp-add">
+        <strong>MCP servers</strong>
+        <span>Declare stdio and HTTP servers once, including environment variables and headers.</span>
+      </a>
+      <a className="dotagents-card" href="/guide/#auto-install-with-git-hooks">
+        <strong>Hooks</strong>
+        <span>Generate hook config for supported agents and refresh local state after pulls.</span>
+      </a>
+      <a className="dotagents-card" href="/security/">
+        <strong>Trust policy</strong>
+        <span>Restrict skill sources before dotagents performs any network operation.</span>
+      </a>
+    </div>
+  </section>
+
+  <section className="dotagents-section dotagents-install-section">
+    <div>
+      <h2 id="quick-start">Quick Start</h2>
+      <p>Run `init` at the root of your repository. Interactive setup asks which agent tools to configure, writes `agents.toml`, gitignores generated files, and declares the `dotagents` skill from `getsentry/dotagents`.</p>
+    </div>
+
+    <div className="dotagents-terminal">
+      <div className="dotagents-terminal-bar">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <pre><code>$ npx @sentry/dotagents init&#10;&#10;Created agents.toml&#10;Created .agents/skills/&#10;Updated .gitignore&#10;&#10;Next:&#10;  dotagents add getsentry/skills find-bugs&#10;  dotagents install</code></pre>
+    </div>
+  </section>
+
+  <section className="dotagents-section">
+    <div className="dotagents-section-heading">
+      <h2 id="supported-agents">Supported Agents</h2>
+      <p>The `agents` array tells dotagents which tools to configure. Pi reads `.agents/skills/` directly and does not need generated config.</p>
+    </div>
+
+    | Agent | Config Dir | MCP Config | Hooks |
+    | --- | --- | --- | --- |
+    | `claude` | `.claude` | `.mcp.json` | `.claude/settings.json` |
+    | `cursor` | `.cursor` | `.cursor/mcp.json` | `.cursor/hooks.json` |
+    | `codex` | `.codex` | `.codex/config.toml` | None |
+    | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` |
+    | `opencode` | `.claude` | `opencode.json` | None |
+  </section>
+
+  <section className="dotagents-section">
+    <div className="dotagents-section-heading">
+      <h2 id="adding-skills">Adding Skills</h2>
+      <p>dotagents discovers skills in a source. When a repo has one skill, it adds it automatically. When multiple are found, pass skill names or use `--all`.</p>
+    </div>
+
+    ```shell
+    # Add a single skill from a GitHub repo
+    dotagents add getsentry/skills find-bugs
+
+    # Add all skills from a repo
+    dotagents add getsentry/skills --all
+
+    # Pin to a specific ref
+    dotagents add getsentry/warden@v1.0.0
+
+    # Add from GitLab
+    dotagents add https://gitlab.com/group/repo find-bugs
+
+    # From a well-known HTTPS source
+    dotagents add https://cli.sentry.dev error-tracking
+    ```
+
+    Shorthand `owner/repo` resolves using `defaultRepositorySource` in `agents.toml` (default: `github`).
+  </section>
+</div>

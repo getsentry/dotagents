@@ -474,7 +474,7 @@ dotagents sync
 Manage MCP server declarations.
 
 ```
-dotagents mcp add <name> --command <cmd> [--args <a>...] [--env <VAR>...]
+dotagents mcp add <name> --command "<cmd> [args...]" [--env <VAR>...]
 dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]
 dotagents mcp remove <name>
 dotagents mcp list [--json]
