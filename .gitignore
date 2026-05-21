@@ -5,6 +5,7 @@ dist/
 .DS_Store
 docs/out/
 docs/.next/
+docs/.astro/
 agents.lock
 .agents/.gitignore
 

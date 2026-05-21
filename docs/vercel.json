@@ -1,12 +1,20 @@
 {
   "buildCommand": "pnpm build",
-  "framework": "nextjs",
+  "framework": "astro",
+  "outputDirectory": "dist",
   "headers": [
     {
       "source": "/llms.txt",
       "headers": [
         { "key": "Content-Type", "value": "text/markdown; charset=utf-8" }
       ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/",
+      "has": [{ "type": "header", "key": "accept", "value": ".*text/(x-)?markdown.*" }],
+      "destination": "/llms.txt"
     }
   ]
 }

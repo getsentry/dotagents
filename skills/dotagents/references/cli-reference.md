@@ -173,14 +173,13 @@ Manage MCP (Model Context Protocol) server declarations in `agents.toml`.
 Add an MCP server declaration.
 
 ```bash
-npx @sentry/dotagents mcp add github --command npx --args -y --args @modelcontextprotocol/server-github --env GITHUB_TOKEN
+npx @sentry/dotagents mcp add github --command "npx -y @modelcontextprotocol/server-github" --env GITHUB_TOKEN
 npx @sentry/dotagents mcp add remote-api --url https://mcp.example.com/sse --header "Authorization:Bearer token"
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--command <cmd>` | Command to run (stdio transport) |
-| `--args <arg>` | Command arguments (repeatable) |
+| `--command "<cmd> [args...]"` | Command to run (stdio transport), including optional arguments |
 | `--url <url>` | HTTP endpoint URL (HTTP transport) |
 | `--header <Key:Value>` | HTTP headers (repeatable) |
 | `--env <VAR>` | Environment variable names to pass through (repeatable) |
