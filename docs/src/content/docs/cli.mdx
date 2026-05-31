@@ -385,7 +385,7 @@ Status output:
 
 dotagents treats subagents as best-effort portable dependencies, not a universal behavior schema. Runtime-specific behavior such as model routing, tool permissions, read-only modes, background execution, and reasoning effort stays in each tool's native artifact.
 
-dotagents discovers portable subagent Markdown from `agents/` and `.agents/agents/`. It also imports native runtime artifacts from `.claude/agents/*.md`, `.cursor/agents/*.md`, `.codex/agents/*.toml`, and `.opencode/agents/*.md`. Multiple portable matches for the same subagent are rejected as ambiguous, while matching native runtime artifacts are merged. When the source format matches a target runtime, dotagents reuses the native source content for that runtime and only adds its managed-file marker. Other runtimes are generated from the portable `name`, `description`, and instructions.
+dotagents discovers portable subagent Markdown from `agents/` and `.agents/agents/`. It also imports native runtime artifacts from `.claude/agents/*.md`, `.cursor/agents/*.md`, `.codex/agents/*.toml`, and `.opencode/agents/*.md`. Root-level source files require an explicit `path`. Multiple portable matches for the same subagent are rejected as ambiguous, while matching native runtime artifacts are merged. When the source format matches a target runtime, dotagents reuses the native source content for that runtime and only adds its managed-file marker. Other runtimes are generated from the portable `name`, `description`, and instructions.
 
 | Format | Source path | Matching output path | Required source fields |
 | --- | --- | --- | --- |

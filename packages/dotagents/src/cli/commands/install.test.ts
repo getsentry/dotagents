@@ -253,6 +253,7 @@ agents = ["claude", "codex", "opencode"]
 [[subagents]]
 name = "code-reviewer"
 source = "path:agents"
+path = "code-reviewer.md"
 `,
     );
 
@@ -292,6 +293,7 @@ source = "path:agents"
 [[subagents]]
 name = "code-reviewer"
 source = "path:agents"
+path = "code-reviewer.md"
 `,
     );
 
@@ -311,6 +313,7 @@ source = "path:agents"
 [[subagents]]
 name = "code-reviewer"
 source = "path:agents"
+path = "code-reviewer.md"
 `,
     );
 
@@ -339,6 +342,7 @@ source = "path:agents"
 [[subagents]]
 name = "code-reviewer"
 source = "path:agents"
+path = "code-reviewer.md"
 `,
     );
 
@@ -462,6 +466,7 @@ agents = ["claude"]
 [[subagents]]
 name = "code-reviewer"
 source = "path:agents"
+path = "code-reviewer.md"
 `,
     );
 
@@ -497,6 +502,7 @@ agents = ["vscode"]
 [[subagents]]
 name = "reviewer"
 source = "path:agents"
+path = "reviewer.md"
 `,
     );
 

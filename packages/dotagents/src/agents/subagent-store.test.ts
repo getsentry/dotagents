@@ -49,6 +49,29 @@ describe("resolveSubagent", () => {
     expect(resolved.subagent.description).toBe("Review code for correctness.");
   });
 
+  it("does not implicitly discover root markdown files", async () => {
+    await writeFile(join(repoDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await expect(
+      resolveSubagent(subagentConfig(), {
+        stateDir: join(tmpDir, "state"),
+        projectRoot: tmpDir,
+      }),
+    ).rejects.toThrow('Subagent "code-reviewer" not found in path:repo.');
+  });
+
+  it("imports root markdown only when path is explicit", async () => {
+    await writeFile(join(repoDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    const resolved = await resolveSubagent(subagentConfig({ path: "code-reviewer.md" }), {
+      stateDir: join(tmpDir, "state"),
+      projectRoot: tmpDir,
+    });
+
+    expect(resolved.resolvedPath).toBeUndefined();
+    expect(resolved.subagent.name).toBe("code-reviewer");
+  });
+
   it("imports Codex TOML subagents as portable declarations with native content", async () => {
     await mkdir(join(repoDir, ".codex", "agents"), { recursive: true });
     await writeFile(

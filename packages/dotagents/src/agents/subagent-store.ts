@@ -43,7 +43,6 @@ interface DiscoveredSubagent {
 }
 
 const SUBAGENT_SCAN_DIRS: readonly SubagentScanDir[] = [
-  { dir: ".", flat: true, extensions: [".md"] },
   { dir: "agents", extensions: [".md"] },
   { dir: ".agents/agents", extensions: [".md"] },
   { dir: ".claude/agents", nativeTarget: "claude", extensions: [".md"] },

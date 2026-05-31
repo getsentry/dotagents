@@ -402,6 +402,7 @@ agents = ["claude"]
 [[subagents]]
 name = "reviewer"
 source = "path:agents"
+path = "reviewer.md"
 `,
     );
 
@@ -427,6 +428,7 @@ agents = ["claude"]
 [[subagents]]
 name = "reviewer"
 source = "path:agents"
+path = "reviewer.md"
 `,
     );
     const agentsDir = join(projectRoot, ".claude", "agents");
@@ -457,6 +459,7 @@ agents = ["claude"]
 [[subagents]]
 name = "reviewer"
 source = "path:agents"
+path = "reviewer.md"
 `,
     );
     const agentsDir = join(projectRoot, ".claude", "agents");
@@ -489,6 +492,7 @@ agents = ["claude"]
 [[subagents]]
 name = "reviewer"
 source = "path:agents"
+path = "reviewer.md"
 `,
     );
     const agentsDir = join(projectRoot, ".claude", "agents");
