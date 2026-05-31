@@ -288,7 +288,7 @@ Hand-written instructions.
     expect(existsSync(join(targetDir, "code-reviewer.md"))).toBe(true);
   });
 
-  it("prunes managed files for runtimes no longer listed in agents", async () => {
+  it("does not prune managed files for runtimes not listed in agents", async () => {
     const targetDir = join(dir, ".codex", "agents");
     await mkdir(targetDir, { recursive: true });
     const stalePath = join(targetDir, "code-reviewer.toml");
@@ -300,8 +300,8 @@ Hand-written instructions.
 
     const result = await writeSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
 
-    expect(result.pruned).toEqual([stalePath]);
-    expect(existsSync(stalePath)).toBe(false);
+    expect(result.pruned).toEqual([]);
+    expect(existsSync(stalePath)).toBe(true);
   });
 
   it("prunes managed files when no subagents remain", async () => {

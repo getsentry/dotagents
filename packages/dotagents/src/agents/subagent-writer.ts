@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { allAgents, getAgent } from "./registry.js";
+import { getAgent } from "./registry.js";
 import { DOTAGENTS_SUBAGENT_MARKER } from "./definitions/helpers.js";
 import { generatedSubagentIdentity, readSubagentFileIdentity } from "./subagent-identity.js";
 import type { SubagentConfigSpec, SubagentDeclaration } from "./types.js";
@@ -237,9 +237,10 @@ function initDesiredDirs(
 ): Map<string, DesiredDir> {
   const desiredByDir = new Map<string, DesiredDir>();
   const configuredAgents = new Set(agentIds);
-  for (const agent of allAgents()) {
-    if (!agent.subagents) {continue;}
-    const { dirPath } = resolveTarget(agent.id, agent.subagents);
+  for (const agentId of configuredAgents) {
+    const agent = getAgent(agentId);
+    if (!agent?.subagents) {continue;}
+    const { dirPath } = resolveTarget(agentId, agent.subagents);
     markDesired(desiredByDir, dirPath, agent.subagents.fileExtension);
   }
 

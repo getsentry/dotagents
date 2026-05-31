@@ -304,6 +304,9 @@ async function loadSubagentFile(
   } = {},
 ): Promise<SubagentDeclaration> {
   if (extname(filePath) === ".toml") {
+    if (opts.nativeTarget && opts.nativeTarget !== "codex") {
+      throw new Error(`Unsupported ${opts.nativeTarget} subagent file extension ".toml": ${filePath}`);
+    }
     return loadCodexSubagentFile(filePath, opts);
   }
 
@@ -559,10 +562,11 @@ function relativePath(root: string, filePath: string): string {
 
 function inferNativeTarget(filePath: string): NativeSubagentTarget | undefined {
   const normalized = filePath.replaceAll("\\", "/");
-  if (normalized.endsWith(".toml")) {return "codex";}
   if (normalized.includes(".claude/agents/")) {return "claude";}
   if (normalized.includes(".cursor/agents/")) {return "cursor";}
+  if (normalized.includes(".codex/agents/")) {return "codex";}
   if (normalized.includes(".opencode/agents/")) {return "opencode";}
+  if (normalized.endsWith(".toml")) {return "codex";}
   return undefined;
 }
 

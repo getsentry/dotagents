@@ -72,6 +72,26 @@ describe("resolveSubagent", () => {
     expect(resolved.subagent.name).toBe("code-reviewer");
   });
 
+  it("does not classify TOML under another native runtime directory as Codex", async () => {
+    await mkdir(join(repoDir, ".claude", "agents"), { recursive: true });
+    await writeFile(
+      join(repoDir, ".claude", "agents", "code-reviewer.toml"),
+      [
+        'name = "code_reviewer"',
+        'description = "Review code for correctness."',
+        'developer_instructions = "Review the current diff."',
+        "",
+      ].join("\n"),
+    );
+
+    await expect(
+      resolveSubagent(subagentConfig({ path: ".claude/agents/code-reviewer.toml" }), {
+        stateDir: join(tmpDir, "state"),
+        projectRoot: tmpDir,
+      }),
+    ).rejects.toThrow('Unsupported claude subagent file extension ".toml"');
+  });
+
   it("imports Codex TOML subagents as portable declarations with native content", async () => {
     await mkdir(join(repoDir, ".codex", "agents"), { recursive: true });
     await writeFile(
