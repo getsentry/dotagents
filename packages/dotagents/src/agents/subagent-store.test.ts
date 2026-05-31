@@ -99,6 +99,7 @@ describe("resolveSubagent", () => {
     await writeFile(
       join(repoDir, ".opencode", "agents", "code-reviewer.md"),
       `---
+name: other-reviewer
 description: Review code for correctness.
 mode: subagent
 permission:
@@ -117,6 +118,29 @@ Review the current diff.
     expect(resolved.subagent.name).toBe("code-reviewer");
     expect(resolved.subagent.native?.opencode).toContain("mode: subagent");
     expect(resolved.subagent.native?.opencode).toContain("permission:");
+    expect(resolved.subagent.native?.opencode).toContain("name: other-reviewer");
+  });
+
+  it("imports Cursor markdown subagents using the filename when name is omitted", async () => {
+    await mkdir(join(repoDir, ".cursor", "agents"), { recursive: true });
+    await writeFile(
+      join(repoDir, ".cursor", "agents", "code-reviewer.md"),
+      `---
+description: Review code for correctness.
+model: inherit
+---
+
+Review the current diff.
+`,
+    );
+
+    const resolved = await resolveSubagent(subagentConfig(), {
+      stateDir: join(tmpDir, "state"),
+      projectRoot: tmpDir,
+    });
+
+    expect(resolved.subagent.name).toBe("code-reviewer");
+    expect(resolved.subagent.native?.cursor).toContain("model: inherit");
   });
 
   it("merges native subagent artifacts for the same portable declaration", async () => {
@@ -192,6 +216,22 @@ Review the current diff for Claude.
         projectRoot: tmpDir,
       }),
     ).rejects.toThrow("No YAML frontmatter");
+  });
+
+  it("rejects ambiguous metadata matches in the same scan directory", async () => {
+    await mkdir(join(repoDir, "agents", "a"), { recursive: true });
+    await mkdir(join(repoDir, "agents", "b"), { recursive: true });
+    await writeFile(join(repoDir, "agents", "a", "reviewer.md"), SUBAGENT_MD("code-reviewer"));
+    await writeFile(join(repoDir, "agents", "b", "reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await expect(
+      resolveSubagent(subagentConfig(), {
+        stateDir: join(tmpDir, "state"),
+        projectRoot: tmpDir,
+      }),
+    ).rejects.toThrow(
+      'Ambiguous metadata matches for subagent "code-reviewer" in agents',
+    );
   });
 
   it("rejects invalid frontmatter names", async () => {

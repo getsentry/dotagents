@@ -174,6 +174,65 @@ describe("writeSubagentConfigs", () => {
     expect(await readFile(join(targetDir, "code-reviewer.md"), "utf-8")).toBe("hand-written");
   });
 
+  it("does not create duplicate unmanaged Claude identities", async () => {
+    const targetDir = join(dir, ".claude", "agents");
+    await mkdir(targetDir, { recursive: true });
+    await writeFile(
+      join(targetDir, "reviewer.md"),
+      `---
+name: code-reviewer
+description: Hand-written reviewer.
+---
+
+Hand-written instructions.
+`,
+      "utf-8",
+    );
+
+    const result = await writeSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
+
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]!.message).toContain("identity conflicts with unmanaged file");
+    expect(result.written).toBe(0);
+    expect(existsSync(join(targetDir, "code-reviewer.md"))).toBe(false);
+  });
+
+  it("does not create duplicate unmanaged Codex identities", async () => {
+    const targetDir = join(dir, ".codex", "agents");
+    await mkdir(targetDir, { recursive: true });
+    await writeFile(
+      join(targetDir, "reviewer.toml"),
+      [
+        'name = "code_reviewer"',
+        'description = "Hand-written reviewer."',
+        'developer_instructions = "Hand-written instructions."',
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await writeSubagentConfigs(
+      ["codex"],
+      [{
+        ...SUBAGENT,
+        native: {
+          codex: [
+            'name = "code_reviewer"',
+            'description = "Review code for correctness and missing tests."',
+            'developer_instructions = "Native Codex instructions."',
+            "",
+          ].join("\n"),
+        },
+      }],
+      projectSubagentResolver(dir),
+    );
+
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]!.message).toContain("identity conflicts with unmanaged file");
+    expect(result.written).toBe(0);
+    expect(existsSync(join(targetDir, "code-reviewer.toml"))).toBe(false);
+  });
+
   it("prunes stale dotagents-managed files", async () => {
     const targetDir = join(dir, ".claude", "agents");
     await mkdir(targetDir, { recursive: true });
@@ -287,6 +346,28 @@ describe("verifySubagentConfigs", () => {
 
     expect(issues).toHaveLength(1);
     expect(issues[0]!.issue).toContain("not managed by dotagents");
+    expect(issues[0]!.repairable).toBe(false);
+  });
+
+  it("reports unmanaged identity conflicts as not repairable", async () => {
+    const targetDir = join(dir, ".claude", "agents");
+    await mkdir(targetDir, { recursive: true });
+    await writeFile(
+      join(targetDir, "reviewer.md"),
+      `---
+name: code-reviewer
+description: Hand-written reviewer.
+---
+
+Hand-written instructions.
+`,
+      "utf-8",
+    );
+
+    const issues = await verifySubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.issue).toContain("identity conflicts with unmanaged file");
     expect(issues[0]!.repairable).toBe(false);
   });
 });

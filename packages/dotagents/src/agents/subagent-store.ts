@@ -246,8 +246,8 @@ async function discoverSubagent(
       flat: scanDir.flat ?? false,
       extensions: scanDir.extensions,
     });
-    let fileNameMatch: DiscoveredSubagent | null = null;
-    let frontmatterMatch: DiscoveredSubagent | null = null;
+    const fileNameMatches: DiscoveredSubagent[] = [];
+    const metadataMatches: DiscoveredSubagent[] = [];
 
     for (const filePath of candidates) {
       const nameFromFile = basename(filePath, extname(filePath));
@@ -268,15 +268,16 @@ async function discoverSubagent(
         assertSubagentNameMatches(subagent.name, config.name, relPath);
       }
       if (subagent.name !== config.name) {continue;}
-      if (!fileNameMatch && nameFromFile === config.name) {
-        fileNameMatch = { path: relPath, subagent };
-      } else if (!frontmatterMatch) {
-        frontmatterMatch = { path: relPath, subagent };
+      const match = { path: relPath, subagent };
+      if (nameFromFile === config.name) {
+        fileNameMatches.push(match);
+      } else {
+        metadataMatches.push(match);
       }
     }
 
-    if (fileNameMatch) {matches.push(fileNameMatch);}
-    if (frontmatterMatch) {matches.push(frontmatterMatch);}
+    const selected = selectDiscoveredSubagent(config.name, scanDir, fileNameMatches, metadataMatches);
+    if (selected) {matches.push(selected);}
   }
 
   if (matches.length === 0) {return null;}
@@ -296,11 +297,10 @@ async function loadSubagentFile(
   }
 
   const { meta, body, raw } = await loadMarkdownFrontmatter(filePath);
-  const name = typeof meta["name"] === "string" && meta["name"]
-    ? meta["name"]
-    : opts.nativeTarget === "opencode"
-      ? opts.nameFromFile
-      : undefined;
+  const declaredName = typeof meta["name"] === "string" && meta["name"] ? meta["name"] : undefined;
+  const name = markdownIdentityFromFilename(opts.nativeTarget)
+    ? opts.nameFromFile
+    : declaredName ?? (opts.nativeTarget === "cursor" ? opts.nameFromFile : undefined);
   if (!name) {
     throw new Error(`Missing 'name' in subagent frontmatter: ${filePath}`);
   }
@@ -433,7 +433,7 @@ async function listSubagentFiles(
   }
 
   const files: string[] = [];
-  for (const entry of entries) {
+  for (const entry of entries.toSorted((a, b) => a.name.localeCompare(b.name))) {
     const absPath = join(dirPath, entry.name);
     if (entry.isFile() && opts.extensions.includes(extname(entry.name))) {
       files.push(absPath);
@@ -442,6 +442,37 @@ async function listSubagentFiles(
     }
   }
   return files;
+}
+
+function selectDiscoveredSubagent(
+  name: string,
+  scanDir: SubagentScanDir,
+  fileNameMatches: DiscoveredSubagent[],
+  metadataMatches: DiscoveredSubagent[],
+): DiscoveredSubagent | null {
+  assertSingleDiscoveryMatch(name, scanDir, "filename", fileNameMatches);
+  if (fileNameMatches.length > 0) {
+    return fileNameMatches[0]!;
+  }
+
+  assertSingleDiscoveryMatch(name, scanDir, "metadata", metadataMatches);
+  return metadataMatches[0] ?? null;
+}
+
+function assertSingleDiscoveryMatch(
+  name: string,
+  scanDir: SubagentScanDir,
+  kind: string,
+  matches: DiscoveredSubagent[],
+): void {
+  if (matches.length <= 1) {return;}
+  throw new Error(
+    `Ambiguous ${kind} matches for subagent "${name}" in ${scanDir.dir}: ${matches.map((m) => m.path).join(", ")}`,
+  );
+}
+
+function markdownIdentityFromFilename(target: NativeSubagentTarget | undefined): boolean {
+  return target === "opencode";
 }
 
 function serializeInstalledSubagent(subagent: SubagentDeclaration): string {

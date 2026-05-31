@@ -1,6 +1,8 @@
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, extname, join } from "node:path";
+import { parse as parseTOML } from "smol-toml";
+import { loadMarkdownFrontmatter } from "@sentry/dotagents-lib";
 import { allAgents, getAgent } from "./registry.js";
 import { DOTAGENTS_SUBAGENT_MARKER } from "./definitions/helpers.js";
 import type { SubagentConfigSpec, SubagentDeclaration } from "./types.js";
@@ -95,9 +97,30 @@ export async function writeSubagentConfigs(
       if (!content.includes(DOTAGENTS_SUBAGENT_MARKER)) {
         throw new Error(`Internal error: generated subagent "${subagent.name}" is missing the dotagents marker`);
       }
+      const generatedIdentity = generatedSubagentIdentity(
+        agentId,
+        generated.fileName,
+        content,
+        subagent.name,
+      );
 
       await mkdir(dirPath, { recursive: true });
       markDesired(desiredByDir, dirPath, agent.subagents.fileExtension, generated.fileName);
+      const identityConflict = await findUnmanagedIdentityConflict(
+        agentId,
+        dirPath,
+        generated.fileName,
+        agent.subagents.fileExtension,
+        generatedIdentity,
+      );
+      if (identityConflict) {
+        warnings.push({
+          agent: agentId,
+          name: subagent.name,
+          message: `Subagent config identity conflicts with unmanaged file: ${identityConflict}`,
+        });
+        continue;
+      }
       const didWrite = await writeManagedFile(join(dirPath, generated.fileName), content, {
         agent: agentId,
         name: subagent.name,
@@ -151,6 +174,23 @@ export async function verifySubagentConfigs(
       const filePath = join(dirPath, generated.fileName);
       if (seen.has(filePath)) {continue;}
       seen.add(filePath);
+      const content = normalizeContent(generated.content);
+
+      const identityConflict = await findUnmanagedIdentityConflict(
+        agentId,
+        dirPath,
+        generated.fileName,
+        agent.subagents.fileExtension,
+        generatedSubagentIdentity(agentId, generated.fileName, content, subagent.name),
+      );
+      if (identityConflict) {
+        issues.push({
+          ...issueBase,
+          issue: `Subagent config identity conflicts with unmanaged file: ${identityConflict}`,
+          repairable: false,
+        });
+        continue;
+      }
 
       if (!existsSync(filePath)) {
         issues.push({
@@ -293,8 +333,90 @@ async function pruneManagedFiles(
   return pruned;
 }
 
+async function findUnmanagedIdentityConflict(
+  agentId: string,
+  dirPath: string,
+  generatedFileName: string,
+  extension: string,
+  generatedIdentity: string | null,
+): Promise<string | null> {
+  if (!existsSync(dirPath)) {return null;}
+  if (!generatedIdentity) {return null;}
+
+  const entries = await readdir(dirPath, { withFileTypes: true });
+  for (const entry of entries.toSorted((a, b) => a.name.localeCompare(b.name))) {
+    if (!entry.isFile()) {continue;}
+    if (entry.name === generatedFileName) {continue;}
+    if (!entry.name.endsWith(extension)) {continue;}
+
+    const filePath = join(dirPath, entry.name);
+    const existing = await readFile(filePath, "utf-8");
+    if (existing.includes(DOTAGENTS_SUBAGENT_MARKER)) {continue;}
+
+    const existingIdentity = await readExistingSubagentIdentity(agentId, filePath, entry.name, existing);
+    if (existingIdentity === generatedIdentity) {
+      return filePath;
+    }
+  }
+
+  return null;
+}
+
+function generatedSubagentIdentity(
+  agentId: string,
+  fileName: string,
+  content: string,
+  portableName: string,
+): string | null {
+  if (agentId === "opencode") {
+    return basename(fileName, extname(fileName));
+  }
+  if (agentId === "codex") {
+    return readCodexSubagentIdentity(content);
+  }
+  return portableName;
+}
+
+async function readExistingSubagentIdentity(
+  agentId: string,
+  filePath: string,
+  fileName: string,
+  content: string,
+): Promise<string | null> {
+  if (agentId === "opencode") {
+    return basename(fileName, extname(fileName));
+  }
+  if (agentId === "codex") {
+    return readCodexSubagentIdentity(content);
+  }
+
+  try {
+    const { meta } = await loadMarkdownFrontmatter(filePath);
+    const name = typeof meta["name"] === "string" && meta["name"] ? meta["name"] : null;
+    return name ?? (agentId === "cursor" ? basename(fileName, extname(fileName)) : null);
+  } catch {
+    return null;
+  }
+}
+
+function readCodexSubagentIdentity(content: string): string | null {
+  try {
+    const parsed = parseTOML(content);
+    if (isPlainObject(parsed) && typeof parsed["name"] === "string" && parsed["name"]) {
+      return parsed["name"];
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function normalizeContent(content: string): string {
   return content.endsWith("\n") ? content : `${content}\n`;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isNotFoundError(err: unknown): boolean {

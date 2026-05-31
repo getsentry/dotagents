@@ -235,11 +235,11 @@ Accepted source/output formats:
 |--------|-------------|----------------------|------------------------|
 | Portable Markdown | `agents/*.md`, `.agents/agents/*.md` | `.agents/agents/<name>.md` | YAML `name`, `description`; Markdown body |
 | Claude Markdown | `.claude/agents/*.md` | `.claude/agents/<name>.md` | YAML `name`, `description`; Markdown body |
-| Cursor Markdown | `.cursor/agents/*.md` | `.cursor/agents/<name>.md` | YAML `name`, `description`; Markdown body |
+| Cursor Markdown | `.cursor/agents/*.md` | `.cursor/agents/<name>.md` | YAML `description`; Markdown body; `name` optional |
 | Codex TOML | `.codex/agents/*.toml` | `.codex/agents/<name>.toml` | TOML `name`, `description`, `developer_instructions` |
-| OpenCode Markdown | `.opencode/agents/*.md` | `.opencode/agents/<name>.md` | YAML `description`; Markdown body; `name` optional |
+| OpenCode Markdown | `.opencode/agents/*.md` | `.opencode/agents/<name>.md` | YAML `description`; Markdown body |
 
-Codex native `name` may use Codex-specific naming; dotagents uses the `agents.toml` name or filename as the portable ID when needed. OpenCode native Markdown may use the filename as the subagent name.
+Codex native `name` may use Codex-specific naming; dotagents uses the `agents.toml` name or filename as the portable ID when needed. Cursor native Markdown may omit `name`; dotagents uses the filename in that case. OpenCode native Markdown always uses the filename as the subagent name.
 
 ```md
 ---
@@ -264,7 +264,7 @@ Generated subagent files:
 - Codex: `.codex/agents/<name>.toml`, or `~/.codex/agents/<name>.toml` for user scope
 - OpenCode: `.opencode/agents/<name>.md`, or `~/.config/opencode/agents/<name>.md` for user scope
 
-Generated files include a dotagents marker. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the marker.
+Generated files include a dotagents marker. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the marker. They also avoid creating duplicate runtime identities when an unmanaged file in the same agent directory already declares the same subagent.
 
 ### Trust
 

@@ -44,9 +44,9 @@ Input and matching-runtime output use the same format. dotagents adds only its m
 |--------|------------------|-------------------------|------------------------|---------------------|
 | Portable Markdown | `agents/*.md`, `.agents/agents/*.md` | `.agents/agents/<name>.md` canonical install file | YAML `name`, `description`; Markdown body | `name`, `description`, body instructions |
 | Claude Markdown | `.claude/agents/*.md` | `.claude/agents/<name>.md` | YAML `name`, `description`; Markdown body | `name`, `description`, body instructions |
-| Cursor Markdown | `.cursor/agents/*.md` | `.cursor/agents/<name>.md` | YAML `name`, `description`; Markdown body | `name`, `description`, body instructions |
+| Cursor Markdown | `.cursor/agents/*.md` | `.cursor/agents/<name>.md` | YAML `description`; Markdown body; `name` optional | YAML `name` or filename; `description`; body instructions |
 | Codex TOML | `.codex/agents/*.toml` | `.codex/agents/<name>.toml` | TOML `name`, `description`, `developer_instructions` | dotagents ID from `agents.toml` or filename when native `name` is not portable; `description`; `developer_instructions` |
-| OpenCode Markdown | `.opencode/agents/*.md` | `.opencode/agents/<name>.md` | YAML `description`; Markdown body; `name` optional | filename or YAML `name`; `description`; body instructions |
+| OpenCode Markdown | `.opencode/agents/*.md` | `.opencode/agents/<name>.md` | YAML `description`; Markdown body | filename; `description`; body instructions |
 
 Portable Markdown example:
 
@@ -82,7 +82,7 @@ Without an explicit `path`, dotagents scans source directories in this order:
 6. `.codex/agents/**/*.toml`
 7. `.opencode/agents/**/*.md`
 
-Within each scanned directory, filename matches for `agents.toml` `name` take precedence over metadata-only matches. Matching artifacts from multiple runtimes are merged into one subagent declaration so native Claude and native Codex sources for the same portable ID can both be preserved.
+Within each scanned directory, filename matches for `agents.toml` `name` take precedence over metadata-only matches. Multiple filename or metadata matches in one scanned directory are rejected as ambiguous. Matching artifacts from multiple runtimes are merged into one subagent declaration so native Claude and native Codex sources for the same portable ID can both be preserved.
 
 If `path` is set, dotagents imports only that file. A `.toml` path is treated as Codex native. Markdown under `.claude/agents/`, `.cursor/agents/`, or `.opencode/agents/` is treated as native for that runtime; other Markdown is treated as portable.
 
@@ -92,7 +92,7 @@ The `agents.toml` `name` is the portable dotagents ID and controls generated fil
 
 Runtime native names may differ when the runtime allows a different naming convention. Codex commonly uses underscores, so `name = "code_reviewer"` in native TOML can map to portable dotagents ID `code-reviewer` when the file is selected by filename or explicit config. The Codex TOML name is preserved when writing Codex output.
 
-OpenCode native Markdown may omit `name`; dotagents uses the filename as the portable name in that case.
+Cursor native Markdown may omit `name`; dotagents uses the filename only when `name` is absent. OpenCode native Markdown always uses the filename as the portable name because OpenCode treats the Markdown filename as the agent name.
 
 ## Install and Sync
 
@@ -112,7 +112,7 @@ Generated runtime paths:
 | Codex | `.codex/agents/<name>.toml` | `~/.codex/agents/<name>.toml` | TOML |
 | OpenCode | `.opencode/agents/<name>.md` | `~/.config/opencode/agents/<name>.md` | Markdown with YAML frontmatter |
 
-Installed and generated files are marked as dotagents-managed. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the marker.
+Installed and generated files are marked as dotagents-managed. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the marker. For runtimes whose agent identity can differ from the filename, dotagents also avoids writing a managed file when an unmanaged file in the same runtime directory already declares the same runtime identity.
 
 ## Non-goals
 
