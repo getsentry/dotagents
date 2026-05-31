@@ -298,7 +298,7 @@ async function loadSubagentFile(
 
   const { meta, body, raw } = await loadMarkdownFrontmatter(filePath);
   const declaredName = typeof meta["name"] === "string" && meta["name"] ? meta["name"] : undefined;
-  const name = markdownIdentityFromFilename(opts.nativeTarget)
+  const name = opts.nativeTarget === "opencode"
     ? opts.nameFromFile
     : declaredName ?? (opts.nativeTarget === "cursor" ? opts.nameFromFile : undefined);
   if (!name) {
@@ -433,7 +433,9 @@ async function listSubagentFiles(
   }
 
   const files: string[] = [];
-  for (const entry of entries.toSorted((a, b) => a.name.localeCompare(b.name))) {
+  for (const entry of entries.toSorted((a, b) =>
+    a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+  )) {
     const absPath = join(dirPath, entry.name);
     if (entry.isFile() && opts.extensions.includes(extname(entry.name))) {
       files.push(absPath);
@@ -469,10 +471,6 @@ function assertSingleDiscoveryMatch(
   throw new Error(
     `Ambiguous ${kind} matches for subagent "${name}" in ${scanDir.dir}: ${matches.map((m) => m.path).join(", ")}`,
   );
-}
-
-function markdownIdentityFromFilename(target: NativeSubagentTarget | undefined): boolean {
-  return target === "opencode";
 }
 
 function serializeInstalledSubagent(subagent: SubagentDeclaration): string {

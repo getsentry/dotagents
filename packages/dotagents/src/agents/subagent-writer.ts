@@ -119,6 +119,7 @@ export async function writeSubagentConfigs(
           name: subagent.name,
           message: `Subagent config identity conflicts with unmanaged file: ${identityConflict}`,
         });
+        desiredByDir.get(dirPath)?.files.delete(generated.fileName);
         continue;
       }
       const didWrite = await writeManagedFile(join(dirPath, generated.fileName), content, {
@@ -344,7 +345,9 @@ async function findUnmanagedIdentityConflict(
   if (!generatedIdentity) {return null;}
 
   const entries = await readdir(dirPath, { withFileTypes: true });
-  for (const entry of entries.toSorted((a, b) => a.name.localeCompare(b.name))) {
+  for (const entry of entries.toSorted((a, b) =>
+    a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+  )) {
     if (!entry.isFile()) {continue;}
     if (entry.name === generatedFileName) {continue;}
     if (!entry.name.endsWith(extension)) {continue;}

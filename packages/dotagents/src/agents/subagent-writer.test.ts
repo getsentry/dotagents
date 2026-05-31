@@ -197,6 +197,44 @@ Hand-written instructions.
     expect(existsSync(join(targetDir, "code-reviewer.md"))).toBe(false);
   });
 
+  it("prunes stale managed files when an unmanaged identity conflict exists", async () => {
+    const targetDir = join(dir, ".claude", "agents");
+    await mkdir(targetDir, { recursive: true });
+    const managedPath = join(targetDir, "code-reviewer.md");
+    const unmanagedPath = join(targetDir, "reviewer.md");
+    await writeFile(
+      managedPath,
+      `---
+# ${DOTAGENTS_SUBAGENT_MARKER}
+name: "code-reviewer"
+description: "Managed reviewer."
+---
+
+Managed instructions.
+`,
+      "utf-8",
+    );
+    await writeFile(
+      unmanagedPath,
+      `---
+name: code-reviewer
+description: Hand-written reviewer.
+---
+
+Hand-written instructions.
+`,
+      "utf-8",
+    );
+
+    const result = await writeSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
+
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]!.message).toContain("identity conflicts with unmanaged file");
+    expect(result.pruned).toEqual([managedPath]);
+    expect(existsSync(managedPath)).toBe(false);
+    expect(existsSync(unmanagedPath)).toBe(true);
+  });
+
   it("does not create duplicate unmanaged Codex identities", async () => {
     const targetDir = join(dir, ".codex", "agents");
     await mkdir(targetDir, { recursive: true });

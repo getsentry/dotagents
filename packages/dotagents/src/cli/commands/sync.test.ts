@@ -440,6 +440,46 @@ source = "path:agents"
     expect(await readFile(join(agentsDir, "reviewer.md"), "utf-8")).toBe("hand-written");
   });
 
+  it("prunes managed subagent configs when an unmanaged identity conflict exists", async () => {
+    const installedDir = join(projectRoot, ".agents", "agents");
+    await mkdir(installedDir, { recursive: true });
+    await writeFile(
+      join(installedDir, "reviewer.md"),
+      `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "reviewer"\ndescription: "Review code."\n---\n\nReview code.\n`,
+      "utf-8",
+    );
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+
+[[subagents]]
+name = "reviewer"
+source = "path:agents"
+`,
+    );
+    const agentsDir = join(projectRoot, ".claude", "agents");
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(
+      join(agentsDir, "reviewer.md"),
+      `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "reviewer"\ndescription: "Managed reviewer."\n---\n\nManaged instructions.\n`,
+      "utf-8",
+    );
+    await writeFile(
+      join(agentsDir, "alias.md"),
+      `---\nname: reviewer\ndescription: Hand-written reviewer.\n---\n\nHand-written instructions.\n`,
+      "utf-8",
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.subagentsRepaired).toBe(1);
+    expect(result.issues.some((i) => i.type === "subagents" && i.message.includes("identity conflicts"))).toBe(true);
+    expect(existsSync(join(agentsDir, "reviewer.md"))).toBe(false);
+    expect(existsSync(join(agentsDir, "alias.md"))).toBe(true);
+  });
+
   it("does not prune runtime files for declared subagents that are not installed", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
