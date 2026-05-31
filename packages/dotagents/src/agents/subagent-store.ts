@@ -15,9 +15,16 @@ import {
   type TrustPolicy,
 } from "@sentry/dotagents-lib";
 import { DOTAGENTS_SUBAGENT_MARKER, serializeMarkdownSubagent } from "./definitions/helpers.js";
+import { getAgent } from "./registry.js";
+import { subagentIdentityFromMarkdownMeta } from "./subagent-identity.js";
 import { SUBAGENT_NAME_PATTERN, type SubagentConfig } from "../config/schema.js";
 import type { LockedSubagent } from "../lockfile/schema.js";
-import type { NativeSubagentContent, NativeSubagentTarget, SubagentDeclaration } from "./types.js";
+import type {
+  NativeSubagentContent,
+  NativeSubagentTarget,
+  SubagentDeclaration,
+  SubagentIdentityStrategy,
+} from "./types.js";
 
 const DOTAGENTS_NATIVE_FIELD = "dotagents_native";
 const NATIVE_SUBAGENT_TARGETS = ["claude", "cursor", "codex", "opencode"] satisfies NativeSubagentTarget[];
@@ -32,6 +39,7 @@ interface SubagentScanDir {
 interface DiscoveredSubagent {
   path: string;
   subagent: SubagentDeclaration;
+  nativeTarget?: NativeSubagentTarget;
 }
 
 const SUBAGENT_SCAN_DIRS: readonly SubagentScanDir[] = [
@@ -268,7 +276,11 @@ async function discoverSubagent(
         assertSubagentNameMatches(subagent.name, config.name, relPath);
       }
       if (subagent.name !== config.name) {continue;}
-      const match = { path: relPath, subagent };
+      const match = {
+        path: relPath,
+        subagent,
+        ...(scanDir.nativeTarget ? { nativeTarget: scanDir.nativeTarget } : {}),
+      };
       if (nameFromFile === config.name) {
         fileNameMatches.push(match);
       } else {
@@ -281,7 +293,7 @@ async function discoverSubagent(
   }
 
   if (matches.length === 0) {return null;}
-  return mergeDiscoveredSubagents(matches);
+  return mergeDiscoveredSubagents(config.name, matches);
 }
 
 async function loadSubagentFile(
@@ -297,10 +309,11 @@ async function loadSubagentFile(
   }
 
   const { meta, body, raw } = await loadMarkdownFrontmatter(filePath);
-  const declaredName = typeof meta["name"] === "string" && meta["name"] ? meta["name"] : undefined;
-  const name = opts.nativeTarget === "opencode"
-    ? opts.nameFromFile
-    : declaredName ?? (opts.nativeTarget === "cursor" ? opts.nameFromFile : undefined);
+  const name = subagentIdentityFromMarkdownMeta(
+    identityStrategyForNativeTarget(opts.nativeTarget),
+    opts.nameFromFile,
+    meta,
+  );
   if (!name) {
     throw new Error(`Missing 'name' in subagent frontmatter: ${filePath}`);
   }
@@ -389,8 +402,18 @@ async function loadCodexSubagentFile(
   };
 }
 
-function mergeDiscoveredSubagents(matches: DiscoveredSubagent[]): DiscoveredSubagent {
-  const base = matches[0]!;
+function mergeDiscoveredSubagents(
+  name: string,
+  matches: DiscoveredSubagent[],
+): DiscoveredSubagent {
+  const portableMatches = matches.filter((match) => !match.nativeTarget);
+  if (portableMatches.length > 1) {
+    throw new Error(
+      `Ambiguous portable matches for subagent "${name}": ${portableMatches.map((m) => m.path).join(", ")}`,
+    );
+  }
+
+  const base = portableMatches[0] ?? matches[0]!;
   const native: NativeSubagentContent = { ...base.subagent.native };
 
   for (const match of matches.slice(1)) {
@@ -407,6 +430,17 @@ function mergeDiscoveredSubagents(matches: DiscoveredSubagent[]): DiscoveredSuba
       ...(Object.keys(native).length > 0 ? { native } : {}),
     },
   };
+}
+
+function identityStrategyForNativeTarget(
+  target: NativeSubagentTarget | undefined,
+): SubagentIdentityStrategy {
+  if (!target) {return "frontmatter-name";}
+  const identity = getAgent(target)?.subagents?.identity;
+  if (!identity) {
+    throw new Error(`Agent "${target}" does not define subagent identity rules.`);
+  }
+  return identity;
 }
 
 function assertSubagentNameMatches(

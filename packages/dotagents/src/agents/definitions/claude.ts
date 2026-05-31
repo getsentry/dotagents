@@ -31,6 +31,7 @@ const claude: AgentDefinition = {
     projectDir: ".claude/agents",
     userDir: join(homedir(), ".claude", "agents"),
     fileExtension: ".md",
+    identity: "frontmatter-name",
     serialize(subagent) {
       const native = subagent.native?.claude;
       return {

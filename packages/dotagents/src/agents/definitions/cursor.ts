@@ -58,6 +58,7 @@ const cursor: AgentDefinition = {
     projectDir: ".cursor/agents",
     userDir: join(homedir(), ".cursor", "agents"),
     fileExtension: ".md",
+    identity: "frontmatter-name-or-filename",
     serialize(subagent) {
       const native = subagent.native?.cursor;
       return {

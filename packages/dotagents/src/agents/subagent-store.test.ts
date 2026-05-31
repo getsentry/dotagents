@@ -178,6 +178,33 @@ Review the current diff for Claude.
     expect(resolved.subagent.native?.codex).toContain('sandbox_mode = "read-only"');
   });
 
+  it("merges a portable declaration with matching native artifacts", async () => {
+    await mkdir(join(repoDir, "agents"), { recursive: true });
+    await mkdir(join(repoDir, ".codex", "agents"), { recursive: true });
+    await writeFile(
+      join(repoDir, "agents", "code-reviewer.md"),
+      SUBAGENT_MD("code-reviewer"),
+    );
+    await writeFile(
+      join(repoDir, ".codex", "agents", "code-reviewer.toml"),
+      [
+        'name = "code_reviewer"',
+        'description = "Review code for correctness."',
+        'developer_instructions = "Review the current diff for Codex."',
+        'sandbox_mode = "read-only"',
+        "",
+      ].join("\n"),
+    );
+
+    const resolved = await resolveSubagent(subagentConfig(), {
+      stateDir: join(tmpDir, "state"),
+      projectRoot: tmpDir,
+    });
+
+    expect(resolved.subagent.instructions).toBe("Review the current diff.");
+    expect(resolved.subagent.native?.codex).toContain('sandbox_mode = "read-only"');
+  });
+
   it("rejects explicit paths whose frontmatter name differs from agents.toml", async () => {
     await mkdir(join(repoDir, "agents"), { recursive: true });
     await writeFile(join(repoDir, "agents", "reviewer.md"), SUBAGENT_MD("other-reviewer"));
@@ -231,6 +258,22 @@ Review the current diff for Claude.
       }),
     ).rejects.toThrow(
       'Ambiguous metadata matches for subagent "code-reviewer" in agents',
+    );
+  });
+
+  it("rejects ambiguous portable matches across scan directories", async () => {
+    await mkdir(join(repoDir, "agents"), { recursive: true });
+    await mkdir(join(repoDir, ".agents", "agents"), { recursive: true });
+    await writeFile(join(repoDir, "agents", "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+    await writeFile(join(repoDir, ".agents", "agents", "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await expect(
+      resolveSubagent(subagentConfig(), {
+        stateDir: join(tmpDir, "state"),
+        projectRoot: tmpDir,
+      }),
+    ).rejects.toThrow(
+      'Ambiguous portable matches for subagent "code-reviewer": agents/code-reviewer.md, .agents/agents/code-reviewer.md',
     );
   });
 

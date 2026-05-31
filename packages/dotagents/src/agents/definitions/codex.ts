@@ -39,6 +39,7 @@ const codex: AgentDefinition = {
     projectDir: ".codex/agents",
     userDir: join(homedir(), ".codex", "agents"),
     fileExtension: ".toml",
+    identity: "toml-name",
     serialize(subagent) {
       const native = subagent.native?.codex;
       return {

@@ -82,7 +82,7 @@ Without an explicit `path`, dotagents scans source directories in this order:
 6. `.codex/agents/**/*.toml`
 7. `.opencode/agents/**/*.md`
 
-Within each scanned directory, filename matches for `agents.toml` `name` take precedence over metadata-only matches. Multiple filename or metadata matches in one scanned directory are rejected as ambiguous. Matching artifacts from multiple runtimes are merged into one subagent declaration so native Claude and native Codex sources for the same portable ID can both be preserved.
+Within each scanned directory, filename matches for `agents.toml` `name` take precedence over metadata-only matches. Multiple filename or metadata matches in one scanned directory are rejected as ambiguous. Multiple portable matches across portable scan directories are also rejected, because dotagents cannot safely choose between competing portable instructions. Matching artifacts from multiple runtimes are merged into one subagent declaration so native Claude and native Codex sources for the same portable ID can both be preserved.
 
 If `path` is set, dotagents imports only that file. A `.toml` path is treated as Codex native. Markdown under `.claude/agents/`, `.cursor/agents/`, or `.opencode/agents/` is treated as native for that runtime; other Markdown is treated as portable.
 

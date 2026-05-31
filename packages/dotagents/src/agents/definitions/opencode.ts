@@ -38,6 +38,7 @@ const opencode: AgentDefinition = {
     projectDir: ".opencode/agents",
     userDir: join(homedir(), ".config", "opencode", "agents"),
     fileExtension: ".md",
+    identity: "filename",
     serialize(subagent) {
       const native = subagent.native?.opencode;
       return {

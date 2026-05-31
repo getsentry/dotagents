@@ -1,10 +1,9 @@
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
-import { parse as parseTOML } from "smol-toml";
-import { loadMarkdownFrontmatter } from "@sentry/dotagents-lib";
+import { join } from "node:path";
 import { allAgents, getAgent } from "./registry.js";
 import { DOTAGENTS_SUBAGENT_MARKER } from "./definitions/helpers.js";
+import { generatedSubagentIdentity, readSubagentFileIdentity } from "./subagent-identity.js";
 import type { SubagentConfigSpec, SubagentDeclaration } from "./types.js";
 
 export interface SubagentResolvedTarget {
@@ -98,7 +97,7 @@ export async function writeSubagentConfigs(
         throw new Error(`Internal error: generated subagent "${subagent.name}" is missing the dotagents marker`);
       }
       const generatedIdentity = generatedSubagentIdentity(
-        agentId,
+        agent.subagents,
         generated.fileName,
         content,
         subagent.name,
@@ -107,10 +106,9 @@ export async function writeSubagentConfigs(
       await mkdir(dirPath, { recursive: true });
       markDesired(desiredByDir, dirPath, agent.subagents.fileExtension, generated.fileName);
       const identityConflict = await findUnmanagedIdentityConflict(
-        agentId,
         dirPath,
         generated.fileName,
-        agent.subagents.fileExtension,
+        agent.subagents,
         generatedIdentity,
       );
       if (identityConflict) {
@@ -178,11 +176,10 @@ export async function verifySubagentConfigs(
       const content = normalizeContent(generated.content);
 
       const identityConflict = await findUnmanagedIdentityConflict(
-        agentId,
         dirPath,
         generated.fileName,
-        agent.subagents.fileExtension,
-        generatedSubagentIdentity(agentId, generated.fileName, content, subagent.name),
+        agent.subagents,
+        generatedSubagentIdentity(agent.subagents, generated.fileName, content, subagent.name),
       );
       if (identityConflict) {
         issues.push({
@@ -335,10 +332,9 @@ async function pruneManagedFiles(
 }
 
 async function findUnmanagedIdentityConflict(
-  agentId: string,
   dirPath: string,
   generatedFileName: string,
-  extension: string,
+  spec: SubagentConfigSpec,
   generatedIdentity: string | null,
 ): Promise<string | null> {
   if (!existsSync(dirPath)) {return null;}
@@ -350,13 +346,13 @@ async function findUnmanagedIdentityConflict(
   )) {
     if (!entry.isFile()) {continue;}
     if (entry.name === generatedFileName) {continue;}
-    if (!entry.name.endsWith(extension)) {continue;}
+    if (!entry.name.endsWith(spec.fileExtension)) {continue;}
 
     const filePath = join(dirPath, entry.name);
     const existing = await readFile(filePath, "utf-8");
     if (existing.includes(DOTAGENTS_SUBAGENT_MARKER)) {continue;}
 
-    const existingIdentity = await readExistingSubagentIdentity(agentId, filePath, entry.name, existing);
+    const existingIdentity = await readSubagentFileIdentity(spec, filePath, entry.name, existing);
     if (existingIdentity === generatedIdentity) {
       return filePath;
     }
@@ -365,61 +361,8 @@ async function findUnmanagedIdentityConflict(
   return null;
 }
 
-function generatedSubagentIdentity(
-  agentId: string,
-  fileName: string,
-  content: string,
-  portableName: string,
-): string | null {
-  if (agentId === "opencode") {
-    return basename(fileName, extname(fileName));
-  }
-  if (agentId === "codex") {
-    return readCodexSubagentIdentity(content);
-  }
-  return portableName;
-}
-
-async function readExistingSubagentIdentity(
-  agentId: string,
-  filePath: string,
-  fileName: string,
-  content: string,
-): Promise<string | null> {
-  if (agentId === "opencode") {
-    return basename(fileName, extname(fileName));
-  }
-  if (agentId === "codex") {
-    return readCodexSubagentIdentity(content);
-  }
-
-  try {
-    const { meta } = await loadMarkdownFrontmatter(filePath);
-    const name = typeof meta["name"] === "string" && meta["name"] ? meta["name"] : null;
-    return name ?? (agentId === "cursor" ? basename(fileName, extname(fileName)) : null);
-  } catch {
-    return null;
-  }
-}
-
-function readCodexSubagentIdentity(content: string): string | null {
-  try {
-    const parsed = parseTOML(content);
-    if (isPlainObject(parsed) && typeof parsed["name"] === "string" && parsed["name"]) {
-      return parsed["name"];
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
 function normalizeContent(content: string): string {
   return content.endsWith("\n") ? content : `${content}\n`;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isNotFoundError(err: unknown): boolean {

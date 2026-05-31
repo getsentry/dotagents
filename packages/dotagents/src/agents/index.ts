@@ -46,5 +46,6 @@ export type {
   NativeSubagentContent,
   NativeSubagentTarget,
   SubagentConfigSpec,
+  SubagentIdentityStrategy,
   SubagentSerializer,
 } from "./types.js";
