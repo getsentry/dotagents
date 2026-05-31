@@ -136,12 +136,37 @@ function appendYamlField(
   lines: string[],
   key: string,
   value: unknown,
+  indent = 0,
 ): void {
   if (value === undefined) {return;}
 
+  const prefix = " ".repeat(indent);
+  if (isPlainObject(value)) {
+    const entries = Object.entries(value);
+    if (entries.length === 0) {
+      lines.push(`${prefix}${toYamlKey(key)}: {}`);
+      return;
+    }
+    lines.push(`${prefix}${toYamlKey(key)}:`);
+    for (const [childKey, childValue] of entries) {
+      appendYamlField(lines, childKey, childValue, indent + 2);
+    }
+    return;
+  }
+
+  if (typeof value === "string" && value.includes("\n")) {
+    const chomp = value.endsWith("\n") ? "|" : "|-";
+    const body = value.endsWith("\n") ? value.slice(0, -1) : value;
+    lines.push(`${prefix}${toYamlKey(key)}: ${chomp}`);
+    for (const line of body.split(/\r?\n/)) {
+      lines.push(`${prefix}  ${line}`);
+    }
+    return;
+  }
+
   const serialized = JSON.stringify(value);
   if (serialized !== undefined) {
-    lines.push(`${toYamlKey(key)}: ${serialized}`);
+    lines.push(`${prefix}${toYamlKey(key)}: ${serialized}`);
   }
 }
 
@@ -150,4 +175,8 @@ function toYamlKey(key: string): string {
     return key;
   }
   return JSON.stringify(key);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -274,6 +274,81 @@ source = "path:agents"
     expect(lockfile!.subagents["code-reviewer"]?.source).toBe("path:agents");
   });
 
+  it("frozen mode fails when a subagent is missing from the lockfile", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+`,
+    );
+
+    await expect(runInstall({ scope, frozen: true })).rejects.toThrow(
+      '--frozen: subagent "code-reviewer" is in agents.toml but missing from agents.lock.',
+    );
+  });
+
+  it("frozen mode passes when subagent lockfile entries match", async () => {
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const result = await runInstall({ scope, frozen: true });
+    expect(result.subagentWarnings).toEqual([]);
+  });
+
+  it("clears removed skills from the lockfile when installing subagents", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+`,
+    );
+
+    await runInstall({ scope });
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills).toEqual({});
+    expect(lockfile!.subagents["code-reviewer"]?.source).toBe("path:agents");
+  });
+
   it("preserves native Codex content through install and sync", async () => {
     const sourceDir = join(projectRoot, "upstream", ".codex", "agents");
     await mkdir(sourceDir, { recursive: true });

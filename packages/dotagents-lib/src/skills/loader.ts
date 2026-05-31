@@ -75,6 +75,13 @@ export async function loadMarkdownFrontmatter(
     throw new SkillLoadError(`${opts?.fileDescription ?? "Markdown file"} not found: ${filePath}`);
   }
 
+  return parseMarkdownFrontmatterContent(content, filePath);
+}
+
+export function parseMarkdownFrontmatterContent(
+  content: string,
+  filePath: string,
+): MarkdownFrontmatter {
   const match = FRONTMATTER_RE.exec(content);
   if (!match?.[1]) {
     throw new SkillLoadError(`No YAML frontmatter in ${filePath}`);

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { parseMarkdownFrontmatterContent } from "@sentry/dotagents-lib";
 import {
   interpolateEnvRefs,
   interpolateHeaders,
@@ -108,5 +109,30 @@ describe("serializeMarkdownSubagent", () => {
     expect(content).toContain('description: "Review code."');
     expect(content).toContain('mode: "subagent"');
     expect(content).toContain("Review the diff.");
+  });
+
+  it("serializes nested frontmatter objects using block YAML", () => {
+    const content = serializeMarkdownSubagent(
+      {
+        name: "code-reviewer",
+        description: "Review code.",
+        dotagents_native: {
+          codex: [
+            'name = "code_reviewer"',
+            'description = "Review code."',
+            "",
+          ].join("\n"),
+        },
+      },
+      "Review the diff.",
+    );
+
+    expect(content).toContain("dotagents_native:\n  codex: |");
+    expect(content).not.toContain('dotagents_native: {"codex"');
+
+    const parsed = parseMarkdownFrontmatterContent(content, "subagent.md");
+    expect(parsed.meta["dotagents_native"]).toEqual({
+      codex: 'name = "code_reviewer"\ndescription = "Review code."\n',
+    });
   });
 });

@@ -424,7 +424,8 @@ dotagents install
    a. Resolve source (check cache with TTL-based refresh, clone/fetch if needed)
    b. Discover skill within the repo
    c. Copy skill directory into `.agents/skills/<name>/`
-3. Write `agents.lock`
+3. Write `agents.lock` with the current configured skills and subagents
+   - In `--frozen` mode, require configured dependencies to already be present in `agents.lock` and do not update the lockfile
 4. Regenerate `.agents/.gitignore`
 5. Warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
 6. Create/verify symlinks (legacy `[symlinks]` and agent-specific)

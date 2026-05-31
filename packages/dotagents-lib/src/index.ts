@@ -1,5 +1,10 @@
 // SKILL.md loading
-export { loadSkillMd, loadMarkdownFrontmatter, SkillLoadError } from "./skills/loader.js";
+export {
+  loadSkillMd,
+  loadMarkdownFrontmatter,
+  parseMarkdownFrontmatterContent,
+  SkillLoadError,
+} from "./skills/loader.js";
 export type {
   SkillMeta,
   LoadSkillMdOptions,

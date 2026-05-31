@@ -54,9 +54,11 @@ dotagents --user init
 dotagents install
 ```
 
-Install and refresh skill dependencies from `agents.toml`. Resolves sources,
-copies skills, writes the lockfile, creates symlinks, and generates MCP and
-hook configs. There is no separate update command.
+Install and refresh skill and subagent dependencies from `agents.toml`. Resolves
+sources, copies skills, writes the lockfile, creates symlinks, and generates MCP,
+hook, and subagent configs. There is no separate update command. With
+`--frozen`, declared skills and subagents must already exist in `agents.lock`,
+and the lockfile is not updated.
 
 Example:
 

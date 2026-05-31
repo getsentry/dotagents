@@ -1,6 +1,6 @@
 import { basename, extname } from "node:path";
 import { parse as parseTOML } from "smol-toml";
-import { loadMarkdownFrontmatter } from "@sentry/dotagents-lib";
+import { parseMarkdownFrontmatterContent } from "@sentry/dotagents-lib";
 import type { SubagentConfigSpec, SubagentIdentityStrategy } from "./types.js";
 
 export function subagentIdentityFromMarkdownMeta(
@@ -39,17 +39,17 @@ export function generatedSubagentIdentity(
   }
 }
 
-export async function readSubagentFileIdentity(
+export function readSubagentFileIdentity(
   spec: SubagentConfigSpec,
   filePath: string,
   fileName: string,
   content: string,
-): Promise<string | null> {
+): string | null {
   switch (spec.identity) {
     case "frontmatter-name":
     case "frontmatter-name-or-filename": {
       try {
-        const { meta } = await loadMarkdownFrontmatter(filePath);
+        const { meta } = parseMarkdownFrontmatterContent(content, filePath);
         return subagentIdentityFromMarkdownMeta(spec.identity, fileName, meta);
       } catch {
         return null;

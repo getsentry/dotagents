@@ -352,7 +352,7 @@ async function findUnmanagedIdentityConflict(
     const existing = await readFile(filePath, "utf-8");
     if (existing.includes(DOTAGENTS_SUBAGENT_MARKER)) {continue;}
 
-    const existingIdentity = await readSubagentFileIdentity(spec, filePath, entry.name, existing);
+    const existingIdentity = readSubagentFileIdentity(spec, filePath, entry.name, existing);
     if (existingIdentity === generatedIdentity) {
       return filePath;
     }
