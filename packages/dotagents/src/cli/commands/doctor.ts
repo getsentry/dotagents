@@ -150,6 +150,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
       checks.push({ name: ".agents/.gitignore", status: "ok", message: ".agents/.gitignore exists." });
     } else {
       const managedNames = getManagedSkillNames(config, lockfile);
+      const managedSubagentNames = getManagedSubagentNames(config, lockfile);
       checks.push({
         name: ".agents/.gitignore",
         status: "warn",
@@ -158,7 +159,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
           await writeAgentsGitignore(
             scope.agentsDir,
             managedNames,
-            config.subagents.map((subagent) => subagent.name),
+            managedSubagentNames,
           );
         },
       });
@@ -279,6 +280,19 @@ function getManagedSkillNames(
     if (!dep || isWildcardDep(dep)) {return true;}
     return !isInPlaceSkill(dep.source);
   });
+}
+
+function getManagedSubagentNames(
+  config: Awaited<ReturnType<typeof loadConfig>>,
+  lockfile: Awaited<ReturnType<typeof loadLockfile>>,
+): string[] {
+  const names = new Set(config.subagents.map((subagent) => subagent.name));
+  if (lockfile) {
+    for (const name of Object.keys(lockfile.subagents)) {
+      names.add(name);
+    }
+  }
+  return [...names];
 }
 
 export default async function doctor(args: string[], flags?: { user?: boolean }): Promise<void> {

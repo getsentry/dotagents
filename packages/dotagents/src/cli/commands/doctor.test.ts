@@ -200,5 +200,19 @@ describe("runDoctor", () => {
 
       expect(existsSync(join(projectRoot, ".agents", ".gitignore"))).toBe(true);
     });
+
+    it("includes lockfile subagents when recreating .agents/.gitignore", async () => {
+      await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
+      await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+      await writeFile(
+        join(projectRoot, "agents.lock"),
+        `version = 1\n\n[skills]\n\n[subagents.old-reviewer]\nsource = "path:agents"\n`,
+      );
+
+      await runDoctor({ scope: resolveScope("project", projectRoot), fix: true });
+
+      const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+      expect(gitignore).toContain("/agents/old-reviewer.md");
+    });
   });
 });
