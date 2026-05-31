@@ -59,6 +59,9 @@ Content.
     await expect(loadSkillMd(join(dir, "nope.md"))).rejects.toThrow(
       SkillLoadError,
     );
+    await expect(loadSkillMd(join(dir, "nope.md"))).rejects.toThrow(
+      `SKILL.md not found: ${join(dir, "nope.md")}`,
+    );
   });
 
   it("throws SkillLoadError for missing frontmatter", async () => {

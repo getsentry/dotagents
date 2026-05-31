@@ -1,4 +1,4 @@
-import type { HookEvent } from "../config/schema.js";
+import type { HookEvent, SubagentConfig } from "../config/schema.js";
 
 /**
  * Universal MCP server declaration from agents.toml [[mcp]] sections.
@@ -74,6 +74,46 @@ export interface HookConfigSpec {
 export type HookSerializer = (hooks: HookDeclaration[]) => unknown;
 
 /**
+ * Universal subagent declaration loaded from an installed subagent Markdown file.
+ */
+export interface SubagentDeclaration {
+  name: string;
+  description: string;
+  instructions: string;
+  targets?: SubagentConfig["targets"];
+  native?: NativeSubagentContent;
+}
+
+export type NativeSubagentTarget = "claude" | "cursor" | "codex" | "opencode";
+
+/** Raw source content in the runtime's native subagent format. */
+export type NativeSubagentConfig = string;
+
+export type NativeSubagentContent = Partial<Record<NativeSubagentTarget, NativeSubagentConfig>>;
+
+/**
+ * Describes where an agent stores custom subagent definitions.
+ */
+export interface SubagentConfigSpec {
+  /** Project-scope directory, relative to project root */
+  projectDir: string;
+  /** User-scope directory, absolute path */
+  userDir: string;
+  /** Generated file extension, including the leading dot */
+  fileExtension: ".md" | ".toml";
+  /** Transforms a universal subagent declaration into an agent-specific file */
+  serialize: SubagentSerializer;
+}
+
+/**
+ * Transforms a universal SubagentDeclaration into a runtime-specific file.
+ */
+export type SubagentSerializer = (subagent: SubagentDeclaration) => {
+  fileName: string;
+  content: string;
+};
+
+/**
  * Definition of an agent tool that dotagents manages.
  */
 export interface AgentDefinition {
@@ -99,4 +139,6 @@ export interface AgentDefinition {
   hooks?: HookConfigSpec;
   /** Transforms universal hook declarations to agent-specific format */
   serializeHooks: HookSerializer;
+  /** Subagent config specification (undefined if agent doesn't support custom subagents) */
+  subagents?: SubagentConfigSpec;
 }

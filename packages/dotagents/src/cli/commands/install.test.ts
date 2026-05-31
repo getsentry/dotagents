@@ -4,9 +4,11 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runInstall, InstallError } from "./install.js";
+import { runSync } from "./sync.js";
 import { exec } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { resolveScope } from "../../scope.js";
+import { DOTAGENTS_SUBAGENT_MARKER } from "../../agents/definitions/helpers.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -14,6 +16,14 @@ description: Test skill ${name}
 ---
 
 # ${name}
+`;
+
+const SUBAGENT_MD = (name: string) => `---
+name: ${name}
+description: Review code for correctness.
+---
+
+Review the current diff.
 `;
 
 describe("runInstall", () => {
@@ -228,6 +238,197 @@ describe("runInstall", () => {
     const result = await runInstall({ scope });
     expect(result.hookWarnings).toHaveLength(1);
     expect(result.hookWarnings[0]!.agent).toBe("codex");
+  });
+
+  it("writes subagent configs for declared agents", async () => {
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude", "codex", "opencode"]
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+    expect(result.subagentWarnings).toHaveLength(0);
+
+    const claude = await readFile(join(projectRoot, ".claude", "agents", "code-reviewer.md"), "utf-8");
+    expect(claude).toContain('description: "Review code for correctness."');
+
+    const codex = await readFile(join(projectRoot, ".codex", "agents", "code-reviewer.toml"), "utf-8");
+    expect(codex).toContain('developer_instructions = "Review the current diff."');
+    expect(await readFile(join(projectRoot, ".agents", "agents", "code-reviewer.md"), "utf-8")).toContain(DOTAGENTS_SUBAGENT_MARKER);
+
+    const opencode = await readFile(join(projectRoot, ".opencode", "agents", "code-reviewer.md"), "utf-8");
+    expect(opencode).toContain('mode: "subagent"');
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.subagents["code-reviewer"]?.source).toBe("path:agents");
+  });
+
+  it("preserves native Codex content through install and sync", async () => {
+    const sourceDir = join(projectRoot, "upstream", ".codex", "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(
+      join(sourceDir, "code-reviewer.toml"),
+      [
+        "# upstream comment",
+        'name = "code_reviewer"',
+        'description = "Review code for correctness."',
+        'developer_instructions = "Review the current diff."',
+        'sandbox_mode = "read-only"',
+        "",
+      ].join("\n"),
+    );
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex", "claude"]
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:upstream"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const codexPath = join(projectRoot, ".codex", "agents", "code-reviewer.toml");
+    expect(await readFile(codexPath, "utf-8")).toContain('sandbox_mode = "read-only"');
+    expect(await readFile(codexPath, "utf-8")).toContain("# upstream comment");
+    expect(await readFile(codexPath, "utf-8")).toContain('name = "code_reviewer"');
+
+    const claude = await readFile(join(projectRoot, ".claude", "agents", "code-reviewer.md"), "utf-8");
+    expect(claude).not.toContain("sandbox_mode");
+
+    await rm(codexPath);
+    await runSync({ scope });
+
+    expect(await readFile(codexPath, "utf-8")).toContain('sandbox_mode = "read-only"');
+    expect(await readFile(codexPath, "utf-8")).toContain("# upstream comment");
+    expect(await readFile(codexPath, "utf-8")).toContain('name = "code_reviewer"');
+  });
+
+  it("installs merged native subagent artifacts for matching runtimes", async () => {
+    await mkdir(join(projectRoot, "upstream", ".claude", "agents"), { recursive: true });
+    await mkdir(join(projectRoot, "upstream", ".codex", "agents"), { recursive: true });
+    await writeFile(
+      join(projectRoot, "upstream", ".claude", "agents", "code-reviewer.md"),
+      `---
+name: code-reviewer
+description: Review code for correctness.
+tools: Read, Grep
+---
+
+Native Claude instructions.
+`,
+    );
+    await writeFile(
+      join(projectRoot, "upstream", ".codex", "agents", "code-reviewer.toml"),
+      [
+        "# native codex comment",
+        'name = "code_reviewer"',
+        'description = "Review code for correctness."',
+        'developer_instructions = "Native Codex instructions."',
+        'sandbox_mode = "read-only"',
+        "",
+      ].join("\n"),
+    );
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude", "codex"]
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:upstream"
+`,
+    );
+
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    const claude = await readFile(join(projectRoot, ".claude", "agents", "code-reviewer.md"), "utf-8");
+    expect(claude).toContain("tools: Read, Grep");
+    expect(claude).toContain("Native Claude instructions.");
+    expect(claude).not.toContain("sandbox_mode");
+
+    const codex = await readFile(join(projectRoot, ".codex", "agents", "code-reviewer.toml"), "utf-8");
+    expect(codex).toContain("# native codex comment");
+    expect(codex).toContain('name = "code_reviewer"');
+    expect(codex).toContain("Native Codex instructions.");
+    expect(codex).toContain('sandbox_mode = "read-only"');
+
+    const installed = await readFile(join(projectRoot, ".agents", "agents", "code-reviewer.md"), "utf-8");
+    expect(installed).toContain("Native Claude instructions.");
+    expect(installed).toContain("sandbox_mode");
+  });
+
+  it("prunes subagent files and lock entries when removed from config", async () => {
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+`,
+    );
+
+    await runInstall({ scope });
+
+    expect(existsSync(join(projectRoot, ".agents", "agents", "code-reviewer.md"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".claude", "agents", "code-reviewer.md"))).toBe(false);
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.subagents).toEqual({});
+  });
+
+  it("returns subagent warnings for unsupported agents", async () => {
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "reviewer.md"), SUBAGENT_MD("reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["vscode"]
+
+[[subagents]]
+name = "reviewer"
+source = "path:agents"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+    expect(result.subagentWarnings).toHaveLength(1);
+    expect(result.subagentWarnings[0]!.agent).toBe("vscode");
   });
 
   it("skips copy for in-place path skill", async () => {

@@ -237,6 +237,75 @@ describe("agentsConfigSchema", () => {
     });
   });
 
+  describe("subagents field", () => {
+    it("defaults to empty array when absent", () => {
+      const result = agentsConfigSchema.safeParse({ version: 1 });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.subagents).toEqual([]);
+      }
+    });
+
+    it("accepts a portable subagent declaration", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        agents: ["claude", "codex", "opencode", "vscode"],
+        subagents: [
+          {
+            name: "code-reviewer",
+            source: "getsentry/agents",
+            targets: ["claude", "codex", "opencode", "vscode"],
+          },
+        ],
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.subagents[0]!.name).toBe("code-reviewer");
+      }
+    });
+
+    it("rejects runtime-specific subagent options", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        subagents: [
+          {
+            name: "test-runner",
+            source: "getsentry/agents",
+            model: "inherit",
+          },
+        ],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects invalid subagent names", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        subagents: [
+          {
+            name: "CodeReviewer",
+            source: "getsentry/agents",
+          },
+        ],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("accepts known-but-unsupported subagent targets at the schema layer", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        subagents: [
+          {
+            name: "reviewer",
+            source: "getsentry/agents",
+            targets: ["vscode"],
+          },
+        ],
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
   describe("mcp field", () => {
     it("defaults to empty array when absent", () => {
       const result = agentsConfigSchema.safeParse({ version: 1 });

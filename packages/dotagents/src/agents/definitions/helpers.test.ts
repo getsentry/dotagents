@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { interpolateEnvRefs, interpolateHeaders, extractCodexHeaders } from "./helpers.js";
+import {
+  interpolateEnvRefs,
+  interpolateHeaders,
+  extractCodexHeaders,
+  serializeMarkdownSubagent,
+} from "./helpers.js";
 
 const cursorTpl = (k: string) => `\${env:${k}}`;
 
@@ -87,5 +92,21 @@ describe("extractCodexHeaders", () => {
   it("returns empty object for undefined input", () => {
     const noHeaders: Record<string, string> | undefined = undefined;
     expect(extractCodexHeaders(noHeaders)).toEqual({});
+  });
+});
+
+describe("serializeMarkdownSubagent", () => {
+  it("serializes simple frontmatter fields", () => {
+    const content = serializeMarkdownSubagent(
+      {
+        description: "Review code.",
+        mode: "subagent",
+      },
+      "Review the diff.",
+    );
+
+    expect(content).toContain('description: "Review code."');
+    expect(content).toContain('mode: "subagent"');
+    expect(content).toContain("Review the diff.");
   });
 });

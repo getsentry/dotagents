@@ -149,7 +149,7 @@ dotagents sync
 ```
 
 Reconcile project state without network access. Adopts local orphaned skills,
-prunes stale managed skills removed from config, regenerates gitignore, and
+prunes stale managed skills and subagents removed from config, regenerates gitignore, and
 repairs symlinks plus MCP/hook configs. Reports issues as warnings or errors.
 
 <a id="mcp-add"></a>
@@ -337,6 +337,7 @@ Status output:
 | --- | --- | --- | --- |
 | `version` | integer | -- | Schema version. Always `1`. |
 | `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `opencode` |
+| `subagents` | table[] | `[]` | Custom subagent declarations for Claude, Cursor, Codex, and OpenCode |
 | `minimum_release_age` | integer | -- | Minimum commit age, in minutes, before a git skill can install. |
 | `minimum_release_age_exclude` | string[] | `[]` | Sources that bypass the minimum release age gate. Supports org names, `org/repo`, and `org/*`. |
 | `defaultRepositorySource` | string | `github` | Host used for shorthand `owner/repo` sources. Valid values: `github` or `gitlab`. |
@@ -370,6 +371,39 @@ Status output:
 | `matcher` | string | No | Tool name filter |
 | `command` | string | Yes | Shell command to execute |
 
+### Subagents
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | string | Yes | Lowercase subagent name to discover. Must match `^[a-z][a-z0-9-]*$`. |
+| `source` | string | Yes | Source repository or local directory. Supports GitHub/GitLab shorthands, git URLs, and `path:` sources; HTTPS well-known skill indexes are not supported for subagents. |
+| `ref` | string | No | Optional git ref override. |
+| `path` | string | No | Optional explicit subagent file path inside the source. Markdown paths are portable or native Markdown; `.toml` paths are Codex native artifacts. |
+| `targets` | string[] | No | Optional subset of agent IDs. Unsupported configured agents produce warnings. |
+
+dotagents treats subagents as best-effort portable dependencies, not a universal behavior schema. Runtime-specific behavior such as model routing, tool permissions, read-only modes, background execution, and reasoning effort stays in each tool's native artifact.
+
+dotagents discovers portable subagent Markdown from `agents/` and `.agents/agents/`. It also imports native runtime artifacts from `.claude/agents/*.md`, `.cursor/agents/*.md`, `.codex/agents/*.toml`, and `.opencode/agents/*.md`. When the source format matches a target runtime, dotagents reuses the native source content for that runtime and only adds its managed-file marker. Other runtimes are generated from the portable `name`, `description`, and instructions.
+
+| Format | Source path | Matching output path | Required source fields |
+| --- | --- | --- | --- |
+| Portable Markdown | `agents/*.md`, `.agents/agents/*.md` | `.agents/agents/<name>.md` | YAML `name`, `description`; Markdown body |
+| Claude Markdown | `.claude/agents/*.md` | `.claude/agents/<name>.md` | YAML `name`, `description`; Markdown body |
+| Cursor Markdown | `.cursor/agents/*.md` | `.cursor/agents/<name>.md` | YAML `name`, `description`; Markdown body |
+| Codex TOML | `.codex/agents/*.toml` | `.codex/agents/<name>.toml` | TOML `name`, `description`, `developer_instructions` |
+| OpenCode Markdown | `.opencode/agents/*.md` | `.opencode/agents/<name>.md` | YAML `description`; Markdown body; `name` optional |
+
+Codex native `name` may use Codex-specific naming; dotagents uses the `agents.toml` name or filename as the portable ID when needed. OpenCode native Markdown may use the filename as the subagent name.
+
+Generated files:
+
+- Claude: `.claude/agents/<name>.md`
+- Cursor: `.cursor/agents/<name>.md`
+- Codex: `.codex/agents/<name>.toml`
+- OpenCode: `.opencode/agents/<name>.md`
+
+Generated files include a dotagents marker. `install` and `sync` update managed files and do not overwrite hand-written files without the marker.
+
 ## Scopes
 
 ### Project Scope (default)
@@ -380,8 +414,8 @@ Skills go to `.agents/skills/` and the lockfile goes to `agents.lock`.
 ### User Scope
 
 Manages skills shared across all projects. Files live in `~/.agents/`, and you
-can override that with `DOTAGENTS_HOME`. Symlinks go to `~/.claude/skills/` and
-`~/.cursor/skills/`.
+can override that with `DOTAGENTS_HOME`. Claude and Cursor share the
+`~/.claude/skills/` symlink.
 
 ```shell
 dotagents --user init

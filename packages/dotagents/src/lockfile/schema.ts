@@ -19,12 +19,18 @@ const lockedLocalSkillSchema = z.object({
 });
 
 const lockedSkillSchema = z.union([lockedGitSkillSchema, lockedWellKnownSkillSchema, lockedLocalSkillSchema]);
+const lockedLocalSubagentSchema = z.object({
+  source: z.string(),
+}).strict();
+const lockedSubagentSchema = z.union([lockedGitSkillSchema, lockedLocalSubagentSchema]);
 
 export type LockedSkill = z.infer<typeof lockedSkillSchema>;
+export type LockedSubagent = z.infer<typeof lockedSubagentSchema>;
 
 export const lockfileSchema = z.object({
   version: z.literal(1),
   skills: z.record(z.string(), lockedSkillSchema).default({}),
+  subagents: z.record(z.string(), lockedSubagentSchema).default({}),
 });
 
 export type Lockfile = z.infer<typeof lockfileSchema>;

@@ -17,6 +17,16 @@ export interface SkillMeta {
   [key: string]: unknown;
 }
 
+export interface MarkdownFrontmatter {
+  meta: Record<string, unknown>;
+  body: string;
+  raw: string;
+}
+
+export interface LoadMarkdownFrontmatterOptions {
+  fileDescription?: string;
+}
+
 export interface LoadSkillMdOptions {
   /** Called for parser warnings (unknown allowed-tools tokens, etc.) */
   onWarning?: (message: string) => void;
@@ -32,11 +42,37 @@ export async function loadSkillMd(
   filePath: string,
   opts?: LoadSkillMdOptions,
 ): Promise<SkillMeta> {
+  const { meta } = await loadMarkdownFrontmatter(filePath, {
+    fileDescription: "SKILL.md",
+  });
+
+  if (typeof meta["name"] !== "string" || !meta["name"]) {
+    throw new SkillLoadError(`Missing 'name' in SKILL.md frontmatter: ${filePath}`);
+  }
+  if (typeof meta["description"] !== "string" || !meta["description"]) {
+    throw new SkillLoadError(`Missing 'description' in SKILL.md frontmatter: ${filePath}`);
+  }
+
+  const allowedTools = parseAllowedTools(meta["allowed-tools"], opts?.onWarning);
+  if (allowedTools !== undefined) {
+    meta["allowedTools"] = allowedTools;
+  }
+
+  return meta as SkillMeta;
+}
+
+/**
+ * Parse a Markdown file and extract YAML frontmatter plus body content.
+ */
+export async function loadMarkdownFrontmatter(
+  filePath: string,
+  opts?: LoadMarkdownFrontmatterOptions,
+): Promise<MarkdownFrontmatter> {
   let content: string;
   try {
     content = await readFile(filePath, "utf-8");
   } catch {
-    throw new SkillLoadError(`SKILL.md not found: ${filePath}`);
+    throw new SkillLoadError(`${opts?.fileDescription ?? "Markdown file"} not found: ${filePath}`);
   }
 
   const match = FRONTMATTER_RE.exec(content);
@@ -56,21 +92,11 @@ export async function loadSkillMd(
     throw new SkillLoadError(`Frontmatter must be a YAML object: ${filePath}`);
   }
 
-  const meta = parsed as Record<string, unknown>;
-
-  if (typeof meta["name"] !== "string" || !meta["name"]) {
-    throw new SkillLoadError(`Missing 'name' in SKILL.md frontmatter: ${filePath}`);
-  }
-  if (typeof meta["description"] !== "string" || !meta["description"]) {
-    throw new SkillLoadError(`Missing 'description' in SKILL.md frontmatter: ${filePath}`);
-  }
-
-  const allowedTools = parseAllowedTools(meta["allowed-tools"], opts?.onWarning);
-  if (allowedTools !== undefined) {
-    meta["allowedTools"] = allowedTools;
-  }
-
-  return meta as SkillMeta;
+  return {
+    meta: parsed as Record<string, unknown>,
+    body: content.slice(match[0].length).trim(),
+    raw: content,
+  };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

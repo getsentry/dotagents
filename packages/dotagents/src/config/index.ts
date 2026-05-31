@@ -16,5 +16,6 @@ export type {
   ProjectConfig,
   SkillSource,
   McpConfig,
+  SubagentConfig,
   TrustConfig,
 } from "./schema.js";

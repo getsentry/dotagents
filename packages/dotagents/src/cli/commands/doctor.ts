@@ -155,7 +155,11 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
         status: "warn",
         message: ".agents/.gitignore is missing. Run 'npx @sentry/dotagents install' or 'npx @sentry/dotagents sync' to regenerate.",
         fix: async () => {
-          await writeAgentsGitignore(scope.agentsDir, managedNames);
+          await writeAgentsGitignore(
+            scope.agentsDir,
+            managedNames,
+            config.subagents.map((subagent) => subagent.name),
+          );
         },
       });
     }

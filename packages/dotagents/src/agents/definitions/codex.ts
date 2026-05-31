@@ -1,7 +1,9 @@
+import { join } from "node:path";
+import { homedir } from "node:os";
 import type { AgentDefinition } from "../types.js";
 import { UnsupportedFeature } from "../errors.js";
 import claude from "./claude.js";
-import { envRecord, extractCodexHeaders } from "./helpers.js";
+import { envRecord, extractCodexHeaders, markManagedTomlSubagent, serializeCodexSubagent } from "./helpers.js";
 
 const codex: AgentDefinition = {
   ...claude,
@@ -32,6 +34,24 @@ const codex: AgentDefinition = {
   hooks: undefined,
   serializeHooks() {
     throw new UnsupportedFeature("codex", "hooks");
+  },
+  subagents: {
+    projectDir: ".codex/agents",
+    userDir: join(homedir(), ".codex", "agents"),
+    fileExtension: ".toml",
+    serialize(subagent) {
+      const native = subagent.native?.codex;
+      return {
+        fileName: `${subagent.name}.toml`,
+        content: native
+          ? markManagedTomlSubagent(native)
+          : serializeCodexSubagent({
+              name: subagent.name,
+              description: subagent.description,
+              developer_instructions: subagent.instructions.trim(),
+            }),
+      };
+    },
   },
 };
 

@@ -30,7 +30,10 @@ import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
 import { writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
 import { writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
+import { writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../agents/subagent-writer.js";
+import { lockEntryForSubagent, resolveSubagent, writeInstalledSubagents } from "../../agents/subagent-store.js";
 import { userMcpResolver } from "../../agents/paths.js";
+import type { SubagentDeclaration } from "../../agents/types.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 
@@ -51,6 +54,7 @@ export interface InstallResult {
   skipped: string[];
   pruned: string[];
   hookWarnings: { agent: string; message: string }[];
+  subagentWarnings: { agent: string; name: string; message: string }[];
 }
 
 /** Expanded skill ready for install — either from an explicit entry or a wildcard */
@@ -146,6 +150,7 @@ async function expandSkills(
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   const { scope, frozen } = opts;
   const { configPath, lockPath, agentsDir, skillsDir } = scope;
+  const subagentsDir = join(agentsDir, "agents");
 
   // 1. Read config
   const config = await loadConfig(configPath);
@@ -186,7 +191,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       }
     }
 
-    const newLock: Lockfile = { version: 1, skills: {} };
+    const newLock: Lockfile = { version: 1, skills: {}, subagents: lockfile?.subagents ?? {} };
 
     for (const item of expanded) {
       const { name, dep } = item;
@@ -269,7 +274,48 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     }
   }
 
-  // 3. Gitignore (skip for user scope — ~/.agents/ is not a git repo)
+  // 3. Resolve and install subagent markdown files
+  const installedSubagents: SubagentDeclaration[] = [];
+  if (config.subagents.length > 0) {
+    const resolvedSubagents = [];
+    for (const subagentConfig of config.subagents) {
+      const resolved = await resolveSubagent(subagentConfig, {
+        stateDir: getCacheStateDir(),
+        projectRoot: scope.root,
+        defaultRepositorySource: config.defaultRepositorySource,
+        minimumReleaseAge: config.minimum_release_age,
+        minimumReleaseAgeExclude: config.minimum_release_age_exclude,
+        trust: config.trust,
+      });
+      resolvedSubagents.push(resolved);
+      installedSubagents.push(resolved.subagent);
+    }
+
+    await writeInstalledSubagents(subagentsDir, installedSubagents);
+
+    if (!frozen) {
+      const lockfile = await loadLockfile(lockPath);
+      const newLock: Lockfile = {
+        version: 1,
+        skills: lockfile?.skills ?? {},
+        subagents: {},
+      };
+      for (const resolved of resolvedSubagents) {
+        newLock.subagents[resolved.subagent.name] = lockEntryForSubagent(resolved);
+      }
+      await writeLockfile(lockPath, newLock);
+    }
+  } else {
+    await writeInstalledSubagents(subagentsDir, []);
+    if (!frozen) {
+      const lockfile = await loadLockfile(lockPath);
+      if (lockfile && Object.keys(lockfile.subagents).length > 0) {
+        await writeLockfile(lockPath, { ...lockfile, subagents: {} });
+      }
+    }
+  }
+
+  // 4. Gitignore (skip for user scope — ~/.agents/ is not a git repo)
   if (scope.scope === "project") {
     // For wildcard entries all expanded skills are managed (wildcards can't be in-place)
     const managedNames = installed.filter((name) => {
@@ -278,7 +324,11 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       if (!dep || isWildcardDep(dep)) {return true;}
       return !isInPlaceSkill(dep.source);
     });
-    await writeAgentsGitignore(agentsDir, managedNames);
+    await writeAgentsGitignore(
+      agentsDir,
+      managedNames,
+      installedSubagents.map((subagent) => subagent.name),
+    );
 
     // Health check: warn if agents.lock and .agents/.gitignore are not in root .gitignore
     const missing = await checkRootGitignoreEntries(scope.root);
@@ -287,7 +337,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     }
   }
 
-  // 4. Symlinks — create per-agent symlinks so each agent discovers skills
+  // 5. Symlinks — create per-agent symlinks so each agent discovers skills
   if (scope.scope === "user") {
     const seen = new Set<string>();
     for (const agentId of config.agents) {
@@ -315,11 +365,11 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     }
   }
 
-  // 5. Write MCP config files
+  // 6. Write MCP config files
   const mcpResolver = scope.scope === "user" ? userMcpResolver() : projectMcpResolver(scope.root);
   await writeMcpConfigs(config.agents, toMcpDeclarations(config.mcp), mcpResolver);
 
-  // 6. Write hook config files (skip for user scope)
+  // 7. Write hook config files (skip for user scope)
   let hookWarnings: { agent: string; message: string }[] = [];
   if (scope.scope === "project") {
     hookWarnings = await writeHookConfigs(
@@ -329,7 +379,17 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     );
   }
 
-  return { installed, skipped, pruned, hookWarnings };
+  // 8. Write custom subagent files
+  const subagentResolver = scope.scope === "user"
+    ? userSubagentResolver()
+    : projectSubagentResolver(scope.root);
+  const subagentResult = await writeSubagentConfigs(
+    config.agents,
+    installedSubagents,
+    subagentResolver,
+  );
+
+  return { installed, skipped, pruned, hookWarnings, subagentWarnings: subagentResult.warnings };
 }
 
 export default async function install(args: string[], flags?: { user?: boolean }): Promise<void> {
@@ -364,6 +424,9 @@ export default async function install(args: string[], flags?: { user?: boolean }
       );
     }
     for (const w of result.hookWarnings) {
+      console.log(chalk.yellow(`  warn: ${w.message}`));
+    }
+    for (const w of result.subagentWarnings) {
       console.log(chalk.yellow(`  warn: ${w.message}`));
     }
   } catch (err) {

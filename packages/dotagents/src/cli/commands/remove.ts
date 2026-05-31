@@ -156,7 +156,11 @@ async function updateProjectGitignore(scope: ScopeRoot): Promise<void> {
     if (!dep || isWildcardDep(dep)) {return true;}
     return !isInPlaceSkill(dep.source);
   });
-  await writeAgentsGitignore(scope.agentsDir, managedNames);
+  await writeAgentsGitignore(
+    scope.agentsDir,
+    managedNames,
+    config.subagents.map((subagent) => subagent.name),
+  );
 }
 
 async function promptYesNo(question: string): Promise<boolean> {

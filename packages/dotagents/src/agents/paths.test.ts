@@ -78,3 +78,35 @@ describe("skill discovery paths", () => {
     expect(agent.userSkillsParentDirs).toBeUndefined();
   });
 });
+
+describe("subagent paths", () => {
+  const home = homedir();
+
+  it("claude supports project and user subagents", () => {
+    const agent = getAgent("claude")!;
+    expect(agent.subagents?.projectDir).toBe(".claude/agents");
+    expect(agent.subagents?.userDir).toBe(join(home, ".claude", "agents"));
+  });
+
+  it("cursor supports project and user subagents", () => {
+    const agent = getAgent("cursor")!;
+    expect(agent.subagents?.projectDir).toBe(".cursor/agents");
+    expect(agent.subagents?.userDir).toBe(join(home, ".cursor", "agents"));
+  });
+
+  it("codex supports project and user subagents", () => {
+    const agent = getAgent("codex")!;
+    expect(agent.subagents?.projectDir).toBe(".codex/agents");
+    expect(agent.subagents?.userDir).toBe(join(home, ".codex", "agents"));
+  });
+
+  it("opencode supports project and user subagents", () => {
+    const agent = getAgent("opencode")!;
+    expect(agent.subagents?.projectDir).toBe(".opencode/agents");
+    expect(agent.subagents?.userDir).toBe(join(home, ".config", "opencode", "agents"));
+  });
+
+  it("vscode does not support custom subagents", () => {
+    expect(getAgent("vscode")!.subagents).toBeUndefined();
+  });
+});

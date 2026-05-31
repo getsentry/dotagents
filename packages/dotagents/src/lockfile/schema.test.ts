@@ -24,4 +24,18 @@ describe("lockfileSchema", () => {
       expect("resolved_commit" in skill).toBe(false);
     }
   });
+
+  it("rejects well-known-style subagent lock entries", () => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: {},
+      subagents: {
+        reviewer: {
+          source: "https://example.com",
+          resolved_url: "https://example.com",
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
 });
