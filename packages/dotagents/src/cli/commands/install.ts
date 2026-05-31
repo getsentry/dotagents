@@ -32,7 +32,12 @@ import { getAgent } from "../../agents/registry.js";
 import { writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
 import { writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
 import { writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../agents/subagent-writer.js";
-import { lockEntryForSubagent, resolveSubagent, writeInstalledSubagents } from "../../agents/subagent-store.js";
+import {
+  InstalledSubagentWriteError,
+  lockEntryForSubagent,
+  resolveSubagent,
+  writeInstalledSubagents,
+} from "../../agents/subagent-store.js";
 import { userMcpResolver } from "../../agents/paths.js";
 import type { SubagentDeclaration } from "../../agents/types.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
@@ -294,21 +299,32 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   }
   if (config.subagents.length > 0) {
     for (const subagentConfig of config.subagents) {
-      const resolved = await resolveSubagent(subagentConfig, {
-        stateDir: getCacheStateDir(),
-        projectRoot: scope.root,
-        defaultRepositorySource: config.defaultRepositorySource,
-        minimumReleaseAge: config.minimum_release_age,
-        minimumReleaseAgeExclude: config.minimum_release_age_exclude,
-        trust: config.trust,
-      });
+      let resolved: Awaited<ReturnType<typeof resolveSubagent>>;
+      try {
+        resolved = await resolveSubagent(subagentConfig, {
+          stateDir: getCacheStateDir(),
+          projectRoot: scope.root,
+          defaultRepositorySource: config.defaultRepositorySource,
+          minimumReleaseAge: config.minimum_release_age,
+          minimumReleaseAgeExclude: config.minimum_release_age_exclude,
+          trust: config.trust,
+        });
+      } catch (err) {
+        if (err instanceof GitError || err instanceof TrustError) {throw err;}
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new InstallError(`Failed to resolve subagent "${subagentConfig.name}": ${msg}`);
+      }
       installedSubagents.push(resolved.subagent);
       newLock.subagents[resolved.subagent.name] = lockEntryForSubagent(resolved);
     }
-
+  }
+  try {
     await writeInstalledSubagents(subagentsDir, installedSubagents);
-  } else {
-    await writeInstalledSubagents(subagentsDir, []);
+  } catch (err) {
+    if (err instanceof InstalledSubagentWriteError) {
+      throw new InstallError(err.message);
+    }
+    throw err;
   }
 
   if (!frozen && (lockfile || config.skills.length > 0 || config.subagents.length > 0)) {

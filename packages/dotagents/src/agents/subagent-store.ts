@@ -78,6 +78,13 @@ export interface InstalledSubagentLoadIssue {
   repairable: boolean;
 }
 
+export class InstalledSubagentWriteError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InstalledSubagentWriteError";
+  }
+}
+
 export async function resolveSubagent(
   config: SubagentConfig,
   opts: SubagentResolveOptions,
@@ -525,7 +532,7 @@ async function writeManagedFile(filePath: string, content: string): Promise<bool
     const existing = await readFile(filePath, "utf-8");
     if (existing === content) {return false;}
     if (!existing.includes(DOTAGENTS_SUBAGENT_MARKER)) {
-      throw new Error(`Subagent file exists and is not managed by dotagents: ${filePath}`);
+      throw new InstalledSubagentWriteError(`Subagent file exists and is not managed by dotagents: ${filePath}`);
     }
   } catch (err) {
     if (!isNotFoundError(err)) {throw err;}

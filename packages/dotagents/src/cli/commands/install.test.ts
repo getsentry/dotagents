@@ -275,6 +275,40 @@ path = "code-reviewer.md"
     expect(lockfile!.subagents["code-reviewer"]?.source).toBe("path:agents");
   });
 
+  it("reports unmanaged installed subagent files as install errors", async () => {
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    const installedDir = join(projectRoot, ".agents", "agents");
+    await mkdir(installedDir, { recursive: true });
+    const installedPath = join(installedDir, "code-reviewer.md");
+    await writeFile(installedPath, "hand-written subagent\n", "utf-8");
+
+    let error: unknown;
+    try {
+      await runInstall({ scope: resolveScope("project", projectRoot) });
+    } catch (err) {
+      error = err;
+    }
+
+    expect(error).toBeInstanceOf(InstallError);
+    expect((error as Error).message).toContain(
+      "Subagent file exists and is not managed by dotagents",
+    );
+    expect(await readFile(installedPath, "utf-8")).toBe("hand-written subagent\n");
+  });
+
   it("frozen mode fails when a subagent is missing from the lockfile", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

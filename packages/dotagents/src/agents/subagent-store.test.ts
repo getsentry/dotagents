@@ -1,9 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { loadInstalledSubagents, resolveSubagent, writeInstalledSubagents } from "./subagent-store.js";
+import {
+  InstalledSubagentWriteError,
+  loadInstalledSubagents,
+  resolveSubagent,
+  writeInstalledSubagents,
+} from "./subagent-store.js";
 import type { SubagentConfig } from "../config/schema.js";
 
 const SUBAGENT_MD = (name: string) => `---
@@ -398,6 +403,21 @@ describe("writeInstalledSubagents", () => {
     await writeInstalledSubagents(installedDir, []);
 
     expect(existsSync(join(installedDir, "code-reviewer.md"))).toBe(false);
+  });
+
+  it("rejects unmanaged installed files without overwriting them", async () => {
+    const installedDir = join(tmpDir, ".agents", "agents");
+    await mkdir(installedDir, { recursive: true });
+    const filePath = join(installedDir, "code-reviewer.md");
+    await writeFile(filePath, "hand-written subagent\n", "utf-8");
+
+    await expect(writeInstalledSubagents(installedDir, [{
+      name: "code-reviewer",
+      description: "Review code for correctness.",
+      instructions: "Review the current diff.",
+    }])).rejects.toThrow(InstalledSubagentWriteError);
+
+    expect(await readFile(filePath, "utf-8")).toBe("hand-written subagent\n");
   });
 
   it("roundtrips native overlays through the installed portable markdown", async () => {
