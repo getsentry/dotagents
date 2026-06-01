@@ -18,8 +18,8 @@ importers:
         specifier: ^5.2.7
         version: 5.2.7
       '@sentry/starlight-theme':
-        specifier: ^0.5.0
-        version: 0.5.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.9.0))(typescript@5.9.3))
+        specifier: ^0.7.0
+        version: 0.7.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.9.0))(typescript@5.9.3))
       astro:
         specifier: ^6.3.5
         version: 6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.9.0)
@@ -666,8 +666,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@sentry/starlight-theme@0.5.0':
-    resolution: {integrity: sha512-3WUbb6Rk9CP6CCxaftG8Sykcgws5mN6rOftD6RoXbEI9Zh1kzL2w8ZxiLezKIOX23QnbiKVmt9WpI6yn+A5vPg==}
+  '@sentry/starlight-theme@0.7.0':
+    resolution: {integrity: sha512-yDVa7JMKKRsH3BwTFezudPJYHoZbMPi0Kvz28Szj1GT2Q7gj3Kh9cVZrooJbWqO5aexj0MFGYe3ejbTK1VXvcg==}
     engines: {node: '>=22.12.0'}
     peerDependencies:
       '@astrojs/starlight': '>=0.39.0'
@@ -2656,11 +2656,12 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.4':
     optional: true
 
-  '@sentry/starlight-theme@0.5.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.9.0))(typescript@5.9.3))':
+  '@sentry/starlight-theme@0.7.0(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.9.0))(typescript@5.9.3))':
     dependencies:
       '@astrojs/starlight': 0.39.2(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.9.0))(typescript@5.9.3)
       '@fontsource-variable/rubik': 5.2.8
       '@fontsource/ibm-plex-mono': 5.2.7
+      ultrahtml: 1.6.0
 
   '@shikijs/core@4.1.0':
     dependencies:
