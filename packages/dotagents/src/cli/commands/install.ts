@@ -11,7 +11,7 @@ import {
 } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
-import { type Lockfile, type LockedSkill } from "../../lockfile/schema.js";
+import { type Lockfile, type LockedSkill, type LockedSubagent } from "../../lockfile/schema.js";
 import {
   applyDefaultRepositorySource,
   resolveSkill,
@@ -171,6 +171,46 @@ function validateFrozenSubagents(
       );
     }
   }
+}
+
+function optionalSubagentLockValue(
+  entry: LockedSubagent,
+  key: "resolved_url" | "resolved_path" | "resolved_ref" | "resolved_commit",
+): string | undefined {
+  switch (key) {
+    case "resolved_url":
+      return "resolved_url" in entry ? entry.resolved_url : undefined;
+    case "resolved_path":
+      return "resolved_path" in entry ? entry.resolved_path : undefined;
+    case "resolved_ref":
+      return "resolved_ref" in entry ? entry.resolved_ref : undefined;
+    case "resolved_commit":
+      return "resolved_commit" in entry ? entry.resolved_commit : undefined;
+  }
+}
+
+function subagentLockEntriesEqual(a: LockedSubagent, b: LockedSubagent): boolean {
+  return a.source === b.source
+    && optionalSubagentLockValue(a, "resolved_url") === optionalSubagentLockValue(b, "resolved_url")
+    && optionalSubagentLockValue(a, "resolved_path") === optionalSubagentLockValue(b, "resolved_path")
+    && optionalSubagentLockValue(a, "resolved_ref") === optionalSubagentLockValue(b, "resolved_ref")
+    && optionalSubagentLockValue(a, "resolved_commit") === optionalSubagentLockValue(b, "resolved_commit");
+}
+
+function unchangedSubagentLockEntries(
+  current: Lockfile | null,
+  next: Lockfile,
+): Lockfile["subagents"] {
+  if (!current) {return {};}
+
+  const unchanged: Lockfile["subagents"] = {};
+  for (const [name, entry] of Object.entries(current.subagents)) {
+    const nextEntry = next.subagents[name];
+    if (!nextEntry) {continue;}
+    if (!subagentLockEntriesEqual(entry, nextEntry)) {continue;}
+    unchanged[name] = entry;
+  }
+  return unchanged;
 }
 
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
@@ -336,7 +376,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   if (shouldWriteLockfile) {
     await writeLockfile(lockPath, {
       ...newLock,
-      subagents: lockfile?.subagents ?? {},
+      subagents: unchangedSubagentLockEntries(lockfile, newLock),
     });
   }
 

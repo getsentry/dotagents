@@ -433,6 +433,21 @@ path = "code-reviewer.md"
       "hand-written subagent\n",
       "utf-8",
     );
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {
+        "code-reviewer": {
+          source: "git:https://github.com/example/agents.git",
+          resolved_url: "https://github.com/example/agents.git",
+          resolved_path: "agents/code-reviewer.md",
+          resolved_commit: "abc123",
+        },
+        "old-reviewer": {
+          source: "path:old-agents",
+        },
+      },
+    });
 
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -457,6 +472,7 @@ path = "code-reviewer.md"
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile!.skills["pdf"]).toBeDefined();
     expect(lockfile!.subagents["code-reviewer"]).toBeUndefined();
+    expect(lockfile!.subagents["old-reviewer"]).toBeUndefined();
     expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
   });
 
