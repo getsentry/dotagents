@@ -13,7 +13,7 @@ import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
 import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
 import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
-import { verifySubagentConfigs, writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../agents/subagent-writer.js";
+import { pruneSubagentConfigs, verifySubagentConfigs, writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../agents/subagent-writer.js";
 import { loadInstalledSubagents, pruneInstalledSubagents } from "../../agents/subagent-store.js";
 import { userMcpResolver } from "../../agents/paths.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
@@ -258,9 +258,13 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     config.agents,
     subagentDecls,
     subagentResolver,
-    { desiredSubagents: config.subagents },
   );
-  subagentsRepaired = subagentResult.written + subagentResult.pruned.length + prunedInstalledSubagents.length;
+  const prunedSubagentConfigs = await pruneSubagentConfigs(
+    config.agents,
+    config.subagents,
+    subagentResolver,
+  );
+  subagentsRepaired = subagentResult.written + prunedSubagentConfigs.length + prunedInstalledSubagents.length;
 
   for (const issue of installedSubagentResult.issues) {
     issues.push({

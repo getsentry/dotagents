@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { parse as parseTOML } from "smol-toml";
 import {
   projectSubagentResolver,
+  pruneSubagentConfigs,
   verifySubagentConfigs,
   writeSubagentConfigs,
 } from "./subagent-writer.js";
@@ -227,10 +228,11 @@ Hand-written instructions.
     );
 
     const result = await writeSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
+    const pruned = await pruneSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
 
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0]!.message).toContain("identity conflicts with unmanaged file");
-    expect(result.pruned).toEqual([managedPath]);
+    expect(pruned).toEqual([managedPath]);
     expect(existsSync(managedPath)).toBe(false);
     expect(existsSync(unmanagedPath)).toBe(true);
   });
@@ -281,9 +283,10 @@ Hand-written instructions.
       "utf-8",
     );
 
-    const result = await writeSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
+    await writeSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
+    const pruned = await pruneSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
 
-    expect(result.pruned).toEqual([stalePath]);
+    expect(pruned).toEqual([stalePath]);
     expect(existsSync(stalePath)).toBe(false);
     expect(existsSync(join(targetDir, "code-reviewer.md"))).toBe(true);
   });
@@ -298,9 +301,10 @@ Hand-written instructions.
       "utf-8",
     );
 
-    const result = await writeSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
+    await writeSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
+    const pruned = await pruneSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
 
-    expect(result.pruned).toEqual([]);
+    expect(pruned).toEqual([]);
     expect(existsSync(stalePath)).toBe(true);
   });
 
@@ -314,9 +318,10 @@ Hand-written instructions.
       "utf-8",
     );
 
-    const result = await writeSubagentConfigs(["opencode"], [], projectSubagentResolver(dir));
+    await writeSubagentConfigs(["opencode"], [], projectSubagentResolver(dir));
+    const pruned = await pruneSubagentConfigs(["opencode"], [], projectSubagentResolver(dir));
 
-    expect(result.pruned).toEqual([stalePath]);
+    expect(pruned).toEqual([stalePath]);
     expect(existsSync(stalePath)).toBe(false);
   });
 
@@ -336,14 +341,18 @@ Hand-written instructions.
       "utf-8",
     );
 
-    const result = await writeSubagentConfigs(
+    await writeSubagentConfigs(
       ["claude"],
       [],
       projectSubagentResolver(dir),
-      { desiredSubagents: [{ name: "code-reviewer" }] },
+    );
+    const pruned = await pruneSubagentConfigs(
+      ["claude"],
+      [{ name: "code-reviewer" }],
+      projectSubagentResolver(dir),
     );
 
-    expect(result.pruned).toEqual([stalePath]);
+    expect(pruned).toEqual([stalePath]);
     expect(existsSync(declaredPath)).toBe(true);
     expect(existsSync(stalePath)).toBe(false);
   });
@@ -367,15 +376,14 @@ describe("verifySubagentConfigs", () => {
     expect(issues).toEqual([]);
   });
 
-  it("reports missing configs as repairable", async () => {
+  it("reports missing configs", async () => {
     const issues = await verifySubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
 
     expect(issues).toHaveLength(1);
     expect(issues[0]!.issue).toContain("missing");
-    expect(issues[0]!.repairable).toBe(true);
   });
 
-  it("reports unmanaged existing configs as not repairable", async () => {
+  it("reports unmanaged existing configs", async () => {
     const targetDir = join(dir, ".claude", "agents");
     await mkdir(targetDir, { recursive: true });
     await writeFile(join(targetDir, "code-reviewer.md"), "hand-written", "utf-8");
@@ -384,10 +392,9 @@ describe("verifySubagentConfigs", () => {
 
     expect(issues).toHaveLength(1);
     expect(issues[0]!.issue).toContain("not managed by dotagents");
-    expect(issues[0]!.repairable).toBe(false);
   });
 
-  it("reports unmanaged identity conflicts as not repairable", async () => {
+  it("reports unmanaged identity conflicts", async () => {
     const targetDir = join(dir, ".claude", "agents");
     await mkdir(targetDir, { recursive: true });
     await writeFile(
@@ -406,6 +413,5 @@ Hand-written instructions.
 
     expect(issues).toHaveLength(1);
     expect(issues[0]!.issue).toContain("identity conflicts with unmanaged file");
-    expect(issues[0]!.repairable).toBe(false);
   });
 });

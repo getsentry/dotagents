@@ -24,20 +24,17 @@ export interface SubagentWriteWarning {
 export interface SubagentWriteResult {
   warnings: SubagentWriteWarning[];
   written: number;
-  pruned: string[];
 }
 
 export interface SubagentVerifyIssue {
   agent: string;
   name: string;
   issue: string;
-  repairable: boolean;
 }
-
-type DesiredSubagent = Pick<SubagentDeclaration, "name" | "targets">;
 
 interface DesiredDir {
   extension: string;
+  spec: SubagentConfigSpec;
   files: Set<string>;
 }
 
@@ -57,16 +54,10 @@ export async function writeSubagentConfigs(
   agentIds: string[],
   subagents: SubagentDeclaration[],
   resolveTarget: SubagentTargetResolver,
-  opts: { desiredSubagents?: DesiredSubagent[] } = {},
 ): Promise<SubagentWriteResult> {
   const warnings: SubagentWriteWarning[] = [];
   let written = 0;
   const configuredAgents = new Set(agentIds);
-  const desiredByDir = initDesiredDirs(
-    agentIds,
-    opts.desiredSubagents ?? subagents,
-    resolveTarget,
-  );
 
   for (const subagent of subagents) {
     for (const agentId of selectedAgentIds(agentIds, subagent)) {
@@ -104,7 +95,6 @@ export async function writeSubagentConfigs(
       );
 
       await mkdir(dirPath, { recursive: true });
-      markDesired(desiredByDir, dirPath, agent.subagents.fileExtension, generated.fileName);
       const identityConflict = await findUnmanagedIdentityConflict(
         dirPath,
         generated.fileName,
@@ -117,7 +107,6 @@ export async function writeSubagentConfigs(
           name: subagent.name,
           message: `Subagent config identity conflicts with unmanaged file: ${identityConflict}`,
         });
-        desiredByDir.get(dirPath)?.files.delete(generated.fileName);
         continue;
       }
       const didWrite = await writeManagedFile(join(dirPath, generated.fileName), content, {
@@ -129,8 +118,15 @@ export async function writeSubagentConfigs(
     }
   }
 
-  const pruned = await pruneManagedFiles(desiredByDir);
-  return { warnings, written, pruned };
+  return { warnings, written };
+}
+
+export async function pruneSubagentConfigs(
+  agentIds: string[],
+  desiredSubagents: Pick<SubagentDeclaration, "name" | "targets">[],
+  resolveTarget: SubagentTargetResolver,
+): Promise<string[]> {
+  return pruneManagedFiles(initDesiredDirs(agentIds, desiredSubagents, resolveTarget));
 }
 
 export async function verifySubagentConfigs(
@@ -152,7 +148,6 @@ export async function verifySubagentConfigs(
         issues.push({
           ...issueBase,
           issue: `Subagent "${subagent.name}" targets agent "${agentId}", but "${agentId}" is not listed in agents`,
-          repairable: false,
         });
         continue;
       }
@@ -163,7 +158,6 @@ export async function verifySubagentConfigs(
         issues.push({
           ...issueBase,
           issue: `Agent "${agent.displayName}" does not support custom subagents`,
-          repairable: false,
         });
         continue;
       }
@@ -185,7 +179,6 @@ export async function verifySubagentConfigs(
         issues.push({
           ...issueBase,
           issue: `Subagent config identity conflicts with unmanaged file: ${identityConflict}`,
-          repairable: false,
         });
         continue;
       }
@@ -194,7 +187,6 @@ export async function verifySubagentConfigs(
         issues.push({
           ...issueBase,
           issue: `Subagent config missing: ${filePath}`,
-          repairable: true,
         });
         continue;
       }
@@ -205,7 +197,6 @@ export async function verifySubagentConfigs(
           issues.push({
             ...issueBase,
             issue: `Subagent config exists and is not managed by dotagents: ${filePath}`,
-            repairable: false,
           });
           continue;
         }
@@ -214,14 +205,12 @@ export async function verifySubagentConfigs(
           issues.push({
             ...issueBase,
             issue: `Subagent config out of date: ${filePath}`,
-            repairable: true,
           });
         }
       } catch {
         issues.push({
           ...issueBase,
           issue: `Failed to read subagent config: ${filePath}`,
-          repairable: false,
         });
       }
     }
@@ -232,7 +221,7 @@ export async function verifySubagentConfigs(
 
 function initDesiredDirs(
   agentIds: string[],
-  subagents: DesiredSubagent[],
+  subagents: Pick<SubagentDeclaration, "name" | "targets">[],
   resolveTarget: SubagentTargetResolver,
 ): Map<string, DesiredDir> {
   const desiredByDir = new Map<string, DesiredDir>();
@@ -241,7 +230,7 @@ function initDesiredDirs(
     const agent = getAgent(agentId);
     if (!agent?.subagents) {continue;}
     const { dirPath } = resolveTarget(agentId, agent.subagents);
-    markDesired(desiredByDir, dirPath, agent.subagents.fileExtension);
+    markDesired(desiredByDir, dirPath, agent.subagents);
   }
 
   for (const subagent of subagents) {
@@ -255,7 +244,7 @@ function initDesiredDirs(
       markDesired(
         desiredByDir,
         dirPath,
-        agent.subagents.fileExtension,
+        agent.subagents,
         `${subagent.name}${agent.subagents.fileExtension}`,
       );
     }
@@ -266,7 +255,7 @@ function initDesiredDirs(
 
 function selectedAgentIds(
   agentIds: string[],
-  subagent: DesiredSubagent,
+  subagent: Pick<SubagentDeclaration, "name" | "targets">,
 ): string[] {
   return [...new Set(subagent.targets ?? agentIds)];
 }
@@ -274,10 +263,14 @@ function selectedAgentIds(
 function markDesired(
   desiredByDir: Map<string, DesiredDir>,
   dirPath: string,
-  extension: string,
+  spec: SubagentConfigSpec,
   fileName?: string,
 ): void {
-  const desired = desiredByDir.get(dirPath) ?? { extension, files: new Set<string>() };
+  const desired = desiredByDir.get(dirPath) ?? {
+    extension: spec.fileExtension,
+    spec,
+    files: new Set<string>(),
+  };
   if (fileName) {
     desired.files.add(fileName);
   }
@@ -319,10 +312,25 @@ async function pruneManagedFiles(
     for (const entry of entries) {
       if (!entry.isFile()) {continue;}
       if (!entry.name.endsWith(desired.extension)) {continue;}
-      if (desired.files.has(entry.name)) {continue;}
 
       const filePath = join(dirPath, entry.name);
       const existing = await readFile(filePath, "utf-8");
+      if (desired.files.has(entry.name)) {
+        const existingIdentity = readSubagentFileIdentity(
+          desired.spec,
+          filePath,
+          entry.name,
+          existing,
+        );
+        if (!existing.includes(DOTAGENTS_SUBAGENT_MARKER)) {continue;}
+        const identityConflict = await findUnmanagedIdentityConflict(
+          dirPath,
+          entry.name,
+          desired.spec,
+          existingIdentity,
+        );
+        if (!identityConflict) {continue;}
+      }
       if (existing.includes(DOTAGENTS_SUBAGENT_MARKER)) {
         await rm(filePath);
         pruned.push(filePath);

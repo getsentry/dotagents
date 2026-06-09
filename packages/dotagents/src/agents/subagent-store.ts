@@ -75,7 +75,6 @@ export interface ResolvedSubagent {
 export interface InstalledSubagentLoadIssue {
   name: string;
   issue: string;
-  repairable: boolean;
 }
 
 export class InstalledSubagentWriteError extends Error {
@@ -179,7 +178,6 @@ export async function loadInstalledSubagents(
       issues.push({
         name: config.name,
         issue: `Subagent "${config.name}" is in agents.toml but not installed. Run 'npx @sentry/dotagents install'.`,
-        repairable: false,
       });
       continue;
     }
@@ -193,7 +191,6 @@ export async function loadInstalledSubagents(
       issues.push({
         name: config.name,
         issue: `Failed to load installed subagent "${config.name}": ${message}`,
-        repairable: false,
       });
     }
   }

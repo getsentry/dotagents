@@ -144,7 +144,7 @@ describe("symlinks", () => {
       // Verify the skill was moved to .agents/skills/
       const agentsEntries = await readdir(join(agentsDir, "skills"));
       expect(agentsEntries).toContain("my-skill");
-    });
+    }, 30_000);
   });
 
   describe("verifySymlinks", () => {

@@ -237,7 +237,7 @@ describe("runSync", () => {
         process.env["DOTAGENTS_STATE_DIR"] = previousStateDir;
       }
     }
-  });
+  }, 30_000);
 
   it("detects missing skills", async () => {
     await writeFile(

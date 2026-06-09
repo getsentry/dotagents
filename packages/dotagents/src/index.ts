@@ -19,31 +19,14 @@ export {
   writeMcpConfigs,
   verifyMcpConfigs,
   projectMcpResolver,
-  writeSubagentConfigs,
-  verifySubagentConfigs,
-  projectSubagentResolver,
   getUserMcpTarget,
   userMcpResolver,
-  userSubagentResolver,
-  resolveSubagent,
-  writeInstalledSubagents,
-  loadInstalledSubagents,
-  pruneInstalledSubagents,
 } from "./agents/index.js";
 export type {
   AgentDefinition,
   McpDeclaration,
   McpConfigSpec,
   McpTargetResolver,
-  SubagentDeclaration,
-  NativeSubagentConfig,
-  NativeSubagentContent,
-  NativeSubagentTarget,
-  SubagentConfigSpec,
-  SubagentSerializer,
-  SubagentTargetResolver,
-  SubagentWriteResult,
-  ResolvedSubagent,
 } from "./agents/index.js";
 
 export { writeAgentsGitignore, ensureRootGitignoreEntries } from "./gitignore/index.js";

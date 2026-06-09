@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access } from "node:fs/
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runInstall, InstallError } from "./install.js";
+import { runInstall as runInstallCommand, InstallError, type InstallOptions, type InstallResult } from "./install.js";
 import { runSync } from "./sync.js";
 import { exec } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
@@ -31,19 +31,25 @@ describe("runInstall", () => {
   let stateDir: string;
   let projectRoot: string;
   let repoDir: string;
+  let repoInitialized: boolean;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "dotagents-install-"));
     stateDir = join(tmpDir, "state");
     projectRoot = join(tmpDir, "project");
     repoDir = join(tmpDir, "repo");
+    repoInitialized = false;
 
     process.env["DOTAGENTS_STATE_DIR"] = stateDir;
 
     // Set up project
     await mkdir(join(projectRoot, ".agents", "skills"), { recursive: true });
 
-    // Create a local git repo with skills
+  });
+
+  async function ensureGitRepo(): Promise<void> {
+    if (repoInitialized) {return;}
+
     await mkdir(repoDir, { recursive: true });
     await exec("git", ["init"], { cwd: repoDir });
     await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
@@ -58,7 +64,16 @@ describe("runInstall", () => {
 
     await exec("git", ["add", "."], { cwd: repoDir });
     await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
-  });
+    repoInitialized = true;
+  }
+
+  async function runInstall(opts: InstallOptions): Promise<InstallResult> {
+    const config = await readFile(opts.scope.configPath, "utf-8").catch(() => "");
+    if (config.includes(`git:${repoDir}`)) {
+      await ensureGitRepo();
+    }
+    return runInstallCommand(opts);
+  }
 
   afterEach(async () => {
     delete process.env["DOTAGENTS_STATE_DIR"];
@@ -713,6 +728,7 @@ path = "reviewer.md"
     expect(first.pruned).toHaveLength(0);
 
     // Remove "review" from upstream repo
+    await ensureGitRepo();
     await exec("git", ["rm", "-rf", "skills/review"], { cwd: repoDir });
     await exec("git", ["commit", "-m", "remove review"], { cwd: repoDir });
 
@@ -756,6 +772,7 @@ path = "reviewer.md"
 
     // Remove "helper" from agents.toml (keep wildcard only)
     // Also remove "review" from upstream so it gets pruned
+    await ensureGitRepo();
     await exec("git", ["rm", "-rf", "skills/review"], { cwd: repoDir });
     await exec("git", ["commit", "-m", "remove review"], { cwd: repoDir });
 
@@ -884,6 +901,7 @@ path = "reviewer.md"
     );
 
     // Update the skill upstream
+    await ensureGitRepo();
     await writeFile(join(repoDir, "pdf", "SKILL.md"), `${SKILL_MD("pdf")}\nupdated content`);
     await exec("git", ["add", "."], { cwd: repoDir });
     await exec("git", ["commit", "-m", "update pdf skill"], { cwd: repoDir });
@@ -901,6 +919,7 @@ path = "reviewer.md"
 
   it("minimum_release_age resolves to an older commit when HEAD is too new", async () => {
     // Create an old commit (backdated) then a new one
+    await ensureGitRepo();
     await exec("git", ["rm", "-rf", "pdf", "skills"], { cwd: repoDir });
     await exec("git", ["commit", "-m", "clear"], { cwd: repoDir });
 
@@ -953,6 +972,7 @@ path = "reviewer.md"
   });
 
   it("minimum_release_age rejects pinned skills that are too new", async () => {
+    await ensureGitRepo();
     const { stdout: sha } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
 
     await writeFile(

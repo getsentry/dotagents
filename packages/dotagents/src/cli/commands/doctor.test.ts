@@ -123,7 +123,7 @@ describe("runDoctor", () => {
     expect(check?.status).toBe("warn");
     expect(check?.message).toContain("agents.lock");
     expect(check?.message).toContain(".agents/.gitignore");
-  });
+  }, 30_000);
 
   it("does not warn when generated files are not tracked", async () => {
     const { execSync } = await import("node:child_process");

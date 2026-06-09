@@ -5,6 +5,7 @@ export { writeHookConfigs, verifyHookConfigs, toHookDeclarations, projectHookRes
 export type { HookTargetResolver, HookResolvedTarget } from "./hook-writer.js";
 export {
   writeSubagentConfigs,
+  pruneSubagentConfigs,
   verifySubagentConfigs,
   projectSubagentResolver,
   userSubagentResolver,

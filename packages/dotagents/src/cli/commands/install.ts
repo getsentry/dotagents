@@ -31,7 +31,7 @@ import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
 import { writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
 import { writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
-import { writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../agents/subagent-writer.js";
+import { pruneSubagentConfigs, writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../agents/subagent-writer.js";
 import {
   InstalledSubagentWriteError,
   lockEntryForSubagent,
@@ -404,6 +404,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     installedSubagents,
     subagentResolver,
   );
+  await pruneSubagentConfigs(config.agents, installedSubagents, subagentResolver);
 
   return { installed, skipped, pruned, hookWarnings, subagentWarnings: subagentResult.warnings };
 }

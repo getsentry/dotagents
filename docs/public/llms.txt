@@ -37,13 +37,13 @@ name = "find-bugs"
 source = "getsentry/skills"
 ```
 
-And a lockfile (`agents.lock`) tracking which skills are managed. Both `agents.lock` and `.agents/.gitignore` are automatically gitignored.
+And a lockfile (`agents.lock`) tracking which skills and subagents are managed. Both `agents.lock` and `.agents/.gitignore` are automatically gitignored.
 
 ## How It Works
 
 1. Declare skill dependencies in `agents.toml` at the project root (or `~/.agents/agents.toml` for user scope)
 2. `install` clones or refreshes sources, discovers skills by convention, and copies them into `.agents/skills/`
-3. `agents.lock` tracks which skills are managed (gitignored automatically)
+3. `agents.lock` tracks which skills and subagents are managed (gitignored automatically)
 4. Managed skills and canonical installed subagents under `.agents/` are gitignored. Collaborators run `npx @sentry/dotagents install` after cloning. Custom skills in `.agents/skills/` are tracked by git normally.
 5. Symlinks connect `.agents/skills/` to each agent's expected location (`.claude/skills/` for Claude and Cursor)
 6. MCP, hook, and subagent configs are generated for each declared agent where supported
@@ -268,7 +268,7 @@ Generated files include a dotagents marker. `install` and `sync` overwrite stale
 
 ### Trust
 
-Optional `[trust]` section to restrict allowed skill sources.
+Optional `[trust]` section to restrict allowed skill and subagent sources.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -282,7 +282,7 @@ Rules:
 - `allow_all = true` = all sources allowed (explicit intent)
 - `[trust]` present without `allow_all` = allowlist mode (source must match at least one rule)
 - Local `path:` sources are always allowed
-- Trust is validated before any network operations in `add` and `install`
+- Trust is validated before any network operations in `add` for skills and `install` for configured skills and subagents
 
 ## CLI Commands
 
@@ -445,7 +445,7 @@ Check project health: gitignore setup, installed skills, symlinks, and legacy co
 | `vscode` | VS Code Copilot | `.vscode` | (reads `.agents/skills/` natively) | `.vscode/mcp.json` | `.claude/settings.json` | Not supported |
 | `opencode` | OpenCode | `.opencode` | (reads `.agents/skills/` natively) | `opencode.json` | Not supported | `.opencode/agents/*.md` |
 
-Claude and Cursor use symlinks from their config directory to `.agents/skills/`. Codex, VS Code, OpenCode, and Pi read `.agents/skills/` directly.
+Claude uses `.claude/skills/`, and Cursor shares the same Claude-compatible skills symlink. Codex, VS Code, OpenCode, and Pi read `.agents/skills/` directly.
 
 [Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively. No agent target or symlink configuration needed.
 
@@ -513,6 +513,12 @@ source = "getsentry/skills"
 resolved_url = "https://github.com/getsentry/skills.git"
 resolved_path = "plugins/sentry-skills/skills/find-bugs"
 resolved_commit = "0123456789abcdef0123456789abcdef01234567"
+
+[subagents.code-reviewer]
+source = "getsentry/agent-pack"
+resolved_url = "https://github.com/getsentry/agent-pack.git"
+resolved_path = "agents/code-reviewer.md"
+resolved_commit = "fedcba9876543210fedcba9876543210fedcba98"
 ```
 
 | Field | Present For | Description |
@@ -523,7 +529,7 @@ resolved_commit = "0123456789abcdef0123456789abcdef01234567"
 | `resolved_ref` | Git sources (optional) | Resolved ref name (omitted for default branch) |
 | `resolved_commit` | Git sources (optional) | Full commit SHA that was installed. Informational only; install does not use it for locking. |
 
-Local `path:` skills have `source` only.
+Local `path:` skills and subagents have `source` only. Subagent entries use the same fields under `[subagents.<name>]`; `resolved_path` points to the subagent file inside a git source.
 
 ## Caching
 
