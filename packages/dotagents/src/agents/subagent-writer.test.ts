@@ -229,7 +229,7 @@ Hand-written instructions.
     expect(existsSync(join(targetDir, "code-reviewer.md"))).toBe(false);
   });
 
-  it("prunes stale managed files when an unmanaged identity conflict exists", async () => {
+  it("preserves desired managed files when an unmanaged identity conflict exists", async () => {
     const targetDir = join(dir, ".claude", "agents");
     await mkdir(targetDir, { recursive: true });
     const managedPath = join(targetDir, "code-reviewer.md");
@@ -263,8 +263,8 @@ Hand-written instructions.
 
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0]!.message).toContain("identity conflicts with unmanaged file");
-    expect(pruned).toEqual([managedPath]);
-    expect(existsSync(managedPath)).toBe(false);
+    expect(pruned).toEqual([]);
+    expect(existsSync(managedPath)).toBe(true);
     expect(existsSync(unmanagedPath)).toBe(true);
   });
 

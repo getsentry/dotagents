@@ -472,7 +472,7 @@ path = "reviewer.md"
     expect(await readFile(join(agentsDir, "reviewer.md"), "utf-8")).toBe("hand-written");
   });
 
-  it("prunes managed subagent configs when an unmanaged identity conflict exists", async () => {
+  it("preserves declared managed subagent configs when an unmanaged identity conflict exists", async () => {
     const installedDir = join(projectRoot, ".agents", "agents");
     await mkdir(installedDir, { recursive: true });
     await writeFile(
@@ -507,9 +507,9 @@ path = "reviewer.md"
 
     const result = await runSync({ scope: resolveScope("project", projectRoot) });
 
-    expect(result.subagentsRepaired).toBe(1);
+    expect(result.subagentsRepaired).toBe(0);
     expect(result.issues.some((i) => i.type === "subagents" && i.message.includes("identity conflicts"))).toBe(true);
-    expect(existsSync(join(agentsDir, "reviewer.md"))).toBe(false);
+    expect(existsSync(join(agentsDir, "reviewer.md"))).toBe(true);
     expect(existsSync(join(agentsDir, "alias.md"))).toBe(true);
   });
 

@@ -418,6 +418,48 @@ path = "code-reviewer.md"
     expect(syncResult.adopted).toEqual([]);
   });
 
+  it("updates the lockfile when installed subagent writes fail after skill changes", async () => {
+    const skillSourceDir = join(projectRoot, "local-skills", "pdf");
+    await mkdir(skillSourceDir, { recursive: true });
+    await writeFile(join(skillSourceDir, "SKILL.md"), SKILL_MD("pdf"));
+
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await mkdir(join(projectRoot, ".agents", "agents"), { recursive: true });
+    await writeFile(
+      join(projectRoot, ".agents", "agents", "code-reviewer.md"),
+      "hand-written subagent\n",
+      "utf-8",
+    );
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[skills]]
+name = "pdf"
+source = "path:local-skills/pdf"
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+
+    await expect(runInstall({ scope })).rejects.toThrow(
+      /Subagent file exists and is not managed by dotagents/,
+    );
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills["pdf"]).toBeDefined();
+    expect(lockfile!.subagents["code-reviewer"]?.source).toBe("path:agents");
+    expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
+  });
+
   it("does not prune outside skills dir for malformed lockfile skill names", async () => {
     const scope = resolveScope("project", projectRoot);
     const hooksDir = join(projectRoot, ".agents", "hooks");

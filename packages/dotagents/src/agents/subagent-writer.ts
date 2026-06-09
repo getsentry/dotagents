@@ -319,22 +319,7 @@ async function pruneManagedFiles(
 
       const filePath = join(dirPath, entry.name);
       const existing = await readFile(filePath, "utf-8");
-      if (desired.files.has(entry.name)) {
-        const existingIdentity = readSubagentFileIdentity(
-          desired.spec,
-          filePath,
-          entry.name,
-          existing,
-        );
-        if (!hasDotagentsSubagentMarker(desired.spec, existing)) {continue;}
-        const identityConflict = await findUnmanagedIdentityConflict(
-          dirPath,
-          entry.name,
-          desired.spec,
-          existingIdentity,
-        );
-        if (!identityConflict) {continue;}
-      }
+      if (desired.files.has(entry.name)) {continue;}
       if (hasDotagentsSubagentMarker(desired.spec, existing)) {
         await rm(filePath);
         pruned.push(filePath);
