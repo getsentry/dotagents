@@ -35,6 +35,7 @@ import { pruneSubagentConfigs, writeSubagentConfigs, projectSubagentResolver, us
 import {
   InstalledSubagentWriteError,
   lockEntryForSubagent,
+  pruneInstalledSubagents,
   resolveSubagent,
   writeInstalledSubagents,
 } from "../../agents/subagent-store.js";
@@ -325,6 +326,9 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   }
   try {
     await writeInstalledSubagents(subagentsDir, installedSubagents);
+    if (!frozen) {
+      await pruneInstalledSubagents(subagentsDir, config.subagents);
+    }
   } catch (err) {
     if (err instanceof InstalledSubagentWriteError) {
       throw new InstallError(err.message);
@@ -345,10 +349,13 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       if (!dep || isWildcardDep(dep)) {return true;}
       return !isInPlaceSkill(dep.source);
     });
+    const managedSubagentNames = frozen
+      ? Object.keys(lockfile?.subagents ?? {})
+      : installedSubagents.map((subagent) => subagent.name);
     await writeAgentsGitignore(
       agentsDir,
       managedNames,
-      installedSubagents.map((subagent) => subagent.name),
+      managedSubagentNames,
     );
 
     // Health check: warn if agents.lock and .agents/.gitignore are not in root .gitignore
@@ -409,7 +416,9 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     installedSubagents,
     subagentResolver,
   );
-  await pruneSubagentConfigs(config.agents, installedSubagents, subagentResolver);
+  if (!frozen) {
+    await pruneSubagentConfigs(config.agents, installedSubagents, subagentResolver);
+  }
 
   return { installed, skipped, pruned, hookWarnings, subagentWarnings: subagentResult.warnings };
 }

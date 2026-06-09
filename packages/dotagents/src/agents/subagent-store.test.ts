@@ -6,9 +6,11 @@ import { tmpdir } from "node:os";
 import {
   InstalledSubagentWriteError,
   loadInstalledSubagents,
+  pruneInstalledSubagents,
   resolveSubagent,
   writeInstalledSubagents,
 } from "./subagent-store.js";
+import { DOTAGENTS_SUBAGENT_MARKER } from "./definitions/helpers.js";
 import type { SubagentConfig } from "../config/schema.js";
 
 const SUBAGENT_MD = (name: string) => `---
@@ -400,9 +402,63 @@ describe("writeInstalledSubagents", () => {
       instructions: "Review the current diff.",
     }]);
 
-    await writeInstalledSubagents(installedDir, []);
+    await pruneInstalledSubagents(installedDir, []);
 
     expect(existsSync(join(installedDir, "code-reviewer.md"))).toBe(false);
+  });
+
+  it("does not prune stale managed files while writing", async () => {
+    const installedDir = join(tmpDir, ".agents", "agents");
+    await writeInstalledSubagents(installedDir, [{
+      name: "code-reviewer",
+      description: "Review code for correctness.",
+      instructions: "Review the current diff.",
+    }]);
+
+    await writeInstalledSubagents(installedDir, []);
+
+    expect(existsSync(join(installedDir, "code-reviewer.md"))).toBe(true);
+  });
+
+  it("does not prune files that mention the marker outside the managed header", async () => {
+    const installedDir = join(tmpDir, ".agents", "agents");
+    await mkdir(installedDir, { recursive: true });
+    const filePath = join(installedDir, "notes.md");
+    await writeFile(
+      filePath,
+      `---
+name: notes
+---
+
+The phrase ${DOTAGENTS_SUBAGENT_MARKER} appears in instructions.
+`,
+      "utf-8",
+    );
+
+    await pruneInstalledSubagents(installedDir, []);
+
+    expect(existsSync(filePath)).toBe(true);
+  });
+
+  it("does not prune markdown files that start with a TOML-style marker", async () => {
+    const installedDir = join(tmpDir, ".agents", "agents");
+    await mkdir(installedDir, { recursive: true });
+    const filePath = join(installedDir, "notes.md");
+    await writeFile(
+      filePath,
+      `# ${DOTAGENTS_SUBAGENT_MARKER}
+---
+name: notes
+---
+
+Review the current diff.
+`,
+      "utf-8",
+    );
+
+    await pruneInstalledSubagents(installedDir, []);
+
+    expect(existsSync(filePath)).toBe(true);
   });
 
   it("rejects unmanaged installed files without overwriting them", async () => {
@@ -418,6 +474,49 @@ describe("writeInstalledSubagents", () => {
     }])).rejects.toThrow(InstalledSubagentWriteError);
 
     expect(await readFile(filePath, "utf-8")).toBe("hand-written subagent\n");
+  });
+
+  it("rejects files that mention the marker outside the managed header", async () => {
+    const installedDir = join(tmpDir, ".agents", "agents");
+    await mkdir(installedDir, { recursive: true });
+    const filePath = join(installedDir, "code-reviewer.md");
+    const content = `---
+name: code-reviewer
+---
+
+The phrase ${DOTAGENTS_SUBAGENT_MARKER} appears in instructions.
+`;
+    await writeFile(filePath, content, "utf-8");
+
+    await expect(writeInstalledSubagents(installedDir, [{
+      name: "code-reviewer",
+      description: "Review code for correctness.",
+      instructions: "Review the current diff.",
+    }])).rejects.toThrow(InstalledSubagentWriteError);
+
+    expect(await readFile(filePath, "utf-8")).toBe(content);
+  });
+
+  it("rejects markdown files that start with a TOML-style marker", async () => {
+    const installedDir = join(tmpDir, ".agents", "agents");
+    await mkdir(installedDir, { recursive: true });
+    const filePath = join(installedDir, "code-reviewer.md");
+    const content = `# ${DOTAGENTS_SUBAGENT_MARKER}
+---
+name: code-reviewer
+---
+
+Review the current diff.
+`;
+    await writeFile(filePath, content, "utf-8");
+
+    await expect(writeInstalledSubagents(installedDir, [{
+      name: "code-reviewer",
+      description: "Review code for correctness.",
+      instructions: "Review the current diff.",
+    }])).rejects.toThrow(InstalledSubagentWriteError);
+
+    expect(await readFile(filePath, "utf-8")).toBe(content);
   });
 
   it("roundtrips native overlays through the installed portable markdown", async () => {

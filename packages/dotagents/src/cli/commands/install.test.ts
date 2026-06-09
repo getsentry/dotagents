@@ -944,6 +944,44 @@ path = "reviewer.md"
     expect(existsSync(join(projectRoot, ".agents", "skills", "review", "SKILL.md"))).toBe(true);
   });
 
+  it("does not prune installed subagents in frozen mode", async () => {
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+`,
+    );
+
+    const result = await runInstall({ scope, frozen: true });
+
+    expect(result.pruned).toEqual([]);
+    expect(existsSync(join(projectRoot, ".agents", "agents", "code-reviewer.md"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".claude", "agents", "code-reviewer.md"))).toBe(true);
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).toContain("/agents/code-reviewer.md");
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.subagents["code-reviewer"]).toBeDefined();
+  });
+
   it("wildcard with all skills excluded installs nothing from that source", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

@@ -58,7 +58,7 @@ Install and refresh skill and subagent dependencies from `agents.toml`. Resolves
 sources, copies skills, writes the lockfile, creates symlinks, and generates MCP,
 hook, and subagent configs. There is no separate update command. With
 `--frozen`, declared skills and subagents must already exist in `agents.lock`,
-and the lockfile is not updated.
+the lockfile is not updated, and existing managed subagent files are not pruned.
 
 Example:
 
@@ -381,11 +381,11 @@ Status output:
 | `source` | string | Yes | Source repository or local directory. Supports GitHub/GitLab shorthands, git URLs, and `path:` sources; HTTPS well-known skill indexes are not supported for subagents. |
 | `ref` | string | No | Optional git ref override. |
 | `path` | string | No | Optional explicit subagent file path inside the source. Markdown paths are portable or native Markdown; `.toml` paths are Codex native artifacts. |
-| `targets` | string[] | No | Optional subset of agent IDs. Unsupported configured agents produce warnings. |
+| `targets` | string[] | No | Optional subset of agent IDs. When absent or empty, defaults to every configured agent in `agents`; unsupported configured agents produce warnings. |
 
 dotagents treats subagents as best-effort portable dependencies, not a universal behavior schema. Runtime-specific behavior such as model routing, tool permissions, read-only modes, background execution, and reasoning effort stays in each tool's native artifact.
 
-dotagents discovers portable subagent Markdown from `agents/` and `.agents/agents/`. It also imports native runtime artifacts from `.claude/agents/*.md`, `.cursor/agents/*.md`, `.codex/agents/*.toml`, and `.opencode/agents/*.md`. Root-level source files require an explicit `path`. Multiple portable matches for the same subagent are rejected as ambiguous, while matching native runtime artifacts are merged. When the source format matches a target runtime, dotagents reuses the native source content for that runtime and only adds its managed-file marker. Other runtimes are generated from the portable `name`, `description`, and instructions.
+dotagents discovers portable subagent Markdown from `agents/` and `.agents/agents/`. It also imports native runtime artifacts from `.claude/agents/*.md`, `.cursor/agents/*.md`, `.codex/agents/*.toml`, and `.opencode/agents/*.md`. Root-level source files require an explicit `path`. Multiple portable matches for the same subagent are rejected as ambiguous, while matching native runtime artifacts are merged. When the source format matches a target runtime, dotagents reuses the native source content for that runtime and only adds its generated header marker. Other runtimes are generated from the portable `name`, `description`, and instructions.
 
 | Format | Source path | Matching output path | Required source fields |
 | --- | --- | --- | --- |
@@ -404,7 +404,7 @@ Generated files:
 - Codex: `.codex/agents/<name>.toml`
 - OpenCode: `.opencode/agents/<name>.md`
 
-Generated files include a dotagents marker. `install` and `sync` update managed files and do not overwrite hand-written files without the marker. They also avoid creating duplicate runtime identities when an unmanaged file in the same agent directory already declares the same subagent.
+Generated files include a dotagents header marker. `install` and `sync` update managed files and do not overwrite hand-written files without the generated header marker. In `--frozen` mode, `install` preserves existing managed subagent files and lock entries instead of pruning removed subagents. They also avoid creating duplicate runtime identities when an unmanaged file in the same agent directory already declares the same subagent.
 
 ## Scopes
 

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getAgent } from "./registry.js";
-import { DOTAGENTS_SUBAGENT_MARKER } from "./definitions/helpers.js";
+import { hasDotagentsMarkdownSubagentMarker, hasDotagentsTomlSubagentMarker } from "./definitions/helpers.js";
 import { generatedSubagentIdentity, readSubagentFileIdentity } from "./subagent-identity.js";
 import type { SubagentConfigSpec, SubagentDeclaration } from "./types.js";
 
@@ -84,7 +84,7 @@ export async function writeSubagentConfigs(
       const { dirPath } = resolveTarget(agentId, agent.subagents);
       const generated = agent.subagents.serialize(subagent);
       const content = normalizeContent(generated.content);
-      if (!content.includes(DOTAGENTS_SUBAGENT_MARKER)) {
+      if (!hasDotagentsSubagentMarker(agent.subagents, content)) {
         throw new Error(`Internal error: generated subagent "${subagent.name}" is missing the dotagents marker`);
       }
       const generatedIdentity = generatedSubagentIdentity(
@@ -112,6 +112,7 @@ export async function writeSubagentConfigs(
       const didWrite = await writeManagedFile(join(dirPath, generated.fileName), content, {
         agent: agentId,
         name: subagent.name,
+        spec: agent.subagents,
         warnings,
       });
       if (didWrite) {written++;}
@@ -193,7 +194,7 @@ export async function verifySubagentConfigs(
 
       try {
         const existing = await readFile(filePath, "utf-8");
-        if (!existing.includes(DOTAGENTS_SUBAGENT_MARKER)) {
+        if (!hasDotagentsSubagentMarker(agent.subagents, existing)) {
           issues.push({
             ...issueBase,
             issue: `Subagent config exists and is not managed by dotagents: ${filePath}`,
@@ -257,7 +258,10 @@ function selectedAgentIds(
   agentIds: string[],
   subagent: Pick<SubagentDeclaration, "name" | "targets">,
 ): string[] {
-  return [...new Set(subagent.targets ?? agentIds)];
+  const targets = subagent.targets && subagent.targets.length > 0
+    ? subagent.targets
+    : agentIds;
+  return [...new Set(targets)];
 }
 
 function markDesired(
@@ -280,12 +284,12 @@ function markDesired(
 async function writeManagedFile(
   filePath: string,
   content: string,
-  context: { agent: string; name: string; warnings: SubagentWriteWarning[] },
+  context: { agent: string; name: string; spec: SubagentConfigSpec; warnings: SubagentWriteWarning[] },
 ): Promise<boolean> {
   try {
     const existing = await readFile(filePath, "utf-8");
     if (existing === content) {return false;}
-    if (!existing.includes(DOTAGENTS_SUBAGENT_MARKER)) {
+    if (!hasDotagentsSubagentMarker(context.spec, existing)) {
       context.warnings.push({
         agent: context.agent,
         name: context.name,
@@ -322,7 +326,7 @@ async function pruneManagedFiles(
           entry.name,
           existing,
         );
-        if (!existing.includes(DOTAGENTS_SUBAGENT_MARKER)) {continue;}
+        if (!hasDotagentsSubagentMarker(desired.spec, existing)) {continue;}
         const identityConflict = await findUnmanagedIdentityConflict(
           dirPath,
           entry.name,
@@ -331,7 +335,7 @@ async function pruneManagedFiles(
         );
         if (!identityConflict) {continue;}
       }
-      if (existing.includes(DOTAGENTS_SUBAGENT_MARKER)) {
+      if (hasDotagentsSubagentMarker(desired.spec, existing)) {
         await rm(filePath);
         pruned.push(filePath);
       }
@@ -359,7 +363,7 @@ async function findUnmanagedIdentityConflict(
 
     const filePath = join(dirPath, entry.name);
     const existing = await readFile(filePath, "utf-8");
-    if (existing.includes(DOTAGENTS_SUBAGENT_MARKER)) {continue;}
+    if (hasDotagentsSubagentMarker(spec, existing)) {continue;}
 
     const existingIdentity = readSubagentFileIdentity(spec, filePath, entry.name, existing);
     if (existingIdentity === generatedIdentity) {
@@ -368,6 +372,12 @@ async function findUnmanagedIdentityConflict(
   }
 
   return null;
+}
+
+function hasDotagentsSubagentMarker(spec: SubagentConfigSpec, content: string): boolean {
+  return spec.fileExtension === ".toml"
+    ? hasDotagentsTomlSubagentMarker(content)
+    : hasDotagentsMarkdownSubagentMarker(content);
 }
 
 function normalizeContent(content: string): string {

@@ -112,6 +112,8 @@ source = "getsentry/agent-pack"
 targets = ["claude", "codex", "opencode"]
 ```
 
+If `targets` is omitted or empty, dotagents targets every configured agent and warns for agents that do not support custom subagents.
+
 dotagents discovers portable subagent Markdown from conventional source directories such as `agents/` and `.agents/agents/`. The frontmatter supplies the portable `name` and `description`; the body supplies the runtime instructions:
 
 ```md

@@ -223,7 +223,7 @@ Cursor event mapping:
 
 ### Subagents
 
-Each `[[subagents]]` entry requires `name` and `source`. Optional: `ref`, `path`, and `targets`. When `targets` is absent, dotagents attempts every agent listed in `agents` and warns for agents that do not support custom subagents.
+Each `[[subagents]]` entry requires `name` and `source`. Optional: `ref`, `path`, and `targets`. When `targets` is absent or empty, dotagents attempts every agent listed in `agents` and warns for agents that do not support custom subagents.
 
 dotagents treats subagents as best-effort portable dependencies, not a universal behavior schema. Runtime-specific behavior such as model routing, tool permissions, read-only modes, background execution, and reasoning effort stays in each tool's native artifact.
 
@@ -256,7 +256,7 @@ Review the current diff and return findings with file references.
 | `source` | string | Yes | Source repository or local directory. Supports GitHub/GitLab shorthands, git URLs, and `path:` sources; HTTPS well-known skill indexes are not supported for subagents. |
 | `ref` | string | No | Optional git ref override. |
 | `path` | string | No | Optional explicit subagent file path inside the source. Markdown paths are portable or native Markdown; `.toml` paths are Codex native artifacts. |
-| `targets` | string[] | No | Optional subset of agent IDs. Unsupported configured agents produce warnings. |
+| `targets` | string[] | No | Optional subset of agent IDs. When absent or empty, defaults to every configured agent in `agents`; unsupported configured agents produce warnings. |
 
 Generated subagent files:
 - Claude: `.claude/agents/<name>.md`, or `~/.claude/agents/<name>.md` for user scope
@@ -264,7 +264,7 @@ Generated subagent files:
 - Codex: `.codex/agents/<name>.toml`, or `~/.codex/agents/<name>.toml` for user scope
 - OpenCode: `.opencode/agents/<name>.md`, or `~/.config/opencode/agents/<name>.md` for user scope
 
-Generated files include a dotagents marker. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the marker. They also avoid creating duplicate runtime identities when an unmanaged file in the same agent directory already declares the same subagent.
+Generated files include a dotagents header marker. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the generated header marker. In `--frozen` mode, `install` preserves existing managed subagent files and lock entries instead of pruning removed subagents. They also avoid creating duplicate runtime identities when an unmanaged file in the same agent directory already declares the same subagent.
 
 ### Trust
 
@@ -310,7 +310,7 @@ Create `agents.toml` and `.agents/skills/` directory. Automatically includes the
 npx @sentry/dotagents install
 ```
 
-Install and refresh dependencies from `agents.toml`. Resolves sources, copies skills, writes the lockfile, creates symlinks, and generates MCP, hook, and subagent configs. There is no separate update command. With `--frozen`, declared skills and subagents must already exist in `agents.lock`, and the lockfile is not updated.
+Install and refresh dependencies from `agents.toml`. Resolves sources, copies skills, writes the lockfile, creates symlinks, and generates MCP, hook, and subagent configs. There is no separate update command. With `--frozen`, declared skills and subagents must already exist in `agents.lock`, the lockfile is not updated, and existing managed subagent files are not pruned.
 
 ### add
 

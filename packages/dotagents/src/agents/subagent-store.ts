@@ -14,7 +14,7 @@ import {
   type RepositorySource,
   type TrustPolicy,
 } from "@sentry/dotagents-lib";
-import { DOTAGENTS_SUBAGENT_MARKER, serializeMarkdownSubagent } from "./definitions/helpers.js";
+import { hasDotagentsMarkdownSubagentMarker, serializeMarkdownSubagent } from "./definitions/helpers.js";
 import { getAgent } from "./registry.js";
 import { subagentIdentityFromMarkdownMeta } from "./subagent-identity.js";
 import { SUBAGENT_NAME_PATTERN, type SubagentConfig } from "../config/schema.js";
@@ -148,12 +148,10 @@ export async function writeInstalledSubagents(
   }
 
   await mkdir(subagentsDir, { recursive: true });
-  const desired = new Set<string>();
   const written: string[] = [];
 
   for (const subagent of subagents) {
     const fileName = `${subagent.name}.md`;
-    desired.add(fileName);
     const filePath = join(subagentsDir, fileName);
     const content = serializeInstalledSubagent(subagent);
     if (await writeManagedFile(filePath, content)) {
@@ -161,7 +159,6 @@ export async function writeInstalledSubagents(
     }
   }
 
-  await pruneManagedMarkdownFiles(subagentsDir, desired);
   return written;
 }
 
@@ -528,7 +525,7 @@ async function writeManagedFile(filePath: string, content: string): Promise<bool
   try {
     const existing = await readFile(filePath, "utf-8");
     if (existing === content) {return false;}
-    if (!existing.includes(DOTAGENTS_SUBAGENT_MARKER)) {
+    if (!hasDotagentsMarkdownSubagentMarker(existing)) {
       throw new InstalledSubagentWriteError(`Subagent file exists and is not managed by dotagents: ${filePath}`);
     }
   } catch (err) {
@@ -551,7 +548,7 @@ async function pruneManagedMarkdownFiles(dirPath: string, desired: Set<string>):
 
     const filePath = join(dirPath, entry.name);
     const existing = await readFile(filePath, "utf-8");
-    if (existing.includes(DOTAGENTS_SUBAGENT_MARKER)) {
+    if (hasDotagentsMarkdownSubagentMarker(existing)) {
       await rm(filePath);
       pruned.push(filePath);
     }

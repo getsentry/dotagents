@@ -165,6 +165,17 @@ describe("writeSubagentConfigs", () => {
     expect(existsSync(join(dir, ".claude", "agents", "code-reviewer.md"))).toBe(false);
   });
 
+  it("treats empty targets as all configured agents", async () => {
+    await writeSubagentConfigs(
+      ["claude", "codex"],
+      [{ ...SUBAGENT, targets: [] }],
+      projectSubagentResolver(dir),
+    );
+
+    expect(existsSync(join(dir, ".claude", "agents", "code-reviewer.md"))).toBe(true);
+    expect(existsSync(join(dir, ".codex", "agents", "code-reviewer.toml"))).toBe(true);
+  });
+
   it("warns when a target is not configured", async () => {
     const result = await writeSubagentConfigs(
       ["claude"],
@@ -293,6 +304,26 @@ Hand-written instructions.
     expect(existsSync(join(targetDir, "code-reviewer.toml"))).toBe(false);
   });
 
+  it("does not overwrite unmanaged Codex files that mention the marker outside the header", async () => {
+    const targetDir = join(dir, ".codex", "agents");
+    await mkdir(targetDir, { recursive: true });
+    const filePath = join(targetDir, "code-reviewer.toml");
+    const content = [
+      'name = "code-reviewer"',
+      'description = "Hand-written reviewer."',
+      `developer_instructions = "Mentions ${DOTAGENTS_SUBAGENT_MARKER}"`,
+      "",
+    ].join("\n");
+    await writeFile(filePath, content, "utf-8");
+
+    const result = await writeSubagentConfigs(["codex"], [SUBAGENT], projectSubagentResolver(dir));
+
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]!.message).toContain("not managed by dotagents");
+    expect(result.written).toBe(0);
+    expect(await readFile(filePath, "utf-8")).toBe(content);
+  });
+
   it("prunes stale dotagents-managed files", async () => {
     const targetDir = join(dir, ".claude", "agents");
     await mkdir(targetDir, { recursive: true });
@@ -311,6 +342,26 @@ Hand-written instructions.
     expect(existsSync(join(targetDir, "code-reviewer.md"))).toBe(true);
   });
 
+  it("does not prune markdown files that start with a TOML-style marker", async () => {
+    const targetDir = join(dir, ".claude", "agents");
+    await mkdir(targetDir, { recursive: true });
+    const stalePath = join(targetDir, "old-reviewer.md");
+    await writeFile(
+      stalePath,
+      `# ${DOTAGENTS_SUBAGENT_MARKER}
+---
+name: "old-reviewer"
+---
+`,
+      "utf-8",
+    );
+
+    const pruned = await pruneSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
+
+    expect(pruned).toEqual([]);
+    expect(existsSync(stalePath)).toBe(true);
+  });
+
   it("does not prune managed files for runtimes not listed in agents", async () => {
     const targetDir = join(dir, ".codex", "agents");
     await mkdir(targetDir, { recursive: true });
@@ -323,6 +374,27 @@ Hand-written instructions.
 
     await writeSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
     const pruned = await pruneSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
+
+    expect(pruned).toEqual([]);
+    expect(existsSync(stalePath)).toBe(true);
+  });
+
+  it("does not prune Codex files that mention the marker outside the header", async () => {
+    const targetDir = join(dir, ".codex", "agents");
+    await mkdir(targetDir, { recursive: true });
+    const stalePath = join(targetDir, "old-reviewer.toml");
+    await writeFile(
+      stalePath,
+      [
+        'name = "old-reviewer"',
+        'description = "Old reviewer."',
+        `developer_instructions = "Mentions ${DOTAGENTS_SUBAGENT_MARKER}"`,
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const pruned = await pruneSubagentConfigs(["codex"], [SUBAGENT], projectSubagentResolver(dir));
 
     expect(pruned).toEqual([]);
     expect(existsSync(stalePath)).toBe(true);
