@@ -23,7 +23,7 @@ import {
   GitError,
   copyDir,
 } from "@sentry/dotagents-lib";
-import { isInPlaceSkill } from "../../utils/fs.js";
+import { isInPlaceSkill, managedSkillPath } from "../../utils/fs.js";
 import { getCacheStateDir, HOST_SCAN_DIRS } from "../cache.js";
 import { formatGitError, formatTrustError } from "../errors.js";
 import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore/writer.js";
@@ -276,19 +276,24 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       installed.push(name);
     }
 
-    // Prune stale wildcard-sourced skills (skip in frozen mode to avoid disk/lockfile inconsistency)
+    // Prune stale managed skills (skip in frozen mode to avoid disk/lockfile inconsistency)
     if (!frozen && lockfile) {
-      const wildcardDeps = config.skills.filter(isWildcardDep);
       for (const [name, locked] of Object.entries(lockfile.skills)) {
         if (newLock.skills[name]) {continue;} // still tracked
-        const fromWildcard = wildcardDeps.some((w) =>
-          sourcesMatch(locked.source, w.source),
-        );
-        if (fromWildcard) {
-          await rm(join(skillsDir, name), { recursive: true, force: true });
-          pruned.push(name);
-        }
+        if (isInPlaceSkill(locked.source)) {continue;}
+        const skillPath = managedSkillPath(skillsDir, name);
+        if (!skillPath) {continue;}
+        await rm(skillPath, { recursive: true, force: true });
+        pruned.push(name);
       }
+    }
+  } else if (!frozen && lockfile) {
+    for (const [name, locked] of Object.entries(lockfile.skills)) {
+      if (isInPlaceSkill(locked.source)) {continue;}
+      const skillPath = managedSkillPath(skillsDir, name);
+      if (!skillPath) {continue;}
+      await rm(skillPath, { recursive: true, force: true });
+      pruned.push(name);
     }
   }
 

@@ -109,9 +109,10 @@ export function serializeMarkdownSubagent(
   return lines.join("\n");
 }
 
+/** Insert the dotagents marker into markdown subagent frontmatter. */
 export function markManagedMarkdownSubagent(content: string): string {
   if (content.includes(DOTAGENTS_SUBAGENT_MARKER)) {return content;}
-  return content.replace(/^---\r?\n/, (opening) => `${opening}# ${DOTAGENTS_SUBAGENT_MARKER}\n`);
+  return content.replace(/^(\uFEFF?---[ \t]*\r?\n)/, (opening) => `${opening}# ${DOTAGENTS_SUBAGENT_MARKER}\n`);
 }
 
 export function serializeCodexSubagent(

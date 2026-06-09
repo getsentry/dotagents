@@ -4,7 +4,9 @@ import {
   interpolateEnvRefs,
   interpolateHeaders,
   extractCodexHeaders,
+  markManagedMarkdownSubagent,
   serializeMarkdownSubagent,
+  DOTAGENTS_SUBAGENT_MARKER,
 } from "./helpers.js";
 
 const cursorTpl = (k: string) => `\${env:${k}}`;
@@ -134,5 +136,17 @@ describe("serializeMarkdownSubagent", () => {
     expect(parsed.meta["dotagents_native"]).toEqual({
       codex: 'name = "code_reviewer"\ndescription = "Review code."\n',
     });
+  });
+});
+
+describe("markManagedMarkdownSubagent", () => {
+  it("marks markdown with a BOM and spaced frontmatter opener", () => {
+    const content = "\uFEFF---   \nname: code-reviewer\n---\n\nReview code.\n";
+
+    const marked = markManagedMarkdownSubagent(content);
+
+    expect(marked).toContain(`# ${DOTAGENTS_SUBAGENT_MARKER}`);
+    const parsed = parseMarkdownFrontmatterContent(marked, "subagent.md");
+    expect(parsed.meta["name"]).toBe("code-reviewer");
   });
 });

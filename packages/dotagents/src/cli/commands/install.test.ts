@@ -7,6 +7,7 @@ import { runInstall as runInstallCommand, InstallError, type InstallOptions, typ
 import { runSync } from "./sync.js";
 import { exec } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
+import { writeLockfile } from "../../lockfile/writer.js";
 import { resolveScope } from "../../scope.js";
 import { DOTAGENTS_SUBAGENT_MARKER } from "../../agents/definitions/helpers.js";
 
@@ -374,12 +375,21 @@ path = "code-reviewer.md"
   });
 
   it("clears removed skills from the lockfile when installing subagents", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
-    );
     const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
+    const skillDir = join(projectRoot, ".agents", "skills", "pdf");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("pdf"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        pdf: {
+          source: "git:https://github.com/example/repo.git",
+          resolved_url: "https://github.com/example/repo.git",
+          resolved_path: "pdf",
+          resolved_commit: "abc123",
+        },
+      },
+    });
 
     const sourceDir = join(projectRoot, "agents");
     await mkdir(sourceDir, { recursive: true });
@@ -400,6 +410,99 @@ path = "code-reviewer.md"
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile!.skills).toEqual({});
     expect(lockfile!.subagents["code-reviewer"]?.source).toBe("path:agents");
+    expect(existsSync(skillDir)).toBe(false);
+
+    const syncResult = await runSync({ scope });
+    expect(syncResult.adopted).toEqual([]);
+  });
+
+  it("does not prune outside skills dir for malformed lockfile skill names", async () => {
+    const scope = resolveScope("project", projectRoot);
+    const hooksDir = join(projectRoot, ".agents", "hooks");
+    const pdfDir = join(projectRoot, ".agents", "skills", "pdf");
+    await mkdir(hooksDir, { recursive: true });
+    await mkdir(pdfDir, { recursive: true });
+    await writeFile(join(hooksDir, "keep.sh"), "echo keep\n");
+    await writeFile(join(pdfDir, "SKILL.md"), SKILL_MD("pdf"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        "../hooks": {
+          source: "git:https://github.com/example/repo.git",
+          resolved_url: "https://github.com/example/repo.git",
+          resolved_path: "pdf",
+          resolved_commit: "abc123",
+        },
+        "stale/../pdf": {
+          source: "git:https://github.com/example/repo.git",
+          resolved_url: "https://github.com/example/repo.git",
+          resolved_path: "pdf",
+          resolved_commit: "abc123",
+        },
+      },
+    });
+
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    await runInstall({ scope });
+
+    expect(await readFile(join(hooksDir, "keep.sh"), "utf-8")).toBe("echo keep\n");
+    expect(await readFile(join(pdfDir, "SKILL.md"), "utf-8")).toBe(SKILL_MD("pdf"));
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills).toEqual({});
+  });
+
+  it("prunes removed managed skills while other skills remain configured", async () => {
+    const scope = resolveScope("project", projectRoot);
+    const localSkillDir = join(projectRoot, ".agents", "skills", "local-skill");
+    const staleSkillDir = join(projectRoot, ".agents", "skills", "pdf");
+    await mkdir(localSkillDir, { recursive: true });
+    await mkdir(staleSkillDir, { recursive: true });
+    await writeFile(join(localSkillDir, "SKILL.md"), SKILL_MD("local-skill"));
+    await writeFile(join(staleSkillDir, "SKILL.md"), SKILL_MD("pdf"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        "local-skill": { source: "path:.agents/skills/local-skill" },
+        pdf: {
+          source: "git:https://github.com/example/repo.git",
+          resolved_url: "https://github.com/example/repo.git",
+          resolved_path: "pdf",
+          resolved_commit: "abc123",
+        },
+      },
+    });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[skills]]
+name = "local-skill"
+source = "path:.agents/skills/local-skill"
+`,
+    );
+
+    const result = await runInstall({ scope });
+
+    expect(result.pruned).toEqual(["pdf"]);
+    expect(existsSync(staleSkillDir)).toBe(false);
+    expect(existsSync(join(localSkillDir, "SKILL.md"))).toBe(true);
+
+    const syncResult = await runSync({ scope });
+    expect(syncResult.adopted).toEqual([]);
   });
 
   it("preserves native Codex content through install and sync", async () => {
@@ -749,7 +852,7 @@ path = "reviewer.md"
     expect(lock!.skills["pdf"]).toBeDefined();
   });
 
-  it("does not prune skills whose source does not match a wildcard", async () => {
+  it("prunes stale managed skills whose source does not match a wildcard", async () => {
     // Create a second repo with a "helper" skill
     const repoDir2 = join(tmpDir, "repo2");
     await mkdir(repoDir2, { recursive: true });
@@ -785,10 +888,9 @@ path = "reviewer.md"
 
     // "review" was from the wildcard source and was removed upstream — should be pruned
     expect(result.pruned).toContain("review");
-    // "helper" was explicit from a different source — should NOT be pruned
-    expect(result.pruned).not.toContain("helper");
-    // helper's directory should still exist on disk
-    expect(existsSync(join(projectRoot, ".agents", "skills", "helper", "SKILL.md"))).toBe(true);
+    // "helper" was removed from config, so it should also be pruned
+    expect(result.pruned).toContain("helper");
+    expect(existsSync(join(projectRoot, ".agents", "skills", "helper"))).toBe(false);
   });
 
   it("prunes skills added to wildcard exclude list", async () => {

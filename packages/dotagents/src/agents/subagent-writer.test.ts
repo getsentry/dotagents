@@ -134,6 +134,26 @@ describe("writeSubagentConfigs", () => {
     expect(cursor).toContain("Review the current diff and return findings.");
   });
 
+  it("marks native markdown that has a BOM and spaced frontmatter opener", async () => {
+    const result = await writeSubagentConfigs(
+      ["claude"],
+      [{
+        ...SUBAGENT,
+        native: {
+          claude: "\uFEFF--- \nname: code-reviewer\ndescription: Review code.\n---\n\nNative instructions.\n",
+        },
+      }],
+      projectSubagentResolver(dir),
+    );
+
+    expect(result.warnings).toEqual([]);
+    expect(result.written).toBe(1);
+
+    const content = await readFile(join(dir, ".claude", "agents", "code-reviewer.md"), "utf-8");
+    expect(content).toContain(DOTAGENTS_SUBAGENT_MARKER);
+    expect(content).toContain("Native instructions.");
+  });
+
   it("respects explicit targets", async () => {
     await writeSubagentConfigs(
       ["claude", "codex"],

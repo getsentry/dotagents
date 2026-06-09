@@ -18,7 +18,7 @@ import { loadInstalledSubagents, pruneInstalledSubagents } from "../../agents/su
 import { userMcpResolver } from "../../agents/paths.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
-import { isInPlaceSkill } from "../../utils/fs.js";
+import { isInPlaceSkill, managedSkillPath } from "../../utils/fs.js";
 
 export interface SyncIssue {
   type: "symlink" | "missing" | "mcp" | "hooks" | "subagents";
@@ -78,9 +78,11 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 
       const locked = lockfile?.skills[entry.name];
       if (locked && !isInPlaceSkill(locked.source)) {
-        await removeStaleManagedSkill(skillsDir, entry.name);
-        delete lockfile!.skills[entry.name];
-        pruned.push(entry.name);
+        const removed = await removeStaleManagedSkill(skillsDir, entry.name);
+        if (removed) {
+          delete lockfile!.skills[entry.name];
+          pruned.push(entry.name);
+        }
         continue;
       }
 
@@ -305,8 +307,11 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   };
 }
 
-async function removeStaleManagedSkill(skillsDir: string, name: string): Promise<void> {
-  await rm(join(skillsDir, name), { recursive: true, force: true });
+async function removeStaleManagedSkill(skillsDir: string, name: string): Promise<boolean> {
+  const skillPath = managedSkillPath(skillsDir, name);
+  if (!skillPath) {return false;}
+  await rm(skillPath, { recursive: true, force: true });
+  return true;
 }
 
 export default async function sync(_args: string[], flags?: { user?: boolean }): Promise<void> {

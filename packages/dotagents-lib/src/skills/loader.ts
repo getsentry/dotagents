@@ -32,7 +32,7 @@ export interface LoadSkillMdOptions {
   onWarning?: (message: string) => void;
 }
 
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---/;
+const FRONTMATTER_RE = /^\uFEFF?---[ \t]*\r?\n([\s\S]*?)\r?\n---/;
 
 /**
  * Parse a SKILL.md file and extract YAML frontmatter.

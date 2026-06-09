@@ -128,6 +128,36 @@ describe("runSync", () => {
     expect(lockfile!.skills["pdf"]).toBeUndefined();
   });
 
+  it("does not report malformed stale skill names as pruned", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      "version = 1\n",
+    );
+    const managedDir = join(projectRoot, ".agents", "skills", "bad name");
+    await mkdir(managedDir, { recursive: true });
+    await writeFile(join(managedDir, "SKILL.md"), SKILL_MD("bad name"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        "bad name": {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "bad-name",
+        },
+      },
+    });
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.adopted).toHaveLength(0);
+    expect(result.pruned).toHaveLength(0);
+    expect(existsSync(managedDir)).toBe(true);
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile).not.toBeNull();
+    expect(lockfile!.skills["bad name"]).toBeDefined();
+  });
+
   it("prunes wildcard skills newly excluded from config", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

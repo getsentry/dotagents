@@ -37,6 +37,24 @@ This skill handles PDF files.
     expect(meta["license"]).toBe("MIT");
   });
 
+  it("parses frontmatter with a BOM and spaced opener", async () => {
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `\uFEFF--- \t
+name: pdf-processing
+description: Extract and process PDF documents
+---
+
+# PDF Processing
+`,
+    );
+
+    const meta = await loadSkillMd(skillMd);
+    expect(meta.name).toBe("pdf-processing");
+    expect(meta.description).toBe("Extract and process PDF documents");
+  });
+
   it("handles quoted values", async () => {
     const skillMd = join(dir, "SKILL.md");
     await writeFile(
