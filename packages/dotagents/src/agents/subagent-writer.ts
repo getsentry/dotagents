@@ -316,10 +316,10 @@ async function pruneManagedFiles(
     for (const entry of entries) {
       if (!entry.isFile()) {continue;}
       if (!entry.name.endsWith(desired.extension)) {continue;}
+      if (desired.files.has(entry.name)) {continue;}
 
       const filePath = join(dirPath, entry.name);
       const existing = await readFile(filePath, "utf-8");
-      if (desired.files.has(entry.name)) {continue;}
       if (hasDotagentsSubagentMarker(desired.spec, existing)) {
         await rm(filePath);
         pruned.push(filePath);

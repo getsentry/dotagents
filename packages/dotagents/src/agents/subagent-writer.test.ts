@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -377,6 +377,34 @@ name: "old-reviewer"
 
     expect(pruned).toEqual([]);
     expect(existsSync(stalePath)).toBe(true);
+  });
+
+  it("does not read desired files while pruning stale files", async () => {
+    const targetDir = join(dir, ".claude", "agents");
+    await mkdir(targetDir, { recursive: true });
+    const desiredPath = join(targetDir, "code-reviewer.md");
+    const stalePath = join(targetDir, "old-reviewer.md");
+    await writeFile(
+      desiredPath,
+      `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "code-reviewer"\n---\n`,
+      "utf-8",
+    );
+    await writeFile(
+      stalePath,
+      `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "old-reviewer"\n---\n`,
+      "utf-8",
+    );
+
+    await chmod(desiredPath, 0o000);
+    try {
+      const pruned = await pruneSubagentConfigs(["claude"], [SUBAGENT], projectSubagentResolver(dir));
+
+      expect(pruned).toEqual([stalePath]);
+      expect(existsSync(desiredPath)).toBe(true);
+      expect(existsSync(stalePath)).toBe(false);
+    } finally {
+      await chmod(desiredPath, 0o600);
+    }
   });
 
   it("does not prune Codex files that mention the marker outside the header", async () => {
