@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access, chmod } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -474,6 +474,50 @@ path = "code-reviewer.md"
     expect(lockfile!.subagents["code-reviewer"]).toBeUndefined();
     expect(lockfile!.subagents["old-reviewer"]).toBeUndefined();
     expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
+  });
+
+  it("keeps written subagent lock entries when stale subagent pruning fails", async () => {
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    const installedDir = join(projectRoot, ".agents", "agents");
+    await mkdir(installedDir, { recursive: true });
+    const stalePath = join(installedDir, "old-reviewer.md");
+    await writeFile(
+      stalePath,
+      `---
+# ${DOTAGENTS_SUBAGENT_MARKER}
+name: old-reviewer
+description: Review old code.
+---
+
+Review old code.
+`,
+      "utf-8",
+    );
+    await chmod(stalePath, 0o000);
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    try {
+      await expect(runInstall({ scope })).rejects.toThrow();
+    } finally {
+      await chmod(stalePath, 0o600).catch(() => {});
+    }
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.subagents["code-reviewer"]?.source).toBe("path:agents");
+    expect(existsSync(join(installedDir, "code-reviewer.md"))).toBe(true);
   });
 
   it("does not prune outside skills dir for malformed lockfile skill names", async () => {

@@ -373,19 +373,23 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   }
 
   const shouldWriteLockfile = !frozen && (lockfile || config.skills.length > 0 || config.subagents.length > 0);
-  if (shouldWriteLockfile) {
-    await writeLockfile(lockPath, {
-      ...newLock,
-      subagents: unchangedSubagentLockEntries(lockfile, newLock),
-    });
-  }
+  let installedSubagentsWritten = false;
 
   try {
     if (!frozen) {
       await writeInstalledSubagents(subagentsDir, installedSubagents);
+      installedSubagentsWritten = true;
       await pruneInstalledSubagents(subagentsDir, config.subagents);
     }
   } catch (err) {
+    if (shouldWriteLockfile) {
+      await writeLockfile(lockPath, {
+        ...newLock,
+        subagents: installedSubagentsWritten
+          ? newLock.subagents
+          : unchangedSubagentLockEntries(lockfile, newLock),
+      });
+    }
     if (err instanceof InstalledSubagentWriteError) {
       throw new InstallError(err.message);
     }
