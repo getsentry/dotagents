@@ -220,7 +220,7 @@ Review the current diff and return findings with file references.
 
 dotagents intentionally does not standardize runtime-specific subagent behavior such as model routing, tool permissions, read-only modes, background execution, or reasoning effort. Those controls differ across runtimes and should stay in each tool's native config until there is a maintainable common contract.
 
-Installed and generated files are marked as dotagents-managed with a generated header marker. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the generated header marker. In `--frozen` mode, `install` preserves existing managed subagent files and lock entries instead of pruning removed subagents.
+Installed and generated files are marked as dotagents-managed with a generated header marker. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the generated header marker. In `--frozen` mode, `install` loads subagents from existing installed files, preserves managed subagent files and lock entries instead of pruning removed subagents, and does not resolve subagent sources.
 
 Generated paths:
 
@@ -446,7 +446,7 @@ dotagents install
    b. Discover skill within the repo
    c. Copy skill directory into `.agents/skills/<name>/`
 3. Write `agents.lock` with the current configured skills and subagents
-   - In `--frozen` mode, require configured dependencies to already be present in `agents.lock`, do not update the lockfile, and do not prune existing managed subagent files
+   - In `--frozen` mode, require configured dependencies to already be present in `agents.lock`, load subagents from installed files, do not update the lockfile, and do not prune existing managed subagent files
 4. Regenerate `.agents/.gitignore`
 5. Warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
 6. Create/verify symlinks (legacy `[symlinks]` and agent-specific)

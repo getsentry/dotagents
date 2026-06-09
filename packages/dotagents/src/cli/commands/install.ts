@@ -35,6 +35,7 @@ import { pruneSubagentConfigs, writeSubagentConfigs, projectSubagentResolver, us
 import {
   InstalledSubagentWriteError,
   lockEntryForSubagent,
+  loadInstalledSubagents,
   pruneInstalledSubagents,
   resolveSubagent,
   writeInstalledSubagents,
@@ -302,8 +303,14 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   const installedSubagents: SubagentDeclaration[] = [];
   if (frozen) {
     validateFrozenSubagents(config.subagents, lockfile);
-  }
-  if (config.subagents.length > 0) {
+    if (config.subagents.length > 0) {
+      const loaded = await loadInstalledSubagents(subagentsDir, config.subagents);
+      if (loaded.issues.length > 0) {
+        throw new InstallError(loaded.issues.map((issue) => issue.issue).join("\n"));
+      }
+      installedSubagents.push(...loaded.subagents);
+    }
+  } else if (config.subagents.length > 0) {
     for (const subagentConfig of config.subagents) {
       let resolved: Awaited<ReturnType<typeof resolveSubagent>>;
       try {
@@ -325,8 +332,8 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     }
   }
   try {
-    await writeInstalledSubagents(subagentsDir, installedSubagents);
     if (!frozen) {
+      await writeInstalledSubagents(subagentsDir, installedSubagents);
       await pruneInstalledSubagents(subagentsDir, config.subagents);
     }
   } catch (err) {

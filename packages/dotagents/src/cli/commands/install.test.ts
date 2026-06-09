@@ -326,12 +326,12 @@ path = "code-reviewer.md"
   });
 
   it("frozen mode fails when a subagent is missing from the lockfile", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
-    );
     const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+    });
 
     const sourceDir = join(projectRoot, "agents");
     await mkdir(sourceDir, { recursive: true });
@@ -369,6 +369,8 @@ path = "code-reviewer.md"
 
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
+
+    await rm(sourceDir, { recursive: true });
 
     const result = await runInstall({ scope, frozen: true });
     expect(result.subagentWarnings).toEqual([]);
