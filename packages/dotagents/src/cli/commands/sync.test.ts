@@ -584,6 +584,35 @@ agents = ["claude"]
     expect(lockfile!.subagents).toEqual({});
   });
 
+  it("includes lockfile subagents when regenerating gitignore", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+`,
+    );
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {
+        "old-reviewer": {
+          source: "path:agents",
+        },
+      },
+    });
+    await mkdir(join(projectRoot, ".agents", "agents"), { recursive: true });
+    await writeFile(
+      join(projectRoot, ".agents", "agents", "old-reviewer.md"),
+      `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "old-reviewer"\n---\n`,
+      "utf-8",
+    );
+
+    await runSync({ scope: resolveScope("project", projectRoot) });
+
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).toContain("/agents/old-reviewer.md");
+  });
+
   it("does not auto-create root .gitignore", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

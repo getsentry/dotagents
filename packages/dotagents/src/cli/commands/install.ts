@@ -332,8 +332,12 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     }
   }
 
-  if (!frozen && (lockfile || config.skills.length > 0 || config.subagents.length > 0)) {
-    await writeLockfile(lockPath, newLock);
+  const shouldWriteLockfile = !frozen && (lockfile || config.skills.length > 0 || config.subagents.length > 0);
+  if (shouldWriteLockfile) {
+    await writeLockfile(lockPath, {
+      ...newLock,
+      subagents: lockfile?.subagents ?? {},
+    });
   }
 
   try {
@@ -346,6 +350,10 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       throw new InstallError(err.message);
     }
     throw err;
+  }
+
+  if (shouldWriteLockfile) {
+    await writeLockfile(lockPath, newLock);
   }
 
   // 4. Gitignore (skip for user scope — ~/.agents/ is not a git repo)

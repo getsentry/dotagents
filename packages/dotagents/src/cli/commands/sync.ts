@@ -122,10 +122,16 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       if (!dep || isWildcardDep(dep)) {return true;} // wildcard-sourced skills are always managed
       return !isInPlaceSkill(dep.source);
     });
+    const managedSubagentNames = new Set(config.subagents.map((subagent) => subagent.name));
+    if (lockNow) {
+      for (const name of Object.keys(lockNow.subagents)) {
+        managedSubagentNames.add(name);
+      }
+    }
     await writeAgentsGitignore(
       agentsDir,
       managedNames,
-      config.subagents.map((subagent) => subagent.name),
+      [...managedSubagentNames],
     );
     gitignoreUpdated = true;
 
