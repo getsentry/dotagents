@@ -269,7 +269,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   );
   const prunedSubagentConfigs = await pruneSubagentConfigs(
     config.agents,
-    config.subagents,
+    subagentDecls,
     subagentResolver,
   );
   subagentsRepaired = subagentResult.written + prunedSubagentConfigs.length + prunedInstalledSubagents.length;
