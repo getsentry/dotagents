@@ -513,7 +513,7 @@ path = "reviewer.md"
     expect(existsSync(join(agentsDir, "alias.md"))).toBe(true);
   });
 
-  it("prunes runtime files for declared subagents that are not installed", async () => {
+  it("does not prune runtime files for declared subagents that are not installed", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1
@@ -536,8 +536,8 @@ path = "reviewer.md"
     const result = await runSync({ scope: resolveScope("project", projectRoot) });
 
     expect(result.issues.some((i) => i.type === "subagents" && i.message.includes("not installed"))).toBe(true);
-    expect(result.subagentsRepaired).toBe(1);
-    expect(existsSync(join(agentsDir, "reviewer.md"))).toBe(false);
+    expect(result.subagentsRepaired).toBe(0);
+    expect(existsSync(join(agentsDir, "reviewer.md"))).toBe(true);
   });
 
   it("reports pruned subagent configs as repaired", async () => {
