@@ -1,6 +1,7 @@
 version = 1
 
 [defaults]
+runtime = "pi"
 failOn = "high"
 reportOn = "medium"
 ignorePaths = ["dist/**"]
