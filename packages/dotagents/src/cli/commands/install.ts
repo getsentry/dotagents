@@ -383,12 +383,16 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     }
   } catch (err) {
     if (shouldWriteLockfile) {
-      await writeLockfile(lockPath, {
-        ...newLock,
-        subagents: installedSubagentsSynced
-          ? newLock.subagents
-          : unchangedSubagentLockEntries(lockfile, newLock),
-      });
+      try {
+        await writeLockfile(lockPath, {
+          ...newLock,
+          subagents: installedSubagentsSynced
+            ? newLock.subagents
+            : unchangedSubagentLockEntries(lockfile, newLock),
+        });
+      } catch {
+        // Preserve the original install failure; this recovery write is best-effort.
+      }
     }
     if (err instanceof InstalledSubagentWriteError) {
       throw new InstallError(err.message);
