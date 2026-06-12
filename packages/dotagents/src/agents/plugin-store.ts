@@ -328,7 +328,7 @@ async function discoverFromMarketplaces(
       if (!path) {continue;}
 
       const pluginDir = resolveInside(sourceDir, join(root, path), "Marketplace plugin source");
-      const candidate = await loadPluginCandidate(sourceDir, pluginDir, entry);
+      const candidate = await loadPluginCandidate(sourceDir, pluginDir, marketplaceManifestOverlay(entry));
       if (candidate) {return candidate;}
     }
   }
@@ -362,7 +362,7 @@ async function scanPluginDirectories(
 async function loadPluginCandidate(
   sourceRoot: string,
   pluginDir: string,
-  overlay: Partial<MarketplacePluginEntry> = {},
+  overlay: Partial<PluginManifest> = {},
 ): Promise<PluginCandidate | null> {
   if (!existsSync(pluginDir)) {return null;}
 
@@ -380,6 +380,16 @@ async function loadPluginCandidate(
     path: relativePath(sourceRoot, pluginDir),
     manifest: combined,
   };
+}
+
+function marketplaceManifestOverlay(
+  entry: MarketplacePluginEntry,
+): Partial<PluginManifest> {
+  const overlay: Partial<PluginManifest> = { name: entry.name };
+  if (entry.description) {overlay.description = entry.description;}
+  if (entry.version) {overlay.version = entry.version;}
+  if (entry.category) {overlay.category = entry.category;}
+  return overlay;
 }
 
 async function loadManifest(pluginDir: string): Promise<PluginManifest | null> {

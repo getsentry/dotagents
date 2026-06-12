@@ -304,6 +304,33 @@ source = "path:./.agents/plugins/local-tools/source"
     expect(existsSync(sourceDir)).toBe(true);
   });
 
+  it("rejects same-project plugins in frozen mode", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "local-tools"
+source = "path:.agents/plugins/local-tools"
+`,
+    );
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {
+        "local-tools": { source: "path:.agents/plugins/local-tools" },
+      },
+    });
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope, frozen: true })).rejects.toThrow(/Same-project plugins cannot be installed into the same project/);
+  });
+
   it("prefers canonical plugin directories before marketplace entries", async () => {
     const sourceRoot = join(projectRoot, "plugin-source");
     const canonicalDir = join(sourceRoot, ".agents", "plugins", "review-tools");
@@ -351,6 +378,63 @@ source = "path:plugin-source"
       await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
     ) as Record<string, unknown>;
     expect(installed["description"]).toBe("Canonical plugin");
+  });
+
+  it("does not copy marketplace-only fields into manifest outputs", async () => {
+    const sourceRoot = join(projectRoot, "plugin-source");
+    const pluginDir = join(sourceRoot, "plugins", "review-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(sourceRoot, "marketplace.json"),
+      JSON.stringify({
+        name: "test-marketplace",
+        plugins: [
+          {
+            name: "review-tools",
+            source: { source: "local", path: "plugins/review-tools" },
+            description: "Marketplace description",
+            version: "1.0.0",
+            category: "Coding",
+            policy: { installation: "AVAILABLE" },
+            "x-marketplace": true,
+          },
+        ],
+      }, null, 2),
+    );
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const installedManifest = JSON.parse(
+      await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    const codexManifest = JSON.parse(
+      await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"), "utf-8"),
+    ) as Record<string, unknown>;
+
+    expect(installedManifest).toMatchObject({
+      name: "review-tools",
+      description: "Marketplace description",
+      version: "1.0.0",
+      category: "Coding",
+    });
+    expect(installedManifest["source"]).toBeUndefined();
+    expect(installedManifest["policy"]).toBeUndefined();
+    expect(installedManifest["x-marketplace"]).toBeUndefined();
+    expect(codexManifest["source"]).toBeUndefined();
+    expect(codexManifest["policy"]).toBeUndefined();
+    expect(codexManifest["x-marketplace"]).toBeUndefined();
   });
 
   it("generates plugin runtime outputs in frozen mode from installed bundles", async () => {

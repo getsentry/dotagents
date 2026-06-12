@@ -34,7 +34,6 @@ export interface InstallOptions {
 
 export interface InstallResult {
   installed: string[];
-  skipped: string[];
   pruned: string[];
   prunedPlugins: string[];
   hookWarnings: { agent: string; message: string }[];
@@ -45,6 +44,13 @@ export interface InstallResult {
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   const { scope, frozen } = opts;
   const config = await loadConfig(scope.configPath);
+  if (scope.scope === "user" && config.plugins.length > 0) {
+    throw new InstallError(
+      "User-scope plugins are not supported yet because plugin runtime projections are project-scoped. " +
+        "Declare plugins in a project agents.toml instead.",
+    );
+  }
+
   const lockfile = await loadLockfile(scope.lockPath);
   const skills = await installSkills(config, lockfile, scope, frozen);
   const subagents = await installSubagents(config, lockfile, scope, frozen);
@@ -80,7 +86,6 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
 
   return {
     installed: skills.installed,
-    skipped: [],
     pruned: skills.pruned,
     prunedPlugins: plugins.pruned,
     hookWarnings,
