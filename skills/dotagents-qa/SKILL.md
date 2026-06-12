@@ -55,6 +55,12 @@ docker build \
   skills/dotagents-qa
 ```
 
+The image installs the latest npm-published Codex, Claude Code, and OpenCode
+CLIs (`codex`, `claude`, `opencode`). Use them for version checks, help-output
+checks, and optional isolated runtime probes. Their presence does not prove
+runtime discovery by itself; authenticated model-backed checks are still
+explicit opt-ins.
+
 Use an interactive container so the QA steps stay change-specific:
 
 ```bash
@@ -93,6 +99,28 @@ tar -C /host-repo \
 cd /sandbox/repo
 pnpm install --frozen-lockfile
 pnpm build
+```
+
+Run package commands as the non-root `node` user. Root can bypass chmod-based
+permission checks, which can mask or invert filesystem regression tests.
+
+For non-interactive QA, copy as root, then hand the repo to `node` before
+running package scripts:
+
+```bash
+chown -R node:node /sandbox
+su -s /bin/bash node -c '
+  set -euo pipefail
+  export CI=1
+  export HOME=/sandbox/home
+  export DOTAGENTS_STATE_DIR=/sandbox/state
+  export DOTAGENTS_HOME=/sandbox/user-agents
+  cd /sandbox/repo
+  pnpm install --frozen-lockfile
+  pnpm build
+  pnpm check
+  pnpm smoke:examples
+'
 ```
 
 Run `pnpm check` inside Docker unless the change requires a narrower target or
@@ -282,6 +310,14 @@ does not prove an installed host client notices them.
 Keep host-client checks isolated with explicit temp homes/config dirs where
 the client supports it. If a client cannot run without reading host state, say
 so and report the Docker-generated files you inspected instead.
+
+Inside the QA image, start with cheap client availability checks:
+
+```bash
+codex --version
+claude --version
+opencode --version
+```
 
 Codex subagents need real runtime proof before claiming Codex loaded them. Use
 `node scripts/smoke-examples.mjs --codex-runtime --keep`; `codex debug

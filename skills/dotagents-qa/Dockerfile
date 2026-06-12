@@ -19,6 +19,14 @@ RUN mkdir -p "$PNPM_HOME" "$COREPACK_HOME" \
   && corepack enable \
   && corepack prepare pnpm@10.28.2 --activate
 
+RUN npm install -g --no-audit --no-fund \
+    @anthropic-ai/claude-code@latest \
+    @openai/codex@latest \
+    opencode-ai@latest \
+  && claude --version \
+  && codex --version \
+  && opencode --version
+
 WORKDIR /sandbox
 
 CMD ["bash"]
