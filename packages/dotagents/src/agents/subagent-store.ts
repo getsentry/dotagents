@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { parse as parseTOML } from "smol-toml";
 import {
@@ -28,6 +28,7 @@ import type {
 
 const DOTAGENTS_NATIVE_FIELD = "dotagents_native";
 const NATIVE_SUBAGENT_TARGETS = ["claude", "cursor", "codex", "opencode"] satisfies NativeSubagentTarget[];
+let tempFileCounter = 0;
 
 interface SubagentScanDir {
   dir: string;
@@ -167,7 +168,7 @@ export async function writeInstalledSubagents(
   const written: string[] = [];
   try {
     for (const planned of plannedWrites) {
-      await writeFile(planned.filePath, planned.content, "utf-8");
+      await replaceFileAtomic(planned.filePath, planned.content);
       written.push(planned.filePath);
     }
   } catch (err) {
@@ -175,7 +176,7 @@ export async function writeInstalledSubagents(
       if (planned.previous === undefined) {
         await rm(planned.filePath, { force: true });
       } else {
-        await writeFile(planned.filePath, planned.previous, "utf-8");
+        await replaceFileAtomic(planned.filePath, planned.previous);
       }
     }
     throw err;
@@ -553,6 +554,17 @@ async function readManagedFileForWrite(filePath: string): Promise<string | undef
   } catch (err) {
     if (!isNotFoundError(err)) {throw err;}
     return undefined;
+  }
+}
+
+async function replaceFileAtomic(filePath: string, content: string): Promise<void> {
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${tempFileCounter++}`;
+  try {
+    await writeFile(tempPath, content, "utf-8");
+    await rename(tempPath, filePath);
+  } catch (err) {
+    await rm(tempPath, { force: true });
+    throw err;
   }
 }
 
