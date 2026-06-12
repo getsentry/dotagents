@@ -159,7 +159,7 @@ export async function writeInstalledSubagents(
     const fileName = `${subagent.name}.md`;
     const filePath = join(subagentsDir, fileName);
     const content = serializeInstalledSubagent(subagent);
-    const previous = await readManagedFileForWrite(filePath);
+    const previous = await readManagedInstalledSubagentFile(filePath);
     if (previous !== content) {
       plannedWrites.push({ filePath, content, previous });
     }
@@ -209,6 +209,7 @@ export async function loadInstalledSubagents(
     }
 
     try {
+      await assertManagedInstalledSubagentFile(filePath);
       const subagent = await loadSubagentFile(filePath);
       assertSubagentNameMatches(subagent.name, config.name, `${config.name}.md`);
       subagents.push({ ...subagent, targets: config.targets });
@@ -550,7 +551,11 @@ function serializeInstalledSubagent(subagent: SubagentDeclaration): string {
   );
 }
 
-async function readManagedFileForWrite(filePath: string): Promise<string | undefined> {
+async function assertManagedInstalledSubagentFile(filePath: string): Promise<void> {
+  await readManagedInstalledSubagentFile(filePath);
+}
+
+async function readManagedInstalledSubagentFile(filePath: string): Promise<string | undefined> {
   try {
     const existing = await readFile(filePath, "utf-8");
     if (!hasDotagentsMarkdownSubagentMarker(existing)) {

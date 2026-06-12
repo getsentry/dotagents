@@ -10,7 +10,7 @@ import {
   resolveSubagent,
   writeInstalledSubagents,
 } from "./subagent-store.js";
-import { DOTAGENTS_SUBAGENT_MARKER } from "./definitions/helpers.js";
+import { DOTAGENTS_SUBAGENT_MARKER, markManagedMarkdownSubagent } from "./definitions/helpers.js";
 import type { SubagentConfig } from "../config/schema.js";
 
 const SUBAGENT_MD = (name: string) => `---
@@ -362,7 +362,10 @@ Review the current diff for Claude.
   it("reports installed subagents whose frontmatter name does not match config", async () => {
     const installedDir = join(tmpDir, ".agents", "agents");
     await mkdir(installedDir, { recursive: true });
-    await writeFile(join(installedDir, "code-reviewer.md"), SUBAGENT_MD("other-reviewer"));
+    await writeFile(
+      join(installedDir, "code-reviewer.md"),
+      markManagedMarkdownSubagent(SUBAGENT_MD("other-reviewer")),
+    );
 
     const result = await loadInstalledSubagents(installedDir, [subagentConfig()]);
 
@@ -371,6 +374,18 @@ Review the current diff for Claude.
     expect(result.issues[0]!.issue).toContain(
       'declares name "other-reviewer", but agents.toml requested "code-reviewer"',
     );
+  });
+
+  it("reports unmanaged installed subagents without loading them", async () => {
+    const installedDir = join(tmpDir, ".agents", "agents");
+    await mkdir(installedDir, { recursive: true });
+    await writeFile(join(installedDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    const result = await loadInstalledSubagents(installedDir, [subagentConfig()]);
+
+    expect(result.subagents).toEqual([]);
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues[0]!.issue).toContain("not managed by dotagents");
   });
 });
 
