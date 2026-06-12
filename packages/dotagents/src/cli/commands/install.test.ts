@@ -476,7 +476,7 @@ path = "code-reviewer.md"
     expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
   });
 
-  it("keeps written subagent lock entries when stale subagent pruning fails", async () => {
+  it("does not commit subagent lock entries when stale subagent pruning fails", async () => {
     const sourceDir = join(projectRoot, "agents");
     await mkdir(sourceDir, { recursive: true });
     await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
@@ -516,7 +516,7 @@ path = "code-reviewer.md"
     }
 
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
-    expect(lockfile!.subagents["code-reviewer"]?.source).toBe("path:agents");
+    expect(lockfile!.subagents["code-reviewer"]).toBeUndefined();
     expect(existsSync(join(installedDir, "code-reviewer.md"))).toBe(true);
   });
 
