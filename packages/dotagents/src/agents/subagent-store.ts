@@ -449,7 +449,7 @@ function mergeDiscoveredSubagents(
   const base = portableMatches[0] ?? matches[0]!;
   const native: NativeSubagentContent = { ...base.subagent.native };
 
-  for (const match of matches.slice(1)) {
+  for (const match of matches) {
     for (const [target, content] of Object.entries(match.subagent.native ?? {})) {
       const nativeTarget = target as NativeSubagentTarget;
       native[nativeTarget] ??= content;
