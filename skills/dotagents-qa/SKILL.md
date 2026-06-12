@@ -1,38 +1,121 @@
 ---
 name: dotagents-qa
-description: QA dotagents behavior changes with a local fixture project. Use when changes may affect dotagents install, sync, list, doctor, skill placement, agent symlinks, MCP or hook config generation, user scope, or package/runtime behavior and an agent needs to prove a representative agents.toml setup still installs correctly.
+description: QA dotagents behavior changes in a Docker sandbox. Use when changes may affect dotagents install, sync, list, doctor, skill placement, agent symlinks, MCP or hook config generation, user scope, or package/runtime behavior.
 ---
 
 # dotagents QA
 
-Answer the practical question: "With this local dotagents build, does a representative `agents.toml` still install and wire the expected files?"
+Do real QA for the change in front of you. Docker is the safety boundary, not
+the test plan: use it so dotagents cannot write to host agent config, host home
+directories, or host cache state while you build fixtures that prove the
+changed behavior.
 
-## Workflow
+## 1. Understand The Change
 
-1. Inspect the changed surface:
-   - `git status --short`
-   - `git diff --stat`
-   - `git diff -- <paths>`
-2. Build the local CLI before smoke testing:
+Start from the diff and identify the behavior that could regress:
 
 ```bash
-pnpm build
+git status --short
+git diff --stat
+git diff -- <paths>
 ```
 
-3. Create a temp project that exercises the changed behavior. Start here and add only what the change needs.
+Write down the QA target before running commands:
+- Which command path changed: `install`, `sync`, `list`, `doctor`, `add`,
+  `remove`, `mcp`, `trust`, `init`, package runtime, or scope resolution.
+- Which surfaces must be inspected: `.agents/skills`, agent skill symlinks,
+  MCP config, hook config, lockfile, gitignore, CLI output, or user scope.
+- Which fixture shape proves it: local skills, nested skills, wildcard source,
+  specific agents, MCP entries, hooks, existing broken state, or remote source.
+
+Run focused Vitest coverage for logic bugs. Use this skill for end-to-end QA
+evidence, not as a substitute for regression tests.
+
+## 2. Enter A Docker Sandbox
+
+Build the repo-local QA image when it is missing, when this Dockerfile changes,
+or when the repo `packageManager` pnpm version changes:
+
+```bash
+docker build \
+  -f skills/dotagents-qa/Dockerfile \
+  -t dotagents-qa:local \
+  skills/dotagents-qa
+```
+
+Use an interactive container so the QA steps stay change-specific:
+
+```bash
+REPO="$(pwd)"
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/dotagents-qa.XXXXXX")"
+docker run --rm -it \
+  -v "$REPO:/host-repo:ro" \
+  -v "$OUT:/qa-out" \
+  dotagents-qa:local
+```
+
+If your tool environment is not attached to a TTY, use `-i` instead of `-it`
+and feed the same commands with a here-doc. Keep `-i`; without stdin attached,
+the container shell will receive no script.
+
+Inside the container:
 
 ```bash
 set -euo pipefail
-REPO="$(pwd)"
-TMP="$(mktemp -d)"
-mkdir -p "$TMP/local-skills" "$TMP/home" "$TMP/state"
-for skill in review commit; do
-  mkdir -p "$TMP/local-skills/$skill"
-  printf -- "---\nname: %s\ndescription: Fixture %s skill.\n---\n\n%s fixture.\n" \
-    "$skill" "$skill" "$skill" > "$TMP/local-skills/$skill/SKILL.md"
-done
+export CI=1
+export HOME=/sandbox/home
+export DOTAGENTS_STATE_DIR=/sandbox/state
+export DOTAGENTS_HOME=/sandbox/user-agents
 
-cat > "$TMP/agents.toml" <<'EOF'
+mkdir -p "$HOME" "$DOTAGENTS_STATE_DIR" "$DOTAGENTS_HOME" /sandbox/repo
+tar -C /host-repo \
+  --exclude=.git \
+  --exclude=node_modules \
+  --exclude=.turbo \
+  --exclude=coverage \
+  --exclude=core \
+  --exclude='*.tsbuildinfo' \
+  --exclude='packages/*/dist' \
+  -cf - . | tar -C /sandbox/repo -xf -
+
+cd /sandbox/repo
+pnpm install --frozen-lockfile
+pnpm build
+```
+
+Run `pnpm check` inside Docker unless the change requires a narrower
+target or the check is already known to be unrelated. If `build` or `check`
+fails, treat that as a QA finding and stop before fixture work unless you are
+explicitly isolating the playbook mechanics. If skipped or bypassed, report why.
+
+## 3. Build The Fixture
+
+Create the smallest fixture that proves the changed behavior. Start from this
+shape only when it fits; edit it aggressively for the diff you are testing.
+
+```bash
+fixture=/sandbox/fixture
+mkdir -p "$fixture/local-skills/review" "$fixture/local-skills/commit"
+
+cat > "$fixture/local-skills/review/SKILL.md" <<'SKILL'
+---
+name: review
+description: Fixture review skill.
+---
+
+Review fixture.
+SKILL
+
+cat > "$fixture/local-skills/commit/SKILL.md" <<'SKILL'
+---
+name: commit
+description: Fixture commit skill.
+---
+
+Commit fixture.
+SKILL
+
+cat > "$fixture/agents.toml" <<'TOML'
 version = 1
 agents = ["claude", "cursor"]
 
@@ -52,27 +135,43 @@ args = ["-e", "process.exit(0)"]
 [[hooks]]
 event = "Stop"
 command = "echo fixture"
-EOF
+TOML
 ```
 
-4. Run the local CLI from inside the temp project, with home/cache isolated:
+Useful fixture changes:
+- Skill resolution: nested `skills/` layouts, wildcard sources, duplicate
+  names, local paths outside `.agents`, or the exact `path:` shape touched.
+- Agent placement: include only affected agents, or include all supported
+  agents when shared config or registry behavior changed.
+- MCP and hooks: use the exact command, URL, headers, env refs, hook event, or
+  matcher affected by the diff.
+- Sync and doctor: pre-create broken or legacy state, then prove repair and
+  diagnostics.
+- User scope: run from outside a project with `--user` and inspect
+  `$DOTAGENTS_HOME`; never use the host home directory.
+- Remote sources: use the real source and trust policy only when source,
+  trust, git, well-known, or network behavior changed.
+
+## 4. Exercise The CLI
+
+Run the built local CLI from the fixture. Capture output and inspect generated
+files, not just exit codes.
 
 ```bash
-set -euo pipefail
-export HOME="$TMP/home" DOTAGENTS_STATE_DIR="$TMP/state"
-cd "$TMP"
-node "$REPO/packages/dotagents/dist/cli/index.js" install
-node "$REPO/packages/dotagents/dist/cli/index.js" list > "$TMP/list.out"
-node "$REPO/packages/dotagents/dist/cli/index.js" doctor --fix
-node "$REPO/packages/dotagents/dist/cli/index.js" doctor
+cli=(node /sandbox/repo/packages/dotagents/dist/cli/index.js)
+cd "$fixture"
+
+"${cli[@]}" install | tee /qa-out/install.out
+"${cli[@]}" list | tee /qa-out/list.out
+"${cli[@]}" doctor --fix | tee /qa-out/doctor-fix.out
+"${cli[@]}" doctor | tee /qa-out/doctor.out
 ```
 
-5. Assert the behavior that matters:
+Assert what matters for this change. Examples:
 
 ```bash
-set -euo pipefail
-grep -q "review" "$TMP/list.out" && grep -q "commit" "$TMP/list.out"
-test -f .agents/skills/review/SKILL.md && test -f .agents/skills/commit/SKILL.md
+grep -q "review" /qa-out/list.out
+test -f .agents/skills/review/SKILL.md
 test -L .claude/skills
 test -f .mcp.json
 test -f .cursor/mcp.json
@@ -80,50 +179,50 @@ test -f .claude/settings.json
 test -f .cursor/hooks.json
 ```
 
-For `sync` changes, break generated state and assert repair:
+For `sync` changes, break the generated state in the way the diff claims to
+repair, then verify the repair:
 
 ```bash
-set -euo pipefail
 rm .mcp.json .claude/skills
-node "$REPO/packages/dotagents/dist/cli/index.js" sync
+"${cli[@]}" sync | tee /qa-out/sync.out
 test -f .mcp.json
 test -L .claude/skills
 ```
 
-## Adjust The Fixture
-
-- Skill resolution changes: use multiple local skills, nested `skills/` directories, or the exact `path:` layout touched by the change.
-- Agent placement changes: edit `agents = [...]` and assert expected symlinks/config files.
-- MCP or hook changes: include representative `[[mcp]]` or `[[hooks]]` entries and inspect generated JSON/TOML.
-- User-scope changes: set `DOTAGENTS_HOME="$TMP/user-home"` and pass `--user`; never write to the real home directory.
-- Package/runtime changes: run the built CLI as above, or pack/install the package only when the packaging path itself changed.
-- Remote source changes: use `getsentry/skills`; avoid remotes for ordinary install-location checks.
-
-## Optional Agent CLI Checks
-
-Use only when discovery/registration changed.
+For user-scope changes:
 
 ```bash
-set -euo pipefail
-mkdir -p "$TMP/codex-home"
-CODEX_HOME="$TMP/codex-home" codex debug prompt-input "probe skills" > "$TMP/codex-prompt.json"
-grep -q "review" "$TMP/codex-prompt.json"
+cd /sandbox
+"${cli[@]}" --user install | tee /qa-out/user-install.out
+test -f "$DOTAGENTS_HOME/agents.toml"
+test -d "$DOTAGENTS_HOME/skills"
 ```
 
-Claude: no cheap dry-run skill list. If auth/network/model cost is acceptable, run a minimal non-interactive `/skill-name` prompt from `$TMP`; otherwise report skipped.
+Copy useful evidence before leaving the container:
 
-## Optional Remote Check
-
-Use only when source resolution, trust, git, well-known, or network behavior changed.
-
-```toml
-[[skills]]
-name = "code-review"
-source = "getsentry/skills"
+```bash
+cp -a "$fixture" /qa-out/fixture
+cp -a "$DOTAGENTS_HOME" /qa-out/user-agents 2>/dev/null || true
 ```
 
-Run `pnpm check` after the smoke test unless there is a concrete reason to run only a targeted package check.
+## 5. Real Agent Clients
 
-## Report
+Use real clients only when discovery or registration in Claude, Cursor, Codex,
+VS Code, or OpenCode changed. Docker proves generated files and symlinks; it
+does not prove an installed host client notices them.
 
-Include the temp path if it remains for debugging, the exact fixture shape, commands run, assertions made, and any skipped checks.
+Keep host-client checks isolated with explicit temp homes/config dirs where
+the client supports it. If a client cannot run without reading host state, say
+so and report the Docker-generated files you inspected instead.
+
+## 6. Report Evidence
+
+Report:
+- the changed behavior you targeted
+- Docker image and setup used
+- fixture shape and why it matched the diff
+- commands run
+- generated files or command output inspected
+- assertions that passed
+- `/qa-out` host path if retained for debugging
+- skipped checks and residual risk
