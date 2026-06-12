@@ -401,7 +401,10 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   }
 
   if (shouldWriteLockfile) {
-    await writeLockfile(lockPath, newLock);
+    await writeLockfile(lockPath, {
+      ...newLock,
+      subagents: unchangedSubagentLockEntries(lockfile, newLock),
+    });
   }
 
   // 4. Gitignore (skip for user scope — ~/.agents/ is not a git repo)
@@ -484,6 +487,9 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     );
     if (!frozen) {
       await pruneSubagentConfigs(config.agents, installedSubagents, subagentResolver);
+    }
+    if (shouldWriteLockfile) {
+      await writeLockfile(lockPath, newLock);
     }
   } catch (err) {
     if (shouldWriteLockfile) {
