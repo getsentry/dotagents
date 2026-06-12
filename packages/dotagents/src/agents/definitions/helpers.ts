@@ -119,7 +119,15 @@ export function serializeMarkdownSubagent(
 /** Insert the dotagents marker into markdown subagent frontmatter. */
 export function markManagedMarkdownSubagent(content: string): string {
   if (hasDotagentsMarkdownSubagentMarker(content)) {return content;}
-  return content.replace(/^(\uFEFF?---[ \t]*\r?\n)/, (opening) => `${opening}# ${DOTAGENTS_SUBAGENT_MARKER}\n`);
+  const marked = content.replace(
+    /^(\uFEFF?---[ \t]*\r?\n)/,
+    (opening) => `${opening}# ${DOTAGENTS_SUBAGENT_MARKER}\n`,
+  );
+  if (marked !== content) {return marked;}
+
+  const hasBom = content.startsWith("\uFEFF");
+  const body = hasBom ? content.slice(1) : content;
+  return `${hasBom ? "\uFEFF" : ""}---\n# ${DOTAGENTS_SUBAGENT_MARKER}\n---\n\n${body}`;
 }
 
 /** Whether Markdown content has the dotagents marker in its generated frontmatter header. */

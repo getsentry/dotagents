@@ -105,6 +105,30 @@ describe("writeSubagentConfigs", () => {
     expect(content).toContain("Review the current diff and return findings.");
   });
 
+  it("marks native OpenCode markdown without frontmatter", async () => {
+    const result = await writeSubagentConfigs(
+      ["opencode"],
+      [{
+        ...SUBAGENT,
+        native: {
+          opencode: "Review the current diff using native OpenCode markdown.\n",
+        },
+      }],
+      projectSubagentResolver(dir),
+    );
+
+    expect(result.warnings).toEqual([]);
+    expect(result.written).toBe(1);
+
+    const content = await readFile(join(dir, ".opencode", "agents", "code-reviewer.md"), "utf-8");
+    expect(content).toBe(`---
+# ${DOTAGENTS_SUBAGENT_MARKER}
+---
+
+Review the current diff using native OpenCode markdown.
+`);
+  });
+
   it("preserves native markdown fields only for the matching markdown target", async () => {
     await writeSubagentConfigs(
       ["claude", "cursor"],

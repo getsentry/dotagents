@@ -168,6 +168,34 @@ describe("serializeMarkdownSubagent", () => {
 });
 
 describe("markManagedMarkdownSubagent", () => {
+  it("wraps markdown without frontmatter in a managed header", () => {
+    const content = "Review the current diff.\n";
+
+    const marked = markManagedMarkdownSubagent(content);
+
+    expect(marked).toBe(`---
+# ${DOTAGENTS_SUBAGENT_MARKER}
+---
+
+Review the current diff.
+`);
+    expect(hasDotagentsMarkdownSubagentMarker(marked)).toBe(true);
+  });
+
+  it("preserves a BOM when wrapping markdown without frontmatter", () => {
+    const content = "\uFEFFReview the current diff.\n";
+
+    const marked = markManagedMarkdownSubagent(content);
+
+    expect(marked).toBe(`\uFEFF---
+# ${DOTAGENTS_SUBAGENT_MARKER}
+---
+
+Review the current diff.
+`);
+    expect(hasDotagentsMarkdownSubagentMarker(marked)).toBe(true);
+  });
+
   it("marks markdown with a BOM and spaced frontmatter opener", () => {
     const content = "\uFEFF---   \nname: code-reviewer\n---\n\nReview code.\n";
 
