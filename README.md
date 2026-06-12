@@ -140,6 +140,8 @@ targets = ["claude", "cursor", "codex", "grok", "opencode"]
 
 The canonical plugin format is `.agents/plugins/marketplace.json` plus `.agents/plugins/<name>/plugin.json`, using a Codex-compatible marketplace baseline. Known input fields are validated, unknown manifest and marketplace extension fields are preserved, `targets` are limited to configured agents, and generated outputs are deterministic. dotagents rejects plugin sources that resolve to the same project's `.agents/plugins/<name>/` install destination, so same-repo plugins are never installed onto themselves.
 
+Plugin declarations are project-scope only for now. `dotagents --user install` rejects `[[plugins]]` entries because user-scope runtime plugin projections are not generated yet.
+
 [Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively and needs no configuration.
 
 ## Documentation

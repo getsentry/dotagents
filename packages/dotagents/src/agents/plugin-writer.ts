@@ -382,7 +382,7 @@ async function writeOpenCodeProjection(
   plugin: PluginDeclaration,
   warnings: PluginWriteWarning[],
 ): Promise<number> {
-  const modules = opencodeModules(plugin);
+  const modules = opencodeModules(plugin, warnings);
   let written = 0;
   for (const modulePath of modules) {
     const ext = extname(modulePath);
@@ -458,9 +458,22 @@ function developerName(manifest: PluginManifest): string {
   return "Unknown";
 }
 
-function opencodeModules(plugin: PluginDeclaration): string[] {
+function opencodeModules(
+  plugin: PluginDeclaration,
+  warnings: PluginWriteWarning[] = [],
+): string[] {
   const opencode = plugin.manifest.opencode;
-  if (opencode?.plugins) {return opencode.plugins;}
+  if (opencode?.plugins) {
+    return opencode.plugins.filter((path) => {
+      if (existsSync(join(plugin.pluginDir, path))) {return true;}
+      warnings.push({
+        agent: "opencode",
+        name: plugin.name,
+        message: `OpenCode plugin module missing: ${join(plugin.pluginDir, path)}`,
+      });
+      return false;
+    });
+  }
   const candidates = ["opencode/plugin.ts", "opencode/plugin.js"];
   const candidate = candidates.find((path) => existsSync(join(plugin.pluginDir, path)));
   return candidate ? [candidate] : [];

@@ -285,6 +285,27 @@ describe("runSync", () => {
     expect(missingIssues[0]!.name).toBe("pdf");
   });
 
+  it("detects missing plugins as errors", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+    expect(result.issues).toEqual([
+      {
+        type: "missing",
+        name: "review-tools",
+        message: `Plugin "review-tools" is in agents.toml but not installed. Run 'npx @sentry/dotagents install'.`,
+      },
+    ]);
+  });
+
   it("reports no issues when everything is in sync", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

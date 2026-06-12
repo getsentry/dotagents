@@ -234,6 +234,26 @@ describe("plugin writer", () => {
     );
   });
 
+  it("warns without writing OpenCode re-exports for missing manifest modules", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: { opencode: { plugins: ["opencode/missing.ts"] } },
+    });
+
+    const result = await writePluginOutputs(["opencode"], [alpha], root);
+
+    expect(result).toEqual({
+      written: 0,
+      warnings: [
+        {
+          agent: "opencode",
+          name: "alpha-tools",
+          message: `OpenCode plugin module missing: ${join(alpha.pluginDir, "opencode", "missing.ts")}`,
+        },
+      ],
+    });
+    expect(existsSync(join(root, ".opencode", "plugins", "alpha-tools.ts"))).toBe(false);
+  });
+
   it("prunes stale managed runtime plugin outputs", async () => {
     const alpha = await plugin("alpha-tools", {
       manifest: { opencode: { plugins: ["opencode/plugin.ts"] } },

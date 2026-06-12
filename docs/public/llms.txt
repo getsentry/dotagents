@@ -297,6 +297,8 @@ Generated project-scope plugin outputs:
 
 Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated runtime marketplaces and generated Codex plugin manifests are overwritten or pruned only when they carry `metadata.managedBy = "dotagents"`. Managed Grok and OpenCode projections are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself.
 
+Plugin declarations are project-scope only for now. `install --user` rejects `[[plugins]]` entries and `sync --user` reports them as unsupported because user-scope runtime plugin projections are not generated yet.
+
 ### Trust
 
 Optional `[trust]` section to restrict allowed skill, subagent, and plugin sources.
@@ -341,7 +343,7 @@ Create `agents.toml` and `.agents/skills/` directory. Automatically includes the
 npx @sentry/dotagents install
 ```
 
-Install and refresh dependencies from `agents.toml`. Resolves sources, copies skills, installs subagents and plugins, writes the lockfile, creates symlinks, and generates MCP, hook, subagent, and plugin configs. There is no separate update command. With `--frozen`, declared skills, subagents, and plugins must already exist in `agents.lock`; subagents and plugins are loaded from existing installed files without resolving sources; the lockfile is not updated; and existing managed subagent/plugin files are not pruned.
+Install and refresh dependencies from `agents.toml`. Resolves sources, copies skills, installs subagents and project-scope plugins, writes the lockfile, creates symlinks, and generates MCP, hook, subagent, and plugin configs. There is no separate update command. With `--frozen`, declared skills, subagents, and project-scope plugins must already exist in `agents.lock`; subagents and plugins are loaded from existing installed files without resolving sources; the lockfile is not updated; and existing managed subagent/plugin files are not pruned. `install --user` rejects plugin declarations because user-scope plugin projections are not generated yet.
 
 ### add
 

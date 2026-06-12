@@ -77,13 +77,25 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
         .map((plugin) => plugin.name)
       : [],
   );
-  const runtimePluginConfigs = config.plugins.filter((plugin) => !selfInstalledPluginNames.has(plugin.name));
+  const userScopePluginNames = scope.scope === "user"
+    ? config.plugins.map((plugin) => plugin.name)
+    : [];
+  const runtimePluginConfigs = scope.scope === "user"
+    ? []
+    : config.plugins.filter((plugin) => !selfInstalledPluginNames.has(plugin.name));
 
   for (const name of selfInstalledPluginNames) {
     issues.push({
       type: "plugins",
       name,
       message: `Plugin "${name}" resolves to .agents/plugins/${name}. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.`,
+    });
+  }
+  for (const name of userScopePluginNames) {
+    issues.push({
+      type: "plugins",
+      name,
+      message: `Plugin "${name}" is declared in user scope, but user-scope plugins are not supported yet. Declare plugins in a project agents.toml instead.`,
     });
   }
 
@@ -209,7 +221,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   for (const plugin of runtimePluginConfigs) {
     if (!existsSync(join(pluginsDir, plugin.name))) {
       issues.push({
-        type: "plugins",
+        type: "missing",
         name: plugin.name,
         message: `Plugin "${plugin.name}" is in agents.toml but not installed. Run 'npx @sentry/dotagents install'.`,
       });
@@ -358,7 +370,8 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 
   // 8. Verify and repair plugin runtime projections
   let pluginsRepaired = 0;
-  const installedPluginResult = await loadInstalledPlugins(pluginsDir, runtimePluginConfigs);
+  const installedPluginConfigs = runtimePluginConfigs.filter((plugin) => existsSync(join(pluginsDir, plugin.name)));
+  const installedPluginResult = await loadInstalledPlugins(pluginsDir, installedPluginConfigs);
   const pluginDecls = installedPluginResult.plugins;
   const prunedInstalledPlugins = await pruneInstalledPlugins(pluginsDir, staleManagedPluginNames);
   const pluginIssues = scope.scope === "project"

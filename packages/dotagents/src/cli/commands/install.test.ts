@@ -331,6 +331,34 @@ source = "path:.agents/plugins/local-tools"
     await expect(runInstall({ scope, frozen: true })).rejects.toThrow(/Same-project plugins cannot be installed into the same project/);
   });
 
+  it("rejects user-scope plugin declarations", async () => {
+    const previousHome = process.env["DOTAGENTS_HOME"];
+    const dotagentsHome = join(tmpDir, "user-agents");
+    process.env["DOTAGENTS_HOME"] = dotagentsHome;
+    try {
+      const scope = resolveScope("user");
+      await mkdir(scope.root, { recursive: true });
+      await writeFile(
+        scope.configPath,
+        `version = 1
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+      );
+
+      await expect(runInstall({ scope })).rejects.toThrow(/User-scope plugins are not supported yet/);
+      expect(existsSync(scope.pluginsDir)).toBe(false);
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env["DOTAGENTS_HOME"];
+      } else {
+        process.env["DOTAGENTS_HOME"] = previousHome;
+      }
+    }
+  });
+
   it("prefers canonical plugin directories before marketplace entries", async () => {
     const sourceRoot = join(projectRoot, "plugin-source");
     const canonicalDir = join(sourceRoot, ".agents", "plugins", "review-tools");

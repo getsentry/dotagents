@@ -267,6 +267,8 @@ Generated project-scope plugin outputs:
 
 Generated plugin JSON is stable: keys are sorted, plugin entries are sorted by name, and files end with one trailing newline. Generated runtime marketplaces and generated Codex plugin manifests are overwritten or pruned only when they carry `metadata.managedBy = "dotagents"`. Managed Grok and OpenCode projections are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself.
 
+Plugins are currently project-scope only. `install --user` rejects `[[plugins]]` entries because user-scope runtime plugin projections are not generated yet.
+
 #### Supported Agents
 
 | ID | Tool | Config Dir | MCP File | MCP Format | Subagents |
@@ -504,7 +506,7 @@ dotagents install
    b. Discover skill within the repo
    c. Copy skill directory into `.agents/skills/<name>/`
 3. Resolve and install configured subagents into `.agents/agents/`
-4. Resolve and install configured plugins into `.agents/plugins/<name>/`
+4. Resolve and install configured project-scope plugins into `.agents/plugins/<name>/`; reject user-scope plugin declarations
 5. Write `agents.lock` with the current configured skills, subagents, and plugins
    - In `--frozen` mode, require configured dependencies to already be present in `agents.lock`, load subagents and plugins from installed files, do not update the lockfile, and do not prune existing managed subagent or plugin files
 6. Regenerate `.agents/.gitignore`

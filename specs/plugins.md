@@ -262,6 +262,8 @@ Generated project-scope outputs should be:
 
 Installed and generated files are dotagents-managed. `install` and `sync` may overwrite stale managed files and prune removed managed files, but they must not overwrite hand-written plugin files without a generated marker or a canonical installed bundle path owned by dotagents. Generated Codex manifests carry `metadata.managedBy = "dotagents"` so target removal can prune them without deleting user-authored native Codex plugin manifests.
 
+User-scope plugin declarations are not supported yet. `install --user` rejects `[[plugins]]` entries, and `sync --user` reports them as unsupported, because the current runtime projections are defined only for project scope.
+
 ## Lockfile
 
 Plugin lock entries should use the same source-resolution fields as subagents:
