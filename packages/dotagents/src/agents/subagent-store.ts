@@ -166,13 +166,19 @@ export async function writeInstalledSubagents(
   }
 
   const written: string[] = [];
+  let attempted: (typeof plannedWrites)[number] | undefined;
   try {
     for (const planned of plannedWrites) {
+      attempted = planned;
       await replaceFileAtomic(planned.filePath, planned.content);
       written.push(planned.filePath);
+      attempted = undefined;
     }
   } catch (err) {
-    for (const planned of plannedWrites.slice(0, written.length).toReversed()) {
+    const rollbackWrites = attempted
+      ? [...plannedWrites.slice(0, written.length), attempted]
+      : plannedWrites.slice(0, written.length);
+    for (const planned of rollbackWrites.toReversed()) {
       if (planned.previous === undefined) {
         await rm(planned.filePath, { force: true });
       } else {
