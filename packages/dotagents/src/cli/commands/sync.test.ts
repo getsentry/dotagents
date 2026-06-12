@@ -584,7 +584,7 @@ agents = ["claude"]
     expect(lockfile!.subagents).toEqual({});
   });
 
-  it("includes lockfile subagents when regenerating gitignore", async () => {
+  it("removes stale lockfile subagents when regenerating gitignore", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1
@@ -609,8 +609,12 @@ agents = ["claude"]
 
     await runSync({ scope: resolveScope("project", projectRoot) });
 
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.subagents).toEqual({});
+    expect(existsSync(join(projectRoot, ".agents", "agents", "old-reviewer.md"))).toBe(false);
+
     const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
-    expect(gitignore).toContain("/agents/old-reviewer.md");
+    expect(gitignore).not.toContain("/agents/old-reviewer.md");
   });
 
   it("does not auto-create root .gitignore", async () => {

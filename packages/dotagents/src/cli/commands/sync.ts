@@ -108,6 +108,15 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
+  const declaredSubagentNames = new Set(config.subagents.map((subagent) => subagent.name));
+  if (lockfile && Object.keys(lockfile.subagents).some((name) => !declaredSubagentNames.has(name))) {
+    const subagents = Object.fromEntries(
+      Object.entries(lockfile.subagents).filter(([name]) => declaredSubagentNames.has(name)),
+    );
+    lockfile = { ...lockfile, subagents };
+    await writeLockfile(lockPath, lockfile);
+  }
+
   // 2. Regenerate .agents/.gitignore (skip for user scope)
   let gitignoreUpdated = false;
   if (scope.scope === "project") {
@@ -244,14 +253,6 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   let subagentsRepaired = 0;
   const installedSubagentResult = await loadInstalledSubagents(subagentsDir, config.subagents);
   const prunedInstalledSubagents = await pruneInstalledSubagents(subagentsDir, config.subagents);
-  const declaredSubagentNames = new Set(config.subagents.map((subagent) => subagent.name));
-  if (lockfile && Object.keys(lockfile.subagents).some((name) => !declaredSubagentNames.has(name))) {
-    const subagents = Object.fromEntries(
-      Object.entries(lockfile.subagents).filter(([name]) => declaredSubagentNames.has(name)),
-    );
-    lockfile = { ...lockfile, subagents };
-    await writeLockfile(lockPath, lockfile);
-  }
   const subagentDecls = installedSubagentResult.subagents;
   const subagentResolver = scope.scope === "user"
     ? userSubagentResolver()
