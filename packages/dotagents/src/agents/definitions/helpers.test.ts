@@ -131,12 +131,38 @@ describe("serializeMarkdownSubagent", () => {
       "Review the diff.",
     );
 
-    expect(content).toContain("dotagents_native:\n  codex: |");
+    expect(content).toContain("dotagents_native:\n  codex: |+");
     expect(content).not.toContain('dotagents_native: {"codex"');
 
     const parsed = parseMarkdownFrontmatterContent(content, "subagent.md");
     expect(parsed.meta["dotagents_native"]).toEqual({
       codex: 'name = "code_reviewer"\ndescription = "Review code."\n',
+    });
+  });
+
+  it("preserves trailing blank lines in nested native content", () => {
+    const nativeContent = [
+      'name = "code_reviewer"',
+      'description = "Review code."',
+      "",
+      "",
+    ].join("\n");
+    const content = serializeMarkdownSubagent(
+      {
+        name: "code-reviewer",
+        description: "Review code.",
+        dotagents_native: {
+          codex: nativeContent,
+        },
+      },
+      "Review the diff.",
+    );
+
+    expect(content).toContain("dotagents_native:\n  codex: |+");
+
+    const parsed = parseMarkdownFrontmatterContent(content, "subagent.md");
+    expect(parsed.meta["dotagents_native"]).toEqual({
+      codex: nativeContent,
     });
   });
 });

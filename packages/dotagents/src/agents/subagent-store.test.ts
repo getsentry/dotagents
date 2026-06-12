@@ -476,6 +476,35 @@ Review the current diff.
     expect(await readFile(filePath, "utf-8")).toBe("hand-written subagent\n");
   });
 
+  it("preflights unmanaged conflicts before updating any installed files", async () => {
+    const installedDir = join(tmpDir, ".agents", "agents");
+    await writeInstalledSubagents(installedDir, [{
+      name: "alpha",
+      description: "Alpha reviewer.",
+      instructions: "Original alpha instructions.",
+    }]);
+    const alphaPath = join(installedDir, "alpha.md");
+    const originalAlpha = await readFile(alphaPath, "utf-8");
+    const betaPath = join(installedDir, "beta.md");
+    await writeFile(betaPath, "hand-written beta\n", "utf-8");
+
+    await expect(writeInstalledSubagents(installedDir, [
+      {
+        name: "alpha",
+        description: "Alpha reviewer.",
+        instructions: "Updated alpha instructions.",
+      },
+      {
+        name: "beta",
+        description: "Beta reviewer.",
+        instructions: "Beta instructions.",
+      },
+    ])).rejects.toThrow(InstalledSubagentWriteError);
+
+    expect(await readFile(alphaPath, "utf-8")).toBe(originalAlpha);
+    expect(await readFile(betaPath, "utf-8")).toBe("hand-written beta\n");
+  });
+
   it("rejects files that mention the marker outside the managed header", async () => {
     const installedDir = join(tmpDir, ".agents", "agents");
     await mkdir(installedDir, { recursive: true });

@@ -148,15 +148,37 @@ export async function writeInstalledSubagents(
   }
 
   await mkdir(subagentsDir, { recursive: true });
-  const written: string[] = [];
+  const plannedWrites: Array<{
+    filePath: string;
+    content: string;
+    previous?: string;
+  }> = [];
 
   for (const subagent of subagents) {
     const fileName = `${subagent.name}.md`;
     const filePath = join(subagentsDir, fileName);
     const content = serializeInstalledSubagent(subagent);
-    if (await writeManagedFile(filePath, content)) {
-      written.push(filePath);
+    const previous = await readManagedFileForWrite(filePath);
+    if (previous !== content) {
+      plannedWrites.push({ filePath, content, previous });
     }
+  }
+
+  const written: string[] = [];
+  try {
+    for (const planned of plannedWrites) {
+      await writeFile(planned.filePath, planned.content, "utf-8");
+      written.push(planned.filePath);
+    }
+  } catch (err) {
+    for (const planned of plannedWrites.slice(0, written.length).toReversed()) {
+      if (planned.previous === undefined) {
+        await rm(planned.filePath, { force: true });
+      } else {
+        await writeFile(planned.filePath, planned.previous, "utf-8");
+      }
+    }
+    throw err;
   }
 
   return written;
@@ -521,19 +543,17 @@ function serializeInstalledSubagent(subagent: SubagentDeclaration): string {
   );
 }
 
-async function writeManagedFile(filePath: string, content: string): Promise<boolean> {
+async function readManagedFileForWrite(filePath: string): Promise<string | undefined> {
   try {
     const existing = await readFile(filePath, "utf-8");
-    if (existing === content) {return false;}
     if (!hasDotagentsMarkdownSubagentMarker(existing)) {
       throw new InstalledSubagentWriteError(`Subagent file exists and is not managed by dotagents: ${filePath}`);
     }
+    return existing;
   } catch (err) {
     if (!isNotFoundError(err)) {throw err;}
+    return undefined;
   }
-
-  await writeFile(filePath, content, "utf-8");
-  return true;
 }
 
 async function pruneManagedMarkdownFiles(dirPath: string, desired: Set<string>): Promise<string[]> {

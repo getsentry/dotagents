@@ -177,8 +177,8 @@ function appendYamlField(
   }
 
   if (typeof value === "string" && value.includes("\n")) {
-    const chomp = value.endsWith("\n") ? "|" : "|-";
-    const body = value.endsWith("\n") ? value.slice(0, -1) : value;
+    const chomp = value.endsWith("\n") ? "|+" : "|-";
+    const body = value;
     lines.push(`${prefix}${toYamlKey(key)}: ${chomp}`);
     for (const line of body.split(/\r?\n/)) {
       lines.push(`${prefix}  ${line}`);
