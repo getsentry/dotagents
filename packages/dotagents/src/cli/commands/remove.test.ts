@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -7,6 +7,7 @@ import { runRemove, runRemoveSource, collectSkillsFromSource, RemoveError, Wildc
 import { runInstall } from "./install.js";
 import { exec } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
+import { writeLockfile } from "../../lockfile/writer.js";
 import { loadConfig } from "../../config/loader.js";
 import { resolveScope } from "../../scope.js";
 
@@ -69,6 +70,35 @@ describe("runRemove", () => {
 
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile!.skills["pdf"]).toBeUndefined();
+  });
+
+  it("keeps lockfile subagents in .agents/.gitignore after removing a skill", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "path:local-skills/pdf"\n`,
+    );
+    await mkdir(join(projectRoot, ".agents", "skills", "pdf"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"), SKILL_MD("pdf"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        pdf: {
+          source: "path:local-skills/pdf",
+        },
+      },
+      subagents: {
+        "old-reviewer": {
+          source: "path:agents",
+        },
+      },
+    });
+
+    const scope = resolveScope("project", projectRoot);
+    await runRemove({ scope, skillName: "pdf" });
+
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).not.toContain("/skills/pdf/");
+    expect(gitignore).toContain("/agents/old-reviewer.md");
   });
 
   it("throws RemoveError for skill not in config", async () => {
