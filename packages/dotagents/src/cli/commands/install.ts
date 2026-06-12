@@ -475,13 +475,28 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   const subagentResolver = scope.scope === "user"
     ? userSubagentResolver()
     : projectSubagentResolver(scope.root);
-  const subagentResult = await writeSubagentConfigs(
-    config.agents,
-    installedSubagents,
-    subagentResolver,
-  );
-  if (!frozen) {
-    await pruneSubagentConfigs(config.agents, installedSubagents, subagentResolver);
+  let subagentResult: Awaited<ReturnType<typeof writeSubagentConfigs>>;
+  try {
+    subagentResult = await writeSubagentConfigs(
+      config.agents,
+      installedSubagents,
+      subagentResolver,
+    );
+    if (!frozen) {
+      await pruneSubagentConfigs(config.agents, installedSubagents, subagentResolver);
+    }
+  } catch (err) {
+    if (shouldWriteLockfile) {
+      try {
+        await writeLockfile(lockPath, {
+          ...newLock,
+          subagents: unchangedSubagentLockEntries(lockfile, newLock),
+        });
+      } catch {
+        // Preserve the runtime config failure; this recovery write is best-effort.
+      }
+    }
+    throw err;
   }
 
   return { installed, skipped, pruned, hookWarnings, subagentWarnings: subagentResult.warnings };
