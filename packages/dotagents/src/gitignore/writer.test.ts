@@ -35,6 +35,15 @@ describe("writeAgentsGitignore", () => {
     expect(content).toContain("/skills/pdf/");
   });
 
+  it("lists managed subagent files", async () => {
+    const agentsDir = join(dir, ".agents");
+    await writeAgentsGitignore(agentsDir, [], ["reviewer", "test-runner"]);
+
+    const content = await readFile(join(agentsDir, ".gitignore"), "utf-8");
+    expect(content).toContain("/agents/reviewer.md");
+    expect(content).toContain("/agents/test-runner.md");
+  });
+
   it("sorts skill names alphabetically", async () => {
     const agentsDir = join(dir, ".agents");
     await writeAgentsGitignore(agentsDir, ["zebra", "alpha", "middle"]);

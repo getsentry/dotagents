@@ -17,12 +17,23 @@ export interface SkillMeta {
   [key: string]: unknown;
 }
 
+export interface MarkdownFrontmatter {
+  meta: Record<string, unknown>;
+  body: string;
+  raw: string;
+}
+
+export interface LoadMarkdownFrontmatterOptions {
+  fileDescription?: string;
+}
+
 export interface LoadSkillMdOptions {
   /** Called for parser warnings (unknown allowed-tools tokens, etc.) */
   onWarning?: (message: string) => void;
 }
 
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---/;
+const FRONTMATTER_OPEN_RE = /^\uFEFF?---[ \t]*\r?\n/;
+const FRONTMATTER_CLOSE_RE = /^---[ \t]*$/;
 
 /**
  * Parse a SKILL.md file and extract YAML frontmatter.
@@ -32,31 +43,9 @@ export async function loadSkillMd(
   filePath: string,
   opts?: LoadSkillMdOptions,
 ): Promise<SkillMeta> {
-  let content: string;
-  try {
-    content = await readFile(filePath, "utf-8");
-  } catch {
-    throw new SkillLoadError(`SKILL.md not found: ${filePath}`);
-  }
-
-  const match = FRONTMATTER_RE.exec(content);
-  if (!match?.[1]) {
-    throw new SkillLoadError(`No YAML frontmatter in ${filePath}`);
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(match[1]);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new SkillLoadError(`Invalid YAML frontmatter in ${filePath}: ${message}`);
-  }
-
-  if (!isPlainObject(parsed)) {
-    throw new SkillLoadError(`Frontmatter must be a YAML object: ${filePath}`);
-  }
-
-  const meta = parsed as Record<string, unknown>;
+  const { meta } = await loadMarkdownFrontmatter(filePath, {
+    fileDescription: "SKILL.md",
+  });
 
   if (typeof meta["name"] !== "string" || !meta["name"]) {
     throw new SkillLoadError(`Missing 'name' in SKILL.md frontmatter: ${filePath}`);
@@ -71,6 +60,78 @@ export async function loadSkillMd(
   }
 
   return meta as SkillMeta;
+}
+
+/**
+ * Parse a Markdown file and extract YAML frontmatter plus body content.
+ */
+export async function loadMarkdownFrontmatter(
+  filePath: string,
+  opts?: LoadMarkdownFrontmatterOptions,
+): Promise<MarkdownFrontmatter> {
+  let content: string;
+  try {
+    content = await readFile(filePath, "utf-8");
+  } catch {
+    throw new SkillLoadError(`${opts?.fileDescription ?? "Markdown file"} not found: ${filePath}`);
+  }
+
+  return parseMarkdownFrontmatterContent(content, filePath);
+}
+
+export function parseMarkdownFrontmatterContent(
+  content: string,
+  filePath: string,
+): MarkdownFrontmatter {
+  const frontmatter = extractFrontmatter(content);
+  if (!frontmatter) {
+    throw new SkillLoadError(`No YAML frontmatter in ${filePath}`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(frontmatter.yaml);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new SkillLoadError(`Invalid YAML frontmatter in ${filePath}: ${message}`);
+  }
+
+  if (!isPlainObject(parsed)) {
+    throw new SkillLoadError(`Frontmatter must be a YAML object: ${filePath}`);
+  }
+
+  return {
+    meta: parsed as Record<string, unknown>,
+    body: content.slice(frontmatter.end).trim(),
+    raw: content,
+  };
+}
+
+function extractFrontmatter(content: string): { yaml: string; end: number } | null {
+  const opener = FRONTMATTER_OPEN_RE.exec(content);
+  if (!opener) {return null;}
+
+  const yamlStart = opener[0].length;
+  let lineStart = yamlStart;
+  while (lineStart < content.length) {
+    const lineEnd = content.indexOf("\n", lineStart);
+    const hasNewline = lineEnd !== -1;
+    const line = content
+      .slice(lineStart, hasNewline ? lineEnd : content.length)
+      .replace(/\r$/, "");
+
+    if (FRONTMATTER_CLOSE_RE.test(line)) {
+      return {
+        yaml: content.slice(yamlStart, lineStart).replace(/\r?\n$/, ""),
+        end: hasNewline ? lineEnd : content.length,
+      };
+    }
+
+    if (!hasNewline) {break;}
+    lineStart = lineEnd + 1;
+  }
+
+  return null;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

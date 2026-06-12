@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { loadSkillMd, SkillLoadError } from "./loader.js";
+import { loadSkillMd, parseMarkdownFrontmatterContent, SkillLoadError } from "./loader.js";
 
 describe("loadSkillMd", () => {
   let dir: string;
@@ -37,6 +37,24 @@ This skill handles PDF files.
     expect(meta["license"]).toBe("MIT");
   });
 
+  it("parses frontmatter with a BOM and spaced opener", async () => {
+    const skillMd = join(dir, "SKILL.md");
+    await writeFile(
+      skillMd,
+      `\uFEFF--- \t
+name: pdf-processing
+description: Extract and process PDF documents
+---
+
+# PDF Processing
+`,
+    );
+
+    const meta = await loadSkillMd(skillMd);
+    expect(meta.name).toBe("pdf-processing");
+    expect(meta.description).toBe("Extract and process PDF documents");
+  });
+
   it("handles quoted values", async () => {
     const skillMd = join(dir, "SKILL.md");
     await writeFile(
@@ -58,6 +76,9 @@ Content.
   it("throws SkillLoadError for missing file", async () => {
     await expect(loadSkillMd(join(dir, "nope.md"))).rejects.toThrow(
       SkillLoadError,
+    );
+    await expect(loadSkillMd(join(dir, "nope.md"))).rejects.toThrow(
+      `SKILL.md not found: ${join(dir, "nope.md")}`,
     );
   });
 
@@ -131,6 +152,46 @@ Content.
 
     const meta = await loadSkillMd(skillMd);
     expect(meta["metadata"]).toEqual({ author: "vercel", version: "1.0.0" });
+  });
+
+  it("parses block scalar frontmatter values that contain separator lines", () => {
+    const parsed = parseMarkdownFrontmatterContent(
+      `---
+name: code-reviewer
+description: Review code
+dotagents_native:
+  codex: |+
+    # upstream comment
+    ---
+    name = "code_reviewer"
+---
+
+Review the current diff.
+`,
+      "subagent.md",
+    );
+
+    expect(parsed.meta["dotagents_native"]).toEqual({
+      codex: '# upstream comment\n---\nname = "code_reviewer"\n',
+    });
+    expect(parsed.body).toBe("Review the current diff.");
+  });
+
+  it("does not treat separator prefixes as frontmatter delimiters", () => {
+    const parsed = parseMarkdownFrontmatterContent(
+      `---
+name: code-reviewer
+description: Review code
+---not_a_delimiter: true
+---
+
+Review the current diff.
+`,
+      "subagent.md",
+    );
+
+    expect(parsed.meta["---not_a_delimiter"]).toBe(true);
+    expect(parsed.body).toBe("Review the current diff.");
   });
 
   it("parses array frontmatter values", async () => {

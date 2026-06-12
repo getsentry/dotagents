@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access, chmod } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runInstall, InstallError } from "./install.js";
+import { runInstall as runInstallCommand, InstallError, type InstallOptions, type InstallResult } from "./install.js";
+import { runSync } from "./sync.js";
 import { exec } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
+import { writeLockfile } from "../../lockfile/writer.js";
 import { resolveScope } from "../../scope.js";
+import { DOTAGENTS_SUBAGENT_MARKER } from "../../agents/definitions/helpers.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -16,24 +19,38 @@ description: Test skill ${name}
 # ${name}
 `;
 
+const SUBAGENT_MD = (name: string) => `---
+name: ${name}
+description: Review code for correctness.
+---
+
+Review the current diff.
+`;
+
 describe("runInstall", () => {
   let tmpDir: string;
   let stateDir: string;
   let projectRoot: string;
   let repoDir: string;
+  let repoInitialized: boolean;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "dotagents-install-"));
     stateDir = join(tmpDir, "state");
     projectRoot = join(tmpDir, "project");
     repoDir = join(tmpDir, "repo");
+    repoInitialized = false;
 
     process.env["DOTAGENTS_STATE_DIR"] = stateDir;
 
     // Set up project
     await mkdir(join(projectRoot, ".agents", "skills"), { recursive: true });
 
-    // Create a local git repo with skills
+  });
+
+  async function ensureGitRepo(): Promise<void> {
+    if (repoInitialized) {return;}
+
     await mkdir(repoDir, { recursive: true });
     await exec("git", ["init"], { cwd: repoDir });
     await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
@@ -48,7 +65,16 @@ describe("runInstall", () => {
 
     await exec("git", ["add", "."], { cwd: repoDir });
     await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
-  });
+    repoInitialized = true;
+  }
+
+  async function runInstall(opts: InstallOptions): Promise<InstallResult> {
+    const config = await readFile(opts.scope.configPath, "utf-8").catch(() => "");
+    if (config.includes(`git:${repoDir}`)) {
+      await ensureGitRepo();
+    }
+    return runInstallCommand(opts);
+  }
 
   afterEach(async () => {
     delete process.env["DOTAGENTS_STATE_DIR"];
@@ -230,6 +256,613 @@ describe("runInstall", () => {
     expect(result.hookWarnings[0]!.agent).toBe("codex");
   });
 
+  it("writes subagent configs for declared agents", async () => {
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude", "codex", "opencode"]
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+    expect(result.subagentWarnings).toHaveLength(0);
+
+    const claude = await readFile(join(projectRoot, ".claude", "agents", "code-reviewer.md"), "utf-8");
+    expect(claude).toContain('description: "Review code for correctness."');
+
+    const codex = await readFile(join(projectRoot, ".codex", "agents", "code-reviewer.toml"), "utf-8");
+    expect(codex).toContain('developer_instructions = "Review the current diff."');
+    expect(await readFile(join(projectRoot, ".agents", "agents", "code-reviewer.md"), "utf-8")).toContain(DOTAGENTS_SUBAGENT_MARKER);
+
+    const opencode = await readFile(join(projectRoot, ".opencode", "agents", "code-reviewer.md"), "utf-8");
+    expect(opencode).toContain('mode: "subagent"');
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.subagents["code-reviewer"]?.source).toBe("path:agents");
+  });
+
+  it("reports unmanaged installed subagent files as install errors", async () => {
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    const installedDir = join(projectRoot, ".agents", "agents");
+    await mkdir(installedDir, { recursive: true });
+    const installedPath = join(installedDir, "code-reviewer.md");
+    await writeFile(installedPath, "hand-written subagent\n", "utf-8");
+
+    let error: unknown;
+    try {
+      await runInstall({ scope: resolveScope("project", projectRoot) });
+    } catch (err) {
+      error = err;
+    }
+
+    expect(error).toBeInstanceOf(InstallError);
+    expect((error as Error).message).toContain(
+      "Subagent file exists and is not managed by dotagents",
+    );
+    expect(await readFile(installedPath, "utf-8")).toBe("hand-written subagent\n");
+  });
+
+  it("frozen mode fails when a subagent is missing from the lockfile", async () => {
+    const scope = resolveScope("project", projectRoot);
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+    });
+
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    await expect(runInstall({ scope, frozen: true })).rejects.toThrow(
+      '--frozen: subagent "code-reviewer" is in agents.toml but missing from agents.lock.',
+    );
+  });
+
+  it("frozen mode passes when subagent lockfile entries match", async () => {
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    await rm(sourceDir, { recursive: true });
+
+    const result = await runInstall({ scope, frozen: true });
+    expect(result.subagentWarnings).toEqual([]);
+  });
+
+  it("clears removed skills from the lockfile when installing subagents", async () => {
+    const scope = resolveScope("project", projectRoot);
+    const skillDir = join(projectRoot, ".agents", "skills", "pdf");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("pdf"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        pdf: {
+          source: "git:https://github.com/example/repo.git",
+          resolved_url: "https://github.com/example/repo.git",
+          resolved_path: "pdf",
+          resolved_commit: "abc123",
+        },
+      },
+    });
+
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    await runInstall({ scope });
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills).toEqual({});
+    expect(lockfile!.subagents["code-reviewer"]?.source).toBe("path:agents");
+    expect(existsSync(skillDir)).toBe(false);
+
+    const syncResult = await runSync({ scope });
+    expect(syncResult.adopted).toEqual([]);
+  });
+
+  it("updates skill lock entries when installed subagent writes fail", async () => {
+    const skillSourceDir = join(projectRoot, "local-skills", "pdf");
+    await mkdir(skillSourceDir, { recursive: true });
+    await writeFile(join(skillSourceDir, "SKILL.md"), SKILL_MD("pdf"));
+
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await mkdir(join(projectRoot, ".agents", "agents"), { recursive: true });
+    await writeFile(
+      join(projectRoot, ".agents", "agents", "code-reviewer.md"),
+      "hand-written subagent\n",
+      "utf-8",
+    );
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {
+        "code-reviewer": {
+          source: "git:https://github.com/example/agents.git",
+          resolved_url: "https://github.com/example/agents.git",
+          resolved_path: "agents/code-reviewer.md",
+          resolved_commit: "abc123",
+        },
+        "old-reviewer": {
+          source: "path:old-agents",
+        },
+      },
+    });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[skills]]
+name = "pdf"
+source = "path:local-skills/pdf"
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+
+    await expect(runInstall({ scope })).rejects.toThrow(
+      /Subagent file exists and is not managed by dotagents/,
+    );
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills["pdf"]).toBeDefined();
+    expect(lockfile!.subagents["code-reviewer"]).toBeUndefined();
+    expect(lockfile!.subagents["old-reviewer"]).toBeUndefined();
+    expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
+  });
+
+  it("preserves the original install error when fallback lockfile write fails", async () => {
+    const skillSourceDir = join(projectRoot, "local-skills", "pdf");
+    await mkdir(skillSourceDir, { recursive: true });
+    await writeFile(join(skillSourceDir, "SKILL.md"), SKILL_MD("pdf"));
+
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await mkdir(join(projectRoot, ".agents", "agents"), { recursive: true });
+    await writeFile(
+      join(projectRoot, ".agents", "agents", "code-reviewer.md"),
+      "hand-written subagent\n",
+      "utf-8",
+    );
+
+    const lockPath = join(projectRoot, "agents.lock");
+    await writeLockfile(lockPath, { version: 1, skills: {}, subagents: {} });
+    await chmod(lockPath, 0o400);
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[skills]]
+name = "pdf"
+source = "path:local-skills/pdf"
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+
+    try {
+      await expect(runInstall({ scope })).rejects.toThrow(
+        /Subagent file exists and is not managed by dotagents/,
+      );
+    } finally {
+      await chmod(lockPath, 0o600).catch(() => {});
+    }
+  });
+
+  it("does not commit subagent lock entries when stale subagent pruning fails", async () => {
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    const installedDir = join(projectRoot, ".agents", "agents");
+    await mkdir(installedDir, { recursive: true });
+    const stalePath = join(installedDir, "old-reviewer.md");
+    await writeFile(
+      stalePath,
+      `---
+# ${DOTAGENTS_SUBAGENT_MARKER}
+name: old-reviewer
+description: Review old code.
+---
+
+Review old code.
+`,
+      "utf-8",
+    );
+    await chmod(stalePath, 0o000);
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    try {
+      await expect(runInstall({ scope })).rejects.toThrow();
+    } finally {
+      await chmod(stalePath, 0o600).catch(() => {});
+    }
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.subagents["code-reviewer"]).toBeUndefined();
+    expect(existsSync(join(installedDir, "code-reviewer.md"))).toBe(true);
+  });
+
+  it("does not commit subagent lock entries when runtime subagent writes fail", async () => {
+    const skillSourceDir = join(projectRoot, "local-skills", "pdf");
+    await mkdir(skillSourceDir, { recursive: true });
+    await writeFile(join(skillSourceDir, "SKILL.md"), SKILL_MD("pdf"));
+
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {
+        "code-reviewer": {
+          source: "git:https://github.com/example/agents.git",
+          resolved_url: "https://github.com/example/agents.git",
+          resolved_path: "agents/code-reviewer.md",
+          resolved_commit: "abc123",
+        },
+      },
+    });
+
+    await mkdir(join(projectRoot, ".claude"), { recursive: true });
+    await writeFile(join(projectRoot, ".claude", "agents"), "not a directory\n");
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+
+[[skills]]
+name = "pdf"
+source = "path:local-skills/pdf"
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow();
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills["pdf"]).toBeDefined();
+    expect(lockfile!.subagents["code-reviewer"]).toBeUndefined();
+    expect(existsSync(join(projectRoot, ".agents", "agents", "code-reviewer.md"))).toBe(true);
+  });
+
+  it("does not prune outside skills dir for malformed lockfile skill names", async () => {
+    const scope = resolveScope("project", projectRoot);
+    const hooksDir = join(projectRoot, ".agents", "hooks");
+    const pdfDir = join(projectRoot, ".agents", "skills", "pdf");
+    await mkdir(hooksDir, { recursive: true });
+    await mkdir(pdfDir, { recursive: true });
+    await writeFile(join(hooksDir, "keep.sh"), "echo keep\n");
+    await writeFile(join(pdfDir, "SKILL.md"), SKILL_MD("pdf"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        "../hooks": {
+          source: "git:https://github.com/example/repo.git",
+          resolved_url: "https://github.com/example/repo.git",
+          resolved_path: "pdf",
+          resolved_commit: "abc123",
+        },
+        "stale/../pdf": {
+          source: "git:https://github.com/example/repo.git",
+          resolved_url: "https://github.com/example/repo.git",
+          resolved_path: "pdf",
+          resolved_commit: "abc123",
+        },
+      },
+    });
+
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    await runInstall({ scope });
+
+    expect(await readFile(join(hooksDir, "keep.sh"), "utf-8")).toBe("echo keep\n");
+    expect(await readFile(join(pdfDir, "SKILL.md"), "utf-8")).toBe(SKILL_MD("pdf"));
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills).toEqual({});
+  });
+
+  it("prunes removed managed skills while other skills remain configured", async () => {
+    const scope = resolveScope("project", projectRoot);
+    const localSkillDir = join(projectRoot, ".agents", "skills", "local-skill");
+    const staleSkillDir = join(projectRoot, ".agents", "skills", "pdf");
+    await mkdir(localSkillDir, { recursive: true });
+    await mkdir(staleSkillDir, { recursive: true });
+    await writeFile(join(localSkillDir, "SKILL.md"), SKILL_MD("local-skill"));
+    await writeFile(join(staleSkillDir, "SKILL.md"), SKILL_MD("pdf"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        "local-skill": { source: "path:.agents/skills/local-skill" },
+        pdf: {
+          source: "git:https://github.com/example/repo.git",
+          resolved_url: "https://github.com/example/repo.git",
+          resolved_path: "pdf",
+          resolved_commit: "abc123",
+        },
+      },
+    });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[skills]]
+name = "local-skill"
+source = "path:.agents/skills/local-skill"
+`,
+    );
+
+    const result = await runInstall({ scope });
+
+    expect(result.pruned).toEqual(["pdf"]);
+    expect(existsSync(staleSkillDir)).toBe(false);
+    expect(existsSync(join(localSkillDir, "SKILL.md"))).toBe(true);
+
+    const syncResult = await runSync({ scope });
+    expect(syncResult.adopted).toEqual([]);
+  });
+
+  it("preserves native Codex content through install and sync", async () => {
+    const sourceDir = join(projectRoot, "upstream", ".codex", "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(
+      join(sourceDir, "code-reviewer.toml"),
+      [
+        "# upstream comment",
+        'name = "code_reviewer"',
+        'description = "Review code for correctness."',
+        'developer_instructions = "Review the current diff."',
+        'sandbox_mode = "read-only"',
+        "",
+      ].join("\n"),
+    );
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex", "claude"]
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:upstream"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const codexPath = join(projectRoot, ".codex", "agents", "code-reviewer.toml");
+    expect(await readFile(codexPath, "utf-8")).toContain('sandbox_mode = "read-only"');
+    expect(await readFile(codexPath, "utf-8")).toContain("# upstream comment");
+    expect(await readFile(codexPath, "utf-8")).toContain('name = "code_reviewer"');
+
+    const claude = await readFile(join(projectRoot, ".claude", "agents", "code-reviewer.md"), "utf-8");
+    expect(claude).not.toContain("sandbox_mode");
+
+    await rm(codexPath);
+    await runSync({ scope });
+
+    expect(await readFile(codexPath, "utf-8")).toContain('sandbox_mode = "read-only"');
+    expect(await readFile(codexPath, "utf-8")).toContain("# upstream comment");
+    expect(await readFile(codexPath, "utf-8")).toContain('name = "code_reviewer"');
+  });
+
+  it("installs merged native subagent artifacts for matching runtimes", async () => {
+    await mkdir(join(projectRoot, "upstream", ".claude", "agents"), { recursive: true });
+    await mkdir(join(projectRoot, "upstream", ".codex", "agents"), { recursive: true });
+    await writeFile(
+      join(projectRoot, "upstream", ".claude", "agents", "code-reviewer.md"),
+      `---
+name: code-reviewer
+description: Review code for correctness.
+tools: Read, Grep
+---
+
+Native Claude instructions.
+`,
+    );
+    await writeFile(
+      join(projectRoot, "upstream", ".codex", "agents", "code-reviewer.toml"),
+      [
+        "# native codex comment",
+        'name = "code_reviewer"',
+        'description = "Review code for correctness."',
+        'developer_instructions = "Native Codex instructions."',
+        'sandbox_mode = "read-only"',
+        "",
+      ].join("\n"),
+    );
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude", "codex"]
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:upstream"
+`,
+    );
+
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    const claude = await readFile(join(projectRoot, ".claude", "agents", "code-reviewer.md"), "utf-8");
+    expect(claude).toContain("tools: Read, Grep");
+    expect(claude).toContain("Native Claude instructions.");
+    expect(claude).not.toContain("sandbox_mode");
+
+    const codex = await readFile(join(projectRoot, ".codex", "agents", "code-reviewer.toml"), "utf-8");
+    expect(codex).toContain("# native codex comment");
+    expect(codex).toContain('name = "code_reviewer"');
+    expect(codex).toContain("Native Codex instructions.");
+    expect(codex).toContain('sandbox_mode = "read-only"');
+
+    const installed = await readFile(join(projectRoot, ".agents", "agents", "code-reviewer.md"), "utf-8");
+    expect(installed).toContain("Native Claude instructions.");
+    expect(installed).toContain("sandbox_mode");
+  });
+
+  it("prunes subagent files and lock entries when removed from config", async () => {
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+`,
+    );
+
+    await runInstall({ scope });
+
+    expect(existsSync(join(projectRoot, ".agents", "agents", "code-reviewer.md"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".claude", "agents", "code-reviewer.md"))).toBe(false);
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.subagents).toEqual({});
+  });
+
+  it("returns subagent warnings for unsupported agents", async () => {
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "reviewer.md"), SUBAGENT_MD("reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["vscode"]
+
+[[subagents]]
+name = "reviewer"
+source = "path:agents"
+path = "reviewer.md"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+    expect(result.subagentWarnings).toHaveLength(1);
+    expect(result.subagentWarnings[0]!.agent).toBe("vscode");
+  });
+
   it("skips copy for in-place path skill", async () => {
     // Pre-install the skill directory (simulating an adopted orphan)
     const skillDir = join(projectRoot, ".agents", "skills", "local-skill");
@@ -397,6 +1030,7 @@ describe("runInstall", () => {
     expect(first.pruned).toHaveLength(0);
 
     // Remove "review" from upstream repo
+    await ensureGitRepo();
     await exec("git", ["rm", "-rf", "skills/review"], { cwd: repoDir });
     await exec("git", ["commit", "-m", "remove review"], { cwd: repoDir });
 
@@ -417,7 +1051,7 @@ describe("runInstall", () => {
     expect(lock!.skills["pdf"]).toBeDefined();
   });
 
-  it("does not prune skills whose source does not match a wildcard", async () => {
+  it("prunes stale managed skills whose source does not match a wildcard", async () => {
     // Create a second repo with a "helper" skill
     const repoDir2 = join(tmpDir, "repo2");
     await mkdir(repoDir2, { recursive: true });
@@ -440,6 +1074,7 @@ describe("runInstall", () => {
 
     // Remove "helper" from agents.toml (keep wildcard only)
     // Also remove "review" from upstream so it gets pruned
+    await ensureGitRepo();
     await exec("git", ["rm", "-rf", "skills/review"], { cwd: repoDir });
     await exec("git", ["commit", "-m", "remove review"], { cwd: repoDir });
 
@@ -452,10 +1087,9 @@ describe("runInstall", () => {
 
     // "review" was from the wildcard source and was removed upstream — should be pruned
     expect(result.pruned).toContain("review");
-    // "helper" was explicit from a different source — should NOT be pruned
-    expect(result.pruned).not.toContain("helper");
-    // helper's directory should still exist on disk
-    expect(existsSync(join(projectRoot, ".agents", "skills", "helper", "SKILL.md"))).toBe(true);
+    // "helper" was removed from config, so it should also be pruned
+    expect(result.pruned).toContain("helper");
+    expect(existsSync(join(projectRoot, ".agents", "skills", "helper"))).toBe(false);
   });
 
   it("prunes skills added to wildcard exclude list", async () => {
@@ -507,6 +1141,44 @@ describe("runInstall", () => {
     expect(result.pruned).toHaveLength(0);
     // Directory should still exist
     expect(existsSync(join(projectRoot, ".agents", "skills", "review", "SKILL.md"))).toBe(true);
+  });
+
+  it("does not prune installed subagents in frozen mode", async () => {
+    const sourceDir = join(projectRoot, "agents");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:agents"
+path = "code-reviewer.md"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+`,
+    );
+
+    const result = await runInstall({ scope, frozen: true });
+
+    expect(result.pruned).toEqual([]);
+    expect(existsSync(join(projectRoot, ".agents", "agents", "code-reviewer.md"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".claude", "agents", "code-reviewer.md"))).toBe(true);
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).toContain("/agents/code-reviewer.md");
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.subagents["code-reviewer"]).toBeDefined();
   });
 
   it("wildcard with all skills excluded installs nothing from that source", async () => {
@@ -568,6 +1240,7 @@ describe("runInstall", () => {
     );
 
     // Update the skill upstream
+    await ensureGitRepo();
     await writeFile(join(repoDir, "pdf", "SKILL.md"), `${SKILL_MD("pdf")}\nupdated content`);
     await exec("git", ["add", "."], { cwd: repoDir });
     await exec("git", ["commit", "-m", "update pdf skill"], { cwd: repoDir });
@@ -585,6 +1258,7 @@ describe("runInstall", () => {
 
   it("minimum_release_age resolves to an older commit when HEAD is too new", async () => {
     // Create an old commit (backdated) then a new one
+    await ensureGitRepo();
     await exec("git", ["rm", "-rf", "pdf", "skills"], { cwd: repoDir });
     await exec("git", ["commit", "-m", "clear"], { cwd: repoDir });
 
@@ -637,6 +1311,7 @@ describe("runInstall", () => {
   });
 
   it("minimum_release_age rejects pinned skills that are too new", async () => {
+    await ensureGitRepo();
     const { stdout: sha } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
 
     await writeFile(

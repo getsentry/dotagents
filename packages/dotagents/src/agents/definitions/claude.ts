@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { AgentDefinition } from "../types.js";
-import { envRecord, httpServer, serializeClaudeHooks } from "./helpers.js";
+import { envRecord, httpServer, markManagedMarkdownSubagent, serializeClaudeHooks, serializeMarkdownSubagent } from "./helpers.js";
 
 const claude: AgentDefinition = {
   id: "claude",
@@ -27,6 +27,27 @@ const claude: AgentDefinition = {
     shared: true,
   },
   serializeHooks: serializeClaudeHooks,
+  subagents: {
+    projectDir: ".claude/agents",
+    userDir: join(homedir(), ".claude", "agents"),
+    fileExtension: ".md",
+    identity: "frontmatter-name",
+    serialize(subagent) {
+      const native = subagent.native?.claude;
+      return {
+        fileName: `${subagent.name}.md`,
+        content: native
+          ? markManagedMarkdownSubagent(native)
+          : serializeMarkdownSubagent(
+              {
+                name: subagent.name,
+                description: subagent.description,
+              },
+              subagent.instructions,
+            ),
+      };
+    },
+  },
 };
 
 export default claude;

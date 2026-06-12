@@ -10,7 +10,8 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
-    "dev": "pnpm --filter @sentry/dotagents dev"
+    "dev": "pnpm --filter @sentry/dotagents dev",
+    "smoke:examples": "pnpm build && node scripts/smoke-examples.mjs"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged"

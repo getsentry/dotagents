@@ -176,4 +176,74 @@ env = ["GITHUB_TOKEN"]
     const config = await loadConfig(configPath);
     expect(config.skills).toHaveLength(2);
   });
+
+  it("loads subagent entries", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1
+agents = ["claude", "codex", "opencode"]
+
+[[subagents]]
+name = "code-reviewer"
+source = "getsentry/agents"
+targets = ["claude", "codex", "opencode"]
+`,
+    );
+
+    const config = await loadConfig(configPath);
+    expect(config.subagents).toHaveLength(1);
+    expect(config.subagents[0]!.targets).toEqual(["claude", "codex", "opencode"]);
+    expect(config.subagents[0]!.source).toBe("getsentry/agents");
+  });
+
+  it("rejects unknown subagent targets", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1
+
+[[subagents]]
+name = "reviewer"
+source = "getsentry/agents"
+targets = ["emacs"]
+`,
+    );
+
+    await expect(loadConfig(configPath)).rejects.toThrow(/Unknown subagent target/);
+  });
+
+  it("rejects duplicate subagent names", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1
+
+[[subagents]]
+name = "reviewer"
+source = "getsentry/agents"
+
+[[subagents]]
+name = "reviewer"
+source = "getsentry/agents"
+`,
+    );
+
+    await expect(loadConfig(configPath)).rejects.toThrow(/Duplicate subagent/);
+  });
+
+  it("rejects HTTPS well-known subagent sources", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1
+
+[[subagents]]
+name = "reviewer"
+source = "https://agents.example.com"
+`,
+    );
+
+    await expect(loadConfig(configPath)).rejects.toThrow(/unsupported HTTPS well-known source/);
+  });
 });

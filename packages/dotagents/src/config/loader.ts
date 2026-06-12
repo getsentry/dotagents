@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
 import { agentsConfigSchema, isWildcardDep, type AgentsConfig } from "./schema.js";
 import { allAgentIds } from "../agents/registry.js";
+import { applyDefaultRepositorySource, parseSource } from "@sentry/dotagents-lib";
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -43,6 +44,31 @@ export async function loadConfig(filePath: string): Promise<AgentsConfig> {
     );
   }
 
+  const unknownSubagentTargets = [
+    ...new Set(
+      result.data.subagents.flatMap((subagent) =>
+        (subagent.targets ?? []).filter((id) => !validIds.includes(id))
+      ),
+    ),
+  ];
+  if (unknownSubagentTargets.length > 0) {
+    throw new ConfigError(
+      `Unknown subagent target(s) in ${filePath}: ${unknownSubagentTargets.join(", ")}. Valid agents: ${validIds.join(", ")}`,
+    );
+  }
+
+  for (const subagent of result.data.subagents) {
+    const sourceForResolve = applyDefaultRepositorySource(
+      subagent.source,
+      result.data.defaultRepositorySource,
+    );
+    if (parseSource(sourceForResolve).type === "well-known") {
+      throw new ConfigError(
+        `Subagent "${subagent.name}" uses an unsupported HTTPS well-known source in ${filePath}. Use a git: URL, GitHub/GitLab repository, or path: source.`,
+      );
+    }
+  }
+
   // Post-parse validation: no two wildcard entries may share the same source
   const wildcardSources = new Set<string>();
   for (const dep of result.data.skills) {
@@ -54,6 +80,17 @@ export async function loadConfig(filePath: string): Promise<AgentsConfig> {
       }
       wildcardSources.add(dep.source);
     }
+  }
+
+  // Post-parse validation: no two subagent entries may share the same name.
+  const subagentNames = new Set<string>();
+  for (const subagent of result.data.subagents) {
+    if (subagentNames.has(subagent.name)) {
+      throw new ConfigError(
+        `Duplicate subagent in ${filePath}: "${subagent.name}". Subagent names must be unique.`,
+      );
+    }
+    subagentNames.add(subagent.name);
   }
 
   return result.data;

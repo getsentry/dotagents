@@ -13,13 +13,15 @@ import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
 import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
 import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
+import { pruneSubagentConfigs, verifySubagentConfigs, writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../agents/subagent-writer.js";
+import { loadInstalledSubagents, pruneInstalledSubagents } from "../../agents/subagent-store.js";
 import { userMcpResolver } from "../../agents/paths.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
-import { isInPlaceSkill } from "../../utils/fs.js";
+import { isInPlaceSkill, managedSkillPath } from "../../utils/fs.js";
 
 export interface SyncIssue {
-  type: "symlink" | "missing" | "mcp" | "hooks";
+  type: "symlink" | "missing" | "mcp" | "hooks" | "subagents";
   name: string;
   message: string;
 }
@@ -36,11 +38,13 @@ export interface SyncResult {
   symlinksRepaired: number;
   mcpRepaired: number;
   hooksRepaired: number;
+  subagentsRepaired: number;
 }
 
 export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const { scope } = opts;
   const { configPath, lockPath, agentsDir, skillsDir } = scope;
+  const subagentsDir = join(agentsDir, "agents");
 
   let config = await loadConfig(configPath);
   let lockfile = await loadLockfile(lockPath);
@@ -74,9 +78,11 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 
       const locked = lockfile?.skills[entry.name];
       if (locked && !isInPlaceSkill(locked.source)) {
-        await removeStaleManagedSkill(skillsDir, entry.name);
-        delete lockfile!.skills[entry.name];
-        pruned.push(entry.name);
+        const removed = await removeStaleManagedSkill(skillsDir, entry.name);
+        if (removed) {
+          delete lockfile!.skills[entry.name];
+          pruned.push(entry.name);
+        }
         continue;
       }
 
@@ -93,12 +99,22 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       lockfile = {
         version: 1,
         skills: { ...lockfile?.skills, ...adoptedLockEntries },
+        subagents: lockfile?.subagents ?? {},
       };
       await writeLockfile(lockPath, lockfile);
     }
     if (adopted.length > 0) {
       config = await loadConfig(configPath);
     }
+  }
+
+  const declaredSubagentNames = new Set(config.subagents.map((subagent) => subagent.name));
+  if (lockfile && Object.keys(lockfile.subagents).some((name) => !declaredSubagentNames.has(name))) {
+    const subagents = Object.fromEntries(
+      Object.entries(lockfile.subagents).filter(([name]) => declaredSubagentNames.has(name)),
+    );
+    lockfile = { ...lockfile, subagents };
+    await writeLockfile(lockPath, lockfile);
   }
 
   // 2. Regenerate .agents/.gitignore (skip for user scope)
@@ -115,7 +131,17 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       if (!dep || isWildcardDep(dep)) {return true;} // wildcard-sourced skills are always managed
       return !isInPlaceSkill(dep.source);
     });
-    await writeAgentsGitignore(agentsDir, managedNames);
+    const managedSubagentNames = new Set(config.subagents.map((subagent) => subagent.name));
+    if (lockNow) {
+      for (const name of Object.keys(lockNow.subagents)) {
+        managedSubagentNames.add(name);
+      }
+    }
+    await writeAgentsGitignore(
+      agentsDir,
+      managedNames,
+      [...managedSubagentNames],
+    );
     gitignoreUpdated = true;
 
     // Health check: warn if agents.lock and .agents/.gitignore are not in root .gitignore
@@ -223,6 +249,59 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
+  // 7. Verify and repair custom subagent files
+  let subagentsRepaired = 0;
+  const installedSubagentResult = await loadInstalledSubagents(subagentsDir, config.subagents);
+  const prunedInstalledSubagents = await pruneInstalledSubagents(subagentsDir, config.subagents);
+  const subagentDecls = installedSubagentResult.subagents;
+  const subagentResolver = scope.scope === "user"
+    ? userSubagentResolver()
+    : projectSubagentResolver(scope.root);
+  const subagentIssues = await verifySubagentConfigs(
+    config.agents,
+    subagentDecls,
+    subagentResolver,
+  );
+
+  const subagentResult = await writeSubagentConfigs(
+    config.agents,
+    subagentDecls,
+    subagentResolver,
+  );
+  const prunedSubagentConfigs = await pruneSubagentConfigs(
+    config.agents,
+    config.subagents,
+    subagentResolver,
+  );
+  subagentsRepaired = subagentResult.written + prunedSubagentConfigs.length + prunedInstalledSubagents.length;
+
+  for (const issue of installedSubagentResult.issues) {
+    issues.push({
+      type: "subagents",
+      name: issue.name,
+      message: issue.issue,
+    });
+  }
+  for (const issue of subagentIssues) {
+    issues.push({
+      type: "subagents",
+      name: issue.name,
+      message: issue.issue,
+    });
+  }
+  for (const warning of subagentResult.warnings) {
+    const alreadyReported = issues.some(
+      (issue) => issue.type === "subagents" && issue.message === warning.message,
+    );
+    if (!alreadyReported) {
+      issues.push({
+        type: "subagents",
+        name: warning.name,
+        message: warning.message,
+      });
+    }
+  }
+
   return {
     issues,
     adopted,
@@ -231,11 +310,15 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     symlinksRepaired,
     mcpRepaired,
     hooksRepaired,
+    subagentsRepaired,
   };
 }
 
-async function removeStaleManagedSkill(skillsDir: string, name: string): Promise<void> {
-  await rm(join(skillsDir, name), { recursive: true, force: true });
+async function removeStaleManagedSkill(skillsDir: string, name: string): Promise<boolean> {
+  const skillPath = managedSkillPath(skillsDir, name);
+  if (!skillPath) {return false;}
+  await rm(skillPath, { recursive: true, force: true });
+  return true;
 }
 
 export default async function sync(_args: string[], flags?: { user?: boolean }): Promise<void> {
@@ -277,6 +360,10 @@ export default async function sync(_args: string[], flags?: { user?: boolean }):
     console.log(chalk.green(`Repaired ${result.hooksRepaired} hook config(s)`));
   }
 
+  if (result.subagentsRepaired > 0) {
+    console.log(chalk.green(`Repaired ${result.subagentsRepaired} subagent config(s)`));
+  }
+
   if (result.issues.length === 0) {
     console.log(chalk.green("Everything in sync."));
     return;
@@ -286,6 +373,7 @@ export default async function sync(_args: string[], flags?: { user?: boolean }):
     switch (issue.type) {
       case "mcp":
       case "hooks":
+      case "subagents":
         console.log(chalk.yellow(`  warn: ${issue.message}`));
         break;
       case "missing":

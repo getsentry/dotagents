@@ -1,0 +1,23 @@
+version = 1
+agents = ["claude", "cursor", "codex", "opencode"]
+
+[[skills]]
+name = "review"
+source = "path:./local-skills/review"
+
+[[skills]]
+name = "commit"
+source = "path:./local-skills/commit"
+
+[[mcp]]
+name = "fixture"
+command = "node"
+args = ["-e", "process.exit(0)"]
+
+[[hooks]]
+event = "Stop"
+command = "echo fixture"
+
+[[subagents]]
+name = "code-reviewer"
+source = "path:./local-agents"

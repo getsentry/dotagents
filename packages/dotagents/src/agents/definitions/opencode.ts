@@ -1,11 +1,13 @@
+import { join } from "node:path";
+import { homedir } from "node:os";
 import type { AgentDefinition } from "../types.js";
 import { UnsupportedFeature } from "../errors.js";
-import { envRecord, httpServer } from "./helpers.js";
+import { envRecord, httpServer, markManagedMarkdownSubagent, serializeMarkdownSubagent } from "./helpers.js";
 
 const opencode: AgentDefinition = {
   id: "opencode",
   displayName: "OpenCode",
-  configDir: ".claude",
+  configDir: ".opencode",
   // reads .agents/skills/ natively at both project and user scope
   skillsParentDir: undefined,
   userSkillsParentDirs: undefined,
@@ -31,6 +33,27 @@ const opencode: AgentDefinition = {
   hooks: undefined,
   serializeHooks() {
     throw new UnsupportedFeature("opencode", "hooks");
+  },
+  subagents: {
+    projectDir: ".opencode/agents",
+    userDir: join(homedir(), ".config", "opencode", "agents"),
+    fileExtension: ".md",
+    identity: "filename",
+    serialize(subagent) {
+      const native = subagent.native?.opencode;
+      return {
+        fileName: `${subagent.name}.md`,
+        content: native
+          ? markManagedMarkdownSubagent(native)
+          : serializeMarkdownSubagent(
+              {
+                description: subagent.description,
+                mode: "subagent",
+              },
+              subagent.instructions,
+            ),
+      };
+    },
   },
 };
 

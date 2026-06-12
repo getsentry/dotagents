@@ -6,21 +6,35 @@ export type {
   RegularSkillDependency,
   SkillSource,
   McpConfig,
+  SubagentConfig,
   TrustConfig,
 } from "./config/index.js";
 
 export { resolveScope } from "./scope.js";
 export type { Scope, ScopeRoot } from "./scope.js";
 
-export { getAgent, allAgentIds, writeMcpConfigs, verifyMcpConfigs, projectMcpResolver, getUserMcpTarget, userMcpResolver } from "./agents/index.js";
-export type { AgentDefinition, McpDeclaration, McpConfigSpec, McpTargetResolver } from "./agents/index.js";
+export {
+  getAgent,
+  allAgentIds,
+  writeMcpConfigs,
+  verifyMcpConfigs,
+  projectMcpResolver,
+  getUserMcpTarget,
+  userMcpResolver,
+} from "./agents/index.js";
+export type {
+  AgentDefinition,
+  McpDeclaration,
+  McpConfigSpec,
+  McpTargetResolver,
+} from "./agents/index.js";
 
 export { writeAgentsGitignore, ensureRootGitignoreEntries } from "./gitignore/index.js";
 
 export { ensureSkillsSymlink, verifySymlinks } from "./symlinks/index.js";
 
 export { lockfileSchema, loadLockfile, LockfileError, writeLockfile } from "./lockfile/index.js";
-export type { Lockfile, LockedSkill } from "./lockfile/index.js";
+export type { Lockfile, LockedSkill, LockedSubagent } from "./lockfile/index.js";
 
 // ---------------------------------------------------------------------------
 // Re-exports from @sentry/dotagents-lib.

@@ -148,6 +148,27 @@ const hookSchema = z.object({
 
 export type HookConfig = z.infer<typeof hookSchema>;
 
+export const SUBAGENT_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
+
+const subagentNameSchema = z
+  .string()
+  .regex(
+    SUBAGENT_NAME_PATTERN,
+    "Subagent names must start with lowercase a-z and contain only lowercase letters, numbers, and hyphens",
+  );
+
+const subagentTargetSchema = z.string().min(1);
+
+const subagentSchema = z.object({
+  name: subagentNameSchema,
+  source: skillSourceSchema,
+  ref: z.string().optional(),
+  path: z.string().optional(),
+  targets: z.array(subagentTargetSchema).optional(),
+}).strict();
+
+export type SubagentConfig = z.infer<typeof subagentSchema>;
+
 const trustConfigSchema = z.object({
   allow_all: z.boolean().default(false),
   github_orgs: z.array(z.string()).default([]),
@@ -168,6 +189,7 @@ export const agentsConfigSchema = z.object({
   skills: z.array(skillDependencySchema).default([]),
   mcp: z.array(mcpSchema).default([]),
   hooks: z.array(hookSchema).default([]),
+  subagents: z.array(subagentSchema).default([]),
   trust: trustConfigSchema.optional(),
   minimum_release_age: z.number().int().min(0).optional(),
   minimum_release_age_exclude: z.array(z.string()).default([]),

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { join } from "node:path";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { resolveScope, isInsideGitRepo, findGitDir, resolveDefaultScope, ScopeError } from "./scope.js";
 
@@ -72,7 +72,7 @@ describe("isInsideGitRepo", () => {
   });
 
   it("returns false when no .git in any parent", () => {
-    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    tempDir = mkNonGitTempDir();
     // No .git directory created
     expect(isInsideGitRepo(tempDir)).toBe(false);
   });
@@ -121,7 +121,7 @@ describe("findGitDir", () => {
   });
 
   it("returns undefined when no .git exists", () => {
-    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    tempDir = mkNonGitTempDir();
     expect(findGitDir(tempDir)).toBeUndefined();
   });
 });
@@ -143,7 +143,7 @@ describe("resolveDefaultScope", () => {
   });
 
   it("falls back to user scope when not in a git repo", () => {
-    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    tempDir = mkNonGitTempDir();
     process.env["DOTAGENTS_HOME"] = join(tempDir, "user-home");
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const s = resolveDefaultScope(tempDir);
@@ -159,3 +159,33 @@ describe("resolveDefaultScope", () => {
     expect(() => resolveDefaultScope(tempDir)).toThrow(/dotagents init/);
   });
 });
+
+function mkNonGitTempDir(): string {
+  for (const base of tempBases()) {
+    const dir = mkdtempSync(join(base, "scope-test-"));
+    if (!hasGitParent(dir)) {
+      return dir;
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  throw new Error("Could not create a temporary directory outside a git repository");
+}
+
+function tempBases(): string[] {
+  return [tmpdir(), "/var/tmp", "/dev/shm"].filter((base) => existsSync(base));
+}
+
+function hasGitParent(dir: string): boolean {
+  let current = resolve(dir);
+  while (true) {
+    if (existsSync(join(current, ".git"))) {
+      return true;
+    }
+    const parent = dirname(current);
+    if (parent === current) {
+      return false;
+    }
+    current = parent;
+  }
+}

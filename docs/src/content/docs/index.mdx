@@ -4,7 +4,7 @@ description: Shared tooling for coding agents.
 template: splash
 hero:
   title: '<span class="dotagents-brand">dotagents</span><span class="dotagents-headline">One Config for Your Coding Agents</span>'
-  tagline: 'Declare skills, MCP servers, and hooks in <code>agents.toml</code>. dotagents installs shared skills and writes each tool''s local config.'
+  tagline: 'Declare skills, MCP servers, hooks, and subagents in <code>agents.toml</code>. dotagents installs shared skills and writes each tool''s local config.'
   actions:
     - text: Get Started
       link: /guide/
@@ -18,7 +18,7 @@ hero:
         <strong>agents.toml</strong>
       </div>
       <pre><code>{`version = 1
-agents = ["claude", "cursor", "codex", "vscode"]
+agents = ["claude", "cursor", "codex", "vscode", "opencode"]
 
 [trust]
 github_orgs = ["getsentry"]
@@ -29,7 +29,12 @@ source = "getsentry/skills"
 
 [[skills]]
 name = "commit"
-source = "getsentry/skills"`}</code></pre>
+source = "getsentry/skills"
+
+[[subagents]]
+name = "code-reviewer"
+source = "getsentry/agent-pack"
+targets = ["claude", "codex", "opencode"]`}</code></pre>
     </div>
   </section>
 
@@ -52,9 +57,13 @@ source = "getsentry/skills"`}</code></pre>
         <strong>Hooks</strong>
         <span>Generate hook config for supported agents and refresh local state after pulls.</span>
       </a>
+      <a className="dotagents-card" href="/cli/#subagents">
+        <strong>Subagents</strong>
+        <span>Declare custom Claude, Cursor, Codex, and OpenCode subagents once and generate native runtime files.</span>
+      </a>
       <a className="dotagents-card" href="/security/">
         <strong>Trust policy</strong>
-        <span>Restrict skill sources before dotagents performs any network operation.</span>
+        <span>Restrict skill and subagent sources before dotagents performs any network operation.</span>
       </a>
     </div>
   </section>
@@ -81,13 +90,13 @@ source = "getsentry/skills"`}</code></pre>
       <p>The `agents` array tells dotagents which tools to configure. Pi reads `.agents/skills/` directly and does not need generated config.</p>
     </div>
 
-    | Agent | Config Dir | MCP Config | Hooks |
-    | --- | --- | --- | --- |
-    | `claude` | `.claude` | `.mcp.json` | `.claude/settings.json` |
-    | `cursor` | `.cursor` | `.cursor/mcp.json` | `.cursor/hooks.json` |
-    | `codex` | `.codex` | `.codex/config.toml` | None |
-    | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` |
-    | `opencode` | `.claude` | `opencode.json` | None |
+    | Agent | Config Dir | MCP Config | Hooks | Subagents |
+    | --- | --- | --- | --- | --- |
+    | `claude` | `.claude` | `.mcp.json` | `.claude/settings.json` | `.claude/agents/*.md` |
+    | `cursor` | `.cursor` | `.cursor/mcp.json` | `.cursor/hooks.json` | `.cursor/agents/*.md` |
+    | `codex` | `.codex` | `.codex/config.toml` | None | `.codex/agents/*.toml` |
+    | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` | None |
+    | `opencode` | `.opencode` | `opencode.json` | None | `.opencode/agents/*.md` |
   </section>
 
   <section className="dotagents-section">

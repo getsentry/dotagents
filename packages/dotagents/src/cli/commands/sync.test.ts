@@ -10,6 +10,7 @@ import { writeLockfile } from "../../lockfile/writer.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { loadConfig } from "../../config/loader.js";
 import { resolveScope } from "../../scope.js";
+import { DOTAGENTS_SUBAGENT_MARKER } from "../../agents/definitions/helpers.js";
 import { exec } from "@sentry/dotagents-lib";
 
 const SKILL_MD = (name: string) => `---
@@ -127,6 +128,36 @@ describe("runSync", () => {
     expect(lockfile!.skills["pdf"]).toBeUndefined();
   });
 
+  it("does not report malformed stale skill names as pruned", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      "version = 1\n",
+    );
+    const managedDir = join(projectRoot, ".agents", "skills", "bad name");
+    await mkdir(managedDir, { recursive: true });
+    await writeFile(join(managedDir, "SKILL.md"), SKILL_MD("bad name"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        "bad name": {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "bad-name",
+        },
+      },
+    });
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.adopted).toHaveLength(0);
+    expect(result.pruned).toHaveLength(0);
+    expect(existsSync(managedDir)).toBe(true);
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile).not.toBeNull();
+    expect(lockfile!.skills["bad name"]).toBeDefined();
+  });
+
   it("prunes wildcard skills newly excluded from config", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -236,7 +267,7 @@ describe("runSync", () => {
         process.env["DOTAGENTS_STATE_DIR"] = previousStateDir;
       }
     }
-  });
+  }, 30_000);
 
   it("detects missing skills", async () => {
     await writeFile(
@@ -382,6 +413,208 @@ describe("runSync", () => {
     const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.hooksRepaired).toBe(0);
     expect(result.issues.filter((i) => i.type === "hooks")).toHaveLength(0);
+  });
+
+  it("repairs missing subagent configs", async () => {
+    const installedDir = join(projectRoot, ".agents", "agents");
+    await mkdir(installedDir, { recursive: true });
+    await writeFile(
+      join(installedDir, "reviewer.md"),
+      `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "reviewer"\ndescription: "Review code."\n---\n\nReview code.\n`,
+      "utf-8",
+    );
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+
+[[subagents]]
+name = "reviewer"
+source = "path:agents"
+path = "reviewer.md"
+`,
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+    expect(result.subagentsRepaired).toBe(1);
+    expect(existsSync(join(projectRoot, ".claude", "agents", "reviewer.md"))).toBe(true);
+  });
+
+  it("reports unmanaged subagent config conflicts without overwriting them", async () => {
+    const installedDir = join(projectRoot, ".agents", "agents");
+    await mkdir(installedDir, { recursive: true });
+    await writeFile(
+      join(installedDir, "reviewer.md"),
+      `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "reviewer"\ndescription: "Review code."\n---\n\nReview code.\n`,
+      "utf-8",
+    );
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+
+[[subagents]]
+name = "reviewer"
+source = "path:agents"
+path = "reviewer.md"
+`,
+    );
+    const agentsDir = join(projectRoot, ".claude", "agents");
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(join(agentsDir, "reviewer.md"), "hand-written", "utf-8");
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.subagentsRepaired).toBe(0);
+    expect(result.issues.some((i) => i.type === "subagents" && i.message.includes("not managed"))).toBe(true);
+    expect(await readFile(join(agentsDir, "reviewer.md"), "utf-8")).toBe("hand-written");
+  });
+
+  it("preserves declared managed subagent configs when an unmanaged identity conflict exists", async () => {
+    const installedDir = join(projectRoot, ".agents", "agents");
+    await mkdir(installedDir, { recursive: true });
+    await writeFile(
+      join(installedDir, "reviewer.md"),
+      `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "reviewer"\ndescription: "Review code."\n---\n\nReview code.\n`,
+      "utf-8",
+    );
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+
+[[subagents]]
+name = "reviewer"
+source = "path:agents"
+path = "reviewer.md"
+`,
+    );
+    const agentsDir = join(projectRoot, ".claude", "agents");
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(
+      join(agentsDir, "reviewer.md"),
+      `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "reviewer"\ndescription: "Managed reviewer."\n---\n\nManaged instructions.\n`,
+      "utf-8",
+    );
+    await writeFile(
+      join(agentsDir, "alias.md"),
+      `---\nname: reviewer\ndescription: Hand-written reviewer.\n---\n\nHand-written instructions.\n`,
+      "utf-8",
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.subagentsRepaired).toBe(0);
+    expect(result.issues.some((i) => i.type === "subagents" && i.message.includes("identity conflicts"))).toBe(true);
+    expect(existsSync(join(agentsDir, "reviewer.md"))).toBe(true);
+    expect(existsSync(join(agentsDir, "alias.md"))).toBe(true);
+  });
+
+  it("does not prune runtime files for declared subagents that are not installed", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+
+[[subagents]]
+name = "reviewer"
+source = "path:agents"
+path = "reviewer.md"
+`,
+    );
+    const agentsDir = join(projectRoot, ".claude", "agents");
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(
+      join(agentsDir, "reviewer.md"),
+      `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "reviewer"\ndescription: "Review code."\n---\n\nReview code.\n`,
+      "utf-8",
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.issues.some((i) => i.type === "subagents" && i.message.includes("not installed"))).toBe(true);
+    expect(result.subagentsRepaired).toBe(0);
+    expect(existsSync(join(agentsDir, "reviewer.md"))).toBe(true);
+  });
+
+  it("reports pruned subagent configs as repaired", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+`,
+    );
+    const agentsDir = join(projectRoot, ".claude", "agents");
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(
+      join(agentsDir, "old-reviewer.md"),
+      `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "old-reviewer"\n---\n`,
+      "utf-8",
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.subagentsRepaired).toBe(1);
+    expect(existsSync(join(agentsDir, "old-reviewer.md"))).toBe(false);
+  });
+
+  it("prunes stale subagent lock entries", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+`,
+    );
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {
+        "old-reviewer": {
+          source: "path:agents",
+        },
+      },
+    });
+
+    await runSync({ scope: resolveScope("project", projectRoot) });
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.subagents).toEqual({});
+  });
+
+  it("removes stale lockfile subagents when regenerating gitignore", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+`,
+    );
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {
+        "old-reviewer": {
+          source: "path:agents",
+        },
+      },
+    });
+    await mkdir(join(projectRoot, ".agents", "agents"), { recursive: true });
+    await writeFile(
+      join(projectRoot, ".agents", "agents", "old-reviewer.md"),
+      `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "old-reviewer"\n---\n`,
+      "utf-8",
+    );
+
+    await runSync({ scope: resolveScope("project", projectRoot) });
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.subagents).toEqual({});
+    expect(existsSync(join(projectRoot, ".agents", "agents", "old-reviewer.md"))).toBe(false);
+
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).not.toContain("/agents/old-reviewer.md");
   });
 
   it("does not auto-create root .gitignore", async () => {

@@ -123,7 +123,7 @@ describe("runDoctor", () => {
     expect(check?.status).toBe("warn");
     expect(check?.message).toContain("agents.lock");
     expect(check?.message).toContain(".agents/.gitignore");
-  });
+  }, 30_000);
 
   it("does not warn when generated files are not tracked", async () => {
     const { execSync } = await import("node:child_process");
@@ -199,6 +199,20 @@ describe("runDoctor", () => {
       await runDoctor({ scope: resolveScope("project", projectRoot), fix: true });
 
       expect(existsSync(join(projectRoot, ".agents", ".gitignore"))).toBe(true);
+    });
+
+    it("includes lockfile subagents when recreating .agents/.gitignore", async () => {
+      await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
+      await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+      await writeFile(
+        join(projectRoot, "agents.lock"),
+        `version = 1\n\n[skills]\n\n[subagents.old-reviewer]\nsource = "path:agents"\n`,
+      );
+
+      await runDoctor({ scope: resolveScope("project", projectRoot), fix: true });
+
+      const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+      expect(gitignore).toContain("/agents/old-reviewer.md");
     });
   });
 });

@@ -7,10 +7,11 @@ import {
   isWildcardDep,
   type RepositorySource,
   type SkillDependency,
+  type SubagentConfig,
 } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
-import { type Lockfile, type LockedSkill } from "../../lockfile/schema.js";
+import { type Lockfile, type LockedSkill, type LockedSubagent } from "../../lockfile/schema.js";
 import {
   applyDefaultRepositorySource,
   resolveSkill,
@@ -22,7 +23,7 @@ import {
   GitError,
   copyDir,
 } from "@sentry/dotagents-lib";
-import { isInPlaceSkill } from "../../utils/fs.js";
+import { isInPlaceSkill, managedSkillPath } from "../../utils/fs.js";
 import { getCacheStateDir, HOST_SCAN_DIRS } from "../cache.js";
 import { formatGitError, formatTrustError } from "../errors.js";
 import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore/writer.js";
@@ -30,7 +31,17 @@ import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { getAgent } from "../../agents/registry.js";
 import { writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../agents/mcp-writer.js";
 import { writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../agents/hook-writer.js";
+import { pruneSubagentConfigs, writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../agents/subagent-writer.js";
+import {
+  InstalledSubagentWriteError,
+  lockEntryForSubagent,
+  loadInstalledSubagents,
+  pruneInstalledSubagents,
+  resolveSubagent,
+  writeInstalledSubagents,
+} from "../../agents/subagent-store.js";
 import { userMcpResolver } from "../../agents/paths.js";
+import type { SubagentDeclaration } from "../../agents/types.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 
@@ -51,6 +62,7 @@ export interface InstallResult {
   skipped: string[];
   pruned: string[];
   hookWarnings: { agent: string; message: string }[];
+  subagentWarnings: { agent: string; name: string; message: string }[];
 }
 
 /** Expanded skill ready for install — either from an explicit entry or a wildcard */
@@ -143,12 +155,73 @@ async function expandSkills(
   return expanded;
 }
 
+function validateFrozenSubagents(
+  subagents: SubagentConfig[],
+  lockfile: Lockfile | null,
+): void {
+  if (subagents.length === 0) {return;}
+  if (!lockfile) {
+    throw new InstallError("--frozen requires agents.lock to exist.");
+  }
+
+  for (const subagent of subagents) {
+    if (!lockfile.subagents[subagent.name]) {
+      throw new InstallError(
+        `--frozen: subagent "${subagent.name}" is in agents.toml but missing from agents.lock.`,
+      );
+    }
+  }
+}
+
+function optionalSubagentLockValue(
+  entry: LockedSubagent,
+  key: "resolved_url" | "resolved_path" | "resolved_ref" | "resolved_commit",
+): string | undefined {
+  switch (key) {
+    case "resolved_url":
+      return "resolved_url" in entry ? entry.resolved_url : undefined;
+    case "resolved_path":
+      return "resolved_path" in entry ? entry.resolved_path : undefined;
+    case "resolved_ref":
+      return "resolved_ref" in entry ? entry.resolved_ref : undefined;
+    case "resolved_commit":
+      return "resolved_commit" in entry ? entry.resolved_commit : undefined;
+  }
+}
+
+function subagentLockEntriesEqual(a: LockedSubagent, b: LockedSubagent): boolean {
+  return a.source === b.source
+    && optionalSubagentLockValue(a, "resolved_url") === optionalSubagentLockValue(b, "resolved_url")
+    && optionalSubagentLockValue(a, "resolved_path") === optionalSubagentLockValue(b, "resolved_path")
+    && optionalSubagentLockValue(a, "resolved_ref") === optionalSubagentLockValue(b, "resolved_ref")
+    && optionalSubagentLockValue(a, "resolved_commit") === optionalSubagentLockValue(b, "resolved_commit");
+}
+
+function unchangedSubagentLockEntries(
+  current: Lockfile | null,
+  next: Lockfile,
+): Lockfile["subagents"] {
+  if (!current) {return {};}
+
+  const unchanged: Lockfile["subagents"] = {};
+  for (const [name, entry] of Object.entries(current.subagents)) {
+    const nextEntry = next.subagents[name];
+    if (!nextEntry) {continue;}
+    if (!subagentLockEntriesEqual(entry, nextEntry)) {continue;}
+    unchanged[name] = entry;
+  }
+  return unchanged;
+}
+
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   const { scope, frozen } = opts;
   const { configPath, lockPath, agentsDir, skillsDir } = scope;
+  const subagentsDir = join(agentsDir, "agents");
 
   // 1. Read config
   const config = await loadConfig(configPath);
+  const lockfile = await loadLockfile(lockPath);
+  const newLock: Lockfile = { version: 1, skills: {}, subagents: {} };
   const installed: string[] = [];
   const skipped: string[] = [];
   const pruned: string[] = [];
@@ -158,8 +231,6 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
 
   // 2. Resolve and install skills (if any declared)
   if (config.skills.length > 0) {
-    const lockfile = await loadLockfile(lockPath);
-
     if (frozen && !lockfile) {
       throw new InstallError("--frozen requires agents.lock to exist.");
     }
@@ -185,8 +256,6 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
         }
       }
     }
-
-    const newLock: Lockfile = { version: 1, skills: {} };
 
     for (const item of expanded) {
       const { name, dep } = item;
@@ -249,27 +318,96 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       installed.push(name);
     }
 
-    // Prune stale wildcard-sourced skills (skip in frozen mode to avoid disk/lockfile inconsistency)
+    // Prune stale managed skills (skip in frozen mode to avoid disk/lockfile inconsistency)
     if (!frozen && lockfile) {
-      const wildcardDeps = config.skills.filter(isWildcardDep);
       for (const [name, locked] of Object.entries(lockfile.skills)) {
         if (newLock.skills[name]) {continue;} // still tracked
-        const fromWildcard = wildcardDeps.some((w) =>
-          sourcesMatch(locked.source, w.source),
-        );
-        if (fromWildcard) {
-          await rm(join(skillsDir, name), { recursive: true, force: true });
-          pruned.push(name);
-        }
+        if (isInPlaceSkill(locked.source)) {continue;}
+        const skillPath = managedSkillPath(skillsDir, name);
+        if (!skillPath) {continue;}
+        await rm(skillPath, { recursive: true, force: true });
+        pruned.push(name);
       }
     }
-
-    if (!frozen) {
-      await writeLockfile(lockPath, newLock);
+  } else if (!frozen && lockfile) {
+    for (const [name, locked] of Object.entries(lockfile.skills)) {
+      if (isInPlaceSkill(locked.source)) {continue;}
+      const skillPath = managedSkillPath(skillsDir, name);
+      if (!skillPath) {continue;}
+      await rm(skillPath, { recursive: true, force: true });
+      pruned.push(name);
     }
   }
 
-  // 3. Gitignore (skip for user scope — ~/.agents/ is not a git repo)
+  // 3. Resolve and install subagent markdown files
+  const installedSubagents: SubagentDeclaration[] = [];
+  if (frozen) {
+    validateFrozenSubagents(config.subagents, lockfile);
+    if (config.subagents.length > 0) {
+      const loaded = await loadInstalledSubagents(subagentsDir, config.subagents);
+      if (loaded.issues.length > 0) {
+        throw new InstallError(loaded.issues.map((issue) => issue.issue).join("\n"));
+      }
+      installedSubagents.push(...loaded.subagents);
+    }
+  } else if (config.subagents.length > 0) {
+    for (const subagentConfig of config.subagents) {
+      let resolved: Awaited<ReturnType<typeof resolveSubagent>>;
+      try {
+        resolved = await resolveSubagent(subagentConfig, {
+          stateDir: getCacheStateDir(),
+          projectRoot: scope.root,
+          defaultRepositorySource: config.defaultRepositorySource,
+          minimumReleaseAge: config.minimum_release_age,
+          minimumReleaseAgeExclude: config.minimum_release_age_exclude,
+          trust: config.trust,
+        });
+      } catch (err) {
+        if (err instanceof GitError || err instanceof TrustError) {throw err;}
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new InstallError(`Failed to resolve subagent "${subagentConfig.name}": ${msg}`);
+      }
+      installedSubagents.push(resolved.subagent);
+      newLock.subagents[resolved.subagent.name] = lockEntryForSubagent(resolved);
+    }
+  }
+
+  const shouldWriteLockfile = !frozen && (lockfile || config.skills.length > 0 || config.subagents.length > 0);
+  let installedSubagentsSynced = false;
+
+  try {
+    if (!frozen) {
+      await writeInstalledSubagents(subagentsDir, installedSubagents);
+      await pruneInstalledSubagents(subagentsDir, config.subagents);
+      installedSubagentsSynced = true;
+    }
+  } catch (err) {
+    if (shouldWriteLockfile) {
+      try {
+        await writeLockfile(lockPath, {
+          ...newLock,
+          subagents: installedSubagentsSynced
+            ? newLock.subagents
+            : unchangedSubagentLockEntries(lockfile, newLock),
+        });
+      } catch {
+        // Preserve the original install failure; this recovery write is best-effort.
+      }
+    }
+    if (err instanceof InstalledSubagentWriteError) {
+      throw new InstallError(err.message);
+    }
+    throw err;
+  }
+
+  if (shouldWriteLockfile) {
+    await writeLockfile(lockPath, {
+      ...newLock,
+      subagents: unchangedSubagentLockEntries(lockfile, newLock),
+    });
+  }
+
+  // 4. Gitignore (skip for user scope — ~/.agents/ is not a git repo)
   if (scope.scope === "project") {
     // For wildcard entries all expanded skills are managed (wildcards can't be in-place)
     const managedNames = installed.filter((name) => {
@@ -278,7 +416,14 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
       if (!dep || isWildcardDep(dep)) {return true;}
       return !isInPlaceSkill(dep.source);
     });
-    await writeAgentsGitignore(agentsDir, managedNames);
+    const managedSubagentNames = frozen
+      ? Object.keys(lockfile?.subagents ?? {})
+      : installedSubagents.map((subagent) => subagent.name);
+    await writeAgentsGitignore(
+      agentsDir,
+      managedNames,
+      managedSubagentNames,
+    );
 
     // Health check: warn if agents.lock and .agents/.gitignore are not in root .gitignore
     const missing = await checkRootGitignoreEntries(scope.root);
@@ -287,7 +432,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     }
   }
 
-  // 4. Symlinks — create per-agent symlinks so each agent discovers skills
+  // 5. Symlinks — create per-agent symlinks so each agent discovers skills
   if (scope.scope === "user") {
     const seen = new Set<string>();
     for (const agentId of config.agents) {
@@ -315,11 +460,11 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     }
   }
 
-  // 5. Write MCP config files
+  // 6. Write MCP config files
   const mcpResolver = scope.scope === "user" ? userMcpResolver() : projectMcpResolver(scope.root);
   await writeMcpConfigs(config.agents, toMcpDeclarations(config.mcp), mcpResolver);
 
-  // 6. Write hook config files (skip for user scope)
+  // 7. Write hook config files (skip for user scope)
   let hookWarnings: { agent: string; message: string }[] = [];
   if (scope.scope === "project") {
     hookWarnings = await writeHookConfigs(
@@ -329,7 +474,38 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     );
   }
 
-  return { installed, skipped, pruned, hookWarnings };
+  // 8. Write custom subagent files
+  const subagentResolver = scope.scope === "user"
+    ? userSubagentResolver()
+    : projectSubagentResolver(scope.root);
+  let subagentResult: Awaited<ReturnType<typeof writeSubagentConfigs>>;
+  try {
+    subagentResult = await writeSubagentConfigs(
+      config.agents,
+      installedSubagents,
+      subagentResolver,
+    );
+    if (!frozen) {
+      await pruneSubagentConfigs(config.agents, installedSubagents, subagentResolver);
+    }
+    if (shouldWriteLockfile) {
+      await writeLockfile(lockPath, newLock);
+    }
+  } catch (err) {
+    if (shouldWriteLockfile) {
+      try {
+        await writeLockfile(lockPath, {
+          ...newLock,
+          subagents: unchangedSubagentLockEntries(lockfile, newLock),
+        });
+      } catch {
+        // Preserve the runtime config failure; this recovery write is best-effort.
+      }
+    }
+    throw err;
+  }
+
+  return { installed, skipped, pruned, hookWarnings, subagentWarnings: subagentResult.warnings };
 }
 
 export default async function install(args: string[], flags?: { user?: boolean }): Promise<void> {
@@ -364,6 +540,9 @@ export default async function install(args: string[], flags?: { user?: boolean }
       );
     }
     for (const w of result.hookWarnings) {
+      console.log(chalk.yellow(`  warn: ${w.message}`));
+    }
+    for (const w of result.subagentWarnings) {
       console.log(chalk.yellow(`  warn: ${w.message}`));
     }
   } catch (err) {

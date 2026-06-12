@@ -70,6 +70,41 @@ describe("writeLockfile + loadLockfile", () => {
     expect(keys).toEqual(["a-skill", "z-skill"]);
   });
 
+  it("sorts subagents alphabetically", async () => {
+    const lockPath = join(dir, "agents.lock");
+    await writeLockfile(lockPath, {
+      version: 1,
+      skills: {},
+      subagents: {
+        "z-reviewer": {
+          source: "org/z-repo",
+        },
+        "a-reviewer": {
+          source: "org/a-repo",
+        },
+      },
+    });
+
+    const loaded = await loadLockfile(lockPath);
+    const keys = Object.keys(loaded!.subagents);
+    expect(keys).toEqual(["a-reviewer", "z-reviewer"]);
+  });
+
+  it("omits empty subagents from the serialized lockfile", async () => {
+    const lockPath = join(dir, "agents.lock");
+    await writeLockfile(lockPath, {
+      version: 1,
+      skills: {},
+      subagents: {},
+    });
+
+    const content = await readFile(lockPath, "utf-8");
+    expect(content).not.toContain("[subagents]");
+
+    const loaded = await loadLockfile(lockPath);
+    expect(loaded!.subagents).toEqual({});
+  });
+
   it("ends with exactly one trailing newline", async () => {
     const lockPath = join(dir, "agents.lock");
     await writeLockfile(lockPath, {

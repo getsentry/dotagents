@@ -1,6 +1,16 @@
 // SKILL.md loading
-export { loadSkillMd, SkillLoadError } from "./skills/loader.js";
-export type { SkillMeta, LoadSkillMdOptions } from "./skills/loader.js";
+export {
+  loadSkillMd,
+  loadMarkdownFrontmatter,
+  parseMarkdownFrontmatterContent,
+  SkillLoadError,
+} from "./skills/loader.js";
+export type {
+  SkillMeta,
+  LoadSkillMdOptions,
+  MarkdownFrontmatter,
+  LoadMarkdownFrontmatterOptions,
+} from "./skills/loader.js";
 
 // Tool name vocabulary (allowed-tools frontmatter)
 export { TOOL_NAMES, isToolName } from "./skills/tool-name.js";

@@ -49,8 +49,8 @@ formats.
 ### 3. Install
 
 After cloning the repo or pulling changes, run `install` to fetch or refresh
-managed skills. Managed skills are gitignored, so collaborators run this command
-locally.
+managed skills and subagents. Managed `.agents/` files are gitignored, so
+collaborators run this command locally.
 
 ```shell
 dotagents install
@@ -63,8 +63,8 @@ This is also the update path. There is no separate update command.
 dotagents manages gitignore automatically. Two generated files are kept out of
 version control:
 
-- `agents.lock` tracks which skills are managed.
-- `.agents/.gitignore` excludes managed skill directories.
+- `agents.lock` tracks which skills and subagents are managed.
+- `.agents/.gitignore` excludes managed skill directories and canonical installed subagent files.
 
 Custom skills you create directly in `.agents/skills/` are not gitignored. They
 are tracked by git normally, so collaborators get them without running install.
@@ -72,8 +72,8 @@ are tracked by git normally, so collaborators get them without running install.
 ## Trust Policies
 
 By default, any source is allowed. For teams, add a `[trust]` section to
-restrict which sources can provide skills. Trust is validated before any network
-operations.
+restrict which sources can provide skills and subagents. Trust is validated
+before any network operations.
 
 ```shell
 # Trust a GitHub org
@@ -90,7 +90,7 @@ See the [Security page](/security/) for the full trust configuration reference.
 
 ## Auto-install with Git Hooks
 
-Since managed skills are gitignored, run `dotagents install` after pulling. A
+Since managed `.agents/` files are gitignored, run `dotagents install` after pulling. A
 `post-merge` hook automates this:
 
 ```shell
@@ -115,10 +115,11 @@ Use `dotagents sync` for offline repair. It does not fetch anything from the
 network. Instead, it:
 
 - Adopts local orphaned skills, meaning installed skills that are not declared.
-- Prunes stale managed skills removed from config.
+- Prunes stale managed skills and subagents removed from config.
 - Regenerates `.agents/.gitignore`.
 - Repairs broken symlinks.
 - Fixes MCP and hook configs.
+- Repairs generated subagent files.
 
 ## Diagnosing Issues
 
@@ -147,8 +148,8 @@ dotagents --user add getsentry/skills --all
 dotagents --user install
 ```
 
-Personal skills live in `~/.agents/` and symlink to `~/.claude/skills/` and
-`~/.cursor/skills/`. Override the location with `DOTAGENTS_HOME`.
+Personal skills live in `~/.agents/` and symlink to `~/.claude/skills/` for
+Claude and Cursor. Override the location with `DOTAGENTS_HOME`.
 
 When you run dotagents outside a git repo without an `agents.toml`, it falls
 back to user scope automatically.
@@ -157,11 +158,11 @@ back to user scope automatically.
 
 ## Full Configuration Example
 
-`agents.toml` with skills, wildcards, MCP servers, and hooks:
+`agents.toml` with skills, wildcards, MCP servers, hooks, and subagents:
 
 ```toml
 version = 1
-agents = ["claude", "cursor"]
+agents = ["claude", "cursor", "codex", "opencode"]
 minimum_release_age = 60
 minimum_release_age_exclude = ["getsentry/*"]
 
@@ -206,6 +207,12 @@ url = "https://mcp.example.com/sse"
 event = "PreToolUse"
 matcher = "Bash"
 command = "my-lint-check"
+
+# Custom subagent
+[[subagents]]
+name = "code-reviewer"
+source = "getsentry/agent-pack"
+targets = ["claude", "codex", "opencode"]
 ```
 
 See the [CLI reference](/cli/#configuration-agentstoml) for all fields and
