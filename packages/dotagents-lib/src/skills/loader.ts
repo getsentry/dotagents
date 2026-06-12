@@ -32,7 +32,8 @@ export interface LoadSkillMdOptions {
   onWarning?: (message: string) => void;
 }
 
-const FRONTMATTER_RE = /^\uFEFF?---[ \t]*\r?\n([\s\S]*?)\r?\n---/;
+const FRONTMATTER_OPEN_RE = /^\uFEFF?---[ \t]*\r?\n/;
+const FRONTMATTER_CLOSE_RE = /^---[ \t]*$/;
 
 /**
  * Parse a SKILL.md file and extract YAML frontmatter.
@@ -82,14 +83,14 @@ export function parseMarkdownFrontmatterContent(
   content: string,
   filePath: string,
 ): MarkdownFrontmatter {
-  const match = FRONTMATTER_RE.exec(content);
-  if (!match?.[1]) {
+  const frontmatter = extractFrontmatter(content);
+  if (!frontmatter) {
     throw new SkillLoadError(`No YAML frontmatter in ${filePath}`);
   }
 
   let parsed: unknown;
   try {
-    parsed = parseYaml(match[1]);
+    parsed = parseYaml(frontmatter.yaml);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new SkillLoadError(`Invalid YAML frontmatter in ${filePath}: ${message}`);
@@ -101,9 +102,36 @@ export function parseMarkdownFrontmatterContent(
 
   return {
     meta: parsed as Record<string, unknown>,
-    body: content.slice(match[0].length).trim(),
+    body: content.slice(frontmatter.end).trim(),
     raw: content,
   };
+}
+
+function extractFrontmatter(content: string): { yaml: string; end: number } | null {
+  const opener = FRONTMATTER_OPEN_RE.exec(content);
+  if (!opener) {return null;}
+
+  const yamlStart = opener[0].length;
+  let lineStart = yamlStart;
+  while (lineStart < content.length) {
+    const lineEnd = content.indexOf("\n", lineStart);
+    const hasNewline = lineEnd !== -1;
+    const line = content
+      .slice(lineStart, hasNewline ? lineEnd : content.length)
+      .replace(/\r$/, "");
+
+    if (FRONTMATTER_CLOSE_RE.test(line)) {
+      return {
+        yaml: content.slice(yamlStart, lineStart).replace(/\r?\n$/, ""),
+        end: hasNewline ? lineEnd : content.length,
+      };
+    }
+
+    if (!hasNewline) {break;}
+    lineStart = lineEnd + 1;
+  }
+
+  return null;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
