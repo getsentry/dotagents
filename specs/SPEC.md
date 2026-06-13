@@ -260,12 +260,12 @@ Generated project-scope plugin outputs:
 | Agent | Project Scope Output |
 |-------|----------------------|
 | Claude Code | `.claude-plugin/marketplace.json`; `.agents/plugins/<name>/.claude-plugin/plugin.json` |
-| Cursor | `.cursor-plugin/marketplace.json` |
+| Cursor | `.cursor-plugin/marketplace.json`; `.agents/plugins/<name>/.cursor-plugin/plugin.json` |
 | Codex | `.agents/plugins/marketplace.json`; `.agents/plugins/<name>/.codex-plugin/plugin.json` |
 | Grok Build | `.grok/plugins/<name>/` managed copy |
 | OpenCode | `.opencode/plugins/<name>.js|ts` re-export module when the plugin declares or contains one OpenCode module |
 
-Generated plugin JSON is stable: keys are sorted, plugin entries are sorted by name, and files end with one trailing newline. Generated runtime marketplaces and generated Claude/Codex plugin manifests are overwritten or pruned only when they carry `metadata.managedBy = "dotagents"`. Managed Grok and OpenCode projections are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself.
+Generated plugin JSON is stable: keys are sorted, plugin entries are sorted by name, and files end with one trailing newline. Generated runtime marketplaces and generated Claude/Cursor/Codex plugin manifests are overwritten or pruned only when they carry `metadata.managedBy = "dotagents"`. Managed Grok and OpenCode projections are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself.
 
 Plugins are currently project-scope only. `install --user` rejects `[[plugins]]` entries because user-scope runtime plugin projections are not generated yet.
 

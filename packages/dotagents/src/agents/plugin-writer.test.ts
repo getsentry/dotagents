@@ -55,7 +55,7 @@ describe("plugin writer", () => {
     );
 
     expect(result.warnings).toEqual([]);
-    expect(result.written).toBe(7);
+    expect(result.written).toBe(9);
     const codexMarketplace = JSON.parse(await readFile(join(root, ".agents", "plugins", "marketplace.json"), "utf-8")) as Record<string, unknown>;
     expect(codexMarketplace).toEqual({
       interface: {
@@ -123,6 +123,11 @@ describe("plugin writer", () => {
     expect(claudeManifest["agents"]).toBeUndefined();
     expect(claudeManifest["category"]).toBeUndefined();
     expect(claudeManifest["metadata"]).toEqual({ managedBy: "dotagents" });
+
+    const cursorManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".cursor-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(cursorManifest["skills"]).toBe("./skills");
+    expect(cursorManifest["commands"]).toBe("./commands");
+    expect(cursorManifest["metadata"]).toEqual({ managedBy: "dotagents" });
 
     const codexManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
     expect(codexManifest["skills"]).toBe("./skills");
@@ -206,6 +211,23 @@ describe("plugin writer", () => {
       },
     ]);
     expect(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8")).toBe("{ \"name\": \"mine\" }\n");
+  });
+
+  it("does not overwrite unmanaged Cursor plugin manifests", async () => {
+    const alpha = await plugin("alpha-tools");
+    await mkdir(join(alpha.pluginDir, ".cursor-plugin"), { recursive: true });
+    await writeFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "{ \"name\": \"mine\" }\n", "utf-8");
+
+    const result = await writePluginOutputs(["cursor"], [alpha], root);
+
+    expect(result.warnings).toEqual([
+      {
+        agent: "cursor",
+        name: "alpha-tools",
+        message: `Cursor plugin manifest exists and is not managed by dotagents: ${join(root, ".agents", "plugins", "alpha-tools", ".cursor-plugin", "plugin.json")}`,
+      },
+    ]);
+    expect(await readFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "utf-8")).toBe("{ \"name\": \"mine\" }\n");
   });
 
   it("does not generate runtime outputs when no agent targets are selected", async () => {
@@ -294,23 +316,27 @@ describe("plugin writer", () => {
     });
     await mkdir(join(alpha.pluginDir, "opencode"), { recursive: true });
     await writeFile(join(alpha.pluginDir, "opencode", "plugin.ts"), "export default {}\n", "utf-8");
-    await writePluginOutputs(["claude", "codex", "grok", "opencode"], [alpha], root);
+    await writePluginOutputs(["claude", "cursor", "codex", "grok", "opencode"], [alpha], root);
 
     const pruned = await prunePluginOutputs([], [alpha], root);
 
     expect(pruned).toEqual([
       join(root, ".agents", "plugins", "marketplace.json"),
       join(root, ".claude-plugin", "marketplace.json"),
+      join(root, ".cursor-plugin", "marketplace.json"),
       join(root, ".grok", "plugins", "alpha-tools"),
       join(root, ".opencode", "plugins", "alpha-tools.ts"),
       join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json"),
+      join(root, ".agents", "plugins", "alpha-tools", ".cursor-plugin", "plugin.json"),
       join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"),
     ]);
     expect(existsSync(join(root, ".agents", "plugins", "marketplace.json"))).toBe(false);
     expect(existsSync(join(root, ".claude-plugin", "marketplace.json"))).toBe(false);
+    expect(existsSync(join(root, ".cursor-plugin", "marketplace.json"))).toBe(false);
     expect(existsSync(join(root, ".grok", "plugins", "alpha-tools"))).toBe(false);
     expect(existsSync(join(root, ".opencode", "plugins", "alpha-tools.ts"))).toBe(false);
     expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json"))).toBe(false);
+    expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".cursor-plugin", "plugin.json"))).toBe(false);
     expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"))).toBe(false);
   });
 

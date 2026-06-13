@@ -374,6 +374,11 @@ function assertPluginOutputs() {
   assertFileIncludes(".agents/plugins/qa-tools/.claude-plugin/plugin.json", '"managedBy": "dotagents"');
   assertFileIncludes(".agents/plugins/qa-tools/.claude-plugin/plugin.json", '"skills": "./skills"');
   assertFileIncludes(".agents/plugins/qa-tools/.claude-plugin/plugin.json", '"commands": "./commands"');
+  assertFile(".agents/plugins/qa-tools/.cursor-plugin/plugin.json");
+  assertFileIncludes(".agents/plugins/qa-tools/.cursor-plugin/plugin.json", '"managedBy": "dotagents"');
+  assertFileIncludes(".agents/plugins/qa-tools/.cursor-plugin/plugin.json", '"skills": "./skills"');
+  assertFileIncludes(".agents/plugins/qa-tools/.cursor-plugin/plugin.json", '"commands": "./commands"');
+  assertFileIncludes(".agents/plugins/qa-tools/.cursor-plugin/plugin.json", '"agents": "./agents"');
   assertFile(".agents/plugins/qa-tools/.codex-plugin/plugin.json");
   assertFileIncludes(".agents/plugins/qa-tools/.codex-plugin/plugin.json", '"managedBy": "dotagents"');
   assertFileIncludes(".agents/plugins/qa-tools/.codex-plugin/plugin.json", '"skills": "./skills"');

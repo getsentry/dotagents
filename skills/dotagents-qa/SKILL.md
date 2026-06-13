@@ -36,6 +36,7 @@ Write down the QA target before running commands:
 Read the targeted reference before running runtime-specific QA:
 - Core install/sync example: [references/core-agentic-qa.md](references/core-agentic-qa.md)
 - Runtime auth, gateway, and `.env.qa.local` handling: [references/runtime-auth.md](references/runtime-auth.md)
+- Plugin runtime verification matrix: [references/plugin-runtime.md](references/plugin-runtime.md)
 - Codex custom agents and plugin marketplace/install proof: [references/codex.md](references/codex.md)
 - Claude Code files, plugin validation, and runtime caveats: [references/claude.md](references/claude.md)
 - Cursor files/runtime caveats: [references/cursor.md](references/cursor.md)
@@ -288,6 +289,7 @@ test -f .agents/plugins/marketplace.json
 test -f .claude-plugin/marketplace.json
 test -f .cursor-plugin/marketplace.json
 test -f .agents/plugins/qa-tools/.claude-plugin/plugin.json
+test -f .agents/plugins/qa-tools/.cursor-plugin/plugin.json
 test -f .agents/plugins/qa-tools/.codex-plugin/plugin.json
 test -f .grok/plugins/qa-tools/.dotagents-managed
 test -f .opencode/plugins/qa-tools.ts
@@ -303,6 +305,7 @@ diff claims to repair, then verify the repair:
 ```bash
 rm .mcp.json .claude/skills .claude/agents/code-reviewer.md .codex/agents/code-reviewer.toml
 rm .agents/plugins/marketplace.json .claude-plugin/marketplace.json .agents/plugins/qa-tools/.claude-plugin/plugin.json
+rm .cursor-plugin/marketplace.json .agents/plugins/qa-tools/.cursor-plugin/plugin.json
 rm .agents/plugins/qa-tools/.codex-plugin/plugin.json
 rm -rf .grok/plugins/qa-tools
 rm .opencode/plugins/qa-tools.ts
@@ -313,7 +316,9 @@ test -f .claude/agents/code-reviewer.md
 test -f .codex/agents/code-reviewer.toml
 test -f .agents/plugins/marketplace.json
 test -f .claude-plugin/marketplace.json
+test -f .cursor-plugin/marketplace.json
 test -f .agents/plugins/qa-tools/.claude-plugin/plugin.json
+test -f .agents/plugins/qa-tools/.cursor-plugin/plugin.json
 test -f .agents/plugins/qa-tools/.codex-plugin/plugin.json
 test -f .grok/plugins/qa-tools/.dotagents-managed
 test -f .opencode/plugins/qa-tools.ts

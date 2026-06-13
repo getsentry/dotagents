@@ -56,6 +56,9 @@ export async function writePluginOutputs(
     if (agents.includes("claude") && await writeClaudeManifest(plugin, warnings)) {
       written++;
     }
+    if (agents.includes("cursor") && await writeCursorManifest(plugin, warnings)) {
+      written++;
+    }
     if (agents.includes("codex") && await writeCodexManifest(plugin, warnings)) {
       written++;
     }
@@ -100,6 +103,12 @@ export async function verifyPluginOutputs(
       const filePath = join(plugin.pluginDir, ".claude-plugin", "plugin.json");
       if (!existsSync(filePath)) {
         issues.push({ agent: "claude", name: plugin.name, issue: `Claude plugin manifest missing: ${filePath}` });
+      }
+    }
+    if (agents.includes("cursor")) {
+      const filePath = join(plugin.pluginDir, ".cursor-plugin", "plugin.json");
+      if (!existsSync(filePath)) {
+        issues.push({ agent: "cursor", name: plugin.name, issue: `Cursor plugin manifest missing: ${filePath}` });
       }
     }
     if (agents.includes("codex")) {
@@ -185,6 +194,24 @@ export async function prunePluginOutputs(
       if (!entry.isDirectory()) {continue;}
       if (desiredClaude.has(entry.name)) {continue;}
       const path = join(canonicalPluginDir, entry.name, ".claude-plugin", "plugin.json");
+      if (!existsSync(path) || !await isManagedJsonFile(path)) {continue;}
+      await rm(path, { force: true });
+      await rmdirIfEmpty(dirname(path));
+      pruned.push(path);
+    }
+  }
+
+  const desiredCursor = new Set(
+    plugins
+      .filter((plugin) => selectedAgentIds(agentIds, plugin).includes("cursor"))
+      .map((plugin) => plugin.name),
+  );
+  if (existsSync(canonicalPluginDir)) {
+    const entries = await readdir(canonicalPluginDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {continue;}
+      if (desiredCursor.has(entry.name)) {continue;}
+      const path = join(canonicalPluginDir, entry.name, ".cursor-plugin", "plugin.json");
       if (!existsSync(path) || !await isManagedJsonFile(path)) {continue;}
       await rm(path, { force: true });
       await rmdirIfEmpty(dirname(path));
@@ -375,6 +402,23 @@ async function writeClaudeManifest(
   return writeJsonIfChanged(filePath, stableJson(manifest));
 }
 
+async function writeCursorManifest(
+  plugin: PluginDeclaration,
+  warnings: PluginWriteWarning[],
+): Promise<boolean> {
+  const filePath = join(plugin.pluginDir, ".cursor-plugin", "plugin.json");
+  if (existsSync(filePath) && !await isManagedJsonFile(filePath)) {
+    warnings.push({
+      agent: "cursor",
+      name: plugin.name,
+      message: `Cursor plugin manifest exists and is not managed by dotagents: ${filePath}`,
+    });
+    return false;
+  }
+  const manifest = cursorRuntimeManifest(plugin);
+  return writeJsonIfChanged(filePath, stableJson(manifest));
+}
+
 async function writeCodexManifest(
   plugin: PluginDeclaration,
   warnings: PluginWriteWarning[],
@@ -416,6 +460,47 @@ function claudeRuntimeManifest(plugin: PluginDeclaration): Record<string, unknow
   }
   if (existsSync(join(plugin.pluginDir, ".mcp.json"))) {
     manifest["mcpServers"] = "./.mcp.json";
+  }
+  const metadata = plugin.manifest["metadata"];
+  manifest["metadata"] = {
+    ...(metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {}),
+    ...DOTAGENTS_METADATA,
+  };
+  return manifest;
+}
+
+/** Builds the managed Cursor manifest projection using Cursor-native paths. */
+function cursorRuntimeManifest(plugin: PluginDeclaration): Record<string, unknown> {
+  const manifest: Record<string, unknown> = {
+    name: plugin.name,
+  };
+  copyManifestField(plugin.manifest, manifest, "version");
+  copyManifestField(plugin.manifest, manifest, "description");
+  copyManifestField(plugin.manifest, manifest, "author");
+  copyManifestField(plugin.manifest, manifest, "homepage");
+  copyManifestField(plugin.manifest, manifest, "repository");
+  copyManifestField(plugin.manifest, manifest, "license");
+  copyManifestField(plugin.manifest, manifest, "keywords");
+
+  if (existsSync(join(plugin.pluginDir, "skills"))) {
+    manifest["skills"] = "./skills";
+  }
+  if (existsSync(join(plugin.pluginDir, "agents"))) {
+    manifest["agents"] = "./agents";
+  }
+  if (existsSync(join(plugin.pluginDir, "commands"))) {
+    manifest["commands"] = "./commands";
+  }
+  if (existsSync(join(plugin.pluginDir, "rules"))) {
+    manifest["rules"] = "./rules";
+  }
+  if (existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
+    manifest["hooks"] = "./hooks/hooks.json";
+  }
+  if (existsSync(join(plugin.pluginDir, ".mcp.json"))) {
+    manifest["mcpServers"] = "./.mcp.json";
+  } else if (existsSync(join(plugin.pluginDir, "mcp.json"))) {
+    manifest["mcpServers"] = "./mcp.json";
   }
   const metadata = plugin.manifest["metadata"];
   manifest["metadata"] = {

@@ -289,13 +289,13 @@ dotagents installs canonical plugin bundles under `.agents/plugins/<name>/`. The
 | `targets` | string[] | No | Optional subset of configured agent IDs. When absent or empty, defaults to every configured agent in `agents`; targets not listed in top-level `agents` are skipped with a warning. |
 
 Generated project-scope plugin outputs:
-- Claude: `.claude-plugin/marketplace.json`
-- Cursor: `.cursor-plugin/marketplace.json`
-- Codex: `.agents/plugins/<name>/.codex-plugin/plugin.json`
+- Claude: `.claude-plugin/marketplace.json` and `.agents/plugins/<name>/.claude-plugin/plugin.json`
+- Cursor: `.cursor-plugin/marketplace.json` and `.agents/plugins/<name>/.cursor-plugin/plugin.json`
+- Codex: `.agents/plugins/marketplace.json` and `.agents/plugins/<name>/.codex-plugin/plugin.json`
 - Grok: `.grok/plugins/<name>/` managed copy
 - OpenCode: `.opencode/plugins/<name>.js|ts` re-export module when the plugin declares or contains one OpenCode module
 
-Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated runtime marketplaces and generated Codex plugin manifests are overwritten or pruned only when they carry `metadata.managedBy = "dotagents"`. Managed Grok and OpenCode projections are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself.
+Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated runtime marketplaces and generated Claude/Cursor/Codex plugin manifests are overwritten or pruned only when they carry `metadata.managedBy = "dotagents"`. Managed Grok and OpenCode projections are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself.
 
 Plugin declarations are project-scope only for now. `install --user` rejects `[[plugins]]` entries and `sync --user` reports them as unsupported because user-scope runtime plugin projections are not generated yet.
 
