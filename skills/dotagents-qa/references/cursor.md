@@ -4,7 +4,7 @@ Use this reference when changes affect Cursor skill sharing, `.cursor/mcp.json`,
 
 ## File-Level Checks
 
-The core smoke asserts:
+The core agentic QA asserts:
 
 - Cursor shares Claude-compatible skills through `.claude/skills`
 - `.cursor/mcp.json` exists for Cursor MCP config

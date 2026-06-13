@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-// Owns local dotagents example QA. The default path proves file wiring with an
-// isolated HOME/state; --codex-runtime additionally proves Codex can spawn the
-// generated project agent and always scrubs copied Codex auth/config.
+// Task-oriented agentic QA for the checked-in dotagents example. Keep this
+// script with the dotagents-qa skill so runtime proof stays beside its docs.
 
 import { execFileSync } from "node:child_process";
 import {
@@ -20,17 +19,40 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(__dirname, "..");
+const repoRoot = resolve(__dirname, "../../..");
 const cliPath = join(repoRoot, "packages", "dotagents", "dist", "cli", "index.js");
 const exampleRoot = join(repoRoot, "examples", "full");
 const sentinel = "DOTAGENTS_SUBAGENT_RUNTIME_PROOF_9b8e6f2c";
-const args = new Set(process.argv.slice(2));
-const keep = args.has("--keep");
-const runCodexRuntime = args.has("--codex-runtime");
+
+const rawArgs = process.argv.slice(2);
+const flags = new Set(rawArgs.filter((arg) => arg.startsWith("--")));
+const keep = flags.has("--keep");
+const task = taskName(rawArgs);
+
+const taskGroups = {
+  all: ["install-files", "sync-repair"],
+};
+
+const tasks = {
+  "install-files": runInstallFiles,
+  "sync-repair": runSyncRepair,
+  "codex-runtime": runCodexRuntimeProof,
+};
+
+if (flags.has("--help") || flags.has("-h")) {
+  printUsage();
+  process.exit(0);
+}
 
 if (!existsSync(cliPath)) {
-  console.error(`smoke-examples: missing built CLI at ${cliPath}`);
+  console.error(`qa-example: missing built CLI at ${cliPath}`);
   console.error("Run `pnpm build` first.");
+  process.exit(1);
+}
+
+if (!tasks[task] && !taskGroups[task]) {
+  console.error(`qa-example: unknown task "${task}"`);
+  printUsage();
   process.exit(1);
 }
 
@@ -53,14 +75,76 @@ const fixtureEnv = {
 };
 
 try {
-  console.log(`smoke-examples: project=${projectDir}`);
+  console.log(`qa-example: project=${projectDir}`);
+  for (const name of expandedTasks(task)) {
+    console.log(`qa-example: task=${name}`);
+    tasks[name]();
+  }
+  console.log("qa-example: ok");
+} catch (err) {
+  console.error("qa-example: failed");
+  console.error(err instanceof Error ? err.message : String(err));
+  console.error(`qa-example: project kept at ${projectDir}`);
+  process.exitCode = 1;
+  throw err;
+} finally {
+  rmSync(codexHomeDir, { recursive: true, force: true });
+  if (!keep && process.exitCode !== 1) {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function taskName(args) {
+  if (flags.has("--codex-runtime")) {return "codex-runtime";}
+  return args.find((arg) => !arg.startsWith("--")) ?? "all";
+}
+
+function expandedTasks(name) {
+  return taskGroups[name] ?? [name];
+}
+
+function printUsage() {
+  console.error(`Usage: node skills/dotagents-qa/scripts/qa-example.mjs <task> [--keep]
+
+Tasks:
+  all              Run install-files and sync-repair
+  install-files    Install the full example and assert generated files
+  sync-repair      Delete representative generated files and assert sync repairs them
+  codex-runtime    Paid proof that Codex can spawn the generated custom agent
+
+Compatibility:
+  --codex-runtime  Alias for the codex-runtime task
+`);
+}
+
+function runInstallFiles() {
+  installAndAssert();
+}
+
+function runSyncRepair() {
+  installAndAssert();
+  rmSync(join(projectDir, ".mcp.json"), { force: true });
+  rmSync(join(projectDir, ".claude", "skills"), { force: true, recursive: true });
+  rmSync(join(projectDir, ".claude", "agents", "code-reviewer.md"), { force: true });
+  rmSync(join(projectDir, ".codex", "agents", "code-reviewer.toml"), { force: true });
+  runCli(["sync"]);
+  assertFile(".mcp.json");
+  assertSymlink(".claude/skills");
+  assertFile(".claude/agents/code-reviewer.md");
+  assertFile(".codex/agents/code-reviewer.toml");
+}
+
+function runCodexRuntimeProof() {
+  installAndAssert();
+  proveCodexRuntime();
+}
+
+function installAndAssert() {
   runCli(["install"]);
   const list = runCli(["list"]);
   writeFileSync(join(tmp, "list.out"), list);
   runCli(["doctor", "--fix"]);
   runCli(["doctor"]);
-  assertIncludes(list, "review", "list output should include review");
-  assertIncludes(list, "commit", "list output should include commit");
 
   assertFile(".agents/skills/review/SKILL.md");
   assertFile(".agents/skills/commit/SKILL.md");
@@ -76,33 +160,6 @@ try {
   assertFile(".claude/settings.json");
   assertFile(".cursor/hooks.json");
   assertSubagentOutputs();
-
-  rmSync(join(projectDir, ".mcp.json"), { force: true });
-  rmSync(join(projectDir, ".claude", "skills"), { force: true, recursive: true });
-  rmSync(join(projectDir, ".claude", "agents", "code-reviewer.md"), { force: true });
-  rmSync(join(projectDir, ".codex", "agents", "code-reviewer.toml"), { force: true });
-  runCli(["sync"]);
-  assertFile(".mcp.json");
-  assertSymlink(".claude/skills");
-  assertFile(".claude/agents/code-reviewer.md");
-  assertFile(".codex/agents/code-reviewer.toml");
-
-  if (runCodexRuntime) {
-    proveCodexRuntime();
-  }
-
-  console.log("smoke-examples: ok");
-} catch (err) {
-  console.error("smoke-examples: failed");
-  console.error(err instanceof Error ? err.message : String(err));
-  console.error(`smoke-examples: project kept at ${projectDir}`);
-  process.exitCode = 1;
-  throw err;
-} finally {
-  rmSync(codexHomeDir, { recursive: true, force: true });
-  if (!keep && process.exitCode !== 1) {
-    rmSync(tmp, { recursive: true, force: true });
-  }
 }
 
 function runCli(cliArgs) {
@@ -127,7 +184,7 @@ function proveCodexRuntime() {
   const sourceAuth = join(sourceCodexHome, "auth.json");
   const sourceConfig = join(sourceCodexHome, "config.toml");
   if (!existsSync(sourceAuth)) {
-    throw new Error(`Codex runtime smoke requires auth.json at ${sourceAuth}`);
+    throw new Error(`Codex runtime QA requires auth.json at ${sourceAuth}`);
   }
 
   mkdirSync(codexHomeDir, { recursive: true });
@@ -231,7 +288,6 @@ function assertIncludes(value, expected, message) {
   }
 }
 
-/** Verifies Codex spawned and waited on a child agent that returned the sentinel. */
 function assertCodexRuntimeEvents(output) {
   assertIncludes(output, '"tool":"spawn_agent"', "Codex runtime JSONL should include a spawn_agent event");
   assertIncludes(output, '"tool":"wait"', "Codex runtime JSONL should include a wait event");

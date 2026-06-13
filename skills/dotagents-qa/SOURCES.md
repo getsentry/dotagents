@@ -20,7 +20,7 @@
 
 ## Decisions
 
-- Keep the runtime skill as a guided QA playbook rather than a broad QA matrix or fixed smoke harness.
+- Keep the runtime skill as a guided QA playbook rather than a broad QA matrix or fixed all-in-one harness.
 - Provide a repo-local Dockerfile for the sandbox/toolchain only; keep fixture design and assertions manual.
 - Keep the Dockerfile's prepared pnpm version aligned with the root `packageManager`.
 - Mount the host checkout read-only and do dependency install/build inside Docker to avoid host system-file writes and host binary assumptions.

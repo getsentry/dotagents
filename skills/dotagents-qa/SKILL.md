@@ -34,9 +34,9 @@ Write down the QA target before running commands:
   broken state, user-scope state, or remote source.
 
 Read the targeted reference before running runtime-specific QA:
-- Core install/sync example: [references/core-smoke.md](references/core-smoke.md)
-- Codex custom agents: [references/codex.md](references/codex.md)
-- Claude Code files/runtime caveats: [references/claude.md](references/claude.md)
+- Core install/sync example: [references/core-agentic-qa.md](references/core-agentic-qa.md)
+- Codex custom agents and runtime caveats: [references/codex.md](references/codex.md)
+- Claude Code files and runtime caveats: [references/claude.md](references/claude.md)
 - Cursor files/runtime caveats: [references/cursor.md](references/cursor.md)
 - OpenCode files/runtime caveats: [references/opencode.md](references/opencode.md)
 
@@ -119,7 +119,7 @@ su -s /bin/bash node -c '
   pnpm install --frozen-lockfile
   pnpm build
   pnpm check
-  pnpm smoke:examples
+  pnpm qa:example
 '
 ```
 
@@ -128,17 +128,17 @@ the check is already known to be unrelated. If `build` or `check` fails, treat
 that as a QA finding and stop before fixture work unless you are explicitly
 isolating the playbook mechanics. If skipped or bypassed, report why.
 
-## 3. Prefer The Checked-In Smoke
+## 3. Prefer The Checked-In Agentic QA
 
-Use the checked-in example smoke for ordinary install/sync QA:
+Use the checked-in example QA for ordinary install/sync QA:
 
 ```bash
-pnpm smoke:examples
+pnpm qa:example
 ```
 
-The smoke builds the local CLI, copies `examples/full/` to a temp project, and
+The QA runner builds the local CLI, copies `examples/full/` to a temp project, and
 asserts:
-- `install`, `list`, `doctor --fix`, and `doctor`
+- `install`, `list`, `doctor --fix`, and `doctor` complete successfully
 - managed skills under `.agents/skills/`
 - Claude/Cursor skill symlink behavior
 - MCP files for Claude, Cursor, Codex, and OpenCode
@@ -147,15 +147,15 @@ asserts:
 - generated subagent runtime files for Claude, Cursor, Codex, and OpenCode
 - `sync` repair after deleting representative generated files
 
-Use `node scripts/smoke-examples.mjs --keep` when you need to inspect the temp
-project; the script prints the retained path.
+Use `node skills/dotagents-qa/scripts/qa-example.mjs all --keep` when you need
+to inspect the temp project; the script prints the retained path.
 
 For paid Codex runtime proof of generated custom agents, run the runtime proof
 outside Docker only when the branch affects Codex custom agents or when
 reporting that Codex itself works:
 
 ```bash
-node scripts/smoke-examples.mjs --codex-runtime --keep
+node skills/dotagents-qa/scripts/qa-example.mjs codex-runtime --keep
 ```
 
 That mode copies Codex auth/config into a temp `CODEX_HOME`, marks only the
@@ -320,10 +320,10 @@ opencode --version
 ```
 
 Codex subagents need real runtime proof before claiming Codex loaded them. Use
-`node scripts/smoke-examples.mjs --codex-runtime --keep`; `codex debug
-prompt-input` is not enough unless it visibly includes the generated agent name
-or instructions. Project-scoped `.codex/agents/` load only when Codex trusts
-the project. See [references/codex.md](references/codex.md).
+`node skills/dotagents-qa/scripts/qa-example.mjs codex-runtime --keep`;
+`codex debug prompt-input` is not enough unless it visibly includes the
+generated agent name or instructions. Project-scoped `.codex/agents/` load only
+when Codex trusts the project. See [references/codex.md](references/codex.md).
 
 Claude has no cheap dry-run skill list. If auth/network/model cost is
 acceptable, run a minimal non-interactive prompt from the temp project;

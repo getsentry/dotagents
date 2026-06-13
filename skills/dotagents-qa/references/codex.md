@@ -4,7 +4,7 @@ Use this reference when changes affect Codex config generation, `.codex/agents/*
 
 ## File-Level Checks
 
-The core smoke asserts:
+The core agentic QA asserts:
 
 - `.codex/config.toml` exists for MCP config
 - `.codex/agents/code-reviewer.toml` exists
@@ -19,10 +19,10 @@ These checks prove dotagents wrote the expected files. They do not prove Codex l
 Run the paid runtime proof when the branch affects Codex custom agents or when reporting that Codex itself works:
 
 ```bash
-node scripts/smoke-examples.mjs --codex-runtime --keep
+node skills/dotagents-qa/scripts/qa-example.mjs codex-runtime --keep
 ```
 
-The script:
+The task:
 
 - copies `examples/full/` to a temp project
 - runs the built local dotagents CLI
@@ -48,4 +48,4 @@ Project-scoped `.codex/` layers load only when Codex trusts the project. A one-o
 
 If Codex reports `unknown agent_type`, check project trust and the canonical path (`pwd -P`) before assuming the generated TOML schema is wrong.
 
-Do not leave copied Codex auth in retained temp directories. The smoke script scrubs its temp `codex-home`; if you run manual experiments, remove copied auth/config before reporting.
+Do not leave copied Codex auth in retained temp directories. The QA task scrubs its temp `codex-home`; if you run manual experiments, remove copied auth/config before reporting.
