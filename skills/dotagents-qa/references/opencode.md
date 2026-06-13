@@ -1,6 +1,8 @@
 # OpenCode QA
 
-Use this reference when changes affect OpenCode config generation, `opencode.json`, `.opencode/agents/*.md`, or OpenCode user-scope paths.
+Use this reference when changes affect OpenCode config generation,
+`opencode.json`, `.opencode/agents/*.md`, `.opencode/plugins/*.ts`, or
+OpenCode user-scope paths.
 
 ## File-Level Checks
 
@@ -14,10 +16,25 @@ OpenCode does not support dotagents hooks in the current agent definition, so ho
 
 For user scope, isolate `HOME` and `DOTAGENTS_HOME`, then assert generated OpenCode subagents under `$HOME/.config/opencode/agents/`.
 
+## Plugin Proof
+
+For generated plugin modules, the QA skill has a cheap Docker proof:
+
+```bash
+node skills/dotagents-qa/scripts/qa-example.mjs plugin-opencode --keep
+```
+
+This installs the checked-in example, asserts the generated
+`.opencode/plugins/qa-tools.ts` re-export, runs `opencode debug config`, and
+checks for the generated module path plus the fixture's
+`dotagents-plugin-proof` command. That proves OpenCode loaded and executed the
+generated plugin module's config hook. It does not prove model-backed
+invocation.
+
 ## Runtime Proof
 
-This QA skill does not currently include an automated OpenCode runtime proof.
-Do not claim OpenCode runtime discovery from file-level checks alone.
+OpenCode subagent invocation and model-backed skill/plugin use still require an
+authenticated runtime proof. Do not claim those from file-level checks alone.
 
 Manual Docker probes can prove more when the branch affects OpenCode output:
 
@@ -26,7 +43,8 @@ Manual Docker probes can prove more when the branch affects OpenCode output:
 - `opencode debug agent code-reviewer` should resolve the generated prompt and
   `mode = "subagent"`
 - `opencode debug config` should include the generated
-  `.opencode/plugins/qa-tools.ts` plugin module
+  `.opencode/plugins/qa-tools.ts` plugin module and any observable fixture
+  config it injects
 - `opencode debug skill` may show `.agents/skills/*` discovery; verify from
   raw output instead of assuming it is stable across OpenCode versions
 
