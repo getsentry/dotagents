@@ -27,6 +27,37 @@ docker run --rm -i \
   dotagents-qa:local
 ```
 
+A useful `.env.qa.local` template is:
+
+```bash
+# General gateway key used by OpenCode and optional Claude/Codex/Grok probes.
+OPENROUTER_API_KEY=...
+
+# Claude Code direct Anthropic auth or OpenRouter-over-Anthropic gateway.
+ANTHROPIC_API_KEY=...
+ANTHROPIC_AUTH_TOKEN=${OPENROUTER_API_KEY}
+ANTHROPIC_BASE_URL=https://openrouter.ai/api
+ANTHROPIC_MODEL=anthropic/claude-sonnet-4
+ANTHROPIC_CUSTOM_MODEL_OPTION=anthropic/claude-sonnet-4
+ANTHROPIC_DEFAULT_SONNET_MODEL=anthropic/claude-sonnet-4
+
+# Codex direct OpenAI auth or custom-provider experiments.
+OPENAI_API_KEY=...
+CODEX_API_KEY=...
+CODEX_ACCESS_TOKEN=...
+
+# Grok and Cursor runtime-specific auth.
+XAI_API_KEY=...
+CURSOR_API_KEY=...
+
+# Optional model override for manual OpenCode runtime QA.
+OPENCODE_QA_MODEL=openrouter/anthropic/claude-haiku-4.5
+```
+
+Only set aliases like `ANTHROPIC_AUTH_TOKEN=${OPENROUTER_API_KEY}` when you
+intend that runtime to use the gateway. For first-party provider proof, set the
+provider's real key instead and leave the gateway overrides unset.
+
 Inside Docker, keep client state isolated with temp homes such as `HOME`,
 `CODEX_HOME`, `DOTAGENTS_HOME`, and any runtime-specific config directory the
 client supports. Do not use or mount host runtime homes for ordinary QA.
