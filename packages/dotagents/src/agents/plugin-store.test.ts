@@ -1,5 +1,8 @@
+import { mkdtemp, mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { lockEntryForPlugin, type ResolvedPlugin } from "./plugin-store.js";
+import { isSameProjectPluginConfig, lockEntryForPlugin, type ResolvedPlugin } from "./plugin-store.js";
 
 describe("plugin store", () => {
   it("preserves an empty resolved path for root git plugins", () => {
@@ -22,5 +25,34 @@ describe("plugin store", () => {
       resolved_path: "",
       resolved_commit: "abc123",
     });
+  });
+
+  it("does not treat missing canonical plugin dirs as same-project plugins", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    const pluginsDir = join(projectRoot, ".agents", "plugins");
+    await mkdir(pluginsDir, { recursive: true });
+
+    expect(isSameProjectPluginConfig(
+      { name: "review-tools", source: "path:." },
+      pluginsDir,
+      projectRoot,
+    )).toBe(false);
+  });
+
+  it("detects same-project plugins without requiring the explicit source path to exist", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    const pluginsDir = join(projectRoot, ".agents", "plugins");
+    await mkdir(pluginsDir, { recursive: true });
+
+    expect(isSameProjectPluginConfig(
+      { name: "review-tools", source: "path:.agents/plugins/review-tools" },
+      pluginsDir,
+      projectRoot,
+    )).toBe(true);
+    expect(isSameProjectPluginConfig(
+      { name: "review-tools", source: "path:.", path: ".agents/plugins/review-tools" },
+      pluginsDir,
+      projectRoot,
+    )).toBe(true);
   });
 });
