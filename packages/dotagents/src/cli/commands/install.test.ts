@@ -27,6 +27,13 @@ description: Review code for correctness.
 Review the current diff.
 `;
 
+async function initTestGitRepo(repoDir: string): Promise<void> {
+  await exec("git", ["init"], { cwd: repoDir });
+  await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
+  await exec("git", ["config", "user.name", "Test"], { cwd: repoDir });
+  await exec("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir });
+}
+
 describe("runInstall", () => {
   let tmpDir: string;
   let stateDir: string;
@@ -52,9 +59,7 @@ describe("runInstall", () => {
     if (repoInitialized) {return;}
 
     await mkdir(repoDir, { recursive: true });
-    await exec("git", ["init"], { cwd: repoDir });
-    await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
-    await exec("git", ["config", "user.name", "Test"], { cwd: repoDir });
+    await initTestGitRepo(repoDir);
 
     await mkdir(join(repoDir, "pdf"), { recursive: true });
     await writeFile(join(repoDir, "pdf", "SKILL.md"), SKILL_MD("pdf"));
@@ -998,9 +1003,7 @@ path = "reviewer.md"
     // Create a second repo that also has a "pdf" skill
     const repoDir2 = join(tmpDir, "repo2");
     await mkdir(repoDir2, { recursive: true });
-    await exec("git", ["init"], { cwd: repoDir2 });
-    await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir2 });
-    await exec("git", ["config", "user.name", "Test"], { cwd: repoDir2 });
+    await initTestGitRepo(repoDir2);
     await mkdir(join(repoDir2, "pdf"), { recursive: true });
     await writeFile(join(repoDir2, "pdf", "SKILL.md"), SKILL_MD("pdf"));
     await exec("git", ["add", "."], { cwd: repoDir2 });
@@ -1055,9 +1058,7 @@ path = "reviewer.md"
     // Create a second repo with a "helper" skill
     const repoDir2 = join(tmpDir, "repo2");
     await mkdir(repoDir2, { recursive: true });
-    await exec("git", ["init"], { cwd: repoDir2 });
-    await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir2 });
-    await exec("git", ["config", "user.name", "Test"], { cwd: repoDir2 });
+    await initTestGitRepo(repoDir2);
     await mkdir(join(repoDir2, "helper"), { recursive: true });
     await writeFile(join(repoDir2, "helper", "SKILL.md"), SKILL_MD("helper"));
     await exec("git", ["add", "."], { cwd: repoDir2 });

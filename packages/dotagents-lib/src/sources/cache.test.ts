@@ -5,6 +5,12 @@ import { tmpdir } from "node:os";
 import { ensureCached, validateCacheKey, CacheError } from "./cache.js";
 import { exec } from "../utils/exec.js";
 
+async function configureTestGitRepo(repoDir: string): Promise<void> {
+  await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
+  await exec("git", ["config", "user.name", "Test"], { cwd: repoDir });
+  await exec("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir });
+}
+
 describe("validateCacheKey", () => {
   it.each([
     ["empty string", ""],
@@ -45,8 +51,7 @@ describe("ensureCached", () => {
 
     await exec("git", ["init", "--bare", "--initial-branch=main", remoteDir]);
     await exec("git", ["clone", remoteDir, repoDir]);
-    await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
-    await exec("git", ["config", "user.name", "Test"], { cwd: repoDir });
+    await configureTestGitRepo(repoDir);
   });
 
   afterEach(async () => {

@@ -39,6 +39,7 @@ describe("runAdd", () => {
       cwd: repoDir,
     });
     await exec("git", ["config", "user.name", "Test"], { cwd: repoDir });
+    await exec("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir });
 
     await mkdir(join(repoDir, "pdf"), { recursive: true });
     await writeFile(join(repoDir, "pdf", "SKILL.md"), SKILL_MD("pdf"));
@@ -235,6 +236,7 @@ describe("runAdd", () => {
       cwd: singleRepo,
     });
     await exec("git", ["config", "user.name", "Test"], { cwd: singleRepo });
+    await exec("git", ["config", "commit.gpgsign", "false"], { cwd: singleRepo });
     await mkdir(join(singleRepo, "only-skill"), { recursive: true });
     await writeFile(
       join(singleRepo, "only-skill", "SKILL.md"),
@@ -439,6 +441,7 @@ describe("add() CLI parsing", () => {
       cwd: repoDir,
     });
     await exec("git", ["config", "user.name", "Test"], { cwd: repoDir });
+    await exec("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir });
 
     await mkdir(join(repoDir, "pdf"), { recursive: true });
     await writeFile(join(repoDir, "pdf", "SKILL.md"), SKILL_MD("pdf"));

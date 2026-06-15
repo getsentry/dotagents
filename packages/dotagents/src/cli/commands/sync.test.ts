@@ -199,6 +199,7 @@ describe("runSync", () => {
     await exec("git", ["init"], { cwd: skillRepo });
     await exec("git", ["config", "user.email", "test@example.com"], { cwd: skillRepo });
     await exec("git", ["config", "user.name", "Test User"], { cwd: skillRepo });
+    await exec("git", ["config", "commit.gpgsign", "false"], { cwd: skillRepo });
     await mkdir(join(skillRepo, "pdf"), { recursive: true });
     await writeFile(join(skillRepo, "pdf", "SKILL.md"), SKILL_MD("pdf"));
     await exec("git", ["add", "."], { cwd: skillRepo });
@@ -209,6 +210,7 @@ describe("runSync", () => {
     await exec("git", ["init", "-b", "main"], { cwd: projectSeed });
     await exec("git", ["config", "user.email", "test@example.com"], { cwd: projectSeed });
     await exec("git", ["config", "user.name", "Test User"], { cwd: projectSeed });
+    await exec("git", ["config", "commit.gpgsign", "false"], { cwd: projectSeed });
     await writeFile(
       join(projectSeed, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${skillRepo}"\n`,
@@ -224,6 +226,8 @@ describe("runSync", () => {
     await exec("git", ["config", "user.name", "Alice"], { cwd: aliceRepo });
     await exec("git", ["config", "user.email", "bob@example.com"], { cwd: bobRepo });
     await exec("git", ["config", "user.name", "Bob"], { cwd: bobRepo });
+    await exec("git", ["config", "commit.gpgsign", "false"], { cwd: aliceRepo });
+    await exec("git", ["config", "commit.gpgsign", "false"], { cwd: bobRepo });
 
     try {
       process.env["DOTAGENTS_STATE_DIR"] = aliceStateDir;
