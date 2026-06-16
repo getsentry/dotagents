@@ -298,6 +298,35 @@ source = "path:."
       expect(gitignore).not.toContain("/plugins/local-tools/");
     });
 
+    it("does not let stale lock entries gitignore same-project canonical plugins", async () => {
+      const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }));
+      await writeFile(
+        join(projectRoot, "agents.toml"),
+        `version = 1
+
+[[plugins]]
+name = "local-tools"
+source = "path:."
+`,
+      );
+      await writeFile(
+        join(projectRoot, "agents.lock"),
+        `version = 1
+
+[plugins.local-tools]
+source = "path:plugins/local-tools"
+`,
+      );
+      await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+
+      await runDoctor({ scope: resolveScope("project", projectRoot), fix: true });
+
+      const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+      expect(gitignore).not.toContain("/plugins/local-tools/");
+    });
+
     it("does not gitignore orphan skills that collide with Pi plugin projections when recreating .agents/.gitignore", async () => {
       await mkdir(join(projectRoot, ".agents", "skills", "review"), { recursive: true });
       await writeFile(join(projectRoot, ".agents", "skills", "review", "SKILL.md"), "---\nname: review\ndescription: Review\n---\n");

@@ -359,8 +359,14 @@ function getManagedPluginNames(
       .filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
       .map((plugin) => plugin.name),
   );
+  const sameProjectPluginNames = new Set(
+    config.plugins
+      .filter((plugin) => isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
+      .map((plugin) => plugin.name),
+  );
   if (lockfile) {
     for (const [name, locked] of Object.entries(lockfile.plugins)) {
+      if (sameProjectPluginNames.has(name)) {continue;}
       if (!isInPlacePluginSource(locked.source)) {
         names.add(name);
       }

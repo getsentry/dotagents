@@ -141,6 +141,47 @@ source = "path:plugins/review-tools"
     expect(gitignore).not.toContain("/plugins/marketplace.json");
   });
 
+  it("does not gitignore same-project canonical plugins after removing a skill", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[skills]]
+name = "pdf"
+source = "path:local-skills/pdf"
+
+[[plugins]]
+name = "local-tools"
+source = "path:."
+`,
+    );
+    await mkdir(join(projectRoot, ".agents", "skills", "pdf"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"), SKILL_MD("pdf"));
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }, null, 2));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        pdf: {
+          source: "path:local-skills/pdf",
+        },
+      },
+      plugins: {
+        "local-tools": {
+          source: "path:plugins/local-tools",
+        },
+      },
+    });
+
+    const scope = resolveScope("project", projectRoot);
+    await runRemove({ scope, skillName: "pdf" });
+
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).not.toContain("/skills/pdf");
+    expect(gitignore).not.toContain("/plugins/local-tools/");
+  });
+
   it("does not gitignore orphan skills that collide with Pi plugin projections after removing a skill", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

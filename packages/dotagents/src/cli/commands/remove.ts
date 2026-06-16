@@ -14,7 +14,7 @@ import { sourcesMatch, parseOwnerRepoShorthand, isExplicitSourceSpecifier } from
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 import { isInPlaceSkill } from "../../utils/fs.js";
-import { isInPlacePluginSource, loadInstalledPlugins } from "../../plugins/store.js";
+import { isInPlacePluginSource, isSameProjectPluginConfig, loadInstalledPlugins } from "../../plugins/store.js";
 import { projectedPiSkillNames } from "../../plugins/runtime/writer.js";
 
 export class RemoveError extends Error {
@@ -167,11 +167,17 @@ async function updateProjectGitignore(scope: ScopeRoot): Promise<void> {
   }
   const managedPluginNames = new Set(
     config.plugins
-      .filter((plugin) => !isInPlacePluginSource(plugin.source))
+      .filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
+      .map((plugin) => plugin.name),
+  );
+  const sameProjectPluginNames = new Set(
+    config.plugins
+      .filter((plugin) => isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
       .map((plugin) => plugin.name),
   );
   if (lockfile) {
     for (const [name, locked] of Object.entries(lockfile.plugins)) {
+      if (sameProjectPluginNames.has(name)) {continue;}
       if (!isInPlacePluginSource(locked.source)) {
         managedPluginNames.add(name);
       }
@@ -179,7 +185,7 @@ async function updateProjectGitignore(scope: ScopeRoot): Promise<void> {
   }
   const installedPlugins = await loadInstalledPlugins(
     scope.pluginsDir,
-    config.plugins.filter((plugin) => !isInPlacePluginSource(plugin.source)),
+    config.plugins.filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root)),
   );
   await writeAgentsGitignore(
     scope.agentsDir,
