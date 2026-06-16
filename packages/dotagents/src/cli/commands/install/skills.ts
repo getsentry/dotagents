@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { mkdir, rm } from "node:fs/promises";
 import { isWildcardDep, type AgentsConfig, type RepositorySource, type SkillDependency } from "../../../config/schema.js";
 import type { Lockfile, LockedSkill } from "../../../lockfile/schema.js";
@@ -176,6 +176,11 @@ export async function installSkills(
       );
       validateTrustedSource(sourceForTrust, config.trust);
 
+      const destDir = managedSkillPath(scope.skillsDir, name);
+      if (!destDir) {
+        throw new InstallError(`Invalid skill name "${name}" in install plan.`);
+      }
+
       let resolved: ResolvedSkill;
       if (item.resolved) {
         resolved = item.resolved;
@@ -196,7 +201,6 @@ export async function installSkills(
         }
       }
 
-      const destDir = join(scope.skillsDir, name);
       if (resolve(resolved.skillDir) !== resolve(destDir)) {
         await copyDir(resolved.skillDir, destDir);
       }

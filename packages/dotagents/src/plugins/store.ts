@@ -330,7 +330,7 @@ async function discoverFromMarketplaces(
 
       const path = localMarketplacePath(entry.source);
       if (!path) {
-        throw new Error(`Marketplace source for plugin "${name}" is not a supported local source: ${marketplaceSourceLabel(entry.source)}`);
+        continue;
       }
 
       const marketplaceRoot = dirname(filePath);
@@ -496,10 +496,6 @@ function localMarketplacePath(source: MarketplacePluginEntry["source"]): string 
     return stripDotSlash(source.path);
   }
   return null;
-}
-
-function marketplaceSourceLabel(source: MarketplacePluginEntry["source"]): string {
-  return typeof source === "string" ? source : JSON.stringify(source);
 }
 
 function stripDotSlash(path: string): string {

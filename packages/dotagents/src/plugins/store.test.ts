@@ -1,8 +1,8 @@
-import { mkdtemp, mkdir } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { isSameProjectPluginConfig, lockEntryForPlugin, type ResolvedPlugin } from "./store.js";
+import { isSameProjectPluginConfig, lockEntryForPlugin, resolvePlugin, type ResolvedPlugin } from "./store.js";
 
 describe("plugin store", () => {
   it("preserves an empty resolved path for root git plugins", () => {
@@ -54,5 +54,48 @@ describe("plugin store", () => {
       pluginsDir,
       projectRoot,
     )).toBe(true);
+  });
+
+  it("skips unsupported marketplace sources during discovery", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const pluginDir = join(projectRoot, "plugins", "review-tools");
+      const marketplaceOnlyDir = join(projectRoot, "plugins", "marketplace-review-tools");
+      await mkdir(pluginDir, { recursive: true });
+      await mkdir(marketplaceOnlyDir, { recursive: true });
+      await writeFile(
+        join(projectRoot, "marketplace.json"),
+        JSON.stringify({
+          name: "test-marketplace",
+          plugins: [
+            {
+              name: "review-tools",
+              source: { source: "github", path: "plugins/marketplace-review-tools" },
+            },
+          ],
+        }),
+        "utf-8",
+      );
+      await writeFile(
+        join(marketplaceOnlyDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools", description: "Marketplace-only plugin" }),
+        "utf-8",
+      );
+      await writeFile(
+        join(pluginDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools", description: "Fallback local plugin" }),
+        "utf-8",
+      );
+
+      const resolved = await resolvePlugin(
+        { name: "review-tools", source: "path:." },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+
+      expect(resolved.plugin.pluginDir).toBe(pluginDir);
+      expect(resolved.plugin.manifest.description).toBe("Fallback local plugin");
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
   });
 });

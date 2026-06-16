@@ -662,7 +662,7 @@ source = "path:plugin-source"
     expect(installedManifest["description"]).toBe("Canonical marketplace plugin");
   });
 
-  it("rejects unsupported marketplace source objects instead of guessing local paths", async () => {
+  it("skips unsupported marketplace source objects during plugin discovery", async () => {
     const sourceRoot = join(projectRoot, "plugin-source");
     await mkdir(sourceRoot, { recursive: true });
     await writeFile(
@@ -674,11 +674,29 @@ source = "path:plugin-source"
             name: "review-tools",
             source: {
               source: "github",
-              path: "plugins/review-tools",
+              path: "plugins/marketplace-review-tools",
               repo: "org/review-tools",
             },
           },
         ],
+      }, null, 2),
+    );
+    const marketplaceOnlyDir = join(sourceRoot, "plugins", "marketplace-review-tools");
+    await mkdir(marketplaceOnlyDir, { recursive: true });
+    await writeFile(
+      join(marketplaceOnlyDir, "plugin.json"),
+      JSON.stringify({
+        name: "review-tools",
+        description: "Marketplace-only plugin",
+      }, null, 2),
+    );
+    const pluginDir = join(sourceRoot, "plugins", "review-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "review-tools",
+        description: "Fallback local plugin",
       }, null, 2),
     );
     await writeFile(
@@ -693,8 +711,13 @@ source = "path:plugin-source"
     );
 
     const scope = resolveScope("project", projectRoot);
-    await expect(runInstall({ scope })).rejects.toThrow(
-      /Marketplace source for plugin "review-tools" is not a supported local source/,
+    await runInstall({ scope });
+
+    const installedManifest = JSON.parse(
+      await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    expect(installedManifest["description"]).toBe(
+      "Fallback local plugin",
     );
   });
 
@@ -1555,6 +1578,35 @@ path = "reviewer.md"
     const result = await runInstall({ scope, frozen: true });
     expect(result.installed).toContain("pdf");
     expect(result.installed).toContain("review");
+  });
+
+  it("rejects unsafe skill names from frozen wildcard lockfiles", async () => {
+    await mkdir(repoDir, { recursive: true });
+    await initTestGitRepo(repoDir);
+    await mkdir(join(repoDir, "evil"), { recursive: true });
+    await writeFile(join(repoDir, "evil", "SKILL.md"), SKILL_MD("../outside"));
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
+    repoInitialized = true;
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        "../outside": {
+          source: `git:${repoDir}`,
+        },
+      },
+      subagents: {},
+      plugins: {},
+    });
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope, frozen: true })).rejects.toThrow(/Invalid skill name/);
+    expect(existsSync(join(projectRoot, ".agents", "outside"))).toBe(false);
   });
 
   it("wildcard-expanded skills are gitignored", async () => {

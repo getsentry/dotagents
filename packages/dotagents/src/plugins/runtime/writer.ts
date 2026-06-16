@@ -157,7 +157,7 @@ export async function prunePluginOutputs(
   const desiredOpenCode = new Set(
     plugins
       .filter((plugin) => selectedAgentIds(agentIds, plugin).includes("opencode"))
-      .flatMap((plugin) => opencodeModules(plugin).map((modulePath) => `${plugin.name}${extname(modulePath)}`)),
+      .flatMap((plugin) => desiredOpenCodeModules(plugin).map((modulePath) => `${plugin.name}${extname(modulePath)}`)),
   );
   const opencodeDir = join(projectRoot, ".opencode", "plugins");
   if (existsSync(opencodeDir)) {
@@ -291,17 +291,22 @@ function opencodeModules(
   plugin: PluginDeclaration,
   warnings: PluginWriteWarning[] = [],
 ): string[] {
+  return desiredOpenCodeModules(plugin).filter((path) => {
+    if (existsSync(join(plugin.pluginDir, path))) {return true;}
+    warnings.push({
+      agent: "opencode",
+      name: plugin.name,
+      message: `OpenCode plugin module missing: ${join(plugin.pluginDir, path)}`,
+    });
+    return false;
+  });
+}
+
+/** Returns declared OpenCode modules without existence checks so prune keeps desired managed outputs. */
+function desiredOpenCodeModules(plugin: PluginDeclaration): string[] {
   const opencode = plugin.manifest.opencode;
   if (opencode?.plugins) {
-    return opencode.plugins.filter((path) => {
-      if (existsSync(join(plugin.pluginDir, path))) {return true;}
-      warnings.push({
-        agent: "opencode",
-        name: plugin.name,
-        message: `OpenCode plugin module missing: ${join(plugin.pluginDir, path)}`,
-      });
-      return false;
-    });
+    return opencode.plugins;
   }
   const candidates = ["opencode/plugin.ts", "opencode/plugin.js"];
   const candidate = candidates.find((path) => existsSync(join(plugin.pluginDir, path)));
