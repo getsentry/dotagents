@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
@@ -94,6 +94,65 @@ describe("plugin store", () => {
 
       expect(resolved.plugin.pluginDir).toBe(pluginDir);
       expect(resolved.plugin.manifest.description).toBe("Fallback local plugin");
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects canonical plugin discovery symlinks that escape the source root", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const outsideDir = join(projectRoot, "outside", "review-tools");
+      await mkdir(join(sourceRoot, ".agents", "plugins"), { recursive: true });
+      await mkdir(outsideDir, { recursive: true });
+      await writeFile(
+        join(outsideDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools" }),
+        "utf-8",
+      );
+      await symlink(outsideDir, join(sourceRoot, ".agents", "plugins", "review-tools"));
+
+      await expect(resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      )).rejects.toThrow(/Canonical plugin source resolves outside source/);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects marketplace plugin source symlinks that escape the source root", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const outsideDir = join(projectRoot, "outside", "review-tools");
+      await mkdir(join(sourceRoot, "plugins"), { recursive: true });
+      await mkdir(outsideDir, { recursive: true });
+      await writeFile(
+        join(outsideDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools" }),
+        "utf-8",
+      );
+      await symlink(outsideDir, join(sourceRoot, "plugins", "review-tools"));
+      await writeFile(
+        join(sourceRoot, "marketplace.json"),
+        JSON.stringify({
+          name: "test-marketplace",
+          plugins: [
+            {
+              name: "review-tools",
+              source: { source: "local", path: "plugins/review-tools" },
+            },
+          ],
+        }),
+        "utf-8",
+      );
+
+      await expect(resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      )).rejects.toThrow(/Marketplace plugin source resolves outside source/);
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }

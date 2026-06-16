@@ -18,6 +18,7 @@ import {
   writeJsonIfChanged,
 } from "./files.js";
 import { writeClaudeManifest, writeCodexManifest, writeCursorManifest } from "./manifests.js";
+import { isSafeComponentPath } from "./component-paths.js";
 
 // Owns deterministic runtime plugin projections. Existing runtime artifacts are
 // overwritten only when they carry dotagents managed metadata or a managed marker.
@@ -34,6 +35,7 @@ interface ComponentLink {
 }
 
 const OPENCODE_SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const SKILL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
 /** Returns plugin skill names projected into `.agents/skills/` for Pi. */
 export async function projectedPiSkillNames(
@@ -45,7 +47,7 @@ export async function projectedPiSkillNames(
   for (const plugin of selected) {
     for (const skillsDir of componentDirs(plugin, "skills", "skills")) {
       for (const name of await skillNamesInDir(skillsDir)) {
-        names.add(name);
+        if (SKILL_NAME_PATTERN.test(name)) {names.add(name);}
       }
     }
   }
@@ -341,7 +343,7 @@ async function componentLinks(
   warnings: PluginWriteWarning[],
 ): Promise<ComponentLink[]> {
   const links: ComponentLink[] = [];
-  for (const skillsDir of componentDirs(plugin, "skills", "skills")) {
+  for (const skillsDir of componentDirs(plugin, "skills", "skills", agent, warnings)) {
     const skillDestRoot = agent === "opencode"
       ? join(projectRoot, ".opencode", "skills")
       : join(projectRoot, ".agents", "skills");
@@ -349,7 +351,7 @@ async function componentLinks(
   }
 
   if (agent === "opencode") {
-    for (const agentsDir of componentDirs(plugin, "agents", "agents")) {
+    for (const agentsDir of componentDirs(plugin, "agents", "agents", agent, warnings)) {
       links.push(...await markdownComponentLinks(agent, plugin, agentsDir, join(projectRoot, ".opencode", "agents")));
     }
   }
@@ -390,6 +392,14 @@ async function skillComponentLinks(
         agent,
         name: plugin.name,
         message: `Plugin skill "${skillName}" cannot be projected to OpenCode because OpenCode skill names must be lowercase alphanumeric with single hyphen separators.`,
+      });
+      continue;
+    }
+    if (agent === "pi" && !SKILL_NAME_PATTERN.test(skillName)) {
+      warnings.push({
+        agent,
+        name: plugin.name,
+        message: `Plugin skill "${skillName}" cannot be projected to Pi because skill names must start with alphanumeric and contain only [a-zA-Z0-9._-].`,
       });
       continue;
     }
@@ -472,18 +482,58 @@ function componentDirs(
   plugin: PluginDeclaration,
   manifestKey: keyof Pick<PluginManifest, "skills" | "agents">,
   defaultDir: string,
+  agent?: ComponentProjectionAgent,
+  warnings: PluginWriteWarning[] = [],
 ): string[] {
-  const explicit = manifestPaths(plugin.manifest[manifestKey]);
-  const paths = explicit.length > 0 ? explicit : [defaultDir];
+  const explicit = manifestPaths(plugin.manifest[manifestKey], plugin, manifestKey, agent, warnings);
+  const paths = explicit.present ? explicit.paths : [defaultDir];
   return paths.map((path) => join(plugin.pluginDir, path));
 }
 
-function manifestPaths(value: unknown): string[] {
-  if (typeof value === "string") {return [value];}
-  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
-    return value;
+function manifestPaths(
+  value: unknown,
+  plugin: PluginDeclaration,
+  manifestKey: keyof Pick<PluginManifest, "skills" | "agents">,
+  agent?: ComponentProjectionAgent,
+  warnings: PluginWriteWarning[] = [],
+): { present: boolean; paths: string[] } {
+  if (typeof value === "string") {
+    return {
+      present: true,
+      paths: safeComponentPaths([value], plugin, manifestKey, agent, warnings),
+    };
   }
-  return [];
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+    return {
+      present: true,
+      paths: safeComponentPaths(value, plugin, manifestKey, agent, warnings),
+    };
+  }
+  return { present: false, paths: [] };
+}
+
+function safeComponentPaths(
+  values: string[],
+  plugin: PluginDeclaration,
+  manifestKey: keyof Pick<PluginManifest, "skills" | "agents">,
+  agent?: ComponentProjectionAgent,
+  warnings: PluginWriteWarning[] = [],
+): string[] {
+  const paths: string[] = [];
+  for (const value of values) {
+    if (isSafeComponentPath(value)) {
+      paths.push(value);
+      continue;
+    }
+    if (agent) {
+      warnings.push({
+        agent,
+        name: plugin.name,
+        message: `Plugin component path "${value}" for "${String(manifestKey)}" is not a safe relative path and was skipped.`,
+      });
+    }
+  }
+  return paths;
 }
 
 async function writeManagedJsonOutput(

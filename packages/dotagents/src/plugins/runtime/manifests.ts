@@ -5,10 +5,23 @@ import type { PluginDeclaration } from "../store.js";
 import { DOTAGENTS_METADATA, isManagedJsonFile, stableJson, writeJsonIfChanged } from "./files.js";
 import {
   manifestString,
-  runtimePath,
+  safeRuntimePath,
   titleCase,
 } from "./manifest-values.js";
 import type { PluginWriteWarning } from "./types.js";
+
+const COMPONENT_KEYS: Array<keyof PluginManifest> = [
+  "skills",
+  "agents",
+  "commands",
+  "rules",
+  "hooks",
+  "mcpServers",
+  "lspServers",
+  "apps",
+  "monitors",
+  "bin",
+];
 
 /** Writes the managed Claude plugin manifest projection when safe to overwrite. */
 export async function writeClaudeManifest(
@@ -24,7 +37,7 @@ export async function writeClaudeManifest(
     });
     return false;
   }
-  const manifest = claudeRuntimeManifest(plugin);
+  const manifest = claudeRuntimeManifest(plugin, warnings);
   return writeJsonIfChanged(filePath, stableJson(manifest));
 }
 
@@ -42,7 +55,7 @@ export async function writeCursorManifest(
     });
     return false;
   }
-  const manifest = cursorRuntimeManifest(plugin);
+  const manifest = cursorRuntimeManifest(plugin, warnings);
   return writeJsonIfChanged(filePath, stableJson(manifest));
 }
 
@@ -60,12 +73,12 @@ export async function writeCodexManifest(
     });
     return false;
   }
-  const manifest = codexRuntimeManifest(plugin);
+  const manifest = codexRuntimeManifest(plugin, warnings);
   return writeJsonIfChanged(filePath, stableJson(manifest));
 }
 
 /** Builds the managed Claude manifest projection using Claude-native paths. */
-function claudeRuntimeManifest(plugin: PluginDeclaration): Record<string, unknown> {
+function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[]): Record<string, unknown> {
   const manifest: Record<string, unknown> = {
     name: plugin.name,
   };
@@ -77,21 +90,21 @@ function claudeRuntimeManifest(plugin: PluginDeclaration): Record<string, unknow
   copyManifestField(plugin.manifest, manifest, "license");
   copyManifestField(plugin.manifest, manifest, "keywords");
 
-  if (!copyRuntimeComponentField(plugin.manifest, manifest, "skills") && existsSync(join(plugin.pluginDir, "skills"))) {
+  if (!copyRuntimeComponentField(plugin, manifest, "skills", warnings) && existsSync(join(plugin.pluginDir, "skills"))) {
     manifest["skills"] = "./skills";
   }
-  if (!copyRuntimeComponentField(plugin.manifest, manifest, "commands") && existsSync(join(plugin.pluginDir, "commands"))) {
+  if (!copyRuntimeComponentField(plugin, manifest, "commands", warnings) && existsSync(join(plugin.pluginDir, "commands"))) {
     manifest["commands"] = "./commands";
   }
-  if (!copyRuntimeComponentField(plugin.manifest, manifest, "hooks") && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
+  if (!copyRuntimeComponentField(plugin, manifest, "hooks", warnings) && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
     manifest["hooks"] = "./hooks/hooks.json";
   }
-  if (!copyRuntimeComponentField(plugin.manifest, manifest, "mcpServers") && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
+  if (!copyRuntimeComponentField(plugin, manifest, "mcpServers", warnings) && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
     manifest["mcpServers"] = "./.mcp.json";
   }
-  copyRuntimeComponentField(plugin.manifest, manifest, "lspServers");
-  copyRuntimeComponentField(plugin.manifest, manifest, "monitors");
-  copyRuntimeComponentField(plugin.manifest, manifest, "bin");
+  copyRuntimeComponentField(plugin, manifest, "lspServers", warnings);
+  copyRuntimeComponentField(plugin, manifest, "monitors", warnings);
+  copyRuntimeComponentField(plugin, manifest, "bin", warnings);
   const metadata = plugin.manifest["metadata"];
   manifest["metadata"] = {
     ...(metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {}),
@@ -101,7 +114,7 @@ function claudeRuntimeManifest(plugin: PluginDeclaration): Record<string, unknow
 }
 
 /** Builds the managed Cursor manifest projection using Cursor-native paths. */
-function cursorRuntimeManifest(plugin: PluginDeclaration): Record<string, unknown> {
+function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[]): Record<string, unknown> {
   const manifest: Record<string, unknown> = {
     name: plugin.name,
   };
@@ -113,28 +126,28 @@ function cursorRuntimeManifest(plugin: PluginDeclaration): Record<string, unknow
   copyManifestField(plugin.manifest, manifest, "license");
   copyManifestField(plugin.manifest, manifest, "keywords");
 
-  if (!copyRuntimeComponentField(plugin.manifest, manifest, "skills") && existsSync(join(plugin.pluginDir, "skills"))) {
+  if (!copyRuntimeComponentField(plugin, manifest, "skills", warnings) && existsSync(join(plugin.pluginDir, "skills"))) {
     manifest["skills"] = "./skills";
   }
-  if (!copyRuntimeComponentField(plugin.manifest, manifest, "agents") && existsSync(join(plugin.pluginDir, "agents"))) {
+  if (!copyRuntimeComponentField(plugin, manifest, "agents", warnings) && existsSync(join(plugin.pluginDir, "agents"))) {
     manifest["agents"] = "./agents";
   }
-  if (!copyRuntimeComponentField(plugin.manifest, manifest, "commands") && existsSync(join(plugin.pluginDir, "commands"))) {
+  if (!copyRuntimeComponentField(plugin, manifest, "commands", warnings) && existsSync(join(plugin.pluginDir, "commands"))) {
     manifest["commands"] = "./commands";
   }
-  if (!copyRuntimeComponentField(plugin.manifest, manifest, "rules") && existsSync(join(plugin.pluginDir, "rules"))) {
+  if (!copyRuntimeComponentField(plugin, manifest, "rules", warnings) && existsSync(join(plugin.pluginDir, "rules"))) {
     manifest["rules"] = "./rules";
   }
-  if (!copyRuntimeComponentField(plugin.manifest, manifest, "hooks") && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
+  if (!copyRuntimeComponentField(plugin, manifest, "hooks", warnings) && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
     manifest["hooks"] = "./hooks/hooks.json";
   }
-  const hasExplicitMcpServers = copyRuntimeComponentField(plugin.manifest, manifest, "mcpServers");
+  const hasExplicitMcpServers = copyRuntimeComponentField(plugin, manifest, "mcpServers", warnings);
   if (!hasExplicitMcpServers && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
     manifest["mcpServers"] = "./.mcp.json";
   } else if (!hasExplicitMcpServers && existsSync(join(plugin.pluginDir, "mcp.json"))) {
     manifest["mcpServers"] = "./mcp.json";
   }
-  copyRuntimeComponentField(plugin.manifest, manifest, "bin");
+  copyRuntimeComponentField(plugin, manifest, "bin", warnings);
   const metadata = plugin.manifest["metadata"];
   manifest["metadata"] = {
     ...(metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {}),
@@ -144,31 +157,35 @@ function cursorRuntimeManifest(plugin: PluginDeclaration): Record<string, unknow
 }
 
 /** Builds the managed Codex manifest projection and stamps dotagents ownership metadata. */
-function codexRuntimeManifest(plugin: PluginDeclaration): Record<string, unknown> {
+function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[]): Record<string, unknown> {
   const manifest: Record<string, unknown> = {
     ...plugin.manifest,
     name: plugin.name,
   };
+  for (const key of COMPONENT_KEYS) {
+    delete manifest[key];
+    copyRuntimeComponentField(plugin, manifest, key, warnings);
+  }
 
-  if (!manifest["skills"] && existsSync(join(plugin.pluginDir, "skills"))) {
+  if (plugin.manifest["skills"] === undefined && !manifest["skills"] && existsSync(join(plugin.pluginDir, "skills"))) {
     manifest["skills"] = "./skills";
   }
-  if (!manifest["agents"] && existsSync(join(plugin.pluginDir, "agents"))) {
+  if (plugin.manifest["agents"] === undefined && !manifest["agents"] && existsSync(join(plugin.pluginDir, "agents"))) {
     manifest["agents"] = "./agents";
   }
-  if (!manifest["commands"] && existsSync(join(plugin.pluginDir, "commands"))) {
+  if (plugin.manifest["commands"] === undefined && !manifest["commands"] && existsSync(join(plugin.pluginDir, "commands"))) {
     manifest["commands"] = "./commands";
   }
-  if (!manifest["hooks"] && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
+  if (plugin.manifest["hooks"] === undefined && !manifest["hooks"] && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
     manifest["hooks"] = "./hooks/hooks.json";
   }
-  if (!manifest["mcpServers"] && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
+  if (plugin.manifest["mcpServers"] === undefined && !manifest["mcpServers"] && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
     manifest["mcpServers"] = "./.mcp.json";
   }
-  if (!manifest["lspServers"] && existsSync(join(plugin.pluginDir, ".lsp.json"))) {
+  if (plugin.manifest["lspServers"] === undefined && !manifest["lspServers"] && existsSync(join(plugin.pluginDir, ".lsp.json"))) {
     manifest["lspServers"] = "./.lsp.json";
   }
-  if (!manifest["apps"] && existsSync(join(plugin.pluginDir, ".app.json"))) {
+  if (plugin.manifest["apps"] === undefined && !manifest["apps"] && existsSync(join(plugin.pluginDir, ".app.json"))) {
     manifest["apps"] = "./.app.json";
   }
   if (!manifest["interface"]) {
@@ -204,15 +221,44 @@ function copyManifestField(source: PluginManifest, dest: Record<string, unknown>
   }
 }
 
-function copyRuntimeComponentField(source: PluginManifest, dest: Record<string, unknown>, key: keyof PluginManifest): boolean {
-  const value = source[key];
+function copyRuntimeComponentField(
+  plugin: PluginDeclaration,
+  dest: Record<string, unknown>,
+  key: keyof PluginManifest,
+  warnings: PluginWriteWarning[],
+): boolean {
+  const value = plugin.manifest[key];
   if (typeof value === "string") {
-    dest[key] = runtimePath(value);
+    const path = safeRuntimePath(value);
+    if (path) {
+      dest[key] = path;
+    } else {
+      warnUnsafeComponentPath(plugin, key, value, warnings);
+    }
     return true;
   }
   if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
-    dest[key] = value.map(runtimePath);
+    const paths = value.flatMap((item) => {
+      const path = safeRuntimePath(item);
+      if (path) {return [path];}
+      warnUnsafeComponentPath(plugin, key, item, warnings);
+      return [];
+    });
+    if (paths.length > 0) {dest[key] = paths;}
     return true;
   }
   return false;
+}
+
+function warnUnsafeComponentPath(
+  plugin: PluginDeclaration,
+  key: keyof PluginManifest,
+  value: string,
+  warnings: PluginWriteWarning[],
+): void {
+  warnings.push({
+    agent: "plugin",
+    name: plugin.name,
+    message: `Plugin component path "${value}" for "${String(key)}" is not a safe relative path and was skipped.`,
+  });
 }

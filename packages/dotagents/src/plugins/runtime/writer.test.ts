@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PluginDeclaration } from "../store.js";
 import {
   prunePluginOutputs,
+  projectedPiSkillNames,
   verifyPluginOutputs,
   writePluginOutputs,
 } from "./writer.js";
@@ -192,6 +193,41 @@ describe("plugin writer", () => {
     expect(cursorManifest["skills"]).toBe("./plugin-skills");
   });
 
+  it("skips unsafe runtime component paths in generated manifests", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: {
+        skills: "../outside",
+      },
+    });
+
+    const result = await writePluginOutputs(["claude", "cursor", "codex"], [alpha], root);
+
+    expect(result.written).toBe(6);
+    expect(result.warnings).toEqual([
+      {
+        agent: "plugin",
+        name: "alpha-tools",
+        message: 'Plugin component path "../outside" for "skills" is not a safe relative path and was skipped.',
+      },
+      {
+        agent: "plugin",
+        name: "alpha-tools",
+        message: 'Plugin component path "../outside" for "skills" is not a safe relative path and was skipped.',
+      },
+      {
+        agent: "plugin",
+        name: "alpha-tools",
+        message: 'Plugin component path "../outside" for "skills" is not a safe relative path and was skipped.',
+      },
+    ]);
+    const claudeManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const cursorManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const codexManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(claudeManifest["skills"]).toBeUndefined();
+    expect(cursorManifest["skills"]).toBeUndefined();
+    expect(codexManifest["skills"]).toBeUndefined();
+  });
+
   it("does not overwrite unmanaged marketplace files", async () => {
     const alpha = await plugin("alpha-tools");
     await mkdir(join(root, ".claude-plugin"), { recursive: true });
@@ -369,6 +405,53 @@ describe("plugin writer", () => {
       join(root, ".agents", "skills", "plugin-qa"),
       join(alpha.pluginDir, "skills", "plugin-qa"),
     );
+  });
+
+  it("warns and skips invalid Pi plugin skill names", async () => {
+    const alpha = await plugin("alpha-tools");
+    await mkdir(join(alpha.pluginDir, "skills", "bad"), { recursive: true });
+    await writeFile(
+      join(alpha.pluginDir, "skills", "bad", "SKILL.md"),
+      `---\nname: ../../outside\ndescription: Bad skill\n---\n`,
+      "utf-8",
+    );
+
+    const result = await writePluginOutputs(["pi"], [alpha], root);
+
+    expect(result).toEqual({
+      written: 0,
+      warnings: [
+        {
+          agent: "pi",
+          name: "alpha-tools",
+          message: 'Plugin skill "../../outside" cannot be projected to Pi because skill names must start with alphanumeric and contain only [a-zA-Z0-9._-].',
+        },
+      ],
+    });
+    expect(existsSync(join(root, "outside"))).toBe(false);
+    await expect(projectedPiSkillNames(["pi"], [alpha])).resolves.toEqual([]);
+  });
+
+  it("warns and skips unsafe plugin component paths for skill projections", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: {
+        skills: "../outside",
+      },
+    });
+
+    const result = await writePluginOutputs(["pi"], [alpha], root);
+
+    expect(result).toEqual({
+      written: 0,
+      warnings: [
+        {
+          agent: "pi",
+          name: "alpha-tools",
+          message: 'Plugin component path "../outside" for "skills" is not a safe relative path and was skipped.',
+        },
+      ],
+    });
+    expect(existsSync(join(root, ".agents", "skills"))).toBe(false);
   });
 
   it("does not overwrite unmanaged Pi plugin skill projections", async () => {

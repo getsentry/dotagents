@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import {
   applyDefaultRepositorySource,
@@ -278,12 +278,13 @@ async function discoverPlugin(
   config: PluginConfig,
 ): Promise<PluginCandidate | null> {
   if (config.path) {
-    const dir = resolveInside(sourceDir, config.path, "Plugin path");
+    const dir = await resolveInside(sourceDir, config.path, "Plugin path");
     return loadPluginCandidate(sourceDir, dir, { name: config.name });
   }
 
   const matches: PluginCandidate[] = [];
-  const canonical = await loadPluginCandidate(sourceDir, join(sourceDir, ".agents", "plugins", config.name));
+  const canonicalDir = await resolveInside(sourceDir, join(".agents", "plugins", config.name), "Canonical plugin source");
+  const canonical = await loadPluginCandidate(sourceDir, canonicalDir);
   if (canonical && candidateMatches(config.name, canonical)) {
     return canonical;
   }
@@ -334,7 +335,7 @@ async function discoverFromMarketplaces(
       }
 
       const marketplaceRoot = dirname(filePath);
-      const pluginDir = resolveInside(marketplaceRoot, join(root, path), "Marketplace plugin source");
+      const pluginDir = await resolveInside(marketplaceRoot, join(root, path), "Marketplace plugin source");
       const candidate = await loadPluginCandidate(sourceDir, pluginDir, marketplaceManifestOverlay(entry));
       if (candidate) {return candidate;}
     }
@@ -503,12 +504,20 @@ function stripDotSlash(path: string): string {
 }
 
 /** Resolves a selector path while preserving the source-root containment boundary. */
-function resolveInside(root: string, childPath: string, label: string): string {
+async function resolveInside(root: string, childPath: string, label: string): Promise<string> {
   const rootPath = resolve(root);
   const filePath = resolve(rootPath, childPath);
   const relPath = relative(rootPath, filePath);
   if (relPath.startsWith("..") || isAbsolute(relPath)) {
     throw new Error(`${label} resolves outside source: ${childPath}`);
+  }
+  if (existsSync(filePath)) {
+    const rootRealPath = await realpath(rootPath);
+    const fileRealPath = await realpath(filePath);
+    const realRelPath = relative(rootRealPath, fileRealPath);
+    if (realRelPath.startsWith("..") || isAbsolute(realRelPath)) {
+      throw new Error(`${label} resolves outside source: ${childPath}`);
+    }
   }
   return filePath;
 }
