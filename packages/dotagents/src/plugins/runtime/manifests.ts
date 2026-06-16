@@ -5,12 +5,25 @@ import type { PluginDeclaration } from "../store.js";
 import { DOTAGENTS_METADATA, isManagedJsonFile, stableJson, writeJsonIfChanged } from "./files.js";
 import {
   manifestString,
-  safeRuntimePath,
+  runtimePath,
   titleCase,
 } from "./manifest-values.js";
 import type { PluginWriteWarning } from "./types.js";
+import { isSafeComponentPath } from "./component-paths.js";
 
-const COMPONENT_KEYS: Array<keyof PluginManifest> = [
+type ComponentManifestKey =
+  | "skills"
+  | "agents"
+  | "commands"
+  | "rules"
+  | "hooks"
+  | "mcpServers"
+  | "lspServers"
+  | "apps"
+  | "monitors"
+  | "bin";
+
+const COMPONENT_KEYS: ComponentManifestKey[] = [
   "skills",
   "agents",
   "commands",
@@ -224,14 +237,13 @@ function copyManifestField(source: PluginManifest, dest: Record<string, unknown>
 function copyRuntimeComponentField(
   plugin: PluginDeclaration,
   dest: Record<string, unknown>,
-  key: keyof PluginManifest,
+  key: ComponentManifestKey,
   warnings: PluginWriteWarning[],
 ): boolean {
   const value = plugin.manifest[key];
   if (typeof value === "string") {
-    const path = safeRuntimePath(value);
-    if (path) {
-      dest[key] = path;
+    if (isSafeComponentPath(value)) {
+      dest[key] = runtimePath(value);
     } else {
       warnUnsafeComponentPath(plugin, key, value, warnings);
     }
@@ -239,8 +251,7 @@ function copyRuntimeComponentField(
   }
   if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
     const paths = value.flatMap((item) => {
-      const path = safeRuntimePath(item);
-      if (path) {return [path];}
+      if (isSafeComponentPath(item)) {return [runtimePath(item)];}
       warnUnsafeComponentPath(plugin, key, item, warnings);
       return [];
     });
@@ -252,7 +263,7 @@ function copyRuntimeComponentField(
 
 function warnUnsafeComponentPath(
   plugin: PluginDeclaration,
-  key: keyof PluginManifest,
+  key: ComponentManifestKey,
   value: string,
   warnings: PluginWriteWarning[],
 ): void {

@@ -228,6 +228,26 @@ describe("plugin writer", () => {
     expect(codexManifest["skills"]).toBeUndefined();
   });
 
+  it("skips backslash-rooted runtime component paths in generated manifests", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: {
+        skills: "\\outside",
+      },
+    });
+
+    const result = await writePluginOutputs(["codex"], [alpha], root);
+
+    expect(result.warnings).toEqual([
+      {
+        agent: "plugin",
+        name: "alpha-tools",
+        message: 'Plugin component path "\\outside" for "skills" is not a safe relative path and was skipped.',
+      },
+    ]);
+    const codexManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(codexManifest["skills"]).toBeUndefined();
+  });
+
   it("does not overwrite unmanaged marketplace files", async () => {
     const alpha = await plugin("alpha-tools");
     await mkdir(join(root, ".claude-plugin"), { recursive: true });

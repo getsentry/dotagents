@@ -1,6 +1,5 @@
 import { relative } from "node:path";
 import type { PluginManifest } from "../schema.js";
-import { isSafeComponentPath } from "./component-paths.js";
 
 /** Reads string-valued manifest fields for generated plugin projections. */
 export function manifestString(manifest: PluginManifest, key: string): string | undefined {
@@ -11,11 +10,6 @@ export function manifestString(manifest: PluginManifest, key: string): string | 
 /** Normalizes manifest component paths to runtime-relative paths. */
 export function runtimePath(value: string): string {
   return value.startsWith(".") ? value : `./${value}`;
-}
-
-/** Normalizes only path-safe manifest component paths. */
-export function safeRuntimePath(value: string): string | null {
-  return isSafeComponentPath(value) ? runtimePath(value) : null;
 }
 
 /** Builds a human-readable display name from a plugin package name. */

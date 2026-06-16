@@ -497,43 +497,37 @@ function manifestPaths(
   agent?: ComponentProjectionAgent,
   warnings: PluginWriteWarning[] = [],
 ): { present: boolean; paths: string[] } {
+  const collect = (values: string[]): string[] => {
+    const paths: string[] = [];
+    for (const item of values) {
+      if (isSafeComponentPath(item)) {
+        paths.push(item);
+        continue;
+      }
+      if (agent) {
+        warnings.push({
+          agent,
+          name: plugin.name,
+          message: `Plugin component path "${item}" for "${String(manifestKey)}" is not a safe relative path and was skipped.`,
+        });
+      }
+    }
+    return paths;
+  };
+
   if (typeof value === "string") {
     return {
       present: true,
-      paths: safeComponentPaths([value], plugin, manifestKey, agent, warnings),
+      paths: collect([value]),
     };
   }
   if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
     return {
       present: true,
-      paths: safeComponentPaths(value, plugin, manifestKey, agent, warnings),
+      paths: collect(value),
     };
   }
   return { present: false, paths: [] };
-}
-
-function safeComponentPaths(
-  values: string[],
-  plugin: PluginDeclaration,
-  manifestKey: keyof Pick<PluginManifest, "skills" | "agents">,
-  agent?: ComponentProjectionAgent,
-  warnings: PluginWriteWarning[] = [],
-): string[] {
-  const paths: string[] = [];
-  for (const value of values) {
-    if (isSafeComponentPath(value)) {
-      paths.push(value);
-      continue;
-    }
-    if (agent) {
-      warnings.push({
-        agent,
-        name: plugin.name,
-        message: `Plugin component path "${value}" for "${String(manifestKey)}" is not a safe relative path and was skipped.`,
-      });
-    }
-  }
-  return paths;
 }
 
 async function writeManagedJsonOutput(
