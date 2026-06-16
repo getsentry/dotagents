@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access, chmod } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -219,6 +219,78 @@ source = "path:plugin-source/review-tools"
     expect(codexManifest["x-extra"]).toEqual({ kept: true });
 
     const agentsGitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(agentsGitignore).toContain("/plugins/review-tools/");
+  });
+
+  it("does not gitignore in-place skills that collide with Pi plugin projections", async () => {
+    await mkdir(join(projectRoot, ".agents", "skills", "review"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "skills", "review", "SKILL.md"), SKILL_MD("review"));
+
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["pi"]
+
+[[skills]]
+name = "review"
+source = "path:.agents/skills/review"
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+
+    expect(result.pluginWarnings).toEqual([
+      {
+        agent: "pi",
+        name: "review-tools",
+        message: `Pi plugin skill projection exists and is not managed by dotagents: ${join(projectRoot, ".agents", "skills", "review")}`,
+      },
+    ]);
+    const agentsGitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(agentsGitignore).not.toContain("/skills/review");
+    expect(agentsGitignore).toContain("/plugins/review-tools/");
+  });
+
+  it("does not gitignore orphan skills that collide with Pi plugin projections", async () => {
+    await mkdir(join(projectRoot, ".agents", "skills", "review"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "skills", "review", "SKILL.md"), SKILL_MD("review"));
+
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["pi"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+
+    expect(result.pluginWarnings).toEqual([
+      {
+        agent: "pi",
+        name: "review-tools",
+        message: `Pi plugin skill projection exists and is not managed by dotagents: ${join(projectRoot, ".agents", "skills", "review")}`,
+      },
+    ]);
+    const agentsGitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(agentsGitignore).not.toContain("/skills/review");
     expect(agentsGitignore).toContain("/plugins/review-tools/");
   });
 
@@ -1064,7 +1136,7 @@ path = "code-reviewer.md"
     expect(syncResult.adopted).toEqual([]);
   });
 
-  it("does not update the lockfile when installed subagent writes fail", async () => {
+  it("keeps resolved lock entries when installed subagent writes fail", async () => {
     const skillSourceDir = join(projectRoot, "local-skills", "pdf");
     await mkdir(skillSourceDir, { recursive: true });
     await writeFile(join(skillSourceDir, "SKILL.md"), SKILL_MD("pdf"));
@@ -1118,51 +1190,19 @@ path = "code-reviewer.md"
     );
 
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
-    expect(lockfile).toEqual(originalLockfile);
+    expect(lockfile).toEqual({
+      version: 1,
+      skills: {
+        pdf: { source: "path:local-skills/pdf" },
+      },
+      subagents: {
+        "code-reviewer": {
+          source: "path:agents",
+        },
+      },
+      plugins: {},
+    });
     expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
-  });
-
-  it("does not write the lockfile when stale subagent pruning fails", async () => {
-    const sourceDir = join(projectRoot, "agents");
-    await mkdir(sourceDir, { recursive: true });
-    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
-
-    const installedDir = join(projectRoot, ".agents", "agents");
-    await mkdir(installedDir, { recursive: true });
-    const stalePath = join(installedDir, "old-reviewer.md");
-    await writeFile(
-      stalePath,
-      `---
-# ${DOTAGENTS_SUBAGENT_MARKER}
-name: old-reviewer
-description: Review old code.
----
-
-Review old code.
-`,
-      "utf-8",
-    );
-    await chmod(stalePath, 0o000);
-
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1
-[[subagents]]
-name = "code-reviewer"
-source = "path:agents"
-path = "code-reviewer.md"
-`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    try {
-      await expect(runInstall({ scope })).rejects.toThrow();
-    } finally {
-      await chmod(stalePath, 0o600).catch(() => {});
-    }
-
-    expect(await loadLockfile(join(projectRoot, "agents.lock"))).toBeNull();
-    expect(existsSync(join(installedDir, "code-reviewer.md"))).toBe(true);
   });
 
   it("keeps lock entries when runtime subagent writes fail", async () => {

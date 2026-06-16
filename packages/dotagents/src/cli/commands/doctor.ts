@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
+import { filterManagedPluginSkillNames } from "../../gitignore/skills.js";
 import { checkRootGitignoreEntries, ensureRootGitignoreEntries, writeAgentsGitignore } from "../../gitignore/writer.js";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
@@ -165,7 +166,15 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
           );
           await writeAgentsGitignore(
             scope.agentsDir,
-            [...managedNames, ...await projectedPiSkillNames(config.agents, installedPlugins.plugins)],
+            [
+              ...managedNames,
+              ...await filterManagedPluginSkillNames(
+                await projectedPiSkillNames(config.agents, installedPlugins.plugins),
+                config,
+                scope.skillsDir,
+                scope.pluginsDir,
+              ),
+            ],
             managedSubagentNames,
             managedPluginNames,
           );

@@ -8,6 +8,7 @@ import { isWildcardDep } from "../../config/schema.js";
 import { removeSkillFromConfig, removeSkillBlocksBySource, addExcludeToWildcard } from "../../config/writer.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
+import { filterManagedPluginSkillNames } from "../../gitignore/skills.js";
 import { writeAgentsGitignore } from "../../gitignore/writer.js";
 import { sourcesMatch, parseOwnerRepoShorthand, isExplicitSourceSpecifier } from "@sentry/dotagents-lib";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
@@ -182,7 +183,15 @@ async function updateProjectGitignore(scope: ScopeRoot): Promise<void> {
   );
   await writeAgentsGitignore(
     scope.agentsDir,
-    [...managedNames, ...await projectedPiSkillNames(config.agents, installedPlugins.plugins)],
+    [
+      ...managedNames,
+      ...await filterManagedPluginSkillNames(
+        await projectedPiSkillNames(config.agents, installedPlugins.plugins),
+        config,
+        scope.skillsDir,
+        scope.pluginsDir,
+      ),
+    ],
     [...managedSubagentNames],
     [...managedPluginNames],
   );

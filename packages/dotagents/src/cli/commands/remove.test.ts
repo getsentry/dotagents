@@ -141,6 +141,51 @@ source = "path:plugins/review-tools"
     expect(gitignore).not.toContain("/plugins/marketplace.json");
   });
 
+  it("does not gitignore orphan skills that collide with Pi plugin projections after removing a skill", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["pi"]
+
+[[skills]]
+name = "pdf"
+source = "path:local-skills/pdf"
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugins/review-tools"
+`,
+    );
+    await mkdir(join(projectRoot, ".agents", "skills", "pdf"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"), SKILL_MD("pdf"));
+    await mkdir(join(projectRoot, ".agents", "skills", "review"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        pdf: {
+          source: "path:local-skills/pdf",
+        },
+      },
+      plugins: {
+        "review-tools": {
+          source: "path:plugins/review-tools",
+        },
+      },
+    });
+
+    const scope = resolveScope("project", projectRoot);
+    await runRemove({ scope, skillName: "pdf" });
+
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).not.toContain("/skills/review");
+    expect(gitignore).toContain("/plugins/review-tools/");
+  });
+
   it("throws RemoveError for skill not in config", async () => {
     await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
     const scope = resolveScope("project", projectRoot);

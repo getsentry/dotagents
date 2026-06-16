@@ -62,7 +62,6 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     plugins: plugins.lockEntries,
   };
 
-  await writeCanonicalSubagents(config, scope, subagents.subagents, frozen);
   const writeLock = !frozen && (
     !!lockfile ||
     config.skills.length > 0 ||
@@ -70,8 +69,10 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     config.plugins.length > 0
   );
   if (writeLock) {
+    // Preserve resolved dependency state even if later canonical file writes fail.
     await writeLockfile(scope.lockPath, newLock);
   }
+  await writeCanonicalSubagents(config, scope, subagents.subagents, frozen);
 
   await writeInstallGitignore(config, lockfile, scope, {
     installedSkillNames: skills.installed,

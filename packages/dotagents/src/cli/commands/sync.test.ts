@@ -383,6 +383,31 @@ source = "path:plugin-source/review-tools"
     expect(gitignore).toContain("/skills/pdf");
   });
 
+  it("does not gitignore orphan skills that collide with Pi plugin projections", async () => {
+    await mkdir(join(projectRoot, ".agents", "skills", "review"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["pi"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    await runSync({ scope: resolveScope("project", projectRoot) });
+
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).not.toContain("/skills/review");
+    expect(gitignore).toContain("/plugins/review-tools/");
+  });
+
   it("repairs missing MCP configs", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

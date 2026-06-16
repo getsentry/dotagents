@@ -506,18 +506,19 @@ dotagents install
    a. Resolve source (check cache with TTL-based refresh, clone/fetch if needed)
    b. Discover skill within the repo
    c. Copy skill directory into `.agents/skills/<name>/`
-3. Resolve and install configured subagents into `.agents/agents/`
+3. Resolve configured subagents
 4. Resolve and install configured project-scope plugins into `.agents/plugins/<name>/`; reject user-scope plugin declarations
 5. Write `agents.lock` with the current configured skills, subagents, and plugins
    - In `--frozen` mode, require configured dependencies to already be present in `agents.lock`, load subagents and plugins from installed files, do not update the lockfile, and do not prune existing managed subagent or plugin files
-6. Regenerate `.agents/.gitignore`
-7. Warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
-8. Create/verify symlinks (legacy `[symlinks]` and agent-specific)
-9. Write MCP config files for each declared agent
-10. Write hook config files for each declared agent that supports hooks
-11. Write generated subagent files for each declared agent that supports custom subagents
-12. Write generated plugin runtime projections for each declared agent that supports plugins
-13. Print summary
+6. Install configured subagents into `.agents/agents/`
+7. Regenerate `.agents/.gitignore`
+8. Warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
+9. Create/verify symlinks (legacy `[symlinks]` and agent-specific)
+10. Write MCP config files for each declared agent
+11. Write hook config files for each declared agent that supports hooks
+12. Write generated subagent files for each declared agent that supports custom subagents
+13. Write generated plugin runtime projections for each declared agent that supports plugins
+14. Print summary
 
 ### `dotagents add <specifier>`
 

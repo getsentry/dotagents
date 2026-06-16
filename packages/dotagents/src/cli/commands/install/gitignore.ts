@@ -2,6 +2,7 @@ import chalk from "chalk";
 import { isWildcardDep, type AgentsConfig } from "../../../config/schema.js";
 import type { Lockfile } from "../../../lockfile/schema.js";
 import type { ScopeRoot } from "../../../scope.js";
+import { filterManagedPluginSkillNames } from "../../../gitignore/skills.js";
 import { checkRootGitignoreEntries, writeAgentsGitignore } from "../../../gitignore/writer.js";
 import { isInPlaceSkill } from "../../../utils/fs.js";
 import { isInPlacePluginSource, type PluginDeclaration } from "../../../plugins/store.js";
@@ -61,7 +62,12 @@ export async function writeInstallGitignore(
 
   const managedSkills = [
     ...managedSkillNames(config, artifacts.installedSkillNames),
-    ...await projectedPiSkillNames(config.agents, artifacts.plugins),
+    ...await filterManagedPluginSkillNames(
+      await projectedPiSkillNames(config.agents, artifacts.plugins),
+      config,
+      scope.skillsDir,
+      scope.pluginsDir,
+    ),
   ];
 
   await writeAgentsGitignore(

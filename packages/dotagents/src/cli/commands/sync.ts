@@ -8,6 +8,7 @@ import { normalizeSource } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { addSkillToConfig } from "../../config/writer.js";
+import { filterManagedPluginSkillNames } from "../../gitignore/skills.js";
 import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
 import { getAgent } from "../../targets/registry.js";
@@ -200,7 +201,15 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     );
     await writeAgentsGitignore(
       agentsDir,
-      [...managedNames, ...await projectedPiSkillNames(config.agents, installedPluginsForGitignore.plugins)],
+      [
+        ...managedNames,
+        ...await filterManagedPluginSkillNames(
+          await projectedPiSkillNames(config.agents, installedPluginsForGitignore.plugins),
+          config,
+          skillsDir,
+          pluginsDir,
+        ),
+      ],
       [...managedSubagentNames],
       [...managedPluginNames],
     );
