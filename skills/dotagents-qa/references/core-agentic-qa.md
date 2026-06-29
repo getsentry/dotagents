@@ -1,4 +1,4 @@
-# Core Smoke
+# Core Agentic QA
 
 Use this reference for ordinary dotagents install/sync QA before drilling into a specific runtime.
 
@@ -7,12 +7,12 @@ Use this reference for ordinary dotagents install/sync QA before drilling into a
 Run:
 
 ```bash
-pnpm smoke:examples
+pnpm qa:example
 ```
 
 This builds the local CLI, copies `examples/full/` to a temp project, and verifies:
 
-- `install`, `list`, `doctor --fix`, and `doctor`
+- `install`, `list`, `doctor --fix`, and `doctor` complete successfully
 - managed skills under `.agents/skills/`
 - Claude/Cursor skill symlink behavior
 - MCP files for Claude, Cursor, Codex, and OpenCode
@@ -21,7 +21,8 @@ This builds the local CLI, copies `examples/full/` to a temp project, and verifi
 - generated subagent runtime files for Claude, Cursor, Codex, and OpenCode
 - `sync` repair after deleting representative generated files
 
-Use `node scripts/smoke-examples.mjs --keep` to keep the temp project for inspection. The script prints the project path.
+Use `node skills/dotagents-qa/scripts/qa-example.mjs all --keep` to keep the
+temp project for inspection. The script prints the project path.
 
 ## What This Proves
 

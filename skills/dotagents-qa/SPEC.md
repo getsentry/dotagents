@@ -19,7 +19,7 @@ Out of scope:
 - release publishing
 - network-backed source testing for ordinary install-location changes
 - replacing focused Vitest regression coverage for logic bugs
-- treating a fixed smoke script as sufficient QA for behavior-specific changes
+- treating a fixed all-in-one QA task as sufficient for behavior-specific changes
 
 ## Runtime Contract
 
@@ -36,6 +36,6 @@ Out of scope:
 ## Maintenance
 
 - Keep `SKILL.md` focused on guided, change-specific Docker QA.
-- Keep examples editable and illustrative; do not turn the skill into a fixed test harness.
+- Keep examples editable and illustrative; do not turn the skill into a fixed all-in-one harness.
 - Keep the Dockerfile pnpm version aligned with the root `packageManager`.
 - Update examples when dotagents changes config fields, generated file locations, or supported agents.

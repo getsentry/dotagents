@@ -4,7 +4,7 @@ Use this reference when changes affect OpenCode config generation, `opencode.jso
 
 ## File-Level Checks
 
-The core smoke asserts:
+The core agentic QA asserts:
 
 - `opencode.json` exists for OpenCode MCP config
 - `.opencode/agents/code-reviewer.md` exists

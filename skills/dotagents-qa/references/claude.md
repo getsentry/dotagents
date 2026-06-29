@@ -4,7 +4,7 @@ Use this reference when changes affect Claude Code skill symlinks, `.claude/sett
 
 ## File-Level Checks
 
-The core smoke asserts:
+The core agentic QA asserts:
 
 - `.claude/skills` is a symlink to `.agents/skills`
 - `.mcp.json` exists for Claude MCP config
