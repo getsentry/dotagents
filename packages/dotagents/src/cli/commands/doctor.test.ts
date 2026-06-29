@@ -108,6 +108,7 @@ describe("runDoctor", () => {
     execSync("git init", { cwd: projectRoot, stdio: "ignore" });
     execSync("git config user.email test@test.com", { cwd: projectRoot, stdio: "ignore" });
     execSync("git config user.name test", { cwd: projectRoot, stdio: "ignore" });
+    execSync("git config commit.gpgsign false", { cwd: projectRoot, stdio: "ignore" });
 
     await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
     await writeFile(join(projectRoot, "agents.lock"), "version = 1\n");

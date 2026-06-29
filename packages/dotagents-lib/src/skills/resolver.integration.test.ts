@@ -5,6 +5,13 @@ import { tmpdir } from "node:os";
 import { resolveSkill, resolveWildcardSkills } from "./resolver.js";
 import { exec } from "../utils/exec.js";
 
+async function initTestGitRepo(repoDir: string): Promise<void> {
+  await exec("git", ["init"], { cwd: repoDir });
+  await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
+  await exec("git", ["config", "user.name", "Test"], { cwd: repoDir });
+  await exec("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir });
+}
+
 /**
  * Integration tests that use real git operations.
  * These create local git repos to test the full resolve pipeline.
@@ -27,9 +34,7 @@ describe("resolveSkill integration", () => {
     // Point cache to temp dir
     // Create a local git repo that looks like a skill repository
     await mkdir(repoDir, { recursive: true });
-    await exec("git", ["init"], { cwd: repoDir });
-    await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
-    await exec("git", ["config", "user.name", "Test"], { cwd: repoDir });
+    await initTestGitRepo(repoDir);
 
     // Create a skill at the root level
     await mkdir(join(repoDir, "pdf"), { recursive: true });
@@ -179,9 +184,7 @@ describe("resolveWildcardSkills integration", () => {
 
     // Create a local git repo with multiple skills
     await mkdir(repoDir, { recursive: true });
-    await exec("git", ["init"], { cwd: repoDir });
-    await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
-    await exec("git", ["config", "user.name", "Test"], { cwd: repoDir });
+    await initTestGitRepo(repoDir);
 
     await mkdir(join(repoDir, "pdf"), { recursive: true });
     await writeFile(

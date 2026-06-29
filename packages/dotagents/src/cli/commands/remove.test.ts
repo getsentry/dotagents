@@ -38,6 +38,7 @@ describe("runRemove", () => {
     await exec("git", ["init"], { cwd: repoDir });
     await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
     await exec("git", ["config", "user.name", "Test"], { cwd: repoDir });
+    await exec("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir });
 
     await mkdir(join(repoDir, "pdf"), { recursive: true });
     await writeFile(join(repoDir, "pdf", "SKILL.md"), SKILL_MD("pdf"));
@@ -179,6 +180,7 @@ describe("runRemoveSource", () => {
     await exec("git", ["init"], { cwd: repoDir });
     await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
     await exec("git", ["config", "user.name", "Test"], { cwd: repoDir });
+    await exec("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir });
 
     await mkdir(join(repoDir, "pdf"), { recursive: true });
     await writeFile(join(repoDir, "pdf", "SKILL.md"), SKILL_MD("pdf"));
@@ -194,6 +196,7 @@ describe("runRemoveSource", () => {
     await exec("git", ["init"], { cwd: otherRepoDir });
     await exec("git", ["config", "user.email", "test@test.com"], { cwd: otherRepoDir });
     await exec("git", ["config", "user.name", "Test"], { cwd: otherRepoDir });
+    await exec("git", ["config", "commit.gpgsign", "false"], { cwd: otherRepoDir });
 
     await mkdir(join(otherRepoDir, "deploy"), { recursive: true });
     await writeFile(join(otherRepoDir, "deploy", "SKILL.md"), SKILL_MD("deploy"));

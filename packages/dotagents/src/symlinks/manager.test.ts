@@ -107,6 +107,7 @@ describe("symlinks", () => {
         cwd: dir,
       });
       await exec("git", ["config", "user.name", "Test"], { cwd: dir });
+      await exec("git", ["config", "commit.gpgsign", "false"], { cwd: dir });
 
       // Create a real skills directory with a committed file
       const targetDir = join(dir, ".claude");
