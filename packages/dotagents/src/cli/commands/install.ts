@@ -11,7 +11,7 @@ import {
 } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
-import { type Lockfile, type LockedSkill, type LockedSubagent } from "../../lockfile/schema.js";
+import { type Lockfile, type LockedSkill } from "../../lockfile/schema.js";
 import {
   applyDefaultRepositorySource,
   resolveSkill,
@@ -171,46 +171,6 @@ function validateFrozenSubagents(
       );
     }
   }
-}
-
-function optionalSubagentLockValue(
-  entry: LockedSubagent,
-  key: "resolved_url" | "resolved_path" | "resolved_ref" | "resolved_commit",
-): string | undefined {
-  switch (key) {
-    case "resolved_url":
-      return "resolved_url" in entry ? entry.resolved_url : undefined;
-    case "resolved_path":
-      return "resolved_path" in entry ? entry.resolved_path : undefined;
-    case "resolved_ref":
-      return "resolved_ref" in entry ? entry.resolved_ref : undefined;
-    case "resolved_commit":
-      return "resolved_commit" in entry ? entry.resolved_commit : undefined;
-  }
-}
-
-function subagentLockEntriesEqual(a: LockedSubagent, b: LockedSubagent): boolean {
-  return a.source === b.source
-    && optionalSubagentLockValue(a, "resolved_url") === optionalSubagentLockValue(b, "resolved_url")
-    && optionalSubagentLockValue(a, "resolved_path") === optionalSubagentLockValue(b, "resolved_path")
-    && optionalSubagentLockValue(a, "resolved_ref") === optionalSubagentLockValue(b, "resolved_ref")
-    && optionalSubagentLockValue(a, "resolved_commit") === optionalSubagentLockValue(b, "resolved_commit");
-}
-
-function unchangedSubagentLockEntries(
-  current: Lockfile | null,
-  next: Lockfile,
-): Lockfile["subagents"] {
-  if (!current) {return {};}
-
-  const unchanged: Lockfile["subagents"] = {};
-  for (const [name, entry] of Object.entries(current.subagents)) {
-    const nextEntry = next.subagents[name];
-    if (!nextEntry) {continue;}
-    if (!subagentLockEntriesEqual(entry, nextEntry)) {continue;}
-    unchanged[name] = entry;
-  }
-  return unchanged;
 }
 
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
@@ -373,27 +333,13 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   }
 
   const shouldWriteLockfile = !frozen && (lockfile || config.skills.length > 0 || config.subagents.length > 0);
-  let installedSubagentsSynced = false;
 
   try {
     if (!frozen) {
       await writeInstalledSubagents(subagentsDir, installedSubagents);
       await pruneInstalledSubagents(subagentsDir, config.subagents);
-      installedSubagentsSynced = true;
     }
   } catch (err) {
-    if (shouldWriteLockfile) {
-      try {
-        await writeLockfile(lockPath, {
-          ...newLock,
-          subagents: installedSubagentsSynced
-            ? newLock.subagents
-            : unchangedSubagentLockEntries(lockfile, newLock),
-        });
-      } catch {
-        // Preserve the original install failure; this recovery write is best-effort.
-      }
-    }
     if (err instanceof InstalledSubagentWriteError) {
       throw new InstallError(err.message);
     }
@@ -401,10 +347,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   }
 
   if (shouldWriteLockfile) {
-    await writeLockfile(lockPath, {
-      ...newLock,
-      subagents: unchangedSubagentLockEntries(lockfile, newLock),
-    });
+    await writeLockfile(lockPath, newLock);
   }
 
   // 4. Gitignore (skip for user scope — ~/.agents/ is not a git repo)
@@ -478,31 +421,13 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   const subagentResolver = scope.scope === "user"
     ? userSubagentResolver()
     : projectSubagentResolver(scope.root);
-  let subagentResult: Awaited<ReturnType<typeof writeSubagentConfigs>>;
-  try {
-    subagentResult = await writeSubagentConfigs(
-      config.agents,
-      installedSubagents,
-      subagentResolver,
-    );
-    if (!frozen) {
-      await pruneSubagentConfigs(config.agents, installedSubagents, subagentResolver);
-    }
-    if (shouldWriteLockfile) {
-      await writeLockfile(lockPath, newLock);
-    }
-  } catch (err) {
-    if (shouldWriteLockfile) {
-      try {
-        await writeLockfile(lockPath, {
-          ...newLock,
-          subagents: unchangedSubagentLockEntries(lockfile, newLock),
-        });
-      } catch {
-        // Preserve the runtime config failure; this recovery write is best-effort.
-      }
-    }
-    throw err;
+  const subagentResult = await writeSubagentConfigs(
+    config.agents,
+    installedSubagents,
+    subagentResolver,
+  );
+  if (!frozen) {
+    await pruneSubagentConfigs(config.agents, installedSubagents, subagentResolver);
   }
 
   return { installed, skipped, pruned, hookWarnings, subagentWarnings: subagentResult.warnings };
