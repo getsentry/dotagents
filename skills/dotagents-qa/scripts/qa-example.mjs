@@ -16,7 +16,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../../..");
@@ -25,7 +25,7 @@ const exampleRoot = join(repoRoot, "examples", "full");
 const sentinel = "DOTAGENTS_SUBAGENT_RUNTIME_PROOF_9b8e6f2c";
 
 const rawArgs = process.argv.slice(2);
-const flags = new Set(rawArgs.filter((arg) => arg.startsWith("--")));
+const flags = new Set(rawArgs.filter((arg) => arg.startsWith("-")));
 const keep = flags.has("--keep");
 const task = taskName(rawArgs);
 
@@ -78,7 +78,7 @@ try {
   console.log(`qa-example: project=${projectDir}`);
   for (const name of expandedTasks(task)) {
     console.log(`qa-example: task=${name}`);
-    tasks[name]();
+    await tasks[name]();
   }
   console.log("qa-example: ok");
 } catch (err) {
@@ -96,7 +96,7 @@ try {
 
 function taskName(args) {
   if (flags.has("--codex-runtime")) {return "codex-runtime";}
-  return args.find((arg) => !arg.startsWith("--")) ?? "all";
+  return args.find((arg) => !arg.startsWith("-")) ?? "all";
 }
 
 function expandedTasks(name) {
@@ -117,12 +117,12 @@ Compatibility:
 `);
 }
 
-function runInstallFiles() {
-  installAndAssert();
+async function runInstallFiles() {
+  await installAndAssert();
 }
 
-function runSyncRepair() {
-  installAndAssert();
+async function runSyncRepair() {
+  await installAndAssert();
   rmSync(join(projectDir, ".mcp.json"), { force: true });
   rmSync(join(projectDir, ".claude", "skills"), { force: true, recursive: true });
   rmSync(join(projectDir, ".claude", "agents", "code-reviewer.md"), { force: true });
@@ -134,15 +134,18 @@ function runSyncRepair() {
   assertFile(".codex/agents/code-reviewer.toml");
 }
 
-function runCodexRuntimeProof() {
-  installAndAssert();
+async function runCodexRuntimeProof() {
+  await installAndAssert();
   proveCodexRuntime();
 }
 
-function installAndAssert() {
+async function installAndAssert() {
   runCli(["install"]);
   const list = runCli(["list"]);
   writeFileSync(join(tmp, "list.out"), list);
+  const listStatuses = await listSkills();
+  assertSkillStatus(listStatuses, "review");
+  assertSkillStatus(listStatuses, "commit");
   runCli(["doctor", "--fix"]);
   runCli(["doctor"]);
 
@@ -169,6 +172,14 @@ function runCli(cliArgs) {
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "inherit"],
   });
+}
+
+async function listSkills() {
+  const [{ runList }, { resolveScope }] = await Promise.all([
+    import(pathToFileURL(join(repoRoot, "packages", "dotagents", "dist", "cli", "commands", "list.js")).href),
+    import(pathToFileURL(join(repoRoot, "packages", "dotagents", "dist", "scope.js")).href),
+  ]);
+  return runList({ scope: resolveScope("project", projectDir) });
 }
 
 function proveCodexRuntime() {
@@ -280,6 +291,16 @@ function assertSymlink(relativePath) {
 function assertFileIncludes(relativePath, expected) {
   assertFile(relativePath);
   assertIncludes(readFileSync(join(projectDir, relativePath), "utf-8"), expected, `${relativePath} should include ${expected}`);
+}
+
+function assertSkillStatus(statuses, name) {
+  const status = statuses.find((entry) => entry.name === name);
+  if (!status) {
+    throw new Error(`list should include ${name}`);
+  }
+  if (status.status !== "ok") {
+    throw new Error(`list should report ${name} as ok, got ${status.status}`);
+  }
 }
 
 function assertIncludes(value, expected, message) {
