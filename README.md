@@ -138,7 +138,7 @@ path = "plugins/review-tools"
 targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 ```
 
-The canonical plugin format is `.agents/plugins/marketplace.json` plus `.agents/plugins/<name>/plugin.json`, using a Codex-compatible marketplace baseline. Known input fields are validated, component paths must be relative filesystem paths, unknown manifest extension fields are preserved in installed bundles, marketplace extension fields are accepted but not projected, `targets` are limited to configured agents, and generated outputs are deterministic. dotagents rejects plugin sources that resolve to the same project's `.agents/plugins/<name>/` install destination, so same-repo plugins are never installed onto themselves.
+The canonical plugin format is `.agents/plugins/marketplace.json` plus `.agents/plugins/<name>/plugin.json`, using a Codex-compatible marketplace baseline. Known input fields are validated, component paths must be relative filesystem paths, unknown manifest extension fields are preserved in installed bundles, marketplace extension fields are accepted but not projected, `targets` are limited to configured agents, and generated outputs are deterministic. dotagents rejects plugin sources that resolve to the same project's `.agents/plugins/<name>/` install destination, so same-repo plugins are never installed onto themselves. Existing plugin install destinations are overwritten only when `agents.lock` proves they are managed by dotagents.
 
 Plugin declarations are project-scope only for now. `dotagents --user install` rejects `[[plugins]]` entries because user-scope runtime plugin projections are not generated yet.
 

@@ -289,7 +289,8 @@ async function discoverPlugin(
     return canonical;
   }
 
-  const fromMarketplace = await discoverFromMarketplaces(sourceDir, config.name);
+  const unsupportedMarketplaceSources: string[] = [];
+  const fromMarketplace = await discoverFromMarketplaces(sourceDir, config.name, unsupportedMarketplaceSources);
   if (fromMarketplace) {return fromMarketplace;}
 
   for (const dir of [sourceDir, join(sourceDir, "plugins", config.name)]) {
@@ -306,6 +307,11 @@ async function discoverPlugin(
       `Plugin "${config.name}" is ambiguous in ${config.source}: ${unique.map((m) => m.path).join(", ")}`,
     );
   }
+  if (unique.length === 0 && unsupportedMarketplaceSources.length > 0) {
+    throw new Error(
+      `Plugin "${config.name}" not found in ${config.source}. Matching marketplace entries use unsupported source types: ${[...new Set(unsupportedMarketplaceSources)].join(", ")}. Only local marketplace sources are supported.`,
+    );
+  }
   return unique[0] ?? null;
 }
 
@@ -317,6 +323,7 @@ async function discoverPlugin(
 async function discoverFromMarketplaces(
   sourceDir: string,
   name: string,
+  unsupportedSources: string[],
 ): Promise<PluginCandidate | null> {
   for (const marketplacePath of MARKETPLACE_PATHS) {
     const filePath = join(sourceDir, marketplacePath);
@@ -329,8 +336,9 @@ async function discoverFromMarketplaces(
     for (const entry of marketplace.plugins) {
       if (entry.name !== name) {continue;}
 
-      const path = localMarketplacePath(entry.source);
+      const path = localMarketplacePath(entry);
       if (!path) {
+        unsupportedSources.push(marketplaceSourceType(entry));
         continue;
       }
 
@@ -490,13 +498,21 @@ function dedupeCandidates(candidates: PluginCandidate[]): PluginCandidate[] {
   return result;
 }
 
-function localMarketplacePath(source: MarketplacePluginEntry["source"]): string | null {
+/** Returns local marketplace paths; unsupported extension sources are skipped. */
+function localMarketplacePath(entry: MarketplacePluginEntry): string | null {
+  const { source } = entry;
   if (typeof source === "string") {return stripDotSlash(source);}
 
   if (source.source === "local" && typeof source.path === "string") {
     return stripDotSlash(source.path);
   }
   return null;
+}
+
+function marketplaceSourceType(entry: MarketplacePluginEntry): string {
+  const { source } = entry;
+  if (typeof source === "string") {return "local";}
+  return source.source ?? "extension";
 }
 
 function stripDotSlash(path: string): string {

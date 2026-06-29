@@ -14,6 +14,8 @@ minimum_release_age_exclude = ["getsentry/*"] # Optional
 [[skills]]                      # Optional, array of skill entries
 [[mcp]]                         # Optional, array of MCP servers
 [[hooks]]                       # Optional, array of hook declarations
+[[subagents]]                   # Optional, array of subagent dependencies
+[[plugins]]                     # Optional, array of plugin dependencies
 ```
 
 ## Top-Level Fields
@@ -22,8 +24,8 @@ minimum_release_age_exclude = ["getsentry/*"] # Optional
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version, must be `1` |
 | `defaultRepositorySource` | string | No | `github` | Host for shorthand `owner/repo` sources. Valid values: `github`, `gitlab` |
-| `agents` | string[] | No | `[]` | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `opencode` |
-| `minimum_release_age` | integer | No | -- | Minimum commit age, in minutes, before a git skill can install |
+| `agents` | string[] | No | `[]` | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `grok`, `opencode`, `pi` |
+| `minimum_release_age` | integer | No | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install |
 | `minimum_release_age_exclude` | string[] | No | `[]` | Sources that bypass `minimum_release_age` |
 
 ## Project Section
@@ -144,6 +146,44 @@ command = "my-lint-check"           # Required
 | `matcher` | string | No | Tool name to match (omit for all tools) |
 | `command` | string | Yes | Shell command to execute |
 
+## Subagents Section
+
+```toml
+[[subagents]]
+name = "code-reviewer"          # Required, unique subagent identifier
+source = "getsentry/agent-pack" # Required, source repository or path
+ref = "v1.0.0"                  # Optional, pin to tag/branch/commit
+path = "agents/code-reviewer.md" # Optional, artifact path within source
+targets = ["claude", "codex"]   # Optional, subset of configured agents
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Unique subagent identifier |
+| `source` | string | Yes | `owner/repo`, `owner/repo@ref`, GitHub/GitLab URL, `git:url`, or `path:relative` |
+| `ref` | string | No | Tag, branch, or commit SHA to pin |
+| `path` | string | No | Subagent artifact path within the source repo |
+| `targets` | string[] | No | Runtime targets for generated subagent files |
+
+## Plugins Section
+
+```toml
+[[plugins]]
+name = "review-tools"           # Required, unique plugin identifier
+source = "getsentry/agent-plugins" # Required, source repository or path
+ref = "v1.0.0"                  # Optional, pin to tag/branch/commit
+path = "plugins/review-tools"   # Optional, plugin directory within source
+targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Unique plugin identifier |
+| `source` | string | Yes | `owner/repo`, `owner/repo@ref`, GitHub/GitLab URL, `git:url`, or `path:relative`; well-known HTTPS sources are not supported for plugins |
+| `ref` | string | No | Tag, branch, or commit SHA to pin |
+| `path` | string | No | Plugin directory path within the source repo |
+| `targets` | string[] | No | Plugin runtime targets; defaults to configured `agents` |
+
 ## Lockfile (agents.lock)
 
 Auto-generated. Do not edit manually. Gitignored automatically.
@@ -157,6 +197,18 @@ resolved_url = "https://github.com/getsentry/skills.git"
 resolved_path = "plugins/sentry-skills/skills/find-bugs"
 resolved_ref = "v1.0.0"
 resolved_commit = "0123456789abcdef0123456789abcdef01234567"
+
+[subagents.code-reviewer]
+source = "getsentry/agent-pack"
+resolved_url = "https://github.com/getsentry/agent-pack.git"
+resolved_path = "agents/code-reviewer.md"
+resolved_commit = "0123456789abcdef0123456789abcdef01234567"
+
+[plugins.review-tools]
+source = "getsentry/agent-plugins"
+resolved_url = "https://github.com/getsentry/agent-plugins.git"
+resolved_path = "plugins/review-tools"
+resolved_commit = "0123456789abcdef0123456789abcdef01234567"
 ```
 
 | Field | Type | Description |
@@ -167,7 +219,7 @@ resolved_commit = "0123456789abcdef0123456789abcdef01234567"
 | `resolved_ref` | string | Ref that was resolved (omitted for default branch) |
 | `resolved_commit` | string | Full commit SHA that was installed. Informational only |
 
-Local path skills have `source` only.
+Local path skills, subagents, and plugins have `source` only.
 
 ## Environment Variables
 

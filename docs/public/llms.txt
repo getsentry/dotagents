@@ -296,7 +296,7 @@ Generated project-scope plugin outputs:
 - OpenCode: plugin `skills/` symlinked into `.opencode/skills/`; plugin Markdown `agents/` symlinked into `.opencode/agents/`
 - Pi: plugin `skills/` symlinked into `.agents/skills/` when `pi` is a configured plugin target
 
-Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated runtime marketplaces and generated Claude/Cursor/Codex plugin manifests are overwritten or pruned only when they carry `metadata.managedBy = "dotagents"`. Managed Grok copies and OpenCode/Pi component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself.
+Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated runtime marketplaces and generated Claude/Cursor/Codex plugin manifests are overwritten or pruned only when they carry `metadata.managedBy = "dotagents"`. Managed Grok copies and OpenCode/Pi component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when `agents.lock` proves they are managed by dotagents.
 
 Plugin declarations are project-scope only for now. `install --user` rejects `[[plugins]]` entries and `sync --user` reports them as unsupported because user-scope runtime plugin projections are not generated yet.
 
@@ -463,7 +463,7 @@ Skills from wildcard entries are marked with a wildcard indicator.
 npx @sentry/dotagents doctor [--fix]
 ```
 
-Check project health: gitignore setup, installed skills, symlinks, and legacy config fields. Use `--fix` to auto-repair issues.
+Check project health: gitignore setup, installed skills and plugins, symlinks, generated config, and legacy config fields. Use `--fix` to auto-repair issues.
 
 | Flag | Description |
 |------|-------------|
@@ -479,9 +479,9 @@ Check project health: gitignore setup, installed skills, symlinks, and legacy co
 | `vscode` | VS Code Copilot | `.vscode` | (reads `.agents/skills/` natively) | `.vscode/mcp.json` | `.claude/settings.json` | Not supported |
 | `opencode` | OpenCode | `.opencode` | (reads `.agents/skills/` natively) | `opencode.json` | Not supported | `.opencode/agents/*.md` |
 
-Claude uses `.claude/skills/`, and Cursor shares the same Claude-compatible skills symlink. Codex, VS Code, OpenCode, and Pi read `.agents/skills/` directly.
+Claude uses `.claude/skills/`, and Cursor shares the same Claude-compatible skills symlink. Codex, VS Code, and OpenCode read `.agents/skills/` directly.
 
-[Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively. No agent target or symlink configuration needed.
+[Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively. Normal skills need no Pi-specific target or symlink configuration; plugin bundles can target `pi` when their `skills/` components should be exposed there.
 
 ## Scopes
 

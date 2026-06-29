@@ -222,6 +222,79 @@ source = "path:plugin-source/review-tools"
     expect(agentsGitignore).toContain("/plugins/review-tools/");
   });
 
+  it("does not overwrite an existing unmanaged plugin install destination", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+
+    const existingDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(existingDir, { recursive: true });
+    await writeFile(join(existingDir, "plugin.json"), JSON.stringify({ name: "review-tools", description: "Hand written" }, null, 2));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(/install destination already exists and is not managed/);
+
+    const existingManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(existingManifest["description"]).toBe("Hand written");
+  });
+
+  it("overwrites an existing managed plugin install destination", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(sourceDir, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "Updated plugin" }, null, 2),
+    );
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+
+    const existingDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(join(existingDir, "skills", "old-review"), { recursive: true });
+    await writeFile(
+      join(existingDir, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "Old managed plugin" }, null, 2),
+    );
+    await writeFile(join(existingDir, "skills", "old-review", "SKILL.md"), SKILL_MD("old-review"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {
+        "review-tools": { source: "path:plugin-source/review-tools" },
+      },
+    });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const installedManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(installedManifest["description"]).toBe("Updated plugin");
+    expect(existsSync(join(existingDir, "skills", "review", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(existingDir, "skills", "old-review", "SKILL.md"))).toBe(false);
+  });
+
   it("does not gitignore in-place skills that collide with Pi plugin projections", async () => {
     await mkdir(join(projectRoot, ".agents", "skills", "review"), { recursive: true });
     await writeFile(join(projectRoot, ".agents", "skills", "review", "SKILL.md"), SKILL_MD("review"));
@@ -746,14 +819,14 @@ source = "path:plugin-source"
             name: "review-tools",
             source: {
               source: "github",
-              path: "plugins/marketplace-review-tools",
+              path: "external/marketplace-review-tools",
               repo: "org/review-tools",
             },
           },
         ],
       }, null, 2),
     );
-    const marketplaceOnlyDir = join(sourceRoot, "plugins", "marketplace-review-tools");
+    const marketplaceOnlyDir = join(sourceRoot, "external", "marketplace-review-tools");
     await mkdir(marketplaceOnlyDir, { recursive: true });
     await writeFile(
       join(marketplaceOnlyDir, "plugin.json"),
@@ -790,6 +863,51 @@ source = "path:plugin-source"
     ) as Record<string, unknown>;
     expect(installedManifest["description"]).toBe(
       "Fallback local plugin",
+    );
+  });
+
+  it("reports unsupported marketplace source objects when no compatible plugin is found", async () => {
+    const sourceRoot = join(projectRoot, "plugin-source");
+    await mkdir(sourceRoot, { recursive: true });
+    await writeFile(
+      join(sourceRoot, "marketplace.json"),
+      JSON.stringify({
+        name: "source-marketplace",
+        plugins: [
+          {
+            name: "review-tools",
+            source: {
+              source: "github",
+              path: "external/marketplace-review-tools",
+              repo: "org/review-tools",
+            },
+          },
+        ],
+      }, null, 2),
+    );
+    const marketplaceOnlyDir = join(sourceRoot, "external", "marketplace-review-tools");
+    await mkdir(marketplaceOnlyDir, { recursive: true });
+    await writeFile(
+      join(marketplaceOnlyDir, "plugin.json"),
+      JSON.stringify({
+        name: "review-tools",
+        description: "Marketplace-only plugin",
+      }, null, 2),
+    );
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(
+      /Matching marketplace entries use unsupported source types: github/,
     );
   });
 
@@ -1190,18 +1308,7 @@ path = "code-reviewer.md"
     );
 
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
-    expect(lockfile).toEqual({
-      version: 1,
-      skills: {
-        pdf: { source: "path:local-skills/pdf" },
-      },
-      subagents: {
-        "code-reviewer": {
-          source: "path:agents",
-        },
-      },
-      plugins: {},
-    });
+    expect(lockfile).toEqual(originalLockfile);
     expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
   });
 

@@ -37,6 +37,7 @@ Generated outputs are deterministic:
 3. Managed generated marketplace files are pruned when no configured plugin targets that runtime anymore.
 4. Remote or copied plugin bundles under `.agents/plugins/<name>/` are treated as dotagents-managed and are listed in `.agents/.gitignore`.
 5. Plugin sources that resolve to the same project's `.agents/plugins/<name>/` install destination are rejected. dotagents must not install a same-repo plugin onto itself.
+6. Existing `.agents/plugins/<name>/` install destinations are overwritten only when `agents.lock` proves they are managed by dotagents.
 
 ## Documentation Sources
 

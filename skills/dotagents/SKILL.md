@@ -1,9 +1,9 @@
 ---
 name: dotagents
-description: Manage agent skill dependencies with dotagents. Use when asked to "add a skill", "install skills", "remove a skill", "dotagents init", "agents.toml", "agents.lock", "sync skills", "list skills", "set up dotagents", "configure trust", "add MCP server", "add hook", "wildcard skills", "user scope", "dotagents doctor", or any dotagents-related task.
+description: Manage dotagents dependencies and runtime config. Use when asked to "add a skill", "install skills", "remove a skill", "configure plugins", "configure subagents", "dotagents init", "agents.toml", "agents.lock", "sync skills", "list skills", "set up dotagents", "configure trust", "add MCP server", "add hook", "wildcard skills", "user scope", "dotagents doctor", or any dotagents-related task.
 ---
 
-Manage agent skill dependencies declared in `agents.toml`. dotagents resolves, installs, and symlinks skills so multiple agent tools (Claude Code, Cursor, Codex, VS Code, OpenCode) discover them from `.agents/skills/`.
+Manage dependencies declared in `agents.toml`. dotagents resolves skills, subagents, plugins, MCP servers, and hooks so agent tools (Claude Code, Cursor, Codex, Grok, VS Code, OpenCode, Pi) can use shared project config.
 
 ## Running dotagents
 
@@ -49,11 +49,11 @@ npx @sentry/dotagents list
 | Command | Description |
 |---------|-------------|
 | `npx @sentry/dotagents init` | Initialize `agents.toml` and `.agents/` directory |
-| `npx @sentry/dotagents install` | Install all skills from `agents.toml` |
+| `npx @sentry/dotagents install` | Install all dependencies from `agents.toml` |
 | `npx @sentry/dotagents add <specifier>` | Add a skill dependency |
 | `npx @sentry/dotagents remove <name>` | Remove a skill |
 | `npx @sentry/dotagents sync` | Reconcile state (adopt orphans, repair symlinks, fix configs) |
-| `npx @sentry/dotagents list` | Show installed skills and their status |
+| `npx @sentry/dotagents list` | Show installed skills, plugins, and status |
 | `npx @sentry/dotagents mcp` | Add, remove, or list MCP server declarations |
 | `npx @sentry/dotagents trust` | Add, remove, or list trusted sources |
 | `npx @sentry/dotagents doctor` | Check project health and fix issues |
@@ -76,12 +76,14 @@ For full options and flags, read [references/cli-reference.md](references/cli-re
 
 ## Key Concepts
 
-- **`.agents/skills/`** is the canonical home for all installed skills
-- **`agents.toml`** declares dependencies; **`agents.lock`** tracks managed skills
+- **`.agents/skills/`** is the canonical home for skills; **`.agents/plugins/`** is the canonical home for plugins
+- **`agents.toml`** declares dependencies; **`agents.lock`** tracks managed skills, subagents, and plugins
 - **Symlinks**: `.claude/skills/`, `.cursor/skills/` point to `.agents/skills/`
 - **Wildcards**: `name = "*"` installs all skills from a source, with optional `exclude` list
 - **Trust**: Optional `[trust]` section restricts which sources are allowed
 - **Hooks**: `[[hooks]]` declarations write tool-event hooks to each agent's config
+- **Subagents**: `[[subagents]]` declarations install portable or native subagent files
+- **Plugins**: `[[plugins]]` declarations install canonical bundles and generate runtime-specific plugin outputs
 - **Gitignore**: Managed skills are always gitignored; custom in-place skills are tracked
 - **User scope**: `--user` flag manages skills in `~/.agents/` shared across all projects
 - **Updates**: Run `npx @sentry/dotagents install` to refresh managed skills; there is no `update` command

@@ -129,12 +129,38 @@ Hook configs are written per-agent:
 - `UserPromptSubmit` -> `beforeSubmitPrompt`
 - `Stop` -> `stop`
 
+## Subagents
+
+Declare portable or native subagent artifacts with `[[subagents]]`. dotagents installs canonical managed files under `.agents/agents/` and writes runtime-specific files for supported agents.
+
+```toml
+[[subagents]]
+name = "code-reviewer"
+source = "getsentry/agent-pack"
+path = "agents/code-reviewer.md"
+targets = ["claude", "codex", "opencode"]
+```
+
+## Plugins
+
+Declare plugin bundles with `[[plugins]]`. dotagents installs canonical bundles under `.agents/plugins/<name>/` and generates runtime-specific plugin outputs for configured targets.
+
+```toml
+[[plugins]]
+name = "review-tools"
+source = "getsentry/agent-plugins"
+path = "plugins/review-tools"
+targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+```
+
+Plugin declarations are project-scope only. User-scope plugin declarations are rejected.
+
 ## Agents
 
 The `agents` array controls which agent tools get symlinks and configs.
 
 ```toml
-agents = ["claude", "cursor", "codex", "vscode", "opencode"]
+agents = ["claude", "cursor", "codex", "vscode", "grok", "opencode", "pi"]
 ```
 
 Each agent gets:
@@ -142,6 +168,7 @@ Each agent gets:
 - Or native discovery from `.agents/skills/` (Codex, VS Code, OpenCode)
 - MCP server configs in the agent's config file
 - Hook configs (where supported)
+- Subagent and plugin runtime outputs (where supported)
 
 ## Scopes
 
@@ -175,10 +202,10 @@ Use `minimum_release_age_exclude` for trusted sources that can bypass the age ga
 
 ## Gitignore
 
-dotagents always manages gitignore. It generates `.agents/.gitignore` listing managed (remote) skills. In-place skills (`path:.agents/skills/...`) are never gitignored since they must be tracked in git.
+dotagents always manages gitignore. It generates `.agents/.gitignore` listing managed skills, subagents, and plugins. In-place skills (`path:.agents/skills/...`) and in-place plugin sources are not gitignored since they must be tracked in git.
 
 Two files are added to the root `.gitignore` during `init`:
-- `agents.lock` — tracks managed skills
+- `agents.lock` — tracks managed skills, subagents, and plugins
 - `.agents/.gitignore` — excludes managed skill directories
 
 If these entries are missing, `install` and `sync` warn. Run `npx @sentry/dotagents doctor --fix` to add them.
