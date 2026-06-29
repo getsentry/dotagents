@@ -8,6 +8,7 @@ import { runSync } from "./sync.js";
 import { exec } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
+import type { Lockfile } from "../../lockfile/schema.js";
 import { resolveScope } from "../../scope.js";
 import { DOTAGENTS_SUBAGENT_MARKER } from "../../agents/definitions/helpers.js";
 
@@ -423,7 +424,7 @@ path = "code-reviewer.md"
     expect(syncResult.adopted).toEqual([]);
   });
 
-  it("updates skill lock entries when installed subagent writes fail", async () => {
+  it("does not update the lockfile when installed subagent writes fail", async () => {
     const skillSourceDir = join(projectRoot, "local-skills", "pdf");
     await mkdir(skillSourceDir, { recursive: true });
     await writeFile(join(skillSourceDir, "SKILL.md"), SKILL_MD("pdf"));
@@ -438,7 +439,7 @@ path = "code-reviewer.md"
       "hand-written subagent\n",
       "utf-8",
     );
-    await writeLockfile(join(projectRoot, "agents.lock"), {
+    const originalLockfile: Lockfile = {
       version: 1,
       skills: {},
       subagents: {
@@ -452,7 +453,8 @@ path = "code-reviewer.md"
           source: "path:old-agents",
         },
       },
-    });
+    };
+    await writeLockfile(join(projectRoot, "agents.lock"), originalLockfile);
 
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -475,58 +477,11 @@ path = "code-reviewer.md"
     );
 
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
-    expect(lockfile!.skills["pdf"]).toBeDefined();
-    expect(lockfile!.subagents["code-reviewer"]).toBeUndefined();
-    expect(lockfile!.subagents["old-reviewer"]).toBeUndefined();
+    expect(lockfile).toEqual(originalLockfile);
     expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
   });
 
-  it("preserves the original install error when fallback lockfile write fails", async () => {
-    const skillSourceDir = join(projectRoot, "local-skills", "pdf");
-    await mkdir(skillSourceDir, { recursive: true });
-    await writeFile(join(skillSourceDir, "SKILL.md"), SKILL_MD("pdf"));
-
-    const sourceDir = join(projectRoot, "agents");
-    await mkdir(sourceDir, { recursive: true });
-    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
-
-    await mkdir(join(projectRoot, ".agents", "agents"), { recursive: true });
-    await writeFile(
-      join(projectRoot, ".agents", "agents", "code-reviewer.md"),
-      "hand-written subagent\n",
-      "utf-8",
-    );
-
-    const lockPath = join(projectRoot, "agents.lock");
-    await writeLockfile(lockPath, { version: 1, skills: {}, subagents: {} });
-    await chmod(lockPath, 0o400);
-
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1
-[[skills]]
-name = "pdf"
-source = "path:local-skills/pdf"
-
-[[subagents]]
-name = "code-reviewer"
-source = "path:agents"
-path = "code-reviewer.md"
-`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-
-    try {
-      await expect(runInstall({ scope })).rejects.toThrow(
-        /Subagent file exists and is not managed by dotagents/,
-      );
-    } finally {
-      await chmod(lockPath, 0o600).catch(() => {});
-    }
-  });
-
-  it("does not commit subagent lock entries when stale subagent pruning fails", async () => {
+  it("does not write the lockfile when stale subagent pruning fails", async () => {
     const sourceDir = join(projectRoot, "agents");
     await mkdir(sourceDir, { recursive: true });
     await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
@@ -565,12 +520,11 @@ path = "code-reviewer.md"
       await chmod(stalePath, 0o600).catch(() => {});
     }
 
-    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
-    expect(lockfile!.subagents["code-reviewer"]).toBeUndefined();
+    expect(await loadLockfile(join(projectRoot, "agents.lock"))).toBeNull();
     expect(existsSync(join(installedDir, "code-reviewer.md"))).toBe(true);
   });
 
-  it("does not commit subagent lock entries when runtime subagent writes fail", async () => {
+  it("keeps lock entries when runtime subagent writes fail", async () => {
     const skillSourceDir = join(projectRoot, "local-skills", "pdf");
     await mkdir(skillSourceDir, { recursive: true });
     await writeFile(join(skillSourceDir, "SKILL.md"), SKILL_MD("pdf"));
@@ -616,7 +570,7 @@ path = "code-reviewer.md"
 
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile!.skills["pdf"]).toBeDefined();
-    expect(lockfile!.subagents["code-reviewer"]).toBeUndefined();
+    expect(lockfile!.subagents["code-reviewer"]).toEqual({ source: "path:agents" });
     expect(existsSync(join(projectRoot, ".agents", "agents", "code-reviewer.md"))).toBe(true);
   });
 
