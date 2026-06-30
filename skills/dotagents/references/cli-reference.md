@@ -39,7 +39,7 @@ npx @sentry/dotagents --user init
 
 ### `install`
 
-Install or refresh skill dependencies declared in `agents.toml`. There is no separate `update` command.
+Install or refresh skill, subagent, and plugin dependencies declared in `agents.toml`. There is no separate `update` command.
 
 ```bash
 npx @sentry/dotagents install
@@ -47,14 +47,16 @@ npx @sentry/dotagents install
 
 **Workflow:**
 1. Load config and lockfile
-2. Expand wildcard entries (discover all skills from source)
-3. Validate trust for each skill source
-4. Resolve skills (refreshing sources through the cache)
-5. Copy skills into `.agents/skills/<name>/`
+2. Expand wildcard skill entries
+3. Validate trust for each skill, subagent, and plugin source
+4. Resolve skills, subagents, and plugins
+5. Copy canonical artifacts into `.agents/skills/`, `.agents/agents/`, and `.agents/plugins/`
 6. Write/update lockfile
 7. Generate `.agents/.gitignore`
 8. Create/verify agent symlinks
-9. Write MCP and hook configs
+9. Write MCP, hook, subagent, and plugin runtime configs
+
+`dotagents --user install` rejects `[[plugins]]` because plugin runtime projections are project-scoped.
 
 ### `add <specifier> [skill...]`
 
@@ -96,21 +98,21 @@ When adding multiple skills, already-existing entries are skipped with a warning
 
 `--all` and `--name`/positional args are mutually exclusive.
 
-### `remove <name>`
+### `remove <name|source>`
 
-Remove a skill dependency.
+Remove a skill or plugin dependency.
 
 ```bash
 npx @sentry/dotagents remove find-bugs
 ```
 
-Removes from `agents.toml`, deletes `.agents/skills/<name>/`, updates the lockfile, and regenerates `.agents/.gitignore`.
+Removes from `agents.toml`, deletes managed installed files, updates the lockfile, prunes generated plugin outputs when needed, and regenerates `.agents/.gitignore`. Passing a source removes all matching skills and plugins from that source.
 
 For skills sourced from a wildcard entry (`name = "*"`), interactively prompts whether to add the skill to the wildcard's `exclude` list. If declined, the removal is cancelled.
 
 ### `sync`
 
-Reconcile project state without network access: adopt local orphans, prune stale managed skills, and repair symlinks and configs.
+Reconcile project state without network access: adopt local orphans, prune stale managed skills/subagents/plugins, and repair symlinks and generated configs.
 
 ```bash
 npx @sentry/dotagents sync
@@ -119,13 +121,14 @@ npx @sentry/dotagents sync
 **Actions performed:**
 1. Adopt orphaned skills (installed but not declared in config)
 2. Regenerate `.agents/.gitignore`
-3. Prune stale managed skills removed from config
-4. Check for missing skills
+3. Prune stale managed skills, subagents, and plugins removed from config
+4. Check for missing skills and plugins
 5. Repair agent symlinks
 6. Verify/repair MCP configs
 7. Verify/repair hook configs
+8. Verify/repair subagent and plugin runtime configs
 
-Reports issues as warnings (missing MCP/hook configs) or errors (missing skills).
+Reports issues as warnings or errors, including user-scope plugin declarations and same-project plugin declarations.
 
 ### `doctor`
 
@@ -140,13 +143,13 @@ npx @sentry/dotagents doctor --fix
 |------|-------------|
 | `--fix` | Auto-fix issues where possible |
 
-**Checks:** gitignore setup, legacy config fields, installed skills, symlinks, `.agents/.gitignore`.
+**Checks:** gitignore setup, legacy config fields, installed skills/plugins, symlinks, generated runtime configs, `.agents/.gitignore`.
 
 Useful when migrating to a new version of dotagents.
 
 ### `list`
 
-Show installed skills and their status.
+Show declared skills and plugins with their status.
 
 ```bash
 npx @sentry/dotagents list
@@ -163,6 +166,8 @@ npx @sentry/dotagents list --json
 - `?` unlocked -- installed but not in lockfile
 
 Skills from wildcard entries are marked with a wildcard indicator.
+
+JSON output contains separate `skills` and `plugins` arrays.
 
 ### `mcp`
 

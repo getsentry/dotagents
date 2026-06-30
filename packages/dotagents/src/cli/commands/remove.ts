@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { rm } from "node:fs/promises";
 import { createInterface } from "node:readline";
@@ -5,7 +6,13 @@ import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
-import { removeSkillFromConfig, removeSkillBlocksBySource, addExcludeToWildcard } from "../../config/writer.js";
+import {
+  addExcludeToWildcard,
+  removePluginBlocksBySource,
+  removePluginFromConfig,
+  removeSkillBlocksBySource,
+  removeSkillFromConfig,
+} from "../../config/writer.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { filterManagedPluginSkillNames } from "../../gitignore/skills.js";
@@ -14,8 +21,8 @@ import { sourcesMatch, parseOwnerRepoShorthand, isExplicitSourceSpecifier } from
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 import { isInPlaceSkill } from "../../utils/fs.js";
-import { isInPlacePluginSource, isSameProjectPluginConfig, loadInstalledPlugins } from "../../plugins/store.js";
-import { projectedPiSkillNames } from "../../plugins/runtime/writer.js";
+import { isInPlacePluginSource, isSameProjectPluginConfig, loadInstalledPlugins, pruneInstalledPlugins } from "../../plugins/store.js";
+import { projectedPiSkillNames, prunePluginOutputs } from "../../plugins/runtime/writer.js";
 
 export class RemoveError extends Error {
   constructor(message: string) {
@@ -37,26 +44,26 @@ export class WildcardSkillRemoveError extends Error {
 
 export interface RemoveOptions {
   scope: ScopeRoot;
-  skillName: string;
+  name: string;
 }
 
 export async function runRemove(opts: RemoveOptions): Promise<void> {
-  const { scope, skillName } = opts;
+  const { scope, name } = opts;
   const { configPath, lockPath, skillsDir } = scope;
-  const skillDir = join(skillsDir, skillName);
+  const skillDir = join(skillsDir, name);
 
   const config = await loadConfig(configPath);
 
   // Check if skill is an explicit entry
-  const explicitDep = config.skills.find((s) => s.name === skillName);
+  const explicitDep = config.skills.find((s) => s.name === name);
   if (explicitDep && !isWildcardDep(explicitDep)) {
     // Regular explicit entry — remove as before
-    await removeSkillFromConfig(configPath, skillName);
+    await removeSkillFromConfig(configPath, name);
     await rm(skillDir, { recursive: true, force: true });
 
     const lockfile = await loadLockfile(lockPath);
     if (lockfile) {
-      delete lockfile.skills[skillName];
+      delete lockfile.skills[name];
       await writeLockfile(lockPath, lockfile);
     }
 
@@ -64,9 +71,17 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
     return;
   }
 
+  const explicitPlugin = config.plugins.find((plugin) => plugin.name === name);
+  if (explicitPlugin) {
+    const lockfile = await loadLockfile(lockPath);
+    await removePluginFromConfig(configPath, name);
+    await removePluginArtifacts(scope, [name], lockfile);
+    return;
+  }
+
   // Check if skill is from a wildcard entry (via lockfile source matching)
   const lockfile = await loadLockfile(lockPath);
-  const locked = lockfile?.skills[skillName];
+  const locked = lockfile?.skills[name];
   if (locked) {
     const wildcardDep = config.skills.find(
       (s) =>
@@ -74,11 +89,11 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
         sourcesMatch(s.source, locked.source),
     );
     if (wildcardDep) {
-      throw new WildcardSkillRemoveError(skillName, locked.source);
+      throw new WildcardSkillRemoveError(name, locked.source);
     }
   }
 
-  throw new RemoveError(`Skill "${skillName}" not found in agents.toml.`);
+  throw new RemoveError(`Skill or plugin "${name}" not found in agents.toml.`);
 }
 
 export interface RemoveSourceOptions {
@@ -119,6 +134,32 @@ export async function collectSkillsFromSource(scope: ScopeRoot, source: string):
   return [...names].toSorted();
 }
 
+/** Collect all concrete plugin names from a source (config + lockfile). */
+export async function collectPluginsFromSource(scope: ScopeRoot, source: string): Promise<string[]> {
+  const config = await loadConfig(scope.configPath);
+  const lockfile = await loadLockfile(scope.lockPath);
+
+  const names = new Set<string>();
+  for (const plugin of config.plugins) {
+    if (sourcesMatch(plugin.source, source)) {
+      names.add(plugin.name);
+    }
+  }
+  if (lockfile) {
+    for (const [name, locked] of Object.entries(lockfile.plugins)) {
+      if (sourcesMatch(locked.source, source)) {
+        names.add(name);
+      }
+    }
+  }
+
+  if (names.size === 0) {
+    throw new RemoveError(`No plugins found from source "${source}".`);
+  }
+
+  return [...names].toSorted();
+}
+
 /**
  * Remove all skills from a source. Returns the list of removed skill names.
  */
@@ -147,6 +188,53 @@ export async function runRemoveSource(opts: RemoveSourceOptions): Promise<string
   await updateProjectGitignore(scope);
 
   return skillNames;
+}
+
+/** Remove all plugins from a source. Returns removed plugin names. */
+export async function runRemovePluginSource(opts: RemoveSourceOptions): Promise<string[]> {
+  const { scope, source } = opts;
+  const pluginNames = await collectPluginsFromSource(scope, source);
+  const lockfile = await loadLockfile(scope.lockPath);
+
+  await removePluginBlocksBySource(scope.configPath, source);
+  await removePluginArtifacts(scope, pluginNames, lockfile);
+
+  return pluginNames;
+}
+
+/** Removes managed plugin state after config mutation while preserving in-place plugin sources. */
+async function removePluginArtifacts(
+  scope: ScopeRoot,
+  pluginNames: string[],
+  lockfile: Awaited<ReturnType<typeof loadLockfile>>,
+): Promise<void> {
+  const managedPluginNames = pluginNames.filter((name) => {
+    const locked = lockfile?.plugins[name];
+    return locked && !isInPlacePluginSource(locked.source);
+  });
+  const managedPluginRoots = managedPluginNames.map((name) => join(scope.pluginsDir, name));
+
+  if (scope.scope === "project") {
+    await pruneInstalledPlugins(scope.pluginsDir, managedPluginNames);
+  }
+
+  if (lockfile) {
+    for (const name of pluginNames) {
+      delete lockfile.plugins[name];
+    }
+    await writeLockfile(scope.lockPath, lockfile);
+  }
+
+  if (scope.scope === "project") {
+    const config = await loadConfig(scope.configPath);
+    const remainingPluginConfigs = config.plugins
+      .filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
+      .filter((plugin) => existsSync(join(scope.pluginsDir, plugin.name)));
+    const installedPlugins = await loadInstalledPlugins(scope.pluginsDir, remainingPluginConfigs);
+    await prunePluginOutputs(config.agents, installedPlugins.plugins, scope.root, managedPluginRoots);
+  }
+
+  await updateProjectGitignore(scope);
 }
 
 async function updateProjectGitignore(scope: ScopeRoot): Promise<void> {
@@ -237,8 +325,13 @@ export default async function remove(args: string[], flags?: { user?: boolean })
     await ensureUserScopeBootstrapped(scope);
 
     try {
-      await runRemove({ scope, skillName: arg });
-      console.log(chalk.green(`Removed skill: ${arg}`));
+      const before = await loadConfig(scope.configPath);
+      const kind = before.plugins.some((plugin) => plugin.name === arg) &&
+        !before.skills.some((skill) => skill.name === arg)
+        ? "plugin"
+        : "skill";
+      await runRemove({ scope, name: arg });
+      console.log(chalk.green(`Removed ${kind}: ${arg}`));
     } catch (err) {
       if (err instanceof WildcardSkillRemoveError) {
         console.log(chalk.yellow(err.message));
@@ -269,13 +362,30 @@ export default async function remove(args: string[], flags?: { user?: boolean })
       const isSource = isExplicitSourceSpecifier(arg) || parseOwnerRepoShorthand(arg) !== undefined;
       if (!isSource) {throw err;}
 
-      // It's a valid source specifier — preview, confirm, then remove
-      const skillNames = await collectSkillsFromSource(scope, arg);
+      // It's a valid source specifier — preview, confirm, then remove.
+      let skillNames: string[] = [];
+      let pluginNames: string[] = [];
+      try {
+        skillNames = await collectSkillsFromSource(scope, arg);
+      } catch (sourceErr) {
+        if (!(sourceErr instanceof RemoveError)) {throw sourceErr;}
+      }
+      try {
+        pluginNames = await collectPluginsFromSource(scope, arg);
+      } catch (sourceErr) {
+        if (!(sourceErr instanceof RemoveError)) {throw sourceErr;}
+      }
+      if (skillNames.length === 0 && pluginNames.length === 0) {
+        throw new RemoveError(`No skills or plugins found from source "${arg}".`);
+      }
 
       if (!skipConfirm) {
-        const names = skillNames.join(", ");
+        const names = [
+          ...skillNames.map((name) => `skill:${name}`),
+          ...pluginNames.map((name) => `plugin:${name}`),
+        ].join(", ");
         const confirmed = await promptYesNo(
-          `Will remove ${skillNames.length} skill(s) from "${arg}": ${names}\nContinue? (y/N) `,
+          `Will remove ${skillNames.length} skill(s) and ${pluginNames.length} plugin(s) from "${arg}": ${names}\nContinue? (y/N) `,
         );
         if (!confirmed) {
           console.log("Aborted.");
@@ -283,8 +393,17 @@ export default async function remove(args: string[], flags?: { user?: boolean })
         }
       }
 
-      const removed = await runRemoveSource({ scope, source: arg });
-      console.log(chalk.green(`Removed ${removed.length} skill(s) from "${arg}": ${removed.join(", ")}`));
+      const removedSkills = skillNames.length > 0
+        ? await runRemoveSource({ scope, source: arg })
+        : [];
+      const removedPlugins = pluginNames.length > 0
+        ? await runRemovePluginSource({ scope, source: arg })
+        : [];
+      const summary = [
+        removedSkills.length > 0 ? `${removedSkills.length} skill(s): ${removedSkills.join(", ")}` : undefined,
+        removedPlugins.length > 0 ? `${removedPlugins.length} plugin(s): ${removedPlugins.join(", ")}` : undefined,
+      ].filter(Boolean).join("; ");
+      console.log(chalk.green(`Removed from "${arg}": ${summary}`));
     }
   } catch (err) {
     if (err instanceof ScopeError || err instanceof RemoveError) {

@@ -51,9 +51,9 @@ npx @sentry/dotagents list
 | `npx @sentry/dotagents init` | Initialize `agents.toml` and `.agents/` directory |
 | `npx @sentry/dotagents install` | Install all dependencies from `agents.toml` |
 | `npx @sentry/dotagents add <specifier>` | Add a skill dependency |
-| `npx @sentry/dotagents remove <name>` | Remove a skill |
-| `npx @sentry/dotagents sync` | Reconcile state (adopt orphans, repair symlinks, fix configs) |
-| `npx @sentry/dotagents list` | Show installed skills, plugins, and status |
+| `npx @sentry/dotagents remove <name>` | Remove a skill or plugin |
+| `npx @sentry/dotagents sync` | Reconcile state (adopt orphans, prune stale managed artifacts, repair configs) |
+| `npx @sentry/dotagents list` | Show declared skills, plugins, and status |
 | `npx @sentry/dotagents mcp` | Add, remove, or list MCP server declarations |
 | `npx @sentry/dotagents trust` | Add, remove, or list trusted sources |
 | `npx @sentry/dotagents doctor` | Check project health and fix issues |
@@ -84,6 +84,6 @@ For full options and flags, read [references/cli-reference.md](references/cli-re
 - **Hooks**: `[[hooks]]` declarations write tool-event hooks to each agent's config
 - **Subagents**: `[[subagents]]` declarations install portable or native subagent files
 - **Plugins**: `[[plugins]]` declarations install canonical bundles and generate runtime-specific plugin outputs
-- **Gitignore**: Managed skills are always gitignored; custom in-place skills are tracked
-- **User scope**: `--user` flag manages skills in `~/.agents/` shared across all projects
-- **Updates**: Run `npx @sentry/dotagents install` to refresh managed skills; there is no `update` command
+- **Gitignore**: Managed skills, subagents, and plugin bundles are gitignored; custom in-place sources are tracked
+- **User scope**: `--user` flag manages skills in `~/.agents/` shared across all projects; plugins are project-scope only
+- **Updates**: Run `npx @sentry/dotagents install` to refresh managed skills, subagents, and plugins; there is no `update` command

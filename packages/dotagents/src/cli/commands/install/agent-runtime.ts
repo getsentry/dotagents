@@ -97,11 +97,12 @@ export async function writePluginRuntime(
   scope: ScopeRoot,
   plugins: PluginDeclaration[],
   frozen?: boolean,
+  extraManagedPluginRoots: string[] = [],
 ): Promise<{ agent: string; name: string; message: string }[]> {
   if (scope.scope !== "project") {return [];}
   const result = await writePluginOutputs(config.agents, plugins, scope.root);
   if (!frozen) {
-    await prunePluginOutputs(config.agents, plugins, scope.root);
+    await prunePluginOutputs(config.agents, plugins, scope.root, extraManagedPluginRoots);
   }
   return result.warnings;
 }

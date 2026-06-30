@@ -3,7 +3,14 @@ import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runRemove, runRemoveSource, collectSkillsFromSource, RemoveError, WildcardSkillRemoveError } from "./remove.js";
+import {
+  collectSkillsFromSource,
+  RemoveError,
+  runRemove,
+  runRemovePluginSource,
+  runRemoveSource,
+  WildcardSkillRemoveError,
+} from "./remove.js";
 import { runInstall } from "./install.js";
 import { exec } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
@@ -63,7 +70,7 @@ describe("runRemove", () => {
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    await runRemove({ scope, skillName: "pdf" });
+    await runRemove({ scope, name: "pdf" });
 
     const config = await loadConfig(join(projectRoot, "agents.toml"));
     expect(config.skills.find((s) => s.name === "pdf")).toBeUndefined();
@@ -95,7 +102,7 @@ describe("runRemove", () => {
     });
 
     const scope = resolveScope("project", projectRoot);
-    await runRemove({ scope, skillName: "pdf" });
+    await runRemove({ scope, name: "pdf" });
 
     const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
     expect(gitignore).not.toContain("/skills/pdf");
@@ -133,7 +140,7 @@ source = "path:plugins/review-tools"
     });
 
     const scope = resolveScope("project", projectRoot);
-    await runRemove({ scope, skillName: "pdf" });
+    await runRemove({ scope, name: "pdf" });
 
     const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
     expect(gitignore).not.toContain("/skills/pdf");
@@ -175,7 +182,7 @@ source = "path:."
     });
 
     const scope = resolveScope("project", projectRoot);
-    await runRemove({ scope, skillName: "pdf" });
+    await runRemove({ scope, name: "pdf" });
 
     const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
     expect(gitignore).not.toContain("/skills/pdf");
@@ -220,18 +227,76 @@ source = "path:plugins/review-tools"
     });
 
     const scope = resolveScope("project", projectRoot);
-    await runRemove({ scope, skillName: "pdf" });
+    await runRemove({ scope, name: "pdf" });
 
     const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
     expect(gitignore).not.toContain("/skills/review");
     expect(gitignore).toContain("/plugins/review-tools/");
   });
 
+  it("removes a plugin entry, managed bundle, lock entry, and runtime outputs", async () => {
+    const pluginSource = join(projectRoot, "plugins", "review-tools");
+    await mkdir(join(pluginSource, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginSource, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(join(pluginSource, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex", "pi"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugins/review-tools"
+`,
+    );
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(true);
+
+    await runRemove({ scope, name: "review-tools" });
+
+    const config = await loadConfig(join(projectRoot, "agents.toml"));
+    expect(config.plugins.find((plugin) => plugin.name === "review-tools")).toBeUndefined();
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.plugins["review-tools"]).toBeUndefined();
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
+  });
+
+  it("removes plugins by source", async () => {
+    const pluginSource = join(projectRoot, "plugins", "review-tools");
+    await mkdir(pluginSource, { recursive: true });
+    await writeFile(join(pluginSource, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugins/review-tools"
+`,
+    );
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    await expect(runRemovePluginSource({ scope, source: "path:plugins/review-tools" }))
+      .resolves.toEqual(["review-tools"]);
+
+    const config = await loadConfig(join(projectRoot, "agents.toml"));
+    expect(config.plugins).toEqual([]);
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.plugins).toEqual({});
+  });
+
   it("throws RemoveError for skill not in config", async () => {
     await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
     const scope = resolveScope("project", projectRoot);
 
-    await expect(runRemove({ scope, skillName: "nonexistent" })).rejects.toThrow(RemoveError);
+    await expect(runRemove({ scope, name: "nonexistent" })).rejects.toThrow(RemoveError);
   });
 
   it("throws WildcardSkillRemoveError for wildcard-sourced skill", async () => {
@@ -243,7 +308,7 @@ source = "path:plugins/review-tools"
     await runInstall({ scope });
 
     // Trying to remove "pdf" which is wildcard-sourced
-    await expect(runRemove({ scope, skillName: "pdf" })).rejects.toThrow(WildcardSkillRemoveError);
+    await expect(runRemove({ scope, name: "pdf" })).rejects.toThrow(WildcardSkillRemoveError);
   });
 
   it("WildcardSkillRemoveError carries the source", async () => {
@@ -255,7 +320,7 @@ source = "path:plugins/review-tools"
     await runInstall({ scope });
 
     try {
-      await runRemove({ scope, skillName: "pdf" });
+      await runRemove({ scope, name: "pdf" });
       expect.unreachable("should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(WildcardSkillRemoveError);
@@ -273,7 +338,7 @@ source = "path:plugins/review-tools"
     await runInstall({ scope });
 
     // Removing "pdf" should remove the explicit entry, not trigger wildcard error
-    await runRemove({ scope, skillName: "pdf" });
+    await runRemove({ scope, name: "pdf" });
 
     const config = await loadConfig(join(projectRoot, "agents.toml"));
     expect(config.skills.find((s) => s.name === "pdf")).toBeUndefined();

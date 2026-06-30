@@ -392,7 +392,12 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 
   if (scope.scope === "project") {
     const pluginResult = await writePluginOutputs(config.agents, pluginDecls, scope.root);
-    const prunedPluginOutputs = await prunePluginOutputs(config.agents, pluginDecls, scope.root);
+    const prunedPluginOutputs = await prunePluginOutputs(
+      config.agents,
+      pluginDecls,
+      scope.root,
+      staleManagedPluginNames.map((name) => join(pluginsDir, name)),
+    );
     pluginsRepaired = pluginResult.written + prunedPluginOutputs.length + prunedInstalledPlugins.length;
     pluginIssues = await verifyPluginOutputs(config.agents, pluginDecls, scope.root);
 

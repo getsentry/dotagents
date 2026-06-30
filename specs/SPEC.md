@@ -562,25 +562,27 @@ Positional skill names and `--skill` flags cannot be mixed.
 
 ### `dotagents remove <name|source> [-y]`
 
-Remove a skill dependency, or all skills from a source.
+Remove a skill or plugin dependency, or all skills and plugins from a source.
 
 ```
 dotagents remove <name|source> [-y]
 ```
 
-**Behavior (single skill):**
-1. Remove `[[skills]]` entry from `agents.toml`
-2. Delete `.agents/skills/<name>/`
-3. Remove entry from `agents.lock`
-4. Regenerate `.agents/.gitignore`
+**Behavior (single dependency):**
+1. Remove matching `[[skills]]` or `[[plugins]]` entry from `agents.toml`
+2. Delete the managed installed artifact (`.agents/skills/<name>/` for skills or `.agents/plugins/<name>/` for managed plugins)
+3. Remove entry from the relevant `agents.lock` section
+4. Prune generated plugin runtime outputs when removing a plugin
+5. Regenerate `.agents/.gitignore`
 
 **Behavior (source removal):**
-When the argument matches a source specifier (e.g. `owner/repo`, a URL) rather than a skill name, removes all skills from that source:
-1. Find all skills from the source (explicit entries from config + wildcard-expanded entries from lockfile)
+When the argument matches a source specifier (e.g. `owner/repo`, a URL) rather than a dependency name, removes all skills and plugins from that source:
+1. Find all skills and plugins from the source (explicit entries from config + wildcard-expanded skill entries from lockfile)
 2. Confirm with the user (unless `-y` is passed)
-3. Remove all matching `[[skills]]` entries from `agents.toml` (both explicit and wildcard)
-4. Delete skill directories and lockfile entries
-5. Regenerate `.agents/.gitignore`
+3. Remove all matching `[[skills]]` and `[[plugins]]` entries from `agents.toml`
+4. Delete managed installed artifacts and lockfile entries
+5. Prune generated plugin runtime outputs for removed managed plugins
+6. Regenerate `.agents/.gitignore`
 
 **Flags:**
 - `-y`, `--yes`: Skip confirmation prompt
@@ -735,7 +737,7 @@ The YAML frontmatter is parsed with the `yaml` package. `allowed-tools` can be a
 
 dotagents always manages gitignore. Two files are added to the root `.gitignore` during `init`:
 - `agents.lock` — tracks managed skills, subagents, and plugins
-- `.agents/.gitignore` — excludes managed skill directories and canonical installed subagent files from git
+- `.agents/.gitignore` — excludes managed skill directories, canonical installed subagent files, and managed plugin bundles from git
 
 ### How It Works
 

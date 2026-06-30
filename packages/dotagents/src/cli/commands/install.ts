@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { GitError, TrustError } from "@sentry/dotagents-lib";
@@ -82,7 +82,13 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   await writeMcpRuntime(config, scope);
   const hookWarnings = await writeHookRuntime(config, scope);
   const subagentWarnings = await writeSubagentRuntime(config, scope, subagents.subagents, frozen);
-  const pluginWarnings = await writePluginRuntime(config, scope, plugins.plugins, frozen);
+  const pluginWarnings = await writePluginRuntime(
+    config,
+    scope,
+    plugins.plugins,
+    frozen,
+    plugins.pruned.map((name) => join(scope.pluginsDir, name)),
+  );
 
   return {
     installed: skills.installed,

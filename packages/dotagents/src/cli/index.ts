@@ -30,9 +30,9 @@ Commands:
   init        Initialize agents.toml and .agents/skills/
   install     Install dependencies from agents.toml
   add         Add a skill dependency
-  remove      Remove a skill or all skills from a source
+  remove      Remove a skill, plugin, or source
   sync        Reconcile state offline and repair generated config
-  list        Show installed skills and plugins
+  list        Show declared skills and plugins
   mcp         Manage MCP server declarations
   trust       Manage trusted sources
   doctor      Check project health and fix issues

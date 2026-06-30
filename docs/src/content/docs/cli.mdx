@@ -54,12 +54,15 @@ dotagents --user init
 dotagents install
 ```
 
-Install and refresh skill and subagent dependencies from `agents.toml`. Resolves
-sources, copies skills, writes the lockfile, creates symlinks, and generates MCP,
-hook, and subagent configs. There is no separate update command. With
-`--frozen`, declared skills and subagents must already exist in `agents.lock`,
-subagents are loaded from existing installed files without resolving sources,
-the lockfile is not updated, and existing managed subagent files are not pruned.
+Install and refresh skill, subagent, and plugin dependencies from `agents.toml`.
+Resolves sources, copies canonical artifacts, writes the lockfile, creates
+symlinks, and generates MCP, hook, subagent, and plugin runtime configs. There
+is no separate update command. Plugins are project-scope only; `dotagents
+--user install` rejects configs that declare `[[plugins]]`. With `--frozen`,
+declared skills, subagents, and plugins must already exist in `agents.lock`,
+subagents and plugins are loaded from existing installed files without resolving
+sources, the lockfile is not updated, and existing managed subagent/plugin files
+are not pruned.
 
 Example:
 
@@ -126,10 +129,10 @@ dotagents add path:./my-skills/custom
 dotagents remove <name|source> [-y]
 ```
 
-Remove a skill from `agents.toml`, delete it from disk, and update the lockfile.
-You can also pass a source to remove all skills from that source. When removing
-a skill provided by a wildcard source, dotagents can add that skill to the
-wildcard `exclude` list.
+Remove a skill or plugin from `agents.toml`, delete managed installed files, and
+update the lockfile. You can also pass a source to remove all skills and plugins
+from that source. When removing a skill provided by a wildcard source, dotagents
+can add that skill to the wildcard `exclude` list.
 
 Options:
 
@@ -152,8 +155,9 @@ dotagents sync
 ```
 
 Reconcile project state without network access. Adopts local orphaned skills,
-prunes stale managed skills and subagents removed from config, regenerates gitignore, and
-repairs symlinks plus MCP/hook configs. Reports issues as warnings or errors.
+prunes stale managed skills, subagents, and plugins removed from config,
+regenerates gitignore, and repairs symlinks plus MCP/hook/subagent/plugin
+configs. Reports issues as warnings or errors.
 
 <a id="mcp-add"></a>
 
@@ -286,8 +290,9 @@ dotagents doctor [--fix]
 ```
 
 Check project health and fix issues. Verifies gitignore setup, installed
-skills, symlinks, and detects legacy config fields. Useful for migrating to a
-new version of dotagents.
+skills/plugins, symlinks, generated runtime configs, and detects legacy config
+fields. User-scope plugin declarations and same-project plugin declarations are
+reported because plugin runtime projections are project-scoped.
 
 Options:
 
@@ -308,7 +313,9 @@ dotagents doctor --fix    # fix what it can
 dotagents list [--json]
 ```
 
-Show installed skills and status. Use `--json` for machine-readable output.
+Show declared skills and plugins with install/lock status. Use `--json` for
+machine-readable output. JSON output contains separate `skills` and `plugins`
+arrays.
 
 Status output:
 
@@ -406,6 +413,29 @@ Generated files:
 - OpenCode: `.opencode/agents/<name>.md`
 
 Generated files include a dotagents header marker. `install` and `sync` update managed files and do not overwrite hand-written files without the generated header marker. In `--frozen` mode, `install` loads subagents from existing installed files, preserves managed subagent files and lock entries instead of pruning removed subagents, and does not resolve subagent sources. They also avoid creating duplicate runtime identities when an unmanaged file in the same agent directory already declares the same subagent.
+
+<a id="plugins"></a>
+
+### Plugins
+
+`[[plugins]]` entries install canonical plugin bundles into
+`.agents/plugins/<name>/` and generate runtime-specific outputs for configured
+agents. Plugin sources support GitHub/GitLab shorthands, git URLs, and `path:`
+sources; HTTPS well-known sources are not supported for plugins.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | string | Yes | Plugin identifier. Lowercase letters, numbers, hyphens, and dots. |
+| `source` | string | Yes | Repository or local source. |
+| `ref` | string | No | Optional git ref override. |
+| `path` | string | No | Optional explicit plugin path inside the source. |
+| `targets` | string[] | No | Optional subset of configured agents. |
+
+Generated plugin outputs include Claude/Cursor/Codex marketplaces and native
+manifests, Grok plugin directories, OpenCode skill/agent links, and Pi skill
+links. dotagents rejects plugin sources that resolve to the same project's
+`.agents/plugins/<name>/` install destination, and user-scope plugins are not
+supported yet.
 
 ## Scopes
 

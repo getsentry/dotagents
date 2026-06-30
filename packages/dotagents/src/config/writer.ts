@@ -48,6 +48,15 @@ export async function removeSkillFromConfig(
   await writeFile(filePath, removeBlockByHeader(content, "[[skills]]", name), "utf-8");
 }
 
+/** Removes a plugin entry from agents.toml by name. */
+export async function removePluginFromConfig(
+  filePath: string,
+  name: string,
+): Promise<void> {
+  const content = await readFile(filePath, "utf-8");
+  await writeFile(filePath, removeBlockByHeader(content, "[[plugins]]", name), "utf-8");
+}
+
 /**
  * Remove all [[skills]] blocks whose source matches the given source.
  * Handles both explicit and wildcard entries.
@@ -56,13 +65,30 @@ export async function removeSkillBlocksBySource(
   filePath: string,
   source: string,
 ): Promise<void> {
+  await removeBlocksBySource(filePath, "[[skills]]", source);
+}
+
+/** Removes all plugin blocks whose source matches the given source. */
+export async function removePluginBlocksBySource(
+  filePath: string,
+  source: string,
+): Promise<void> {
+  await removeBlocksBySource(filePath, "[[plugins]]", source);
+}
+
+/** Removes array-of-table blocks for a header when their `source` matches. */
+async function removeBlocksBySource(
+  filePath: string,
+  header: string,
+  source: string,
+): Promise<void> {
   const content = await readFile(filePath, "utf-8");
   const lines = content.split("\n");
   const result: string[] = [];
   let i = 0;
 
   while (i < lines.length) {
-    if (lines[i]!.trim() === "[[skills]]") {
+    if (lines[i]!.trim() === header) {
       const headerLine = lines[i]!;
       i++;
       const { blockLines, nextIndex } = collectBlockLines(lines, i);

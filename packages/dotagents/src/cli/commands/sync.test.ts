@@ -240,7 +240,7 @@ describe("runSync", () => {
       expect(existsSync(bobSkillDir)).toBe(true);
 
       process.env["DOTAGENTS_STATE_DIR"] = aliceStateDir;
-      await runRemove({ scope: resolveScope("project", aliceRepo), skillName: "pdf" });
+      await runRemove({ scope: resolveScope("project", aliceRepo), name: "pdf" });
       await exec("git", ["add", "agents.toml"], { cwd: aliceRepo });
       await exec("git", ["commit", "-m", "remove pdf"], { cwd: aliceRepo });
       await exec("git", ["push", "origin", "main"], { cwd: aliceRepo });

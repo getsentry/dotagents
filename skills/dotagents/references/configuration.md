@@ -206,7 +206,7 @@ dotagents always manages gitignore. It generates `.agents/.gitignore` listing ma
 
 Two files are added to the root `.gitignore` during `init`:
 - `agents.lock` — tracks managed skills, subagents, and plugins
-- `.agents/.gitignore` — excludes managed skill directories
+- `.agents/.gitignore` — excludes managed skill directories, subagent files, and plugin bundles
 
 If these entries are missing, `install` and `sync` warn. Run `npx @sentry/dotagents doctor --fix` to add them.
 

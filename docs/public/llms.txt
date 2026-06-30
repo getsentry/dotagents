@@ -371,9 +371,9 @@ When adding multiple skills, any that already exist in `agents.toml` are skipped
 npx @sentry/dotagents remove <name|source> [-y]
 ```
 
-Remove a skill from `agents.toml`, delete from disk, and update the lockfile. For skills sourced from a wildcard entry, prompts to add the skill to the `exclude` list instead of removing the entire wildcard.
+Remove a skill or plugin from `agents.toml`, delete managed installed files, update the lockfile, prune generated plugin outputs when needed, and regenerate `.agents/.gitignore`. For skills sourced from a wildcard entry, prompts to add the skill to the `exclude` list instead of removing the entire wildcard.
 
-When the argument is a source specifier (e.g. `owner/repo`, a URL) instead of a skill name, removes all skills from that source — both explicit and wildcard entries. Confirms before removing unless `-y` is passed.
+When the argument is a source specifier (e.g. `owner/repo`, a URL) instead of a dependency name, removes all skills and plugins from that source. Confirms before removing unless `-y` is passed.
 
 ### sync
 
