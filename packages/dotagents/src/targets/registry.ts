@@ -21,10 +21,12 @@ export function allAgentIds(): string[] {
   return [...AGENT_REGISTRY.keys()];
 }
 
+/** Returns agent IDs accepted in agents.toml, including plugin-only targets. */
 export function allConfigAgentIds(): string[] {
   return [...new Set([...allAgentIds(), ...PLUGIN_ONLY_AGENT_IDS])];
 }
 
+/** Returns runtime IDs that plugin declarations may target. */
 export function allPluginAgentIds(): string[] {
   return PLUGIN_AGENT_IDS;
 }

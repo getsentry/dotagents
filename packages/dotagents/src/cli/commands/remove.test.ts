@@ -138,7 +138,7 @@ source = "path:plugins/review-tools"
     const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
     expect(gitignore).not.toContain("/skills/pdf/");
     expect(gitignore).toContain("/plugins/review-tools/");
-    expect(gitignore).toContain("/plugins/marketplace.json");
+    expect(gitignore).not.toContain("/plugins/marketplace.json");
   });
 
   it("throws RemoveError for skill not in config", async () => {

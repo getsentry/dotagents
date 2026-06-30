@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, isAbsolute, join, posix, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import {
   applyDefaultRepositorySource,
   copyDir,
@@ -34,8 +34,6 @@ export interface PluginResolveOptions {
   trust?: TrustPolicy;
 }
 
-export type ResolvedPluginType = "git" | "local";
-
 export interface PluginDeclaration {
   name: string;
   source: string;
@@ -44,15 +42,23 @@ export interface PluginDeclaration {
   targets?: string[];
 }
 
-export interface ResolvedPlugin {
-  type: ResolvedPluginType;
+interface ResolvedLocalPlugin {
+  type: "local";
   source: string;
-  resolvedUrl?: string;
-  resolvedPath?: string;
-  resolvedRef?: string;
-  commit?: string;
   plugin: PluginDeclaration;
 }
+
+interface ResolvedGitPlugin {
+  type: "git";
+  source: string;
+  resolvedUrl: string;
+  resolvedPath: string;
+  resolvedRef?: string;
+  commit: string;
+  plugin: PluginDeclaration;
+}
+
+export type ResolvedPlugin = ResolvedLocalPlugin | ResolvedGitPlugin;
 
 interface PluginCandidate {
   dir: string;
@@ -211,21 +217,16 @@ export async function pruneInstalledPlugins(
 
 /** Converts a resolved plugin to its lockfile entry. */
 export function lockEntryForPlugin(resolved: ResolvedPlugin): LockedPlugin {
-  const entry: Record<string, string> = { source: resolved.source };
-  setIfDefined(entry, "resolved_url", resolved.resolvedUrl);
-  setIfDefined(entry, "resolved_path", resolved.resolvedPath);
-  setIfDefined(entry, "resolved_ref", resolved.resolvedRef);
-  setIfDefined(entry, "resolved_commit", resolved.commit);
-  return entry as LockedPlugin;
-}
-
-function setIfDefined(
-  entry: Record<string, string>,
-  key: string,
-  value: string | undefined,
-): void {
-  if (value === undefined) {return;}
-  entry[key] = value;
+  if (resolved.type === "local") {
+    return { source: resolved.source };
+  }
+  return {
+    source: resolved.source,
+    resolved_url: resolved.resolvedUrl,
+    resolved_path: resolved.resolvedPath,
+    ...(resolved.resolvedRef === undefined ? {} : { resolved_ref: resolved.resolvedRef }),
+    resolved_commit: resolved.commit,
+  };
 }
 
 /** Returns true for direct `path:.agents/plugins/...` plugin sources. */
@@ -254,18 +255,20 @@ export function isProjectPluginSource(
 
 /** Returns true when a plugin config resolves back into this project's managed plugin tree. */
 export function isSameProjectPluginConfig(
-  plugin: Pick<PluginConfig, "source" | "path">,
+  plugin: Pick<PluginConfig, "name" | "source" | "path">,
   pluginsDir: string,
   projectRoot: string,
 ): boolean {
   if (isInPlacePluginSource(plugin.source)) {return true;}
-  if (!plugin.path) {return false;}
 
   try {
     const parsed = parseSource(plugin.source);
     if (parsed.type !== "local" || !parsed.path) {return false;}
     const sourceDir = resolve(projectRoot, parsed.path);
-    const pluginDir = resolve(sourceDir, plugin.path);
+    const pluginDir = plugin.path
+      ? resolve(sourceDir, plugin.path)
+      : resolve(sourceDir, ".agents", "plugins", plugin.name);
+    if (!plugin.path && !existsSync(pluginDir)) {return false;}
     const relPath = relative(sourceDir, pluginDir);
     if (relPath.startsWith("..") || isAbsolute(relPath)) {return false;}
     return isProjectPluginSource(pluginDir, pluginsDir);
@@ -280,7 +283,7 @@ async function discoverPlugin(
 ): Promise<PluginCandidate | null> {
   if (config.path) {
     const dir = resolveInside(sourceDir, config.path, "Plugin path");
-    return loadPluginCandidate(sourceDir, dir);
+    return loadPluginCandidate(sourceDir, dir, { name: config.name });
   }
 
   const matches: PluginCandidate[] = [];
@@ -300,7 +303,7 @@ async function discoverPlugin(
   const recursive = await scanPluginDirectories(sourceDir, join(sourceDir, "plugins"), config.name);
   matches.push(...recursive);
 
-  const unique = dedupeCandidates(matches);
+  const unique = rankedCandidates(config.name, matches);
   if (unique.length > 1) {
     throw new Error(
       `Plugin "${config.name}" is ambiguous in ${config.source}: ${unique.map((m) => m.path).join(", ")}`,
@@ -309,6 +312,11 @@ async function discoverPlugin(
   return unique[0] ?? null;
 }
 
+/**
+ * Reads marketplace selector files and resolves only explicit local sources.
+ * Relative paths are anchored at the marketplace file directory, plus any
+ * marketplace-level `metadata.pluginRoot` prefix.
+ */
 async function discoverFromMarketplaces(
   sourceDir: string,
   name: string,
@@ -325,9 +333,12 @@ async function discoverFromMarketplaces(
       if (entry.name !== name) {continue;}
 
       const path = localMarketplacePath(entry.source);
-      if (!path) {continue;}
+      if (!path) {
+        throw new Error(`Marketplace source for plugin "${name}" is not a supported local source: ${marketplaceSourceLabel(entry.source)}`);
+      }
 
-      const pluginDir = resolveInside(sourceDir, join(root, path), "Marketplace plugin source");
+      const marketplaceRoot = dirname(filePath);
+      const pluginDir = resolveInside(marketplaceRoot, join(root, path), "Marketplace plugin source");
       const candidate = await loadPluginCandidate(sourceDir, pluginDir, marketplaceManifestOverlay(entry));
       if (candidate) {return candidate;}
     }
@@ -369,10 +380,10 @@ async function loadPluginCandidate(
   const manifest = await loadManifest(pluginDir);
   if (!manifest && !await hasPluginComponents(pluginDir)) {return null;}
 
-  const name = typeof overlay["name"] === "string"
-    ? String(overlay["name"])
-    : manifest && typeof manifest["name"] === "string"
-      ? String(manifest["name"])
+  const name = manifest && typeof manifest["name"] === "string"
+    ? String(manifest["name"])
+    : typeof overlay["name"] === "string"
+      ? String(overlay["name"])
       : basename(pluginDir);
   const combined = normalizeManifest(name, { ...overlay, ...manifest });
   return {
@@ -461,6 +472,15 @@ function candidateMatches(name: string, candidate: PluginCandidate): boolean {
   return basename(candidate.dir) === name || candidate.manifest["name"] === name;
 }
 
+/** Applies discovery precedence: directory-name matches win before manifest-name fallback. */
+function rankedCandidates(name: string, candidates: PluginCandidate[]): PluginCandidate[] {
+  const unique = dedupeCandidates(candidates);
+  const directoryMatches = unique.filter((candidate) => basename(candidate.dir) === name);
+  return directoryMatches.length > 0
+    ? directoryMatches
+    : unique.filter((candidate) => candidate.manifest["name"] === name);
+}
+
 function dedupeCandidates(candidates: PluginCandidate[]): PluginCandidate[] {
   const seen = new Set<string>();
   const result: PluginCandidate[] = [];
@@ -479,16 +499,18 @@ function localMarketplacePath(source: MarketplacePluginEntry["source"]): string 
   if (source.source === "local" && typeof source.path === "string") {
     return stripDotSlash(source.path);
   }
-  if (typeof source.path === "string" && !("url" in source) && !("repo" in source)) {
-    return stripDotSlash(source.path);
-  }
   return null;
+}
+
+function marketplaceSourceLabel(source: MarketplacePluginEntry["source"]): string {
+  return typeof source === "string" ? source : JSON.stringify(source);
 }
 
 function stripDotSlash(path: string): string {
   return path.replace(/^\.\//, "");
 }
 
+/** Resolves a selector path while preserving the source-root containment boundary. */
 function resolveInside(root: string, childPath: string, label: string): string {
   const rootPath = resolve(root);
   const filePath = resolve(rootPath, childPath);

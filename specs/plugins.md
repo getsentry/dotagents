@@ -18,16 +18,16 @@ dotagents has one canonical plugin source of truth:
 
 The canonical catalog and plugin manifests should use a generalized Codex-compatible format. Codex compatibility is the baseline because Codex already reads `.agents/plugins/marketplace.json` for repo-scoped marketplaces, but dotagents treats the schema as portable project metadata rather than Codex-only configuration.
 
-Every other runtime output is generated from `.agents/plugins/` when that runtime does not directly consume the canonical path or schema. Generated artifacts may include `.claude-plugin/marketplace.json`, `.cursor-plugin/marketplace.json`, `.codex-plugin/plugin.json`, `.grok/` plugin files, `.opencode/plugins/` modules, or runtime settings/config entries. These generated artifacts are runtime projections, not the source of truth.
+Every other runtime output is generated from `.agents/plugins/` when that runtime does not directly consume the canonical path or schema. Generated artifacts may include `.claude-plugin/marketplace.json`, `.cursor-plugin/marketplace.json`, `.agents/plugins/<name>/.codex-plugin/plugin.json`, `.grok/` plugin files, `.opencode/plugins/` modules, or runtime settings/config entries. These generated artifacts are runtime projections, not the source of truth.
 
 ## Input and Output Contract
 
 The canonical inputs are tightly defined but forward-compatible:
 
 1. `agents.toml` `[[plugins]]` declarations are strict operational config. Unknown fields are rejected.
-2. `.agents/plugins/marketplace.json` must be a JSON object with `name` and `plugins[]`. Each plugin entry must have `name` and `source`. `source` may be a relative path string, `{ "source": "local", "path": "<relative>" }`, or a runtime extension object with a safe relative `path`.
-3. `.agents/plugins/<name>/plugin.json` must be a JSON object. Known component path fields are validated when present. Unknown fields are allowed and preserved so native runtimes and future dotagents versions can add metadata without breaking older installs.
-4. All component paths in canonical manifests and marketplaces must be relative and must not contain `..`, absolute POSIX paths, absolute Windows paths, or backslash-rooted paths.
+2. `.agents/plugins/marketplace.json` must be a JSON object with `name` and `plugins[]`. Each plugin entry must have `name` and `source`. dotagents resolves local plugin selectors only when `source` is a relative path string or `{ "source": "local", "path": "<relative>" }`. Runtime extension source objects may be accepted when their known path fields are safe, but dotagents must report them as unsupported instead of guessing how to resolve them.
+3. `.agents/plugins/<name>/plugin.json` must be a JSON object. Known component path fields are validated as relative filesystem paths without `..` or URL/scheme prefixes when present. Unknown fields are allowed and preserved so native runtimes and future dotagents versions can add metadata without breaking older installs.
+4. All component paths in canonical manifests and marketplaces must be relative filesystem paths and must not contain `..`, URL/scheme prefixes, absolute POSIX paths, absolute Windows paths, or backslash-rooted paths.
 5. The portable plugin `name` in `agents.toml` is authoritative. If a discovered manifest also declares `name`, it must match the configured name.
 
 Generated outputs are deterministic:
@@ -68,7 +68,7 @@ targets = ["claude", "cursor", "codex", "grok"]
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | Yes | Portable dotagents ID. Must start with lowercase `a-z` and contain only lowercase letters, numbers, hyphens, and dots. |
+| `name` | Yes | Portable dotagents ID. Must start with lowercase `a-z`, end with lowercase `a-z` or `0-9`, and contain only lowercase letters, numbers, hyphens, and dots. |
 | `source` | Yes | Source repository or local directory. Supports GitHub/GitLab shorthands, git URLs, and `path:` sources. HTTPS well-known skill indexes are not supported for plugins. |
 | `ref` | No | Optional git ref override. |
 | `path` | No | Optional explicit plugin directory path inside the source. |
@@ -241,7 +241,7 @@ Portable plugin-authored config should use `${PLUGIN_ROOT}` and `${PLUGIN_DATA}`
 | Cursor | Target-specific support to verify before implementation | Target-specific support to verify before implementation |
 | OpenCode | Not applicable for local JS/TS modules unless the module reads environment variables set by dotagents | Not applicable |
 
-Codex also sets Claude-compatible plugin variables for compatibility. For generated Codex output, dotagents can leave `${PLUGIN_ROOT}` intact. For generated Claude or Grok output, dotagents should rewrite known portable variables in hook, MCP, and LSP config files.
+Codex also sets Claude-compatible plugin variables for compatibility. For generated Codex output, dotagents can leave `${PLUGIN_ROOT}` intact. The current implementation does not rewrite Claude or Grok hook, MCP, or LSP config files; portable variable rewriting is reserved for a later projection pass.
 
 ## Install and Sync
 
@@ -256,7 +256,7 @@ Generated project-scope outputs should be:
 |-------|----------------------|-------------------|-------|
 | Claude Code | `.claude-plugin/marketplace.json` | Not generated yet | Generated marketplace uses deterministic relative string sources into `.agents/plugins/<name>/`. |
 | Cursor | `.cursor-plugin/marketplace.json` | Not generated yet | Generated marketplace uses deterministic relative string sources into `.agents/plugins/<name>/`. |
-| Codex | `.agents/plugins/marketplace.json` plus generated `.codex-plugin/plugin.json` in installed bundle | Not generated yet | Codex is the baseline marketplace format; `source.path` resolves relative to marketplace root. |
+| Codex | Generated `.codex-plugin/plugin.json` in installed bundle | Not generated yet | `.agents/plugins/marketplace.json` is canonical input/discovery metadata, not a generated output. |
 | Grok Build | `.grok/plugins/<name>` for targeted plugins | Not generated yet | The projection is a managed copy of the canonical plugin bundle with a `.dotagents-managed` marker. |
 | OpenCode | `.opencode/plugins/<name>.js|ts` re-export module for an explicit OpenCode module | Not generated yet | dotagents only exposes the module declared in `manifest.opencode.plugins` or discovered at `opencode/plugin.ts|js`; it does not synthesize OpenCode JS/TS code from other runtime hooks. |
 
@@ -291,10 +291,10 @@ Plugins are a higher-risk dependency class than plain skills because they may bu
 dotagents should:
 
 1. Apply existing trust policy before network access.
-2. Surface warnings when a plugin contains executable components.
+2. Reserve executable-component warnings for a later policy pass; current installs rely on source trust validation plus runtime-native trust prompts.
 3. Preserve runtime-native trust flows instead of bypassing them. For example, Codex plugin hooks still require the user's runtime trust review.
 4. Avoid executing plugin code during install except for normal git/source resolution.
-5. Treat local `path:` plugins as allowed by source trust policy but still warn for executable components.
+5. Treat local `path:` plugins as allowed by source trust policy without bypassing runtime-native trust prompts.
 
 ## Non-goals
 

@@ -1,13 +1,16 @@
 import { z } from "zod/v4";
 
+// Canonical plugin wire schemas. Known fields are validated for path safety,
+// while passthrough preserves native runtime and future dotagents extensions.
 export const pluginPathSchema = z.string().check(
   z.refine((value) => {
     if (value.length === 0) {return false;}
     if (value.startsWith("/") || value.startsWith("\\")) {return false;}
     if (/^[a-zA-Z]:[\\/]/.test(value)) {return false;}
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)) {return false;}
     const parts = value.replaceAll("\\", "/").split("/");
     return !parts.includes("..");
-  }, "Plugin paths must be relative and must not contain '..'"),
+  }, "Plugin paths must be relative filesystem paths and must not contain '..'"),
 );
 
 const pluginAuthorSchema = z.object({

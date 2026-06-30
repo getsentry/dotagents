@@ -1,0 +1,13 @@
+{
+  "name": "qa-tools",
+  "version": "1.0.0",
+  "description": "Portable plugin fixture for dotagents QA.",
+  "category": "Testing",
+  "author": {
+    "name": "dotagents"
+  },
+  "keywords": ["qa", "plugins"],
+  "opencode": {
+    "plugins": ["opencode/plugin.ts"]
+  }
+}

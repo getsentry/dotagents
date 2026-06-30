@@ -25,9 +25,6 @@ export async function writeAgentsGitignore(
   for (const name of managedPluginNames.toSorted()) {
     lines.push(`/plugins/${name}/`);
   }
-  if (managedPluginNames.length > 0) {
-    lines.push("/plugins/marketplace.json");
-  }
   lines.push(""); // trailing newline
 
   await writeFile(join(agentsDir, ".gitignore"), lines.join("\n"), "utf-8");

@@ -34,6 +34,7 @@ describe("plugin manifest schema", () => {
   it("rejects absolute and traversing component paths", () => {
     expect(pluginManifestSchema.safeParse({ skills: "/tmp/skills" }).success).toBe(false);
     expect(pluginManifestSchema.safeParse({ commands: ["../commands"] }).success).toBe(false);
+    expect(pluginManifestSchema.safeParse({ skills: "https://example.com/skills" }).success).toBe(false);
     expect(pluginManifestSchema.safeParse({ opencode: { plugins: ["opencode/../../plugin.ts"] } }).success).toBe(false);
   });
 
@@ -94,6 +95,10 @@ describe("plugin marketplace schema", () => {
     expect(pluginMarketplaceSchema.safeParse({
       name: "dotagents",
       plugins: [{ name: "bad", source: "../bad" }],
+    }).success).toBe(false);
+    expect(pluginMarketplaceSchema.safeParse({
+      name: "dotagents",
+      plugins: [{ name: "bad", source: "https://example.com/plugin.git" }],
     }).success).toBe(false);
     expect(pluginMarketplaceSchema.safeParse({
       name: "dotagents",

@@ -196,6 +196,9 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
   }
 
   // 9. Declared plugins are installed
+  const userScopePlugins = scope.scope === "user"
+    ? config.plugins.map((plugin) => plugin.name)
+    : [];
   const sameProjectPlugins = scope.scope === "project"
     ? config.plugins
       .filter((plugin) => isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
@@ -205,7 +208,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     .filter((plugin) => !sameProjectPlugins.includes(plugin.name))
     .filter((plugin) => !existsSync(`${scope.pluginsDir}/${plugin.name}`))
     .map((plugin) => plugin.name);
-  if (sameProjectPlugins.length > 0) {
+  if (userScopePlugins.length > 0) {
+    checks.push({
+      name: "installed plugins",
+      status: "error",
+      message: `${userScopePlugins.length} plugin(s) declared in user scope: ${userScopePlugins.join(", ")}. User-scope plugins are not supported yet; declare plugins in a project agents.toml instead.`,
+    });
+  } else if (sameProjectPlugins.length > 0) {
     checks.push({
       name: "installed plugins",
       status: "error",

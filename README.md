@@ -128,7 +128,7 @@ Review the current diff and return findings with file references.
 
 dotagents can also import native runtime subagent files from `.claude/agents/`, `.cursor/agents/`, `.codex/agents/*.toml`, and `.opencode/agents/`. Input and matching-runtime output use the same native format: Markdown with YAML frontmatter for Claude, Cursor, and OpenCode; TOML for Codex. Claude and Codex identify agents by `name`, Cursor can derive `name` from the filename when omitted, and OpenCode uses the filename as the agent name. Multiple portable matches for the same subagent are rejected as ambiguous, while matching native runtime artifacts are merged. When the source format matches a target runtime, dotagents reuses the native source content for that runtime and only adds its managed-file marker. Other runtimes are generated from the portable `name`, `description`, and instructions. Subagent declarations intentionally cover only dependency source and runtime targets, not universal model/tool/permission behavior.
 
-Plugins are declared with `[[plugins]]` entries. dotagents installs canonical bundles into `.agents/plugins/<name>/` and generates runtime plugin outputs such as `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, `.cursor-plugin/marketplace.json`, `.grok/plugins/<name>/`, and `.opencode/plugins/<name>.js|ts` where supported:
+Plugins are declared with `[[plugins]]` entries. dotagents installs canonical bundles into `.agents/plugins/<name>/` and generates runtime plugin outputs such as `.claude-plugin/marketplace.json`, `.cursor-plugin/marketplace.json`, `.agents/plugins/<name>/.codex-plugin/plugin.json`, `.grok/plugins/<name>/`, and `.opencode/plugins/<name>.js|ts` where supported:
 
 ```toml
 [[plugins]]
@@ -138,7 +138,7 @@ path = "plugins/review-tools"
 targets = ["claude", "cursor", "codex", "grok", "opencode"]
 ```
 
-The canonical plugin format is `.agents/plugins/marketplace.json` plus `.agents/plugins/<name>/plugin.json`, using a Codex-compatible marketplace baseline. Known input fields are validated, unknown manifest and marketplace extension fields are preserved, `targets` are limited to configured agents, and generated outputs are deterministic. dotagents rejects plugin sources that resolve to the same project's `.agents/plugins/<name>/` install destination, so same-repo plugins are never installed onto themselves.
+The canonical plugin format is `.agents/plugins/marketplace.json` plus `.agents/plugins/<name>/plugin.json`, using a Codex-compatible marketplace baseline. Known input fields are validated, component paths must be relative filesystem paths, unknown manifest extension fields are preserved in installed bundles, marketplace extension fields are accepted but not projected, `targets` are limited to configured agents, and generated outputs are deterministic. dotagents rejects plugin sources that resolve to the same project's `.agents/plugins/<name>/` install destination, so same-repo plugins are never installed onto themselves.
 
 Plugin declarations are project-scope only for now. `dotagents --user install` rejects `[[plugins]]` entries because user-scope runtime plugin projections are not generated yet.
 

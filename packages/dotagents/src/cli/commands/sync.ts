@@ -184,10 +184,11 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       }
     }
     const managedPluginNames = new Set(config.plugins
-      .filter((plugin) => !isInPlacePluginSource(plugin.source))
+      .filter((plugin) => !selfInstalledPluginNames.has(plugin.name) && !isInPlacePluginSource(plugin.source))
       .map((plugin) => plugin.name));
     if (lockNow) {
       for (const [name, locked] of Object.entries(lockNow.plugins)) {
+        if (selfInstalledPluginNames.has(name)) {continue;}
         if (!isInPlacePluginSource(locked.source)) {
           managedPluginNames.add(name);
         }
@@ -374,14 +375,13 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const installedPluginResult = await loadInstalledPlugins(pluginsDir, installedPluginConfigs);
   const pluginDecls = installedPluginResult.plugins;
   const prunedInstalledPlugins = await pruneInstalledPlugins(pluginsDir, staleManagedPluginNames);
-  const pluginIssues = scope.scope === "project"
-    ? await verifyPluginOutputs(config.agents, pluginDecls, scope.root)
-    : [];
+  let pluginIssues: Awaited<ReturnType<typeof verifyPluginOutputs>> = [];
 
   if (scope.scope === "project") {
     const pluginResult = await writePluginOutputs(config.agents, pluginDecls, scope.root);
     const prunedPluginOutputs = await prunePluginOutputs(config.agents, pluginDecls, scope.root);
     pluginsRepaired = pluginResult.written + prunedPluginOutputs.length + prunedInstalledPlugins.length;
+    pluginIssues = await verifyPluginOutputs(config.agents, pluginDecls, scope.root);
 
     for (const warning of pluginResult.warnings) {
       issues.push({

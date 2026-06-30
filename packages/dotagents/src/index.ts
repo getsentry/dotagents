@@ -7,6 +7,7 @@ export type {
   SkillSource,
   McpConfig,
   SubagentConfig,
+  PluginConfig,
   TrustConfig,
 } from "./config/index.js";
 
@@ -34,7 +35,7 @@ export { writeAgentsGitignore, ensureRootGitignoreEntries } from "./gitignore/in
 export { ensureSkillsSymlink, verifySymlinks } from "./symlinks/index.js";
 
 export { lockfileSchema, loadLockfile, LockfileError, writeLockfile } from "./lockfile/index.js";
-export type { Lockfile, LockedSkill, LockedSubagent } from "./lockfile/index.js";
+export type { Lockfile, LockedSkill, LockedSubagent, LockedPlugin } from "./lockfile/index.js";
 
 // ---------------------------------------------------------------------------
 // Re-exports from @sentry/dotagents-lib.

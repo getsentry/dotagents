@@ -124,6 +124,59 @@ source = "path:.agents/plugins/local-tools"
     expect(check?.message).toContain("Same-project plugins cannot be installed into the same project");
   });
 
+  it("detects same-project plugins resolved through canonical discovery", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[plugins]]
+name = "local-tools"
+source = "path:."
+`,
+    );
+    await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+    await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");
+
+    const result = await runDoctor({ scope: resolveScope("project", projectRoot) });
+    const check = result.checks.find((c) => c.name === "installed plugins");
+    expect(check?.status).toBe("error");
+    expect(check?.message).toContain("Same-project plugins cannot be installed into the same project");
+  });
+
+  it("reports user-scope plugins as unsupported", async () => {
+    const previousHome = process.env["DOTAGENTS_HOME"];
+    const userRoot = join(tmpDir, "user-agents");
+    process.env["DOTAGENTS_HOME"] = userRoot;
+    const scope = resolveScope("user");
+    await mkdir(scope.agentsDir, { recursive: true });
+    await writeFile(
+      scope.configPath,
+      `version = 1
+
+[[plugins]]
+name = "review-tools"
+source = "getsentry/plugins"
+`,
+    );
+
+    try {
+      const result = await runDoctor({ scope });
+      const check = result.checks.find((c) => c.name === "installed plugins");
+      expect(check?.status).toBe("error");
+      expect(check?.message).toContain("User-scope plugins are not supported yet");
+      expect(check?.message).not.toContain("Run 'npx @sentry/dotagents install'");
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env["DOTAGENTS_HOME"];
+      } else {
+        process.env["DOTAGENTS_HOME"] = previousHome;
+      }
+    }
+  });
+
   it("detects generated files tracked by git", async () => {
     // Initialize a git repo so git ls-files works
     const { execSync } = await import("node:child_process");

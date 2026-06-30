@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, expectTypeOf, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { discoverSkill, discoverAllSkills } from "./index.js";
+import { discoverSkill, discoverAllSkills, type PluginConfig, type LockedPlugin } from "./index.js";
 
 const SKILL_MD = (name: string) =>
   `---\nname: ${name}\ndescription: ${name} skill\n---\n`;
@@ -55,5 +55,10 @@ describe("host re-exports preserve dotagents scan dirs", () => {
     const results = await discoverAllSkills(repoDir);
     const names = results.map((r) => r.meta.name).toSorted();
     expect(names).toEqual(["commit", "lint"]);
+  });
+
+  it("exports public plugin types", () => {
+    expectTypeOf<PluginConfig>().toMatchTypeOf<{ name: string; source: string }>();
+    expectTypeOf<LockedPlugin>().toMatchTypeOf<{ source: string }>();
   });
 });

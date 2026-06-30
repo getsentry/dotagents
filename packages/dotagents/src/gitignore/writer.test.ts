@@ -44,13 +44,13 @@ describe("writeAgentsGitignore", () => {
     expect(content).toContain("/agents/test-runner.md");
   });
 
-  it("lists managed plugin directories and generated marketplace", async () => {
+  it("lists managed plugin directories", async () => {
     const agentsDir = join(dir, ".agents");
     await writeAgentsGitignore(agentsDir, [], [], ["review-tools"]);
 
     const content = await readFile(join(agentsDir, ".gitignore"), "utf-8");
     expect(content).toContain("/plugins/review-tools/");
-    expect(content).toContain("/plugins/marketplace.json");
+    expect(content).not.toContain("/plugins/marketplace.json");
   });
 
   it("sorts skill names alphabetically", async () => {

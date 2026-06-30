@@ -44,7 +44,7 @@ describe("plugin writer", () => {
     };
   }
 
-  it("writes deterministic marketplace outputs for supported runtimes", async () => {
+  it("writes deterministic marketplace outputs for runtimes that need projections", async () => {
     const alpha = await plugin("alpha-tools");
     const beta = await plugin("beta-tools");
 
@@ -55,50 +55,8 @@ describe("plugin writer", () => {
     );
 
     expect(result.warnings).toEqual([]);
-    expect(result.written).toBe(5);
-    expect(await readFile(join(root, ".agents", "plugins", "marketplace.json"), "utf-8")).toBe(`{
-  "interface": {
-    "displayName": "Dotagents Plugins"
-  },
-  "metadata": {
-    "managedBy": "dotagents"
-  },
-  "name": "dotagents",
-  "owner": {
-    "name": "dotagents"
-  },
-  "plugins": [
-    {
-      "category": "Coding",
-      "description": "Tools for alpha-tools",
-      "name": "alpha-tools",
-      "policy": {
-        "authentication": "ON_INSTALL",
-        "installation": "AVAILABLE"
-      },
-      "source": {
-        "path": ".agents/plugins/alpha-tools",
-        "source": "local"
-      },
-      "version": "1.0.0"
-    },
-    {
-      "category": "Coding",
-      "description": "Tools for beta-tools",
-      "name": "beta-tools",
-      "policy": {
-        "authentication": "ON_INSTALL",
-        "installation": "AVAILABLE"
-      },
-      "source": {
-        "path": ".agents/plugins/beta-tools",
-        "source": "local"
-      },
-      "version": "1.0.0"
-    }
-  ]
-}
-`);
+    expect(result.written).toBe(4);
+    expect(existsSync(join(root, ".agents", "plugins", "marketplace.json"))).toBe(false);
     expect(await readFile(join(root, ".claude-plugin", "marketplace.json"), "utf-8")).toBe(`{
   "metadata": {
     "managedBy": "dotagents"
@@ -265,12 +223,10 @@ describe("plugin writer", () => {
     const pruned = await prunePluginOutputs([], [alpha], root);
 
     expect(pruned).toEqual([
-      join(root, ".agents", "plugins", "marketplace.json"),
       join(root, ".grok", "plugins", "alpha-tools"),
       join(root, ".opencode", "plugins", "alpha-tools.ts"),
       join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"),
     ]);
-    expect(existsSync(join(root, ".agents", "plugins", "marketplace.json"))).toBe(false);
     expect(existsSync(join(root, ".grok", "plugins", "alpha-tools"))).toBe(false);
     expect(existsSync(join(root, ".opencode", "plugins", "alpha-tools.ts"))).toBe(false);
     expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"))).toBe(false);

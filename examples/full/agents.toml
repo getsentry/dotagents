@@ -1,5 +1,5 @@
 version = 1
-agents = ["claude", "cursor", "codex", "opencode"]
+agents = ["claude", "cursor", "codex", "grok", "opencode"]
 
 [[skills]]
 name = "review"
@@ -21,3 +21,7 @@ command = "echo fixture"
 [[subagents]]
 name = "code-reviewer"
 source = "path:./local-agents"
+
+[[plugins]]
+name = "qa-tools"
+source = "path:./local-plugins/qa-tools"

@@ -668,29 +668,8 @@ source = "path:plugin-source/review-tools"
     const result = await runSync({ scope: resolveScope("project", projectRoot) });
 
     expect(result.pluginsRepaired).toBeGreaterThan(0);
-    expect(result.issues).toEqual([
-      {
-        type: "plugins",
-        name: "marketplace",
-        message: `Plugin marketplace missing: ${join(projectRoot, ".agents", "plugins", "marketplace.json")}`,
-      },
-      {
-        type: "plugins",
-        name: "marketplace",
-        message: `Plugin marketplace missing: ${join(projectRoot, ".claude-plugin", "marketplace.json")}`,
-      },
-      {
-        type: "plugins",
-        name: "marketplace",
-        message: `Plugin marketplace missing: ${join(projectRoot, ".cursor-plugin", "marketplace.json")}`,
-      },
-      {
-        type: "plugins",
-        name: "review-tools",
-        message: `Codex plugin manifest missing: ${join(pluginDir, ".codex-plugin", "plugin.json")}`,
-      },
-    ]);
-    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(true);
+    expect(result.issues).toEqual([]);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(false);
     expect(existsSync(join(projectRoot, ".claude-plugin", "marketplace.json"))).toBe(true);
     expect(existsSync(join(projectRoot, ".cursor-plugin", "marketplace.json"))).toBe(true);
   });
@@ -753,7 +732,37 @@ path = ".agents/plugins/local-tools"
       name: "local-tools",
       message: 'Plugin "local-tools" resolves to .agents/plugins/local-tools. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.',
     });
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).not.toContain("/plugins/local-tools/");
     expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(false);
+    expect(existsSync(join(pluginDir, ".codex-plugin", "plugin.json"))).toBe(false);
+  });
+
+  it("reports same-project plugins resolved through canonical discovery", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }, null, 2));
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "local-tools"
+source = "path:."
+`,
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.issues).toContainEqual({
+      type: "plugins",
+      name: "local-tools",
+      message: 'Plugin "local-tools" resolves to .agents/plugins/local-tools. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.',
+    });
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).not.toContain("/plugins/local-tools/");
     expect(existsSync(join(pluginDir, ".codex-plugin", "plugin.json"))).toBe(false);
   });
 

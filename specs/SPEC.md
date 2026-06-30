@@ -243,7 +243,7 @@ Generated paths:
 
 Plugin dependencies. Each entry selects one plugin bundle from a source. dotagents installs the canonical plugin bundle into `.agents/plugins/<name>/` and writes deterministic runtime-specific plugin outputs for the configured agents selected by the plugin's `targets`.
 
-The canonical plugin input format is `.agents/plugins/marketplace.json` plus `.agents/plugins/<name>/plugin.json`, using a generalized Codex-compatible marketplace and manifest shape. Canonical plugin manifests and marketplaces validate known fields tightly but allow unknown extension fields so native runtime metadata and future dotagents fields can be preserved.
+The canonical plugin input format is `.agents/plugins/marketplace.json` plus `.agents/plugins/<name>/plugin.json`, using a generalized Codex-compatible marketplace and manifest shape. Canonical plugin manifests and marketplaces validate known fields tightly while allowing unknown extension fields. Manifest extensions are preserved in installed bundles and generated native manifests; marketplace extensions are accepted as input metadata but are not projected into generated marketplaces.
 
 See [Plugin Support Specification](plugins.md) for the canonical layout, exact input/output contract, native docs captured for each runtime, discovery rules, generated runtime outputs, and non-goals.
 
@@ -261,7 +261,7 @@ Generated project-scope plugin outputs:
 |-------|----------------------|
 | Claude Code | `.claude-plugin/marketplace.json` |
 | Cursor | `.cursor-plugin/marketplace.json` |
-| Codex | `.agents/plugins/marketplace.json` and `.agents/plugins/<name>/.codex-plugin/plugin.json` |
+| Codex | `.agents/plugins/<name>/.codex-plugin/plugin.json` |
 | Grok Build | `.grok/plugins/<name>/` managed copy |
 | OpenCode | `.opencode/plugins/<name>.js|ts` re-export module when the plugin declares or contains one OpenCode module |
 
