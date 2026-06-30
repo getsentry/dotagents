@@ -102,6 +102,28 @@ describe("runDoctor", () => {
     expect(check?.message).toContain("pdf");
   });
 
+  it("detects same-project plugins that cannot be installed", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[plugins]]
+name = "local-tools"
+source = "path:.agents/plugins/local-tools"
+`,
+    );
+    await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+    await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");
+
+    const result = await runDoctor({ scope: resolveScope("project", projectRoot) });
+    const check = result.checks.find((c) => c.name === "installed plugins");
+    expect(check?.status).toBe("error");
+    expect(check?.message).toContain("Same-project plugins cannot be installed into the same project");
+  });
+
   it("detects generated files tracked by git", async () => {
     // Initialize a git repo so git ls-files works
     const { execSync } = await import("node:child_process");

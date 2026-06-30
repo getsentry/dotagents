@@ -218,6 +218,36 @@ source = "path:plugin-source/review-tools"
     expect(agentsGitignore).toContain("/plugins/review-tools/");
   });
 
+  it("keeps plugin lock entries when runtime projection fails after installing the bundle", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(sourceDir, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "Review workflow helpers" }, null, 2),
+    );
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(join(sourceDir, ".codex-plugin"), "not a directory\n", "utf-8");
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow();
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.plugins["review-tools"]).toEqual({
+      source: "path:plugin-source/review-tools",
+    });
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"))).toBe(true);
+  });
+
   it("rejects same-project plugins that would install onto themselves", async () => {
     const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
     await mkdir(join(pluginDir, "skills", "review"), { recursive: true });

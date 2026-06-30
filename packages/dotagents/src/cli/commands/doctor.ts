@@ -14,7 +14,7 @@ import { getAgent } from "../../targets/registry.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { exec } from "@sentry/dotagents-lib";
 import { isInPlaceSkill } from "../../utils/fs.js";
-import { isInPlacePluginSource } from "../../agents/plugin-store.js";
+import { isInPlacePluginSource, isSameProjectPluginConfig } from "../../agents/plugin-store.js";
 
 export interface DoctorCheck {
   name: string;
@@ -196,10 +196,22 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
   }
 
   // 9. Declared plugins are installed
+  const sameProjectPlugins = scope.scope === "project"
+    ? config.plugins
+      .filter((plugin) => isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
+      .map((plugin) => plugin.name)
+    : [];
   const missingPlugins = config.plugins
+    .filter((plugin) => !sameProjectPlugins.includes(plugin.name))
     .filter((plugin) => !existsSync(`${scope.pluginsDir}/${plugin.name}`))
     .map((plugin) => plugin.name);
-  if (missingPlugins.length > 0) {
+  if (sameProjectPlugins.length > 0) {
+    checks.push({
+      name: "installed plugins",
+      status: "error",
+      message: `${sameProjectPlugins.length} plugin(s) resolve inside this project's .agents/plugins/ tree: ${sameProjectPlugins.join(", ")}. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.`,
+    });
+  } else if (missingPlugins.length > 0) {
     checks.push({
       name: "installed plugins",
       status: "error",

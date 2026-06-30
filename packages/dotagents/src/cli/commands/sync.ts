@@ -1,10 +1,10 @@
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { readdir, rm } from "node:fs/promises";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
-import { normalizeSource, parseSource } from "@sentry/dotagents-lib";
+import { normalizeSource } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { addSkillToConfig } from "../../config/writer.js";
@@ -15,7 +15,7 @@ import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolve
 import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../targets/hook-writer.js";
 import { pruneSubagentConfigs, verifySubagentConfigs, writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../subagents/writer.js";
 import { loadInstalledSubagents, pruneInstalledSubagents } from "../../subagents/store.js";
-import { isInPlacePluginSource, isProjectPluginSource, loadInstalledPlugins, pruneInstalledPlugins } from "../../agents/plugin-store.js";
+import { isInPlacePluginSource, isSameProjectPluginConfig, loadInstalledPlugins, pruneInstalledPlugins } from "../../agents/plugin-store.js";
 import { prunePluginOutputs, verifyPluginOutputs, writePluginOutputs } from "../../agents/plugin-writer.js";
 import { userMcpResolver } from "../../targets/paths.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
@@ -405,27 +405,6 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     subagentsRepaired,
     pluginsRepaired,
   };
-}
-
-function isSameProjectPluginConfig(
-  plugin: { source: string; path?: string },
-  pluginsDir: string,
-  projectRoot: string,
-): boolean {
-  if (isInPlacePluginSource(plugin.source)) {return true;}
-  if (!plugin.path) {return false;}
-
-  try {
-    const parsed = parseSource(plugin.source);
-    if (parsed.type !== "local" || !parsed.path) {return false;}
-    const sourceDir = resolve(projectRoot, parsed.path);
-    const pluginDir = resolve(sourceDir, plugin.path);
-    const relPath = relative(sourceDir, pluginDir);
-    if (relPath.startsWith("..") || isAbsolute(relPath)) {return false;}
-    return isProjectPluginSource(pluginDir, pluginsDir);
-  } catch {
-    return false;
-  }
 }
 
 async function removeStaleManagedSkill(skillsDir: string, name: string): Promise<boolean> {

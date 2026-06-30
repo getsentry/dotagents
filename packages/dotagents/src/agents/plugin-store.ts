@@ -211,13 +211,21 @@ export async function pruneInstalledPlugins(
 
 /** Converts a resolved plugin to its lockfile entry. */
 export function lockEntryForPlugin(resolved: ResolvedPlugin): LockedPlugin {
-  return {
-    source: resolved.source,
-    ...(resolved.resolvedUrl ? { resolved_url: resolved.resolvedUrl } : {}),
-    ...(resolved.resolvedPath ? { resolved_path: resolved.resolvedPath } : {}),
-    ...(resolved.resolvedRef ? { resolved_ref: resolved.resolvedRef } : {}),
-    ...(resolved.commit ? { resolved_commit: resolved.commit } : {}),
-  };
+  const entry: Record<string, string> = { source: resolved.source };
+  setIfDefined(entry, "resolved_url", resolved.resolvedUrl);
+  setIfDefined(entry, "resolved_path", resolved.resolvedPath);
+  setIfDefined(entry, "resolved_ref", resolved.resolvedRef);
+  setIfDefined(entry, "resolved_commit", resolved.commit);
+  return entry as LockedPlugin;
+}
+
+function setIfDefined(
+  entry: Record<string, string>,
+  key: string,
+  value: string | undefined,
+): void {
+  if (value === undefined) {return;}
+  entry[key] = value;
 }
 
 /** Returns true for direct `path:.agents/plugins/...` plugin sources. */
@@ -242,6 +250,28 @@ export function isProjectPluginSource(
   const rootPath = resolve(pluginsDir);
   const relPath = relative(rootPath, resolve(pluginDir));
   return relPath === "" || (!relPath.startsWith("..") && !isAbsolute(relPath));
+}
+
+/** Returns true when a plugin config resolves back into this project's managed plugin tree. */
+export function isSameProjectPluginConfig(
+  plugin: Pick<PluginConfig, "source" | "path">,
+  pluginsDir: string,
+  projectRoot: string,
+): boolean {
+  if (isInPlacePluginSource(plugin.source)) {return true;}
+  if (!plugin.path) {return false;}
+
+  try {
+    const parsed = parseSource(plugin.source);
+    if (parsed.type !== "local" || !parsed.path) {return false;}
+    const sourceDir = resolve(projectRoot, parsed.path);
+    const pluginDir = resolve(sourceDir, plugin.path);
+    const relPath = relative(sourceDir, pluginDir);
+    if (relPath.startsWith("..") || isAbsolute(relPath)) {return false;}
+    return isProjectPluginSource(pluginDir, pluginsDir);
+  } catch {
+    return false;
+  }
 }
 
 async function discoverPlugin(
