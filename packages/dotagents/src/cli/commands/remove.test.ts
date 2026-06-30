@@ -267,6 +267,45 @@ source = "path:plugins/review-tools"
     expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
   });
 
+  it("removes both an explicit skill and plugin that share a name", async () => {
+    const skillSource = join(projectRoot, "local-skills", "review-tools");
+    await mkdir(skillSource, { recursive: true });
+    await writeFile(join(skillSource, "SKILL.md"), SKILL_MD("review-tools"));
+
+    const pluginSource = join(projectRoot, "plugins", "review-tools");
+    await mkdir(join(pluginSource, "skills", "plugin-review"), { recursive: true });
+    await writeFile(join(pluginSource, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(join(pluginSource, "skills", "plugin-review", "SKILL.md"), SKILL_MD("plugin-review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex", "pi"]
+
+[[skills]]
+name = "review-tools"
+source = "path:local-skills/review-tools"
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugins/review-tools"
+`,
+    );
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    await runRemove({ scope, name: "review-tools" });
+
+    const config = await loadConfig(join(projectRoot, "agents.toml"));
+    expect(config.skills.find((skill) => skill.name === "review-tools")).toBeUndefined();
+    expect(config.plugins.find((plugin) => plugin.name === "review-tools")).toBeUndefined();
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills["review-tools"]).toBeUndefined();
+    expect(lockfile!.plugins["review-tools"]).toBeUndefined();
+    expect(existsSync(join(projectRoot, ".agents", "skills", "review-tools"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".agents", "skills", "plugin-review"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(false);
+  });
+
   it("removes plugins by source", async () => {
     const pluginSource = join(projectRoot, "plugins", "review-tools");
     await mkdir(pluginSource, { recursive: true });

@@ -56,22 +56,29 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
 
   // Check if skill is an explicit entry
   const explicitDep = config.skills.find((s) => s.name === name);
+  const explicitPlugin = config.plugins.find((plugin) => plugin.name === name);
   if (explicitDep && !isWildcardDep(explicitDep)) {
-    // Regular explicit entry — remove as before
+    const lockfile = await loadLockfile(lockPath);
     await removeSkillFromConfig(configPath, name);
     await rm(skillDir, { recursive: true, force: true });
 
-    const lockfile = await loadLockfile(lockPath);
     if (lockfile) {
       delete lockfile.skills[name];
-      await writeLockfile(lockPath, lockfile);
     }
 
+    if (explicitPlugin) {
+      await removePluginFromConfig(configPath, name);
+      await removePluginArtifacts(scope, [name], lockfile);
+      return;
+    }
+
+    if (lockfile) {
+      await writeLockfile(lockPath, lockfile);
+    }
     await updateProjectGitignore(scope);
     return;
   }
 
-  const explicitPlugin = config.plugins.find((plugin) => plugin.name === name);
   if (explicitPlugin) {
     const lockfile = await loadLockfile(lockPath);
     await removePluginFromConfig(configPath, name);
