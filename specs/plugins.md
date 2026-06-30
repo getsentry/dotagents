@@ -18,7 +18,7 @@ dotagents has one canonical plugin source of truth:
 
 The canonical catalog and plugin manifests should use a generalized Codex-compatible format. Codex compatibility is the baseline because Codex already reads `.agents/plugins/marketplace.json` for repo-scoped marketplaces, but dotagents treats the schema as portable project metadata rather than Codex-only configuration.
 
-Every other runtime output is generated from `.agents/plugins/` when that runtime does not directly consume the canonical path or schema. Generated artifacts may include `.claude-plugin/marketplace.json`, `.cursor-plugin/marketplace.json`, `.agents/plugins/<name>/.codex-plugin/plugin.json`, `.grok/` plugin files, `.opencode/plugins/` modules, or runtime settings/config entries. These generated artifacts are runtime projections, not the source of truth.
+Every other runtime output is generated from `.agents/plugins/` when that runtime does not directly consume the canonical path or schema. Generated artifacts may include `.claude-plugin/marketplace.json`, `.cursor-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, `.agents/plugins/<name>/.codex-plugin/plugin.json`, `.grok/` plugin files, `.opencode/plugins/` modules, or runtime settings/config entries. These generated artifacts are runtime projections, not the source of truth, except that `.agents/plugins/marketplace.json` is also Codex's documented repo-scoped marketplace location.
 
 ## Input and Output Contract
 
@@ -256,7 +256,7 @@ Generated project-scope outputs should be:
 |-------|----------------------|-------------------|-------|
 | Claude Code | `.claude-plugin/marketplace.json` and `.agents/plugins/<name>/.claude-plugin/plugin.json` | Not generated yet | Generated marketplace uses deterministic `./.agents/plugins/<name>` sources and each targeted plugin gets a Claude-native manifest. |
 | Cursor | `.cursor-plugin/marketplace.json` | Not generated yet | Generated marketplace uses deterministic `./.agents/plugins/<name>` sources. |
-| Codex | Generated `.codex-plugin/plugin.json` in installed bundle | Not generated yet | `.agents/plugins/marketplace.json` is canonical input/discovery metadata, not a generated output. |
+| Codex | `.agents/plugins/marketplace.json` and generated `.codex-plugin/plugin.json` in installed bundle | Not generated yet | Generated marketplace uses deterministic `{ "source": "local", "path": "./.agents/plugins/<name>" }` entries relative to the project root. |
 | Grok Build | `.grok/plugins/<name>` for targeted plugins | Not generated yet | The projection is a managed copy of the canonical plugin bundle with a `.dotagents-managed` marker. |
 | OpenCode | `.opencode/plugins/<name>.js|ts` re-export module for an explicit OpenCode module | Not generated yet | dotagents only exposes the module declared in `manifest.opencode.plugins` or discovered at `opencode/plugin.ts|js`; it does not synthesize OpenCode JS/TS code from other runtime hooks. |
 

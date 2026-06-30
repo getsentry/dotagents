@@ -146,6 +146,7 @@ asserts:
 - canonical installed subagent under `.agents/agents/`
 - generated subagent runtime files for Claude, Cursor, Codex, and OpenCode
 - canonical installed plugin bundle under `.agents/plugins/`
+- Codex repo-scoped plugin marketplace under `.agents/plugins/marketplace.json`
 - generated plugin runtime files for Claude, Cursor, Codex, Grok, and OpenCode
 - `sync` repair after deleting representative generated files
 
@@ -274,6 +275,7 @@ test -f .cursor/agents/code-reviewer.md
 test -f .codex/agents/code-reviewer.toml
 test -f .opencode/agents/code-reviewer.md
 test -f .agents/plugins/qa-tools/plugin.json
+test -f .agents/plugins/marketplace.json
 test -f .claude-plugin/marketplace.json
 test -f .cursor-plugin/marketplace.json
 test -f .agents/plugins/qa-tools/.claude-plugin/plugin.json
@@ -291,7 +293,7 @@ diff claims to repair, then verify the repair:
 
 ```bash
 rm .mcp.json .claude/skills .claude/agents/code-reviewer.md .codex/agents/code-reviewer.toml
-rm .claude-plugin/marketplace.json .agents/plugins/qa-tools/.claude-plugin/plugin.json
+rm .agents/plugins/marketplace.json .claude-plugin/marketplace.json .agents/plugins/qa-tools/.claude-plugin/plugin.json
 rm .agents/plugins/qa-tools/.codex-plugin/plugin.json
 rm -rf .grok/plugins/qa-tools
 rm .opencode/plugins/qa-tools.ts
@@ -300,6 +302,7 @@ test -f .mcp.json
 test -L .claude/skills
 test -f .claude/agents/code-reviewer.md
 test -f .codex/agents/code-reviewer.toml
+test -f .agents/plugins/marketplace.json
 test -f .claude-plugin/marketplace.json
 test -f .agents/plugins/qa-tools/.claude-plugin/plugin.json
 test -f .agents/plugins/qa-tools/.codex-plugin/plugin.json

@@ -159,7 +159,31 @@ source = "path:plugin-source/review-tools"
       source: "path:plugin-source/review-tools",
     });
 
-    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(false);
+    const codexMarketplace = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "marketplace.json"), "utf-8")) as Record<string, unknown>;
+    expect(codexMarketplace).toEqual({
+      interface: {
+        displayName: "Dotagents Plugins",
+      },
+      metadata: {
+        managedBy: "dotagents",
+      },
+      name: "dotagents-local",
+      owner: {
+        name: "dotagents",
+      },
+      plugins: [
+        {
+          category: "Coding",
+          description: "Review workflow helpers",
+          name: "review-tools",
+          source: {
+            path: "./.agents/plugins/review-tools",
+            source: "local",
+          },
+          version: "1.0.0",
+        },
+      ],
+    });
     expect(await readFile(join(projectRoot, ".claude-plugin", "marketplace.json"), "utf-8")).toBe(`{
   "metadata": {
     "managedBy": "dotagents"
@@ -709,7 +733,7 @@ source = "path:external-source"
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope, frozen: true });
 
-    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(true);
     expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"))).toBe(true);
   });
 

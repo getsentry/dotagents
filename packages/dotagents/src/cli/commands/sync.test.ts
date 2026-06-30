@@ -669,7 +669,7 @@ source = "path:plugin-source/review-tools"
 
     expect(result.pluginsRepaired).toBeGreaterThan(0);
     expect(result.issues).toEqual([]);
-    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(true);
     expect(existsSync(join(projectRoot, ".claude-plugin", "marketplace.json"))).toBe(true);
     expect(existsSync(join(projectRoot, ".cursor-plugin", "marketplace.json"))).toBe(true);
   });

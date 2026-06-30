@@ -261,7 +261,7 @@ Generated project-scope plugin outputs:
 |-------|----------------------|
 | Claude Code | `.claude-plugin/marketplace.json`; `.agents/plugins/<name>/.claude-plugin/plugin.json` |
 | Cursor | `.cursor-plugin/marketplace.json` |
-| Codex | `.agents/plugins/<name>/.codex-plugin/plugin.json` |
+| Codex | `.agents/plugins/marketplace.json`; `.agents/plugins/<name>/.codex-plugin/plugin.json` |
 | Grok Build | `.grok/plugins/<name>/` managed copy |
 | OpenCode | `.opencode/plugins/<name>.js|ts` re-export module when the plugin declares or contains one OpenCode module |
 

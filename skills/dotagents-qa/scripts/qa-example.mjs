@@ -133,6 +133,7 @@ async function runSyncRepair() {
   rmSync(join(projectDir, ".claude", "skills"), { force: true, recursive: true });
   rmSync(join(projectDir, ".claude", "agents", "code-reviewer.md"), { force: true });
   rmSync(join(projectDir, ".codex", "agents", "code-reviewer.toml"), { force: true });
+  rmSync(join(projectDir, ".agents", "plugins", "marketplace.json"), { force: true });
   rmSync(join(projectDir, ".claude-plugin", "marketplace.json"), { force: true });
   rmSync(join(projectDir, ".agents", "plugins", "qa-tools", ".codex-plugin", "plugin.json"), { force: true });
   rmSync(join(projectDir, ".grok", "plugins", "qa-tools"), { force: true, recursive: true });
@@ -357,7 +358,11 @@ function assertPluginOutputs() {
   assertFile(".agents/plugins/qa-tools/opencode/plugin.ts");
   assertFile(".agents/plugins/qa-tools/.claude-plugin/plugin.json");
   assertFileIncludes("agents.lock", "qa-tools");
-  assertFileDoesNotExist(".agents/plugins/marketplace.json");
+  assertFile(".agents/plugins/marketplace.json");
+  assertFileIncludes(".agents/plugins/marketplace.json", '"name": "dotagents-local"');
+  assertFileIncludes(".agents/plugins/marketplace.json", '"managedBy": "dotagents"');
+  assertFileIncludes(".agents/plugins/marketplace.json", '"path": "./.agents/plugins/qa-tools"');
+  assertFileIncludes(".agents/plugins/marketplace.json", '"source": "local"');
 
   assertFile(".claude-plugin/marketplace.json");
   assertFileIncludes(".claude-plugin/marketplace.json", '"managedBy": "dotagents"');
