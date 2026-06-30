@@ -13,7 +13,8 @@ import { sourcesMatch, parseOwnerRepoShorthand, isExplicitSourceSpecifier } from
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 import { isInPlaceSkill } from "../../utils/fs.js";
-import { isInPlacePluginSource } from "../../plugins/store.js";
+import { isInPlacePluginSource, loadInstalledPlugins } from "../../plugins/store.js";
+import { projectedPiSkillNames } from "../../plugins/runtime/writer.js";
 
 export class RemoveError extends Error {
   constructor(message: string) {
@@ -175,9 +176,13 @@ async function updateProjectGitignore(scope: ScopeRoot): Promise<void> {
       }
     }
   }
+  const installedPlugins = await loadInstalledPlugins(
+    scope.pluginsDir,
+    config.plugins.filter((plugin) => !isInPlacePluginSource(plugin.source)),
+  );
   await writeAgentsGitignore(
     scope.agentsDir,
-    managedNames,
+    [...managedNames, ...await projectedPiSkillNames(config.agents, installedPlugins.plugins)],
     [...managedSubagentNames],
     [...managedPluginNames],
   );

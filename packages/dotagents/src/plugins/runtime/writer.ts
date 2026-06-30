@@ -1,6 +1,8 @@
 import { existsSync } from "node:fs";
-import { cp, lstat, mkdir, readdir, readFile, readlink, rm, rmdir, writeFile } from "node:fs/promises";
-import { dirname, extname, join } from "node:path";
+import { cp, lstat, mkdir, readdir, readFile, readlink, rm, rmdir, symlink, writeFile } from "node:fs/promises";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { loadSkillMd } from "@sentry/dotagents-lib";
+import type { PluginManifest } from "../schema.js";
 import type { PluginDeclaration } from "../store.js";
 import { selectedAgentIds, selectPlugins, targetWarnings } from "../targets.js";
 import { marketplaceOutputPaths, marketplaceOutputs } from "./marketplace.js";
@@ -14,14 +16,41 @@ import {
   isManagedJsonFile,
   isNotFoundError,
   writeJsonIfChanged,
-  writeTextIfChanged,
 } from "./files.js";
-import { relativePath } from "./manifest-values.js";
 import { writeClaudeManifest, writeCodexManifest, writeCursorManifest } from "./manifests.js";
 
 // Owns deterministic runtime plugin projections. Existing runtime artifacts are
 // overwritten only when they carry dotagents managed metadata or a managed marker.
 export type { PluginVerifyIssue, PluginWriteResult, PluginWriteWarning } from "./types.js";
+
+type ComponentProjectionAgent = "opencode" | "pi";
+
+interface ComponentLink {
+  agent: ComponentProjectionAgent;
+  kind: "skill" | "agent";
+  name: string;
+  sourcePath: string;
+  destPath: string;
+}
+
+const OPENCODE_SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/** Returns plugin skill names projected into `.agents/skills/` for Pi. */
+export async function projectedPiSkillNames(
+  agentIds: string[],
+  plugins: PluginDeclaration[],
+): Promise<string[]> {
+  const names = new Set<string>();
+  const selected = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes("pi"));
+  for (const plugin of selected) {
+    for (const skillsDir of componentDirs(plugin, "skills", "skills")) {
+      for (const name of await skillNamesInDir(skillsDir)) {
+        names.add(name);
+      }
+    }
+  }
+  return [...names];
+}
 
 /** Writes deterministic project-scope plugin runtime artifacts for selected agents. */
 export async function writePluginOutputs(
@@ -55,10 +84,10 @@ export async function writePluginOutputs(
     if (agents.includes("grok") && await writeGrokProjection(projectRoot, plugin, warnings)) {
       written++;
     }
-    if (agents.includes("opencode")) {
-      written += await writeOpenCodeProjection(projectRoot, plugin, warnings);
-    }
   }
+
+  written += await writeComponentProjections("opencode", agentIds, selected, projectRoot, warnings);
+  written += await writeComponentProjections("pi", agentIds, selected, projectRoot, warnings);
 
   return { warnings, written };
 }
@@ -115,6 +144,17 @@ export async function verifyPluginOutputs(
     }
   }
 
+  for (const link of await desiredComponentLinks("opencode", agentIds, selected, projectRoot, [])) {
+    if (!await symlinkPointsTo(link.destPath, link.sourcePath)) {
+      issues.push({ agent: link.agent, name: link.name, issue: `OpenCode plugin ${link.kind} projection missing: ${link.destPath}` });
+    }
+  }
+  for (const link of await desiredComponentLinks("pi", agentIds, selected, projectRoot, [])) {
+    if (!await symlinkPointsTo(link.destPath, link.sourcePath)) {
+      issues.push({ agent: link.agent, name: link.name, issue: `Pi plugin ${link.kind} projection missing: ${link.destPath}` });
+    }
+  }
+
   return issues;
 }
 
@@ -154,23 +194,18 @@ export async function prunePluginOutputs(
     }
   }
 
-  const desiredOpenCode = new Set(
-    plugins
-      .filter((plugin) => selectedAgentIds(agentIds, plugin).includes("opencode"))
-      .flatMap((plugin) => desiredOpenCodeModules(plugin).map((modulePath) => `${plugin.name}${extname(modulePath)}`)),
+  pruned.push(...await pruneLegacyOpenCodeModules(projectRoot));
+
+  const desiredOpenCodeLinks = new Set(
+    (await desiredComponentLinks("opencode", agentIds, plugins, projectRoot, [])).map((link) => link.destPath),
   );
-  const opencodeDir = join(projectRoot, ".opencode", "plugins");
-  if (existsSync(opencodeDir)) {
-    const entries = await readdir(opencodeDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isFile() && !entry.isSymbolicLink()) {continue;}
-      if (desiredOpenCode.has(entry.name)) {continue;}
-      const path = join(opencodeDir, entry.name);
-      if (!await isManagedOpenCodeModule(path)) {continue;}
-      await rm(path, { force: true });
-      pruned.push(path);
-    }
-  }
+  pruned.push(...await pruneManagedComponentLinks(join(projectRoot, ".opencode", "skills"), desiredOpenCodeLinks, projectRoot));
+  pruned.push(...await pruneManagedComponentLinks(join(projectRoot, ".opencode", "agents"), desiredOpenCodeLinks, projectRoot));
+
+  const desiredPiLinks = new Set(
+    (await desiredComponentLinks("pi", agentIds, plugins, projectRoot, [])).map((link) => link.destPath),
+  );
+  pruned.push(...await pruneManagedComponentLinks(join(projectRoot, ".agents", "skills"), desiredPiLinks, projectRoot));
 
   const canonicalPluginDir = join(projectRoot, ".agents", "plugins");
   const desiredClaude = new Set(
@@ -259,58 +294,196 @@ async function writeGrokProjection(
   return true;
 }
 
-/** Writes OpenCode re-export modules for explicit or conventional plugin modules. */
-async function writeOpenCodeProjection(
+async function writeComponentProjections(
+  agent: ComponentProjectionAgent,
+  agentIds: string[],
+  plugins: PluginDeclaration[],
   projectRoot: string,
-  plugin: PluginDeclaration,
   warnings: PluginWriteWarning[],
 ): Promise<number> {
-  const modules = opencodeModules(plugin, warnings);
   let written = 0;
-  for (const modulePath of modules) {
-    const ext = extname(modulePath);
-    const dest = join(projectRoot, ".opencode", "plugins", `${plugin.name}${ext}`);
-    if (existsSync(dest) && !await isManagedOpenCodeModule(dest)) {
-      warnings.push({
-        agent: "opencode",
-        name: plugin.name,
-        message: `OpenCode plugin module exists and is not managed by dotagents: ${dest}`,
-      });
-      continue;
-    }
-
-    await mkdir(dirname(dest), { recursive: true });
-    const moduleSpecifier = JSON.stringify(relativePath(dirname(dest), join(plugin.pluginDir, modulePath)));
-    const content = `// Generated by dotagents. Do not edit.\nexport { default } from ${moduleSpecifier};\n`;
-    if (await writeTextIfChanged(dest, content)) {written++;}
+  for (const link of await desiredComponentLinks(agent, agentIds, plugins, projectRoot, warnings)) {
+    if (await writeManagedComponentLink(link, projectRoot, warnings)) {written++;}
   }
   return written;
 }
 
-function opencodeModules(
-  plugin: PluginDeclaration,
-  warnings: PluginWriteWarning[] = [],
-): string[] {
-  return desiredOpenCodeModules(plugin).filter((path) => {
-    if (existsSync(join(plugin.pluginDir, path))) {return true;}
-    warnings.push({
-      agent: "opencode",
-      name: plugin.name,
-      message: `OpenCode plugin module missing: ${join(plugin.pluginDir, path)}`,
-    });
-    return false;
-  });
+async function desiredComponentLinks(
+  agent: ComponentProjectionAgent,
+  agentIds: string[],
+  plugins: PluginDeclaration[],
+  projectRoot: string,
+  warnings: PluginWriteWarning[],
+): Promise<ComponentLink[]> {
+  const links = new Map<string, ComponentLink>();
+  const selected = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes(agent));
+  for (const plugin of selected) {
+    for (const link of await componentLinks(agent, projectRoot, plugin, warnings)) {
+      const existing = links.get(link.destPath);
+      if (existing && existing.sourcePath !== link.sourcePath) {
+        warnings.push({
+          agent,
+          name: plugin.name,
+          message: `${displayName(agent)} plugin ${link.kind} projection conflicts with ${existing.sourcePath}: ${link.destPath}`,
+        });
+        continue;
+      }
+      links.set(link.destPath, link);
+    }
+  }
+  return [...links.values()];
 }
 
-/** Returns declared OpenCode modules without existence checks so prune keeps desired managed outputs. */
-function desiredOpenCodeModules(plugin: PluginDeclaration): string[] {
-  const opencode = plugin.manifest.opencode;
-  if (opencode?.plugins) {
-    return opencode.plugins;
+async function componentLinks(
+  agent: ComponentProjectionAgent,
+  projectRoot: string,
+  plugin: PluginDeclaration,
+  warnings: PluginWriteWarning[],
+): Promise<ComponentLink[]> {
+  const links: ComponentLink[] = [];
+  for (const skillsDir of componentDirs(plugin, "skills", "skills")) {
+    const skillDestRoot = agent === "opencode"
+      ? join(projectRoot, ".opencode", "skills")
+      : join(projectRoot, ".agents", "skills");
+    links.push(...await skillComponentLinks(agent, plugin, skillsDir, skillDestRoot, warnings));
   }
-  const candidates = ["opencode/plugin.ts", "opencode/plugin.js"];
-  const candidate = candidates.find((path) => existsSync(join(plugin.pluginDir, path)));
-  return candidate ? [candidate] : [];
+
+  if (agent === "opencode") {
+    for (const agentsDir of componentDirs(plugin, "agents", "agents")) {
+      links.push(...await markdownComponentLinks(agent, plugin, agentsDir, join(projectRoot, ".opencode", "agents")));
+    }
+  }
+
+  return links;
+}
+
+async function skillComponentLinks(
+  agent: ComponentProjectionAgent,
+  plugin: PluginDeclaration,
+  skillsDir: string,
+  destRoot: string,
+  warnings: PluginWriteWarning[],
+): Promise<ComponentLink[]> {
+  if (!existsSync(skillsDir)) {return [];}
+
+  const links: ComponentLink[] = [];
+  for (const entry of await readdir(skillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) {continue;}
+    const sourcePath = join(skillsDir, entry.name);
+    const skillMd = join(sourcePath, "SKILL.md");
+    if (!existsSync(skillMd)) {continue;}
+
+    let skillName: string;
+    try {
+      skillName = (await loadSkillMd(skillMd)).name;
+    } catch (err) {
+      warnings.push({
+        agent,
+        name: plugin.name,
+        message: `Plugin skill is invalid for ${displayName(agent)} projection: ${err instanceof Error ? err.message : String(err)}`,
+      });
+      continue;
+    }
+
+    if (agent === "opencode" && !OPENCODE_SKILL_NAME_PATTERN.test(skillName)) {
+      warnings.push({
+        agent,
+        name: plugin.name,
+        message: `Plugin skill "${skillName}" cannot be projected to OpenCode because OpenCode skill names must be lowercase alphanumeric with single hyphen separators.`,
+      });
+      continue;
+    }
+
+    links.push({
+      agent,
+      kind: "skill",
+      name: plugin.name,
+      sourcePath,
+      destPath: join(destRoot, skillName),
+    });
+  }
+  return links;
+}
+
+async function skillNamesInDir(skillsDir: string): Promise<string[]> {
+  if (!existsSync(skillsDir)) {return [];}
+
+  const names: string[] = [];
+  for (const entry of await readdir(skillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) {continue;}
+    const skillMd = join(skillsDir, entry.name, "SKILL.md");
+    if (!existsSync(skillMd)) {continue;}
+    try {
+      names.push((await loadSkillMd(skillMd)).name);
+    } catch {
+      // Invalid skills are skipped by the projection writer too.
+    }
+  }
+  return names;
+}
+
+async function markdownComponentLinks(
+  agent: ComponentProjectionAgent,
+  plugin: PluginDeclaration,
+  agentsDir: string,
+  destRoot: string,
+): Promise<ComponentLink[]> {
+  if (!existsSync(agentsDir)) {return [];}
+
+  const links: ComponentLink[] = [];
+  for (const entry of await readdir(agentsDir, { withFileTypes: true })) {
+    if ((!entry.isFile() && !entry.isSymbolicLink()) || extname(entry.name) !== ".md") {continue;}
+    links.push({
+      agent,
+      kind: "agent",
+      name: plugin.name,
+      sourcePath: join(agentsDir, entry.name),
+      destPath: join(destRoot, entry.name),
+    });
+  }
+
+  return links;
+}
+
+async function writeManagedComponentLink(
+  link: ComponentLink,
+  projectRoot: string,
+  warnings: PluginWriteWarning[],
+): Promise<boolean> {
+  if (await pathExists(link.destPath)) {
+    if (await symlinkPointsTo(link.destPath, link.sourcePath)) {return false;}
+    if (!await isManagedComponentLink(link.destPath, projectRoot)) {
+      warnings.push({
+        agent: link.agent,
+        name: link.name,
+        message: `${displayName(link.agent)} plugin ${link.kind} projection exists and is not managed by dotagents: ${link.destPath}`,
+      });
+      return false;
+    }
+    await rm(link.destPath, { force: true });
+  }
+
+  await mkdir(dirname(link.destPath), { recursive: true });
+  await symlink(relative(dirname(link.destPath), link.sourcePath), link.destPath);
+  return true;
+}
+
+function componentDirs(
+  plugin: PluginDeclaration,
+  manifestKey: keyof Pick<PluginManifest, "skills" | "agents">,
+  defaultDir: string,
+): string[] {
+  const explicit = manifestPaths(plugin.manifest[manifestKey]);
+  const paths = explicit.length > 0 ? explicit : [defaultDir];
+  return paths.map((path) => join(plugin.pluginDir, path));
+}
+
+function manifestPaths(value: unknown): string[] {
+  if (typeof value === "string") {return [value];}
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+    return value;
+  }
+  return [];
 }
 
 async function writeManagedJsonOutput(
@@ -333,13 +506,89 @@ async function isManagedProjection(path: string): Promise<boolean> {
   return existsSync(join(path, ".dotagents-managed"));
 }
 
-/** Checks OpenCode module projections using the generated-file header marker. */
+/** Checks legacy OpenCode JS projections from earlier dotagents plugin support. */
 async function isManagedOpenCodeModule(filePath: string): Promise<boolean> {
   try {
     return (await readFile(filePath, "utf-8")).startsWith("// Generated by dotagents.");
   } catch {
     return false;
   }
+}
+
+async function pruneLegacyOpenCodeModules(projectRoot: string): Promise<string[]> {
+  const opencodeDir = join(projectRoot, ".opencode", "plugins");
+  if (!existsSync(opencodeDir)) {return [];}
+
+  const pruned: string[] = [];
+  const entries = await readdir(opencodeDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isFile() && !entry.isSymbolicLink()) {continue;}
+    const path = join(opencodeDir, entry.name);
+    if (!await isManagedOpenCodeModule(path)) {continue;}
+    await rm(path, { force: true });
+    pruned.push(path);
+  }
+  return pruned;
+}
+
+async function pruneManagedComponentLinks(
+  dir: string,
+  desiredPaths: Set<string>,
+  projectRoot: string,
+): Promise<string[]> {
+  if (!existsSync(dir)) {return [];}
+
+  const pruned: string[] = [];
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const path = join(dir, entry.name);
+    if (desiredPaths.has(path)) {continue;}
+    if (!await isManagedComponentLink(path, projectRoot)) {continue;}
+    await rm(path, { force: true });
+    pruned.push(path);
+  }
+  return pruned;
+}
+
+async function symlinkPointsTo(filePath: string, expectedTarget: string): Promise<boolean> {
+  try {
+    const stat = await lstat(filePath);
+    if (!stat.isSymbolicLink()) {return false;}
+    const target = await readlink(filePath);
+    return resolve(dirname(filePath), target) === resolve(expectedTarget);
+  } catch {
+    return false;
+  }
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await lstat(filePath);
+    return true;
+  } catch (err) {
+    if (isNotFoundError(err)) {return false;}
+    throw err;
+  }
+}
+
+async function isManagedComponentLink(filePath: string, projectRoot: string): Promise<boolean> {
+  try {
+    const stat = await lstat(filePath);
+    if (!stat.isSymbolicLink()) {return false;}
+    const target = await readlink(filePath);
+    return isInside(resolve(dirname(filePath), target), join(projectRoot, ".agents", "plugins"));
+  } catch {
+    return false;
+  }
+}
+
+function isInside(path: string, root: string): boolean {
+  const relPath = relative(resolve(root), resolve(path));
+  return relPath === "" || (!relPath.startsWith("..") && !isAbsolute(relPath));
+}
+
+function displayName(agent: ComponentProjectionAgent): string {
+  return agent === "opencode" ? "OpenCode" : "Pi";
 }
 
 async function directoriesMatch(source: string, dest: string, ignoredNames = new Set<string>()): Promise<boolean> {

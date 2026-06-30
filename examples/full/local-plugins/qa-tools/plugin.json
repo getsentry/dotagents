@@ -6,8 +6,5 @@
   "author": {
     "name": "dotagents"
   },
-  "keywords": ["qa", "plugins"],
-  "opencode": {
-    "plugins": ["opencode/plugin.ts"]
-  }
+  "keywords": ["qa", "plugins"]
 }

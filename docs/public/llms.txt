@@ -54,7 +54,7 @@ Full example with all sections:
 
 ```toml
 version = 1
-agents = ["claude", "cursor", "codex", "grok", "opencode"]
+agents = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 minimum_release_age = 60
 minimum_release_age_exclude = ["getsentry/*"]
 
@@ -137,7 +137,7 @@ targets = ["claude", "codex", "opencode"]
 name = "review-tools"
 source = "getsentry/agent-plugins"
 path = "plugins/review-tools"
-targets = ["claude", "cursor", "codex", "grok", "opencode"]
+targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 ```
 
 ### Top-level Fields
@@ -146,9 +146,9 @@ targets = ["claude", "cursor", "codex", "grok", "opencode"]
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version. Always `1`. |
 | `defaultRepositorySource` | string | No | `github` | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. |
-| `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `grok`, `vscode`, `opencode`. Creates symlinks and config files for each where supported. |
+| `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `grok`, `vscode`, `opencode`, `pi`. Creates symlinks and config files for each where supported. `grok` and `pi` are plugin-only targets. |
 | `subagents` | table[] | No | `[]` | Custom subagent declarations. Generates runtime-specific files for Claude, Cursor, Codex, and OpenCode. |
-| `plugins` | table[] | No | `[]` | Plugin declarations. Installs canonical bundles into `.agents/plugins/` and generates runtime plugin outputs for Claude, Cursor, Codex, Grok, and OpenCode where supported. |
+| `plugins` | table[] | No | `[]` | Plugin declarations. Installs canonical bundles into `.agents/plugins/` and generates runtime plugin outputs for Claude, Cursor, Codex, Grok, OpenCode, and Pi skill projection where supported. |
 | `minimum_release_age` | integer | No | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install. |
 | `minimum_release_age_exclude` | string[] | No | `[]` | Sources that bypass the minimum release age gate. Supports org names, `org/repo`, and `org/*`. |
 
@@ -293,9 +293,10 @@ Generated project-scope plugin outputs:
 - Cursor: `.cursor-plugin/marketplace.json` and `.agents/plugins/<name>/.cursor-plugin/plugin.json`
 - Codex: `.agents/plugins/marketplace.json` and `.agents/plugins/<name>/.codex-plugin/plugin.json`
 - Grok: `.grok/plugins/<name>/` managed copy
-- OpenCode: `.opencode/plugins/<name>.js|ts` re-export module when the plugin declares or contains one OpenCode module
+- OpenCode: plugin `skills/` symlinked into `.opencode/skills/`; plugin Markdown `agents/` symlinked into `.opencode/agents/`
+- Pi: plugin `skills/` symlinked into `.agents/skills/` when `pi` is a configured plugin target
 
-Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated runtime marketplaces and generated Claude/Cursor/Codex plugin manifests are overwritten or pruned only when they carry `metadata.managedBy = "dotagents"`. Managed Grok and OpenCode projections are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself.
+Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated runtime marketplaces and generated Claude/Cursor/Codex plugin manifests are overwritten or pruned only when they carry `metadata.managedBy = "dotagents"`. Managed Grok copies and OpenCode/Pi component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself.
 
 Plugin declarations are project-scope only for now. `install --user` rejects `[[plugins]]` entries and `sync --user` reports them as unsupported because user-scope runtime plugin projections are not generated yet.
 

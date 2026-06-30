@@ -14,7 +14,8 @@ import { getAgent } from "../../targets/registry.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { exec } from "@sentry/dotagents-lib";
 import { isInPlaceSkill } from "../../utils/fs.js";
-import { isInPlacePluginSource, isSameProjectPluginConfig } from "../../plugins/store.js";
+import { isInPlacePluginSource, isSameProjectPluginConfig, loadInstalledPlugins } from "../../plugins/store.js";
+import { projectedPiSkillNames } from "../../plugins/runtime/writer.js";
 
 export interface DoctorCheck {
   name: string;
@@ -158,9 +159,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
         status: "warn",
         message: ".agents/.gitignore is missing. Run 'npx @sentry/dotagents install' or 'npx @sentry/dotagents sync' to regenerate.",
         fix: async () => {
+          const installedPlugins = await loadInstalledPlugins(
+            scope.pluginsDir,
+            config.plugins.filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root)),
+          );
           await writeAgentsGitignore(
             scope.agentsDir,
-            managedNames,
+            [...managedNames, ...await projectedPiSkillNames(config.agents, installedPlugins.plugins)],
             managedSubagentNames,
             managedPluginNames,
           );

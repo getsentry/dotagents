@@ -380,7 +380,7 @@ source = "path:plugin-source/review-tools"
       join(projectRoot, ".agents", ".gitignore"),
       "utf-8",
     );
-    expect(gitignore).toContain("/skills/pdf/");
+    expect(gitignore).toContain("/skills/pdf");
   });
 
   it("repairs missing MCP configs", async () => {

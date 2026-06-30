@@ -1,5 +1,5 @@
 version = 1
-agents = ["claude", "cursor", "codex", "grok", "opencode"]
+agents = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 
 [[skills]]
 name = "review"

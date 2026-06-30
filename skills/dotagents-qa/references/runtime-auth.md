@@ -197,9 +197,9 @@ Use a temp project `opencode.json` or isolated config that includes:
 ```
 
 Run `opencode auth list` or a cheap prompt from the temp project only after the
-file-level plugin projection passes. Report whether OpenCode loaded the
-generated `.opencode/plugins/<name>.ts|js` module separately from whether the
-model call succeeded.
+file-level plugin component projection passes. Report whether OpenCode sees
+the generated `.opencode/skills/*` or `.opencode/agents/*` component separately
+from whether the model call succeeded.
 
 ## Cursor
 

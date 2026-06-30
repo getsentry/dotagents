@@ -1,8 +1,8 @@
 import type { PluginDeclaration } from "./store.js";
 import type { PluginWriteWarning } from "./runtime/types.js";
 
-const PLUGIN_ONLY_AGENT_IDS = ["grok"];
-const PLUGIN_AGENT_IDS = ["claude", "cursor", "codex", "grok", "opencode"];
+const PLUGIN_ONLY_AGENT_IDS = ["grok", "pi"];
+const PLUGIN_AGENT_IDS = ["claude", "cursor", "codex", "grok", "opencode", "pi"];
 const SUPPORTED_PLUGIN_AGENT_IDS = new Set(allPluginAgentIds());
 
 /** Returns agent IDs accepted in agents.toml only for plugin runtime output. */

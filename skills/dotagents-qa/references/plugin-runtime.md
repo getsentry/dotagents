@@ -20,8 +20,8 @@ node skills/dotagents-qa/scripts/qa-example.mjs plugin-opencode
 ```
 
 This proves install/sync/list/doctor behavior, generated plugin files, Claude
-validation, Codex marketplace install, and OpenCode projection surface. It does
-not prove every runtime loaded and invoked every plugin component.
+validation, Codex marketplace install, and OpenCode component projection. It
+does not prove every runtime loaded and invoked every plugin component.
 
 `pnpm qa:example` is the install/sync repair proof. It intentionally runs only
 the `install-files` and `sync-repair` tasks. Run the separate `plugin-claude`,
@@ -92,33 +92,20 @@ model-backed prompt because the plugin management CLI does not execute skills.
 
 Best automated proof in Docker:
 
-The checked-in `qa-tools` fixture registers an observable config hook:
-
-```ts
-export default async () => ({
-  config: (cfg) => {
-    cfg.command = cfg.command ?? {};
-    cfg.command["dotagents-plugin-proof"] = {
-      description: "Proof command injected by generated OpenCode plugin projection.",
-      prompt: "DOTAGENTS_OPENCODE_PLUGIN_EXECUTION_PROOF",
-    };
-  },
-});
-```
-
 `node skills/dotagents-qa/scripts/qa-example.mjs plugin-opencode` installs the
-fixture, confirms `.opencode/plugins/qa-tools.ts` re-exports the canonical
-module, then runs:
+fixture, confirms `.opencode/skills/plugin-qa` and
+`.opencode/agents/plugin-reviewer.md` are symlinks into the installed plugin
+bundle, then runs:
 
 ```bash
-opencode debug config > /tmp/opencode-config.json
-rg "dotagents-plugin-proof|DOTAGENTS_OPENCODE_PLUGIN_EXECUTION_PROOF|qa-tools.ts" /tmp/opencode-config.json
+opencode debug skill
+opencode agent list
 ```
 
 Expected evidence:
 
-- `debug config` includes the generated plugin module path
-- `debug config` includes the command injected by the plugin hook
+- `debug skill` includes `plugin-qa` and `DOTAGENTS_PLUGIN_QA_FIXTURE`
+- `agent list` includes `plugin-reviewer`
 
 Manual final check with model auth:
 

@@ -786,7 +786,7 @@ source = "path:external-source"
       join(projectRoot, ".agents", ".gitignore"),
       "utf-8",
     );
-    expect(gitignore).toContain("/skills/pdf/");
+    expect(gitignore).toContain("/skills/pdf");
   });
 
   it("handles empty skills list", async () => {
@@ -1502,9 +1502,9 @@ path = "reviewer.md"
 
     const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
     // Sourced skill should be gitignored
-    expect(gitignore).toContain("/skills/pdf/");
+    expect(gitignore).toContain("/skills/pdf");
     // In-place skill should NOT be gitignored
-    expect(gitignore).not.toContain("/skills/local-skill/");
+    expect(gitignore).not.toContain("/skills/local-skill");
   });
 
   it("installs all skills from a wildcard entry", async () => {
@@ -1619,8 +1619,8 @@ path = "reviewer.md"
     await runInstall({ scope });
 
     const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
-    expect(gitignore).toContain("/skills/pdf/");
-    expect(gitignore).toContain("/skills/review/");
+    expect(gitignore).toContain("/skills/pdf");
+    expect(gitignore).toContain("/skills/review");
   });
 
   it("errors on name conflict between two wildcard sources", async () => {

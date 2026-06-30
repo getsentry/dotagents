@@ -98,7 +98,7 @@ describe("runRemove", () => {
     await runRemove({ scope, skillName: "pdf" });
 
     const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
-    expect(gitignore).not.toContain("/skills/pdf/");
+    expect(gitignore).not.toContain("/skills/pdf");
     expect(gitignore).toContain("/agents/old-reviewer.md");
   });
 
@@ -136,7 +136,7 @@ source = "path:plugins/review-tools"
     await runRemove({ scope, skillName: "pdf" });
 
     const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
-    expect(gitignore).not.toContain("/skills/pdf/");
+    expect(gitignore).not.toContain("/skills/pdf");
     expect(gitignore).toContain("/plugins/review-tools/");
     expect(gitignore).not.toContain("/plugins/marketplace.json");
   });

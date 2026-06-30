@@ -319,12 +319,12 @@ describe("agentsConfigSchema", () => {
     it("accepts a portable plugin declaration", () => {
       const result = agentsConfigSchema.safeParse({
         version: 1,
-        agents: ["claude", "codex", "cursor", "grok", "opencode"],
+        agents: ["claude", "codex", "cursor", "grok", "opencode", "pi"],
         plugins: [
           {
             name: "review-tools",
             source: "getsentry/plugins",
-            targets: ["claude", "codex", "cursor", "grok", "opencode"],
+            targets: ["claude", "codex", "cursor", "grok", "opencode", "pi"],
           },
         ],
       });

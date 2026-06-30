@@ -18,7 +18,7 @@ dotagents has one canonical plugin source of truth:
 
 The canonical catalog and plugin manifests should use a generalized Codex-compatible format. Codex compatibility is the baseline because Codex already reads `.agents/plugins/marketplace.json` for repo-scoped marketplaces, but dotagents treats the schema as portable project metadata rather than Codex-only configuration.
 
-Every other runtime output is generated from `.agents/plugins/` when that runtime does not directly consume the canonical path or schema. Generated artifacts may include `.claude-plugin/marketplace.json`, `.cursor-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, `.agents/plugins/<name>/.claude-plugin/plugin.json`, `.agents/plugins/<name>/.cursor-plugin/plugin.json`, `.agents/plugins/<name>/.codex-plugin/plugin.json`, `.grok/` plugin files, `.opencode/plugins/` modules, or runtime settings/config entries. These generated artifacts are runtime projections, not the source of truth, except that `.agents/plugins/marketplace.json` is also Codex's documented repo-scoped marketplace location.
+Every other runtime output is generated from `.agents/plugins/` when that runtime does not directly consume the canonical path or schema. Generated artifacts may include `.claude-plugin/marketplace.json`, `.cursor-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, `.agents/plugins/<name>/.claude-plugin/plugin.json`, `.agents/plugins/<name>/.cursor-plugin/plugin.json`, `.agents/plugins/<name>/.codex-plugin/plugin.json`, `.grok/` plugin files, `.opencode/skills/` links, `.opencode/agents/` links, or Pi skill links in `.agents/skills/`. These generated artifacts are runtime projections, not the source of truth, except that `.agents/plugins/marketplace.json` is also Codex's documented repo-scoped marketplace location.
 
 ## Input and Output Contract
 
@@ -93,7 +93,7 @@ Every imported plugin should produce this portable shape:
 | `version` | optional version from native or portable manifest metadata |
 | `description` | optional short description |
 | `metadata` | portable package metadata: author, homepage, repository, license, keywords, category, and logo paths |
-| `components` | discovered component paths for skills, agents, commands, rules, hooks, MCP servers, LSP servers, apps/connectors, monitors, binaries, settings, and OpenCode plugins |
+| `components` | discovered component paths for skills, agents, commands, rules, hooks, MCP servers, LSP servers, apps/connectors, monitors, binaries, and settings |
 | `native` | optional raw native plugin metadata keyed by runtime |
 
 Only metadata and component locations are portable. Component semantics remain native unless they are already modeled by dotagents elsewhere, such as skills, MCP servers, hooks, and subagents.
@@ -128,9 +128,7 @@ Remote plugins should install into the same canonical directory during `install`
 |   `-- hooks.json
 |-- .mcp.json
 |-- .lsp.json
-|-- bin/
-`-- opencode/
-    `-- plugin.ts
+`-- bin/
 ```
 
 Example canonical marketplace:
@@ -177,14 +175,11 @@ Example dotagents manifest:
   "rules": "./rules",
   "hooks": "./hooks/hooks.json",
   "mcpServers": "./.mcp.json",
-  "lspServers": "./.lsp.json",
-  "opencode": {
-    "plugins": ["./opencode/plugin.ts"]
-  }
+  "lspServers": "./.lsp.json"
 }
 ```
 
-Path fields must be relative to the plugin root and must not contain `..`. OpenCode plugin manifests may declare at most one JS/TS module because dotagents projects it to one deterministic `.opencode/plugins/<name>.js|ts` file. Generated native manifests may add a leading `./` when the target runtime requires it.
+Path fields must be relative to the plugin root and must not contain `..`. Generated native manifests may add a leading `./` when the target runtime requires it.
 
 dotagents may also import plugin sources that already use native runtime manifests such as `.claude-plugin/plugin.json`, `.cursor-plugin/plugin.json`, or `.codex-plugin/plugin.json`. It may import `.plugin/plugin.json` for compatibility with the npm `plugins` package, but it should normalize that input into `.agents/plugins/<name>/plugin.json` on install.
 
@@ -198,7 +193,7 @@ Input and matching-runtime output should use the same native format where possib
 | Cursor | `.cursor-plugin/plugin.json` | marketplace installs and `~/.cursor/plugins/local/<name>` for local testing | rules, skills, agents, commands, hooks, `mcp.json`, assets, scripts | Manifest component paths replace default discovery for that component. Multi-plugin repos use `.cursor-plugin/marketplace.json`. |
 | Codex | `.codex-plugin/plugin.json` | repo/user marketplaces under `.agents/plugins/marketplace.json` and plugin cache installs | skills, hooks, `.app.json`, `.mcp.json`, assets | Published plugins commonly need rich `interface` metadata. Codex sets `PLUGIN_ROOT` and `PLUGIN_DATA`, plus Claude-compatible plugin env vars. |
 | Grok Build | Claude-compatible plugin directories plus `.grok/plugins/` and marketplaces | `./.grok/plugins/`, `~/.grok/plugins/`, marketplace installs, configured plugin paths, `--plugin-dir` | skills, agents, hooks, MCP servers, LSP servers | Docs state Grok automatically reads Claude Code marketplaces, plugins, skills, MCPs, agents, hooks, and `.claude/rules/` alongside `.grok/`. |
-| OpenCode | JavaScript or TypeScript plugin modules | `.opencode/plugins/`, `~/.config/opencode/plugins/`, npm package names in `opencode.json` | JS/TS plugin functions returning hooks and custom tools | OpenCode plugins are executable modules, not bundle manifests. dotagents should only install OpenCode-native plugin modules or npm plugin entries for the plugin portion. |
+| OpenCode | No bundle manifest | `.opencode/skills/`, `.agents/skills/`, `.opencode/agents/`, `opencode.json` | skills, agents, MCP servers; JS/TS plugin modules separately support hooks/tools | dotagents projects plugin `skills/` and Markdown `agents/` into OpenCode's native component directories. It does not turn dotagents plugin bundles into OpenCode JS plugins. |
 
 ## Discovery
 
@@ -222,7 +217,7 @@ dotagents should handle plugin components in three buckets:
 | Bucket | Components | Behavior |
 |--------|------------|----------|
 | Portable existing dotagents concepts | skills, MCP servers, hooks, subagents/agents | Load through existing parsers where possible and generate runtime configs using existing agent writers. Preserve native plugin copies for matching runtimes. |
-| Runtime-specific files | Cursor rules, Claude/Codex/Grok LSP servers, Codex apps, Claude monitors, Claude settings, binaries, OpenCode JS/TS plugins | Copy or expose only for runtimes that natively understand them. Do not attempt cross-runtime conversion. |
+| Runtime-specific files | Cursor rules, Claude/Codex/Grok LSP servers, Codex apps, Claude monitors, Claude settings, binaries | Copy or expose only for runtimes that natively understand them. Do not attempt cross-runtime conversion. |
 | Metadata and marketplace files | plugin manifests, marketplace manifests, icons, screenshots, README | Preserve and regenerate native manifests/marketplaces from normalized metadata when needed. |
 
 Plugin skills should not be flattened into `.agents/skills/` by default. Native plugin systems namespace plugin skills and avoid conflicts. Flattening may be offered later as an explicit compatibility mode for runtimes without bundle support.
@@ -239,7 +234,7 @@ Portable plugin-authored config should use `${PLUGIN_ROOT}` and `${PLUGIN_DATA}`
 | Codex | `${PLUGIN_ROOT}` | `${PLUGIN_DATA}` |
 | Grok Build | `${GROK_PLUGIN_ROOT}` | `${GROK_PLUGIN_DATA}` |
 | Cursor | Target-specific support to verify before implementation | Target-specific support to verify before implementation |
-| OpenCode | Not applicable for local JS/TS modules unless the module reads environment variables set by dotagents | Not applicable |
+| OpenCode | Not applicable to projected skills and agents | Not applicable |
 
 Codex also sets Claude-compatible plugin variables for compatibility. For generated Codex output, dotagents can leave `${PLUGIN_ROOT}` intact. The current implementation does not rewrite Claude or Grok hook, MCP, or LSP config files; portable variable rewriting is reserved for a later projection pass.
 
@@ -258,7 +253,8 @@ Generated project-scope outputs should be:
 | Cursor | `.cursor-plugin/marketplace.json` and `.agents/plugins/<name>/.cursor-plugin/plugin.json` | Not generated yet | Generated marketplace uses deterministic `./.agents/plugins/<name>` sources and each targeted plugin gets a Cursor-native manifest. |
 | Codex | `.agents/plugins/marketplace.json` and generated `.codex-plugin/plugin.json` in installed bundle | Not generated yet | Generated marketplace uses deterministic `{ "source": "local", "path": "./.agents/plugins/<name>" }` entries relative to the project root. |
 | Grok Build | `.grok/plugins/<name>` for targeted plugins | Not generated yet | The projection is a managed copy of the canonical plugin bundle with a `.dotagents-managed` marker. |
-| OpenCode | `.opencode/plugins/<name>.js|ts` re-export module for an explicit OpenCode module | Not generated yet | dotagents only exposes the module declared in `manifest.opencode.plugins` or discovered at `opencode/plugin.ts|js`; it does not synthesize OpenCode JS/TS code from other runtime hooks. |
+| OpenCode | Plugin `skills/` symlinked into `.opencode/skills/`; plugin Markdown `agents/` symlinked into `.opencode/agents/` | Not generated yet | dotagents exposes bundle components through OpenCode's native resource directories and skips collisions with user-authored files. |
+| Pi | Plugin `skills/` symlinked into `.agents/skills/` when `pi` is a configured plugin target | Not generated yet | Pi reads agentskills from `.agents/skills/`; only plugin skills are projected. |
 
 Installed and generated files are dotagents-managed. `install` and `sync` may overwrite stale managed files and prune removed managed files, but they must not overwrite hand-written plugin files without a generated marker or a canonical installed bundle path owned by dotagents. Generated Claude, Cursor, and Codex manifests carry `metadata.managedBy = "dotagents"` so target removal can prune them without deleting user-authored native plugin manifests.
 
@@ -286,7 +282,7 @@ resolved_commit = "0123456789abcdef0123456789abcdef01234567"
 
 ## Security and Trust
 
-Plugins are a higher-risk dependency class than plain skills because they may bundle executable hooks, MCP servers, LSP servers, binaries, or OpenCode JS/TS modules.
+Plugins are a higher-risk dependency class than plain skills because they may bundle executable hooks, MCP servers, LSP servers, or binaries.
 
 dotagents should:
 
@@ -301,7 +297,7 @@ dotagents should:
 dotagents should not:
 
 1. Standardize a universal hook event model across all runtimes.
-2. Convert OpenCode JavaScript/TypeScript plugin code from declarative hook files.
+2. Generate or install OpenCode JavaScript/TypeScript plugins from dotagents plugin bundles.
 3. Convert Cursor rules into Claude, Codex, Grok, or OpenCode instructions by default.
 4. Install app integrations or perform OAuth/authentication for users.
 5. Bypass native marketplace review, policy, or trust prompts.

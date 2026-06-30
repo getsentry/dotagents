@@ -30,9 +30,9 @@ describe("writeAgentsGitignore", () => {
     await writeAgentsGitignore(agentsDir, ["pdf", "find-bugs", "code-review"]);
 
     const content = await readFile(join(agentsDir, ".gitignore"), "utf-8");
-    expect(content).toContain("/skills/code-review/");
-    expect(content).toContain("/skills/find-bugs/");
-    expect(content).toContain("/skills/pdf/");
+    expect(content).toContain("/skills/code-review");
+    expect(content).toContain("/skills/find-bugs");
+    expect(content).toContain("/skills/pdf");
   });
 
   it("lists managed subagent files", async () => {
@@ -60,9 +60,9 @@ describe("writeAgentsGitignore", () => {
     const content = await readFile(join(agentsDir, ".gitignore"), "utf-8");
     const lines = content.split("\n").filter((l) => l.startsWith("/skills/"));
     expect(lines).toEqual([
-      "/skills/alpha/",
-      "/skills/middle/",
-      "/skills/zebra/",
+      "/skills/alpha",
+      "/skills/middle",
+      "/skills/zebra",
     ]);
   });
 

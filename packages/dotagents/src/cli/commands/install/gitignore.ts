@@ -5,6 +5,7 @@ import type { ScopeRoot } from "../../../scope.js";
 import { checkRootGitignoreEntries, writeAgentsGitignore } from "../../../gitignore/writer.js";
 import { isInPlaceSkill } from "../../../utils/fs.js";
 import { isInPlacePluginSource, type PluginDeclaration } from "../../../plugins/store.js";
+import { projectedPiSkillNames } from "../../../plugins/runtime/writer.js";
 import type { SubagentDeclaration } from "../../../subagents/types.js";
 
 export interface InstallGitignoreArtifacts {
@@ -58,9 +59,14 @@ export async function writeInstallGitignore(
 ): Promise<void> {
   if (scope.scope !== "project") {return;}
 
+  const managedSkills = [
+    ...managedSkillNames(config, artifacts.installedSkillNames),
+    ...await projectedPiSkillNames(config.agents, artifacts.plugins),
+  ];
+
   await writeAgentsGitignore(
     scope.agentsDir,
-    managedSkillNames(config, artifacts.installedSkillNames),
+    managedSkills,
     managedSubagentNames(lockfile, artifacts.subagents, frozen),
     managedPluginNames(lockfile, artifacts.plugins, frozen),
   );

@@ -1,7 +1,7 @@
 # OpenCode QA
 
 Use this reference when changes affect OpenCode config generation,
-`opencode.json`, `.opencode/agents/*.md`, `.opencode/plugins/*.ts`, or
+`opencode.json`, `.opencode/agents/*.md`, `.opencode/skills/*`, or
 OpenCode user-scope paths.
 
 ## File-Level Checks
@@ -11,25 +11,26 @@ The core agentic QA asserts:
 - `opencode.json` exists for OpenCode MCP config
 - `.opencode/agents/code-reviewer.md` exists
 - generated Markdown contains the dotagents managed marker
+- plugin skills selected for OpenCode are symlinked into `.opencode/skills/`
+- plugin Markdown agents selected for OpenCode are symlinked into `.opencode/agents/`
 
 OpenCode does not support dotagents hooks in the current agent definition, so hook warnings for OpenCode are expected when the fixture includes hooks.
 
 For user scope, isolate `HOME` and `DOTAGENTS_HOME`, then assert generated OpenCode subagents under `$HOME/.config/opencode/agents/`.
 
-## Plugin Proof
+## Plugin Component Proof
 
-For generated plugin modules, the QA skill has a cheap Docker proof:
+For generated plugin component projections, the QA skill has a cheap Docker proof:
 
 ```bash
 node skills/dotagents-qa/scripts/qa-example.mjs plugin-opencode --keep
 ```
 
 This installs the checked-in example, asserts the generated
-`.opencode/plugins/qa-tools.ts` re-export, runs `opencode debug config`, and
-checks for the generated module path plus the fixture's
-`dotagents-plugin-proof` command. That proves OpenCode loaded and executed the
-generated plugin module's config hook. It does not prove model-backed
-invocation.
+`.opencode/skills/plugin-qa` and `.opencode/agents/plugin-reviewer.md`
+symlinks, runs `opencode debug skill`, and checks for the fixture skill
+sentinel. It also runs `opencode agent list` and checks for the projected
+plugin agent. It does not prove model-backed invocation.
 
 ## Runtime Proof
 
@@ -42,11 +43,9 @@ Manual Docker probes can prove more when the branch affects OpenCode output:
   `code-reviewer (subagent)`
 - `opencode debug agent code-reviewer` should resolve the generated prompt and
   `mode = "subagent"`
-- `opencode debug config` should include the generated
-  `.opencode/plugins/qa-tools.ts` plugin module and any observable fixture
-  config it injects
-- `opencode debug skill` may show `.agents/skills/*` discovery; verify from
-  raw output instead of assuming it is stable across OpenCode versions
+- `opencode debug skill` should include projected plugin skills under
+  `.opencode/skills/*`; verify from raw output instead of assuming it is
+  stable across OpenCode versions
 
 For authenticated or OpenRouter-backed runtime proof, read
 [runtime-auth.md](runtime-auth.md) first. Use a temp `opencode.json` provider

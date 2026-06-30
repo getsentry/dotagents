@@ -24,13 +24,6 @@ const pluginPathOrPathsSchema = z.union([
   z.array(pluginPathSchema),
 ]);
 
-const pluginModulePathSchema = pluginPathSchema.check(
-  z.refine(
-    (value) => value.endsWith(".js") || value.endsWith(".ts"),
-    "Plugin module paths must end with .js or .ts",
-  ),
-);
-
 export const pluginManifestSchema = z.object({
   name: z.string().optional(),
   version: z.string().optional(),
@@ -51,9 +44,6 @@ export const pluginManifestSchema = z.object({
   apps: pluginPathSchema.optional(),
   monitors: pluginPathSchema.optional(),
   bin: pluginPathOrPathsSchema.optional(),
-  opencode: z.object({
-    plugins: z.array(pluginModulePathSchema).max(1).optional(),
-  }).passthrough().optional(),
 }).passthrough();
 
 export type PluginManifest = z.infer<typeof pluginManifestSchema>;

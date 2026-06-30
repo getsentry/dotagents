@@ -14,8 +14,8 @@ describe("plugin manifest schema", () => {
         version: "1.2.3",
         skills: "./skills",
         commands: ["commands/review.md"],
-        opencode: {
-          plugins: ["opencode/plugin.ts"],
+        "x-runtime": {
+          plugins: ["runtime/plugin.ts"],
           runtime: "bun",
         },
         "x-dotagents": {
@@ -26,8 +26,10 @@ describe("plugin manifest schema", () => {
     );
 
     expect(manifest.name).toBe("review-tools");
-    expect(manifest.opencode?.plugins).toEqual(["opencode/plugin.ts"]);
-    expect(manifest.opencode?.["runtime"]).toBe("bun");
+    expect(manifest["x-runtime"]).toEqual({
+      plugins: ["runtime/plugin.ts"],
+      runtime: "bun",
+    });
     expect(manifest["x-dotagents"]).toEqual({ stable: true });
   });
 
@@ -35,23 +37,6 @@ describe("plugin manifest schema", () => {
     expect(pluginManifestSchema.safeParse({ skills: "/tmp/skills" }).success).toBe(false);
     expect(pluginManifestSchema.safeParse({ commands: ["../commands"] }).success).toBe(false);
     expect(pluginManifestSchema.safeParse({ skills: "https://example.com/skills" }).success).toBe(false);
-    expect(pluginManifestSchema.safeParse({ opencode: { plugins: ["opencode/../../plugin.ts"] } }).success).toBe(false);
-  });
-
-  it("rejects multiple OpenCode plugin modules", () => {
-    expect(pluginManifestSchema.safeParse({
-      opencode: {
-        plugins: ["opencode/first.ts", "opencode/second.ts"],
-      },
-    }).success).toBe(false);
-  });
-
-  it("rejects OpenCode plugin modules without a JavaScript or TypeScript extension", () => {
-    expect(pluginManifestSchema.safeParse({
-      opencode: {
-        plugins: ["opencode/plugin.md"],
-      },
-    }).success).toBe(false);
   });
 });
 

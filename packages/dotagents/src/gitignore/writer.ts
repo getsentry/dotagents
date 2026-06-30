@@ -17,7 +17,7 @@ export async function writeAgentsGitignore(
 ): Promise<void> {
   const lines = [HEADER];
   for (const name of managedSkillNames.toSorted()) {
-    lines.push(`/skills/${name}/`);
+    lines.push(`/skills/${name}`);
   }
   for (const name of managedSubagentNames.toSorted()) {
     lines.push(`/agents/${name}.md`);
