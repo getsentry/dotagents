@@ -12,8 +12,8 @@ import {
   userSubagentResolver,
   writeSubagentConfigs,
 } from "../../../subagents/writer.js";
-import { prunePluginOutputs, writePluginOutputs } from "../../../agents/plugin-writer.js";
-import type { PluginDeclaration } from "../../../agents/plugin-store.js";
+import { prunePluginOutputs, writePluginOutputs } from "../../../plugins/runtime/writer.js";
+import type { PluginDeclaration } from "../../../plugins/store.js";
 import type { SubagentDeclaration } from "../../../subagents/types.js";
 
 /** Writes agent skill symlinks after canonical install artifacts are ready. */

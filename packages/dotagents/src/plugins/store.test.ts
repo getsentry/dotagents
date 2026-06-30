@@ -2,7 +2,7 @@ import { mkdtemp, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { isSameProjectPluginConfig, lockEntryForPlugin, type ResolvedPlugin } from "./plugin-store.js";
+import { isSameProjectPluginConfig, lockEntryForPlugin, type ResolvedPlugin } from "./store.js";
 
 describe("plugin store", () => {
   it("preserves an empty resolved path for root git plugins", () => {

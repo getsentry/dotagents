@@ -11,7 +11,7 @@ import {
   type PluginDeclaration,
   pruneInstalledPlugins,
   resolvePlugin,
-} from "../../../agents/plugin-store.js";
+} from "../../../plugins/store.js";
 import { GitError, TrustError } from "@sentry/dotagents-lib";
 import { getCacheStateDir } from "../../cache.js";
 import { InstallError } from "./errors.js";

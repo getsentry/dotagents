@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
 import { agentsConfigSchema, isWildcardDep, type AgentsConfig } from "./schema.js";
-import { allAgentIds, allConfigAgentIds } from "../targets/registry.js";
+import { allAgentIds } from "../targets/registry.js";
+import { allPluginOnlyAgentIds } from "../plugins/targets.js";
 import { applyDefaultRepositorySource, parseSource } from "@sentry/dotagents-lib";
 
 export class ConfigError extends Error {
@@ -36,8 +37,8 @@ export async function loadConfig(filePath: string): Promise<AgentsConfig> {
   }
 
   // Post-parse validation: reject unknown agent IDs
-  const validIds = allConfigAgentIds();
   const registryAgentIds = allAgentIds();
+  const validIds = [...new Set([...registryAgentIds, ...allPluginOnlyAgentIds()])];
   const unknown = result.data.agents.filter((id) => !validIds.includes(id));
   if (unknown.length > 0) {
     throw new ConfigError(

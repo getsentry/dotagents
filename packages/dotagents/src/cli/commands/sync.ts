@@ -15,8 +15,8 @@ import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolve
 import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../targets/hook-writer.js";
 import { pruneSubagentConfigs, verifySubagentConfigs, writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../subagents/writer.js";
 import { loadInstalledSubagents, pruneInstalledSubagents } from "../../subagents/store.js";
-import { isInPlacePluginSource, isSameProjectPluginConfig, loadInstalledPlugins, pruneInstalledPlugins } from "../../agents/plugin-store.js";
-import { prunePluginOutputs, verifyPluginOutputs, writePluginOutputs } from "../../agents/plugin-writer.js";
+import { isInPlacePluginSource, isSameProjectPluginConfig, loadInstalledPlugins, pruneInstalledPlugins } from "../../plugins/store.js";
+import { prunePluginOutputs, verifyPluginOutputs, writePluginOutputs } from "../../plugins/runtime/writer.js";
 import { userMcpResolver } from "../../targets/paths.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";

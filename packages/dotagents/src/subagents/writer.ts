@@ -6,6 +6,8 @@ import { hasDotagentsMarkdownSubagentMarker, hasDotagentsTomlSubagentMarker } fr
 import { generatedSubagentIdentity, readSubagentFileIdentity } from "./identity.js";
 import type { SubagentConfigSpec, SubagentDeclaration } from "./types.js";
 
+// Owns runtime-specific subagent projection. Managed markers protect generated
+// files, while identity checks prevent overwriting user-authored subagents.
 export interface SubagentResolvedTarget {
   dirPath: string;
 }
@@ -38,18 +40,21 @@ interface DesiredDir {
   files: Set<string>;
 }
 
+/** Resolves project-scope runtime subagent directories relative to a project root. */
 export function projectSubagentResolver(projectRoot: string): SubagentTargetResolver {
   return (_id: string, spec: SubagentConfigSpec) => ({
     dirPath: join(projectRoot, spec.projectDir),
   });
 }
 
+/** Resolves user-scope runtime subagent directories from each target definition. */
 export function userSubagentResolver(): SubagentTargetResolver {
   return (_id: string, spec: SubagentConfigSpec) => ({
     dirPath: spec.userDir,
   });
 }
 
+/** Writes managed runtime subagent configs for all configured target agents. */
 export async function writeSubagentConfigs(
   agentIds: string[],
   subagents: SubagentDeclaration[],
@@ -122,6 +127,7 @@ export async function writeSubagentConfigs(
   return { warnings, written };
 }
 
+/** Prunes managed runtime subagent files that are no longer desired. */
 export async function pruneSubagentConfigs(
   agentIds: string[],
   desiredSubagents: Pick<SubagentDeclaration, "name" | "targets">[],
@@ -130,6 +136,7 @@ export async function pruneSubagentConfigs(
   return pruneManagedFiles(initDesiredDirs(agentIds, desiredSubagents, resolveTarget));
 }
 
+/** Verifies that managed runtime subagent files exist and still match desired output. */
 export async function verifySubagentConfigs(
   agentIds: string[],
   subagents: SubagentDeclaration[],

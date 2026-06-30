@@ -4,7 +4,7 @@ import {
   parsePluginMarketplace,
   pluginManifestSchema,
   pluginMarketplaceSchema,
-} from "./plugin-schema.js";
+} from "./schema.js";
 
 describe("plugin manifest schema", () => {
   it("accepts known fields and preserves extension fields", () => {

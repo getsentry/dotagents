@@ -3,12 +3,12 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { PluginDeclaration } from "./plugin-store.js";
+import type { PluginDeclaration } from "../store.js";
 import {
   prunePluginOutputs,
   verifyPluginOutputs,
   writePluginOutputs,
-} from "./plugin-writer.js";
+} from "./writer.js";
 
 describe("plugin writer", () => {
   let root: string;

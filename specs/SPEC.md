@@ -854,6 +854,11 @@ dotagents/
           store.ts           # Canonical installed subagent loading/writing
           writer.ts          # Runtime subagent config generation
           format.ts          # Subagent serialization and managed markers
+        plugins/
+          schema.ts          # Plugin manifest schema
+          store.ts           # Canonical installed plugin loading/writing
+          targets.ts         # Plugin target selection and validation
+          runtime/           # Target-specific plugin runtime projection
         agents/
           index.ts           # Compatibility re-export barrel
         config/              # agents.toml schema, loader, writer

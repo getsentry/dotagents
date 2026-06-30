@@ -13,7 +13,7 @@ import { sourcesMatch, parseOwnerRepoShorthand, isExplicitSourceSpecifier } from
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 import { isInPlaceSkill } from "../../utils/fs.js";
-import { isInPlacePluginSource } from "../../agents/plugin-store.js";
+import { isInPlacePluginSource } from "../../plugins/store.js";
 
 export class RemoveError extends Error {
   constructor(message: string) {

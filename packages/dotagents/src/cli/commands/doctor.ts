@@ -14,7 +14,7 @@ import { getAgent } from "../../targets/registry.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { exec } from "@sentry/dotagents-lib";
 import { isInPlaceSkill } from "../../utils/fs.js";
-import { isInPlacePluginSource, isSameProjectPluginConfig } from "../../agents/plugin-store.js";
+import { isInPlacePluginSource, isSameProjectPluginConfig } from "../../plugins/store.js";
 
 export interface DoctorCheck {
   name: string;

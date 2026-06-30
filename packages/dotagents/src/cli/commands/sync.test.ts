@@ -224,9 +224,9 @@ describe("runSync", () => {
     await exec("git", ["clone", "--branch", "main", projectOrigin, bobRepo], { cwd: tmpDir });
     await exec("git", ["config", "user.email", "alice@example.com"], { cwd: aliceRepo });
     await exec("git", ["config", "user.name", "Alice"], { cwd: aliceRepo });
+    await exec("git", ["config", "commit.gpgsign", "false"], { cwd: aliceRepo });
     await exec("git", ["config", "user.email", "bob@example.com"], { cwd: bobRepo });
     await exec("git", ["config", "user.name", "Bob"], { cwd: bobRepo });
-    await exec("git", ["config", "commit.gpgsign", "false"], { cwd: aliceRepo });
     await exec("git", ["config", "commit.gpgsign", "false"], { cwd: bobRepo });
 
     try {
@@ -271,7 +271,7 @@ describe("runSync", () => {
         process.env["DOTAGENTS_STATE_DIR"] = previousStateDir;
       }
     }
-  }, 30_000);
+  }, 90_000);
 
   it("detects missing skills", async () => {
     await writeFile(

@@ -20,7 +20,7 @@ import {
   parsePluginMarketplace,
   type MarketplacePluginEntry,
   type PluginManifest,
-} from "./plugin-schema.js";
+} from "./schema.js";
 
 // Owns plugin source discovery and installation into the project cache.
 // Resolved sources are never allowed to live inside the same project's
