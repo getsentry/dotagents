@@ -28,6 +28,7 @@ describe("plugin writer", () => {
     const pluginDir = join(root, ".agents", "plugins", name);
     await mkdir(join(pluginDir, "skills"), { recursive: true });
     await mkdir(join(pluginDir, "commands"), { recursive: true });
+    await mkdir(join(pluginDir, "agents"), { recursive: true });
     return {
       name,
       source: `path:.agents/plugins/${name}`,
@@ -127,11 +128,13 @@ describe("plugin writer", () => {
     const cursorManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".cursor-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
     expect(cursorManifest["skills"]).toBe("./skills");
     expect(cursorManifest["commands"]).toBe("./commands");
+    expect(cursorManifest["agents"]).toBe("./agents");
     expect(cursorManifest["metadata"]).toEqual({ managedBy: "dotagents" });
 
     const codexManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
     expect(codexManifest["skills"]).toBe("./skills");
     expect(codexManifest["commands"]).toBe("./commands");
+    expect(codexManifest["agents"]).toBe("./agents");
     expect(codexManifest["interface"]).toEqual({
       capabilities: ["Interactive", "Write"],
       category: "Coding",
@@ -143,7 +146,7 @@ describe("plugin writer", () => {
     expect(await verifyPluginOutputs(["cursor", "codex", "claude"], [beta, alpha], root)).toEqual([]);
   });
 
-  it("projects explicit Claude and Cursor component paths before conventional discovery", async () => {
+  it("projects explicit runtime component paths before conventional discovery", async () => {
     const alpha = await plugin("alpha-tools", {
       manifest: {
         agents: "custom-agents",
@@ -160,7 +163,7 @@ describe("plugin writer", () => {
     expect(result.warnings).toEqual([]);
     expect(result.written).toBe(4);
     const claudeManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
-    expect(claudeManifest["agents"]).toBe("./custom-agents");
+    expect(claudeManifest["agents"]).toBeUndefined();
     expect(claudeManifest["commands"]).toEqual(["./cmds/review.md"]);
     expect(claudeManifest["hooks"]).toBe("./config/hooks.json");
     expect(claudeManifest["mcpServers"]).toBe("./config/mcp.json");

@@ -48,7 +48,9 @@ Expected evidence:
 - `plugin install` succeeds at local scope
 - `plugin list --json` shows `enabled: true`
 - `plugin details qa-tools` lists the generated bundle's available components,
-  such as plugin skills, commands, and agents in the checked-in fixture
+  such as plugin skills and commands in the checked-in fixture. Claude Code
+  2.1.x rejects `agents` in plugin manifests, so dotagents does not project
+  plugin agents into the Claude native manifest.
 
 Manual final check when authenticated:
 
@@ -56,7 +58,6 @@ Manual final check when authenticated:
 - Run `/reload-plugins`
 - Check `/help` or plugin UI for `/qa-tools:plugin-qa`
 - Invoke the plugin skill and confirm it returns `DOTAGENTS_PLUGIN_QA_FIXTURE`
-- Check `/agents` for `plugin-reviewer` when plugin agents are present
 
 ## Codex
 

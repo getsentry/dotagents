@@ -80,9 +80,6 @@ function claudeRuntimeManifest(plugin: PluginDeclaration): Record<string, unknow
   if (!copyRuntimeComponentField(plugin.manifest, manifest, "skills") && existsSync(join(plugin.pluginDir, "skills"))) {
     manifest["skills"] = "./skills";
   }
-  if (!copyRuntimeComponentField(plugin.manifest, manifest, "agents") && existsSync(join(plugin.pluginDir, "agents"))) {
-    manifest["agents"] = "./agents";
-  }
   if (!copyRuntimeComponentField(plugin.manifest, manifest, "commands") && existsSync(join(plugin.pluginDir, "commands"))) {
     manifest["commands"] = "./commands";
   }
