@@ -14,6 +14,8 @@ In scope:
 - optionally checking agent CLI registration when discovery paths changed
 - optionally using `getsentry/skills` for remote source behavior
 - isolating home and cache state from the host
+- optionally forwarding specific runtime API keys into Docker for model-backed
+  proof, with secrets kept out of fixtures and retained artifacts
 
 Out of scope:
 - release publishing
@@ -31,6 +33,8 @@ Out of scope:
 - Run the built CLI from inside the container fixture project so project scope resolves correctly.
 - Inspect generated files and command output that demonstrate the changed behavior, not just exit codes.
 - Keep `HOME`, `DOTAGENTS_STATE_DIR`, and `DOTAGENTS_HOME` inside Docker for user-scope checks.
+- Keep runtime credentials in host `.env.qa.local`, pass only explicit variables
+  into Docker, and isolate runtime config such as `CODEX_HOME`.
 - Report fixture shape, commands, assertions, skipped checks, and residual risk.
 
 ## Maintenance

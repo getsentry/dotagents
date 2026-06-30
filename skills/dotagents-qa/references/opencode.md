@@ -18,6 +18,12 @@ For user scope, isolate `HOME` and `DOTAGENTS_HOME`, then assert generated OpenC
 
 This QA skill does not currently include an automated OpenCode runtime proof. Do not claim OpenCode runtime discovery from file-level checks alone.
 
+For authenticated or OpenRouter-backed runtime proof, read
+[runtime-auth.md](runtime-auth.md) first. Use a temp `opencode.json` provider
+configuration with `@ai-sdk/openai-compatible`, `options.baseURL`, and
+`options.apiKey` referencing `{env:OPENROUTER_API_KEY}`. Keep credentials in
+the environment, not in retained fixture files.
+
 If a branch specifically requires OpenCode runtime proof, use the installed OpenCode CLI/app and report:
 
 - exact command or interaction

@@ -17,6 +17,12 @@
 | `skills/dotagents/SKILL.md` | sibling skill layout |
 | `/Users/dcramer/src/sentry-mcp/.agents/skills/mcp-qa/SKILL.md` | Numbered QA flow, primary path guidance, optional client checks, and pass criteria structure |
 | local `codex debug prompt-input` probe | verifies Codex can expose `.agents/skills` metadata without a model call |
+| Claude Code LLM gateway docs | Anthropic-compatible gateway env vars for authenticated runtime QA |
+| Codex manual | Custom model provider and `CODEX_HOME` auth/config isolation |
+| Cursor CLI auth and BYOK docs | Cursor-specific auth limits and OpenRouter caveat |
+| Grok Build docs | Custom model provider config shape |
+| OpenCode provider docs | OpenAI-compatible provider config shape |
+| OpenRouter API docs | OpenAI-compatible and Anthropic Messages endpoint shapes |
 
 ## Decisions
 
@@ -31,6 +37,9 @@
 - Require inspection of generated files and command output that demonstrate the changed behavior, not only exit codes.
 - Expose the skill through `.agents/skills/dotagents-qa` so existing Claude/Cursor symlinks discover it.
 - Keep agent CLI registration and remote-source checks optional because they add auth, network, or tool-version variance.
+- Keep authenticated runtime QA opt-in, pass only explicit env vars into Docker,
+  and document runtime-specific gateway support instead of assuming one API key
+  works across every client.
 
 ## Trigger Notes
 

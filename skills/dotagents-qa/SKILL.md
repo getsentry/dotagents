@@ -35,9 +35,11 @@ Write down the QA target before running commands:
 
 Read the targeted reference before running runtime-specific QA:
 - Core install/sync example: [references/core-agentic-qa.md](references/core-agentic-qa.md)
-- Codex custom agents and runtime caveats: [references/codex.md](references/codex.md)
-- Claude Code files and runtime caveats: [references/claude.md](references/claude.md)
+- Runtime auth, gateway, and `.env.qa.local` handling: [references/runtime-auth.md](references/runtime-auth.md)
+- Codex custom agents and plugin marketplace/install proof: [references/codex.md](references/codex.md)
+- Claude Code files, plugin validation, and runtime caveats: [references/claude.md](references/claude.md)
 - Cursor files/runtime caveats: [references/cursor.md](references/cursor.md)
+- Grok Build files/runtime caveats: [references/grok.md](references/grok.md)
 - OpenCode files/runtime caveats: [references/opencode.md](references/opencode.md)
 
 Run focused Vitest coverage for logic bugs. Use this skill for end-to-end QA
@@ -58,8 +60,15 @@ docker build \
 The image installs the latest npm-published Codex, Claude Code, and OpenCode
 CLIs (`codex`, `claude`, `opencode`). Use them for version checks, help-output
 checks, and optional isolated runtime probes. Their presence does not prove
-runtime discovery by itself; authenticated model-backed checks are still
-explicit opt-ins.
+runtime discovery by itself; for plugins, prefer native dry-run/management
+commands where available: `claude plugin validate` for Claude plugin and
+marketplace shape, and `codex plugin marketplace add/list` plus
+`codex plugin add/list` for Codex marketplace installation. Authenticated
+model-backed checks are still explicit opt-ins. When a model-backed check needs
+secrets, put them in host `.env.qa.local`, keep that file out of git, and pass
+only the specific variables required for the check into Docker; do not copy the
+env file into the fixture or retained `/qa-out` artifacts. See
+[references/runtime-auth.md](references/runtime-auth.md).
 
 Use an interactive container so the QA steps stay change-specific:
 
@@ -353,6 +362,13 @@ when Codex trusts the project. See [references/codex.md](references/codex.md).
 Claude has no cheap dry-run skill list. If auth/network/model cost is
 acceptable, run a minimal non-interactive prompt from the temp project;
 otherwise report it as skipped.
+
+Provider and gateway checks are runtime-specific. OpenRouter can be used where
+the runtime supports an Anthropic-compatible or OpenAI-compatible custom
+provider, but Cursor's documented runtime auth is Cursor login/API-key based.
+Before claiming runtime proof through a gateway, read
+[references/runtime-auth.md](references/runtime-auth.md), run the check inside
+Docker, and report the exact provider config used with secret values redacted.
 
 ## 7. Report Evidence
 

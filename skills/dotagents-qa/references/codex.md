@@ -40,6 +40,12 @@ With `--keep`, inspect:
 - `codex-runtime.jsonl` for `spawn_agent`, `wait`, and child-agent response events
 - `project/.codex/agents/code-reviewer.toml` for the generated file Codex loaded
 
+For OpenRouter or other gateway-backed Codex proof, read
+[runtime-auth.md](runtime-auth.md) first. Put provider config in the isolated
+`CODEX_HOME/config.toml`; Codex ignores provider redirects in project
+`.codex/config.toml`. Pass `OPENROUTER_API_KEY` into Docker only for the
+runtime invocation.
+
 ## Important Caveats
 
 Project-scoped `.codex/` layers load only when Codex trusts the project. A one-off `-c projects."<path>".trust_level="trusted"` override did not prove sufficient in local testing; the reliable path is a temp `CODEX_HOME/config.toml` with the canonical real project path marked trusted.
