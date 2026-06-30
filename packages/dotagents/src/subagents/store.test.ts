@@ -9,8 +9,8 @@ import {
   pruneInstalledSubagents,
   resolveSubagent,
   writeInstalledSubagents,
-} from "./subagent-store.js";
-import { DOTAGENTS_SUBAGENT_MARKER, markManagedMarkdownSubagent } from "./definitions/helpers.js";
+} from "./store.js";
+import { DOTAGENTS_SUBAGENT_MARKER, markManagedMarkdownSubagent } from "./format.js";
 import type { SubagentConfig } from "../config/schema.js";
 
 const SUBAGENT_MD = (name: string) => `---

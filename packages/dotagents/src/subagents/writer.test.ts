@@ -9,8 +9,8 @@ import {
   pruneSubagentConfigs,
   verifySubagentConfigs,
   writeSubagentConfigs,
-} from "./subagent-writer.js";
-import { DOTAGENTS_SUBAGENT_MARKER } from "./definitions/helpers.js";
+} from "./writer.js";
+import { DOTAGENTS_SUBAGENT_MARKER } from "./format.js";
 import type { SubagentDeclaration } from "./types.js";
 
 const SUBAGENT: SubagentDeclaration = {

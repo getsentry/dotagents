@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import chalk from "chalk";
 import { generateDefaultConfig } from "../config/writer.js";
-import { allAgentIds } from "../agents/registry.js";
+import { allAgentIds } from "../targets/registry.js";
 import type { ScopeRoot } from "../scope.js";
 
 /**

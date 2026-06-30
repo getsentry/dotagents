@@ -1,18 +1,18 @@
 import { join } from "node:path";
 import type { AgentsConfig } from "../../../config/schema.js";
 import type { ScopeRoot } from "../../../scope.js";
-import { getAgent } from "../../../agents/registry.js";
+import { getAgent } from "../../../targets/registry.js";
 import { ensureSkillsSymlink } from "../../../symlinks/manager.js";
-import { projectMcpResolver, toMcpDeclarations, writeMcpConfigs } from "../../../agents/mcp-writer.js";
-import { projectHookResolver, toHookDeclarations, writeHookConfigs } from "../../../agents/hook-writer.js";
-import { userMcpResolver } from "../../../agents/paths.js";
+import { projectMcpResolver, toMcpDeclarations, writeMcpConfigs } from "../../../targets/mcp-writer.js";
+import { projectHookResolver, toHookDeclarations, writeHookConfigs } from "../../../targets/hook-writer.js";
+import { userMcpResolver } from "../../../targets/paths.js";
 import {
   pruneSubagentConfigs,
   projectSubagentResolver,
   userSubagentResolver,
   writeSubagentConfigs,
-} from "../../../agents/subagent-writer.js";
-import type { SubagentDeclaration } from "../../../agents/types.js";
+} from "../../../subagents/writer.js";
+import type { SubagentDeclaration } from "../../../subagents/types.js";
 
 /** Writes agent skill symlinks after canonical install artifacts are ready. */
 export async function writeSkillSymlinks(

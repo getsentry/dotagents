@@ -3,7 +3,8 @@ import { homedir } from "node:os";
 import type { AgentDefinition } from "../types.js";
 import { UnsupportedFeature } from "../errors.js";
 import claude from "./claude.js";
-import { envRecord, extractCodexHeaders, markManagedTomlSubagent, serializeCodexSubagent } from "./helpers.js";
+import { envRecord, extractCodexHeaders } from "./helpers.js";
+import { markManagedTomlSubagent, serializeCodexSubagent } from "../../subagents/format.js";
 
 const codex: AgentDefinition = {
   ...claude,

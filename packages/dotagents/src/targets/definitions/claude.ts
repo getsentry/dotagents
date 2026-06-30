@@ -1,7 +1,8 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { AgentDefinition } from "../types.js";
-import { envRecord, httpServer, markManagedMarkdownSubagent, serializeClaudeHooks, serializeMarkdownSubagent } from "./helpers.js";
+import { envRecord, httpServer, serializeClaudeHooks } from "./helpers.js";
+import { markManagedMarkdownSubagent, serializeMarkdownSubagent } from "../../subagents/format.js";
 
 const claude: AgentDefinition = {
   id: "claude",

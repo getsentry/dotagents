@@ -7,11 +7,11 @@
 | `AGENTS.md` | pnpm and validation conventions |
 | `package.json` | `pnpm build` and `pnpm check` scripts |
 | `specs/SPEC.md` | canonical `.agents/skills/`, agent symlink, MCP, hook, install, sync, list, and doctor behavior |
-| `packages/dotagents/src/agents/definitions/claude.ts` | Claude project skills and generated config paths |
-| `packages/dotagents/src/agents/definitions/cursor.ts` | Cursor shares `.claude/skills` and writes Cursor-specific MCP/hook config |
-| `packages/dotagents/src/agents/definitions/vscode.ts` | VS Code reads `.agents/skills` natively and writes `.vscode/mcp.json` plus shared Claude-style hooks |
-| `packages/dotagents/src/agents/definitions/codex.ts` | Codex reads `.agents/skills` natively and writes `.codex/config.toml` |
-| `packages/dotagents/src/agents/definitions/opencode.ts` | OpenCode reads `.agents/skills` natively and writes `opencode.json` |
+| `packages/dotagents/src/targets/definitions/claude.ts` | Claude project skills and generated config paths |
+| `packages/dotagents/src/targets/definitions/cursor.ts` | Cursor shares `.claude/skills` and writes Cursor-specific MCP/hook config |
+| `packages/dotagents/src/targets/definitions/vscode.ts` | VS Code reads `.agents/skills` natively and writes `.vscode/mcp.json` plus shared Claude-style hooks |
+| `packages/dotagents/src/targets/definitions/codex.ts` | Codex reads `.agents/skills` natively and writes `.codex/config.toml` |
+| `packages/dotagents/src/targets/definitions/opencode.ts` | OpenCode reads `.agents/skills` natively and writes `opencode.json` |
 | `packages/dotagents/src/cli/cache.ts` | `DOTAGENTS_STATE_DIR` cache isolation |
 | `packages/dotagents/src/cli/update-notifier.ts` | `HOME` isolation for update-check cache |
 | `skills/dotagents/SKILL.md` | sibling skill layout |

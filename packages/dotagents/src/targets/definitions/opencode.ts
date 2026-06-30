@@ -2,7 +2,8 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import type { AgentDefinition } from "../types.js";
 import { UnsupportedFeature } from "../errors.js";
-import { envRecord, httpServer, markManagedMarkdownSubagent, serializeMarkdownSubagent } from "./helpers.js";
+import { envRecord, httpServer } from "./helpers.js";
+import { markManagedMarkdownSubagent, serializeMarkdownSubagent } from "../../subagents/format.js";
 
 const opencode: AgentDefinition = {
   id: "opencode",

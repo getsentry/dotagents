@@ -4,7 +4,7 @@ import { readFile, rm, mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ensureUserScopeBootstrapped } from "./ensure-user-scope.js";
-import { allAgentIds } from "../agents/registry.js";
+import { allAgentIds } from "../targets/registry.js";
 import type { ScopeRoot } from "../scope.js";
 
 describe("ensureUserScopeBootstrapped", () => {

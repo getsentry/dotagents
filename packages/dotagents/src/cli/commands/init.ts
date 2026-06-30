@@ -6,7 +6,7 @@ import { generateDefaultConfig } from "../../config/writer.js";
 import { writeAgentsGitignore, ensureRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { loadConfig } from "../../config/loader.js";
-import { getAgent, allAgentIds, allAgents } from "../../agents/registry.js";
+import { getAgent, allAgentIds, allAgents } from "../../targets/registry.js";
 import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
 import { resolveScope, isInsideGitRepo, findGitDir, type ScopeRoot } from "../../scope.js";
