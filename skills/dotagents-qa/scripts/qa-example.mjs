@@ -355,16 +355,20 @@ function assertPluginOutputs() {
   assertFile(".agents/plugins/qa-tools/commands/plugin-qa.md");
   assertFile(".agents/plugins/qa-tools/agents/plugin-reviewer.md");
   assertFile(".agents/plugins/qa-tools/opencode/plugin.ts");
+  assertFile(".agents/plugins/qa-tools/.claude-plugin/plugin.json");
   assertFileIncludes("agents.lock", "qa-tools");
   assertFileDoesNotExist(".agents/plugins/marketplace.json");
 
   assertFile(".claude-plugin/marketplace.json");
   assertFileIncludes(".claude-plugin/marketplace.json", '"managedBy": "dotagents"');
   assertFileIncludes(".claude-plugin/marketplace.json", '"name": "qa-tools"');
-  assertFileIncludes(".claude-plugin/marketplace.json", '"source": ".agents/plugins/qa-tools"');
+  assertFileIncludes(".claude-plugin/marketplace.json", '"source": "./.agents/plugins/qa-tools"');
   assertFile(".cursor-plugin/marketplace.json");
   assertSameFile(".cursor-plugin/marketplace.json", ".claude-plugin/marketplace.json");
 
+  assertFileIncludes(".agents/plugins/qa-tools/.claude-plugin/plugin.json", '"managedBy": "dotagents"');
+  assertFileIncludes(".agents/plugins/qa-tools/.claude-plugin/plugin.json", '"skills": "./skills"');
+  assertFileIncludes(".agents/plugins/qa-tools/.claude-plugin/plugin.json", '"commands": "./commands"');
   assertFile(".agents/plugins/qa-tools/.codex-plugin/plugin.json");
   assertFileIncludes(".agents/plugins/qa-tools/.codex-plugin/plugin.json", '"managedBy": "dotagents"');
   assertFileIncludes(".agents/plugins/qa-tools/.codex-plugin/plugin.json", '"skills": "./skills"');

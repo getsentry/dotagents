@@ -55,7 +55,7 @@ describe("plugin writer", () => {
     );
 
     expect(result.warnings).toEqual([]);
-    expect(result.written).toBe(4);
+    expect(result.written).toBe(6);
     expect(existsSync(join(root, ".agents", "plugins", "marketplace.json"))).toBe(false);
     expect(await readFile(join(root, ".claude-plugin", "marketplace.json"), "utf-8")).toBe(`{
   "metadata": {
@@ -69,19 +69,26 @@ describe("plugin writer", () => {
     {
       "description": "Tools for alpha-tools",
       "name": "alpha-tools",
-      "source": ".agents/plugins/alpha-tools",
+      "source": "./.agents/plugins/alpha-tools",
       "version": "1.0.0"
     },
     {
       "description": "Tools for beta-tools",
       "name": "beta-tools",
-      "source": ".agents/plugins/beta-tools",
+      "source": "./.agents/plugins/beta-tools",
       "version": "1.0.0"
     }
   ]
 }
 `);
     expect(await readFile(join(root, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(await readFile(join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
+
+    const claudeManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(claudeManifest["skills"]).toBe("./skills");
+    expect(claudeManifest["commands"]).toBe("./commands");
+    expect(claudeManifest["agents"]).toBeUndefined();
+    expect(claudeManifest["category"]).toBeUndefined();
+    expect(claudeManifest["metadata"]).toEqual({ managedBy: "dotagents" });
 
     const codexManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
     expect(codexManifest["skills"]).toBe("./skills");
@@ -104,7 +111,7 @@ describe("plugin writer", () => {
 
     const result = await writePluginOutputs(["claude"], [alpha], root);
 
-    expect(result.written).toBe(0);
+    expect(result.written).toBe(1);
     expect(result.warnings).toEqual([
       {
         agent: "claude",
@@ -113,6 +120,7 @@ describe("plugin writer", () => {
       },
     ]);
     expect(await readFile(join(root, ".claude-plugin", "marketplace.json"), "utf-8")).toBe("{ \"name\": \"mine\" }\n");
+    expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json"))).toBe(true);
   });
 
   it("does not overwrite unmanaged Codex plugin manifests", async () => {
@@ -130,6 +138,23 @@ describe("plugin writer", () => {
       },
     ]);
     expect(await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8")).toBe("{ \"name\": \"mine\" }\n");
+  });
+
+  it("does not overwrite unmanaged Claude plugin manifests", async () => {
+    const alpha = await plugin("alpha-tools");
+    await mkdir(join(alpha.pluginDir, ".claude-plugin"), { recursive: true });
+    await writeFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "{ \"name\": \"mine\" }\n", "utf-8");
+
+    const result = await writePluginOutputs(["claude"], [alpha], root);
+
+    expect(result.warnings).toEqual([
+      {
+        agent: "claude",
+        name: "alpha-tools",
+        message: `Claude plugin manifest exists and is not managed by dotagents: ${join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json")}`,
+      },
+    ]);
+    expect(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8")).toBe("{ \"name\": \"mine\" }\n");
   });
 
   it("does not generate runtime outputs when no agent targets are selected", async () => {
@@ -218,17 +243,21 @@ describe("plugin writer", () => {
     });
     await mkdir(join(alpha.pluginDir, "opencode"), { recursive: true });
     await writeFile(join(alpha.pluginDir, "opencode", "plugin.ts"), "export default {}\n", "utf-8");
-    await writePluginOutputs(["codex", "grok", "opencode"], [alpha], root);
+    await writePluginOutputs(["claude", "codex", "grok", "opencode"], [alpha], root);
 
     const pruned = await prunePluginOutputs([], [alpha], root);
 
     expect(pruned).toEqual([
+      join(root, ".claude-plugin", "marketplace.json"),
       join(root, ".grok", "plugins", "alpha-tools"),
       join(root, ".opencode", "plugins", "alpha-tools.ts"),
+      join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json"),
       join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"),
     ]);
+    expect(existsSync(join(root, ".claude-plugin", "marketplace.json"))).toBe(false);
     expect(existsSync(join(root, ".grok", "plugins", "alpha-tools"))).toBe(false);
     expect(existsSync(join(root, ".opencode", "plugins", "alpha-tools.ts"))).toBe(false);
+    expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json"))).toBe(false);
     expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"))).toBe(false);
   });
 

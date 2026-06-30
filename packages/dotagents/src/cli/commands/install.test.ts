@@ -172,13 +172,21 @@ source = "path:plugin-source/review-tools"
     {
       "description": "Review workflow helpers",
       "name": "review-tools",
-      "source": ".agents/plugins/review-tools",
+      "source": "./.agents/plugins/review-tools",
       "version": "1.0.0"
     }
   ]
 }
 `);
     expect(await readFile(join(projectRoot, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(await readFile(join(projectRoot, ".claude-plugin", "marketplace.json"), "utf-8"));
+
+    const claudeManifest = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".claude-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(claudeManifest["name"]).toBe("review-tools");
+    expect(claudeManifest["skills"]).toBe("./skills");
+    expect(claudeManifest["commands"]).toBe("./commands");
+    expect(claudeManifest["agents"]).toBeUndefined();
+    expect(claudeManifest["category"]).toBeUndefined();
+    expect(claudeManifest["metadata"]).toEqual({ managedBy: "dotagents" });
 
     const codexManifest = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
     expect(codexManifest["name"]).toBe("review-tools");

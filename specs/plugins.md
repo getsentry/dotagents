@@ -254,13 +254,13 @@ Generated project-scope outputs should be:
 
 | Agent | Project Scope Output | User Scope Output | Notes |
 |-------|----------------------|-------------------|-------|
-| Claude Code | `.claude-plugin/marketplace.json` | Not generated yet | Generated marketplace uses deterministic relative string sources into `.agents/plugins/<name>/`. |
-| Cursor | `.cursor-plugin/marketplace.json` | Not generated yet | Generated marketplace uses deterministic relative string sources into `.agents/plugins/<name>/`. |
+| Claude Code | `.claude-plugin/marketplace.json` and `.agents/plugins/<name>/.claude-plugin/plugin.json` | Not generated yet | Generated marketplace uses deterministic `./.agents/plugins/<name>` sources and each targeted plugin gets a Claude-native manifest. |
+| Cursor | `.cursor-plugin/marketplace.json` | Not generated yet | Generated marketplace uses deterministic `./.agents/plugins/<name>` sources. |
 | Codex | Generated `.codex-plugin/plugin.json` in installed bundle | Not generated yet | `.agents/plugins/marketplace.json` is canonical input/discovery metadata, not a generated output. |
 | Grok Build | `.grok/plugins/<name>` for targeted plugins | Not generated yet | The projection is a managed copy of the canonical plugin bundle with a `.dotagents-managed` marker. |
 | OpenCode | `.opencode/plugins/<name>.js|ts` re-export module for an explicit OpenCode module | Not generated yet | dotagents only exposes the module declared in `manifest.opencode.plugins` or discovered at `opencode/plugin.ts|js`; it does not synthesize OpenCode JS/TS code from other runtime hooks. |
 
-Installed and generated files are dotagents-managed. `install` and `sync` may overwrite stale managed files and prune removed managed files, but they must not overwrite hand-written plugin files without a generated marker or a canonical installed bundle path owned by dotagents. Generated Codex manifests carry `metadata.managedBy = "dotagents"` so target removal can prune them without deleting user-authored native Codex plugin manifests.
+Installed and generated files are dotagents-managed. `install` and `sync` may overwrite stale managed files and prune removed managed files, but they must not overwrite hand-written plugin files without a generated marker or a canonical installed bundle path owned by dotagents. Generated Claude and Codex manifests carry `metadata.managedBy = "dotagents"` so target removal can prune them without deleting user-authored native plugin manifests.
 
 User-scope plugin declarations are not supported yet. `install --user` rejects `[[plugins]]` entries, and `sync --user` reports them as unsupported, because the current runtime projections are defined only for project scope.
 

@@ -276,6 +276,7 @@ test -f .opencode/agents/code-reviewer.md
 test -f .agents/plugins/qa-tools/plugin.json
 test -f .claude-plugin/marketplace.json
 test -f .cursor-plugin/marketplace.json
+test -f .agents/plugins/qa-tools/.claude-plugin/plugin.json
 test -f .agents/plugins/qa-tools/.codex-plugin/plugin.json
 test -f .grok/plugins/qa-tools/.dotagents-managed
 test -f .opencode/plugins/qa-tools.ts
@@ -290,7 +291,8 @@ diff claims to repair, then verify the repair:
 
 ```bash
 rm .mcp.json .claude/skills .claude/agents/code-reviewer.md .codex/agents/code-reviewer.toml
-rm .claude-plugin/marketplace.json .agents/plugins/qa-tools/.codex-plugin/plugin.json
+rm .claude-plugin/marketplace.json .agents/plugins/qa-tools/.claude-plugin/plugin.json
+rm .agents/plugins/qa-tools/.codex-plugin/plugin.json
 rm -rf .grok/plugins/qa-tools
 rm .opencode/plugins/qa-tools.ts
 "${cli[@]}" sync | tee /qa-out/sync.out
@@ -299,6 +301,7 @@ test -L .claude/skills
 test -f .claude/agents/code-reviewer.md
 test -f .codex/agents/code-reviewer.toml
 test -f .claude-plugin/marketplace.json
+test -f .agents/plugins/qa-tools/.claude-plugin/plugin.json
 test -f .agents/plugins/qa-tools/.codex-plugin/plugin.json
 test -f .grok/plugins/qa-tools/.dotagents-managed
 test -f .opencode/plugins/qa-tools.ts

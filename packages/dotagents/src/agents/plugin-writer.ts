@@ -53,6 +53,9 @@ export async function writePluginOutputs(
 
   for (const plugin of selected) {
     const agents = selectedAgentIds(agentIds, plugin);
+    if (agents.includes("claude") && await writeClaudeManifest(plugin, warnings)) {
+      written++;
+    }
     if (agents.includes("codex") && await writeCodexManifest(plugin, warnings)) {
       written++;
     }
@@ -93,6 +96,12 @@ export async function verifyPluginOutputs(
 
   for (const plugin of selected) {
     const agents = selectedAgentIds(agentIds, plugin);
+    if (agents.includes("claude")) {
+      const filePath = join(plugin.pluginDir, ".claude-plugin", "plugin.json");
+      if (!existsSync(filePath)) {
+        issues.push({ agent: "claude", name: plugin.name, issue: `Claude plugin manifest missing: ${filePath}` });
+      }
+    }
     if (agents.includes("codex")) {
       const filePath = join(plugin.pluginDir, ".codex-plugin", "plugin.json");
       if (!existsSync(filePath)) {
@@ -164,12 +173,30 @@ export async function prunePluginOutputs(
     }
   }
 
+  const canonicalPluginDir = join(projectRoot, ".agents", "plugins");
+  const desiredClaude = new Set(
+    plugins
+      .filter((plugin) => selectedAgentIds(agentIds, plugin).includes("claude"))
+      .map((plugin) => plugin.name),
+  );
+  if (existsSync(canonicalPluginDir)) {
+    const entries = await readdir(canonicalPluginDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {continue;}
+      if (desiredClaude.has(entry.name)) {continue;}
+      const path = join(canonicalPluginDir, entry.name, ".claude-plugin", "plugin.json");
+      if (!existsSync(path) || !await isManagedJsonFile(path)) {continue;}
+      await rm(path, { force: true });
+      await rmdirIfEmpty(dirname(path));
+      pruned.push(path);
+    }
+  }
+
   const desiredCodex = new Set(
     plugins
       .filter((plugin) => selectedAgentIds(agentIds, plugin).includes("codex"))
       .map((plugin) => plugin.name),
   );
-  const canonicalPluginDir = join(projectRoot, ".agents", "plugins");
   if (existsSync(canonicalPluginDir)) {
     const entries = await readdir(canonicalPluginDir, { withFileTypes: true });
     for (const entry of entries) {
@@ -270,13 +297,30 @@ function pathMarketplaceEntry(
 ): Record<string, unknown> {
   const entry: Record<string, unknown> = {
     name: plugin.name,
-    source: relativePath(projectRoot, plugin.pluginDir),
+    source: `./${relativePath(projectRoot, plugin.pluginDir)}`,
   };
   const description = manifestString(plugin.manifest, "description");
   if (description) {entry["description"] = description;}
   const version = manifestString(plugin.manifest, "version");
   if (version) {entry["version"] = version;}
   return entry;
+}
+
+async function writeClaudeManifest(
+  plugin: PluginDeclaration,
+  warnings: PluginWriteWarning[],
+): Promise<boolean> {
+  const filePath = join(plugin.pluginDir, ".claude-plugin", "plugin.json");
+  if (existsSync(filePath) && !await isManagedJsonFile(filePath)) {
+    warnings.push({
+      agent: "claude",
+      name: plugin.name,
+      message: `Claude plugin manifest exists and is not managed by dotagents: ${filePath}`,
+    });
+    return false;
+  }
+  const manifest = claudeRuntimeManifest(plugin);
+  return writeJsonIfChanged(filePath, stableJson(manifest));
 }
 
 async function writeCodexManifest(
@@ -294,6 +338,39 @@ async function writeCodexManifest(
   }
   const manifest = codexRuntimeManifest(plugin);
   return writeJsonIfChanged(filePath, stableJson(manifest));
+}
+
+/** Builds the managed Claude manifest projection using Claude-native paths. */
+function claudeRuntimeManifest(plugin: PluginDeclaration): Record<string, unknown> {
+  const manifest: Record<string, unknown> = {
+    name: plugin.name,
+  };
+  copyManifestField(plugin.manifest, manifest, "version");
+  copyManifestField(plugin.manifest, manifest, "description");
+  copyManifestField(plugin.manifest, manifest, "author");
+  copyManifestField(plugin.manifest, manifest, "homepage");
+  copyManifestField(plugin.manifest, manifest, "repository");
+  copyManifestField(plugin.manifest, manifest, "license");
+  copyManifestField(plugin.manifest, manifest, "keywords");
+
+  if (existsSync(join(plugin.pluginDir, "skills"))) {
+    manifest["skills"] = "./skills";
+  }
+  if (existsSync(join(plugin.pluginDir, "commands"))) {
+    manifest["commands"] = "./commands";
+  }
+  if (existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
+    manifest["hooks"] = "./hooks/hooks.json";
+  }
+  if (existsSync(join(plugin.pluginDir, ".mcp.json"))) {
+    manifest["mcpServers"] = "./.mcp.json";
+  }
+  const metadata = plugin.manifest["metadata"];
+  manifest["metadata"] = {
+    ...(metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {}),
+    ...DOTAGENTS_METADATA,
+  };
+  return manifest;
 }
 
 /** Mirrors a plugin bundle into Grok's plugin directory with a managed marker. */
@@ -406,6 +483,12 @@ function developerName(manifest: PluginManifest): string {
   const author = manifest.author;
   if (author && typeof author.name === "string") {return author.name;}
   return "Unknown";
+}
+
+function copyManifestField(source: PluginManifest, dest: Record<string, unknown>, key: keyof PluginManifest): void {
+  if (source[key] !== undefined) {
+    dest[key] = source[key];
+  }
 }
 
 function opencodeModules(
