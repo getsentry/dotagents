@@ -3,7 +3,8 @@ import { homedir } from "node:os";
 import type { AgentDefinition, HookDeclaration } from "../types.js";
 import type { HookEvent } from "../../config/schema.js";
 import claude from "./claude.js";
-import { httpServer, markManagedMarkdownSubagent, serializeMarkdownSubagent } from "./helpers.js";
+import { httpServer } from "./helpers.js";
+import { markManagedMarkdownSubagent, serializeMarkdownSubagent } from "../../subagents/format.js";
 
 /**
  * Maps universal hook events to Cursor event names.

@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { getAgent } from "./registry.js";
-import { hasDotagentsMarkdownSubagentMarker, hasDotagentsTomlSubagentMarker } from "./definitions/helpers.js";
-import { generatedSubagentIdentity, readSubagentFileIdentity } from "./subagent-identity.js";
+import { getAgent } from "../targets/registry.js";
+import { hasDotagentsMarkdownSubagentMarker, hasDotagentsTomlSubagentMarker } from "./format.js";
+import { generatedSubagentIdentity, readSubagentFileIdentity } from "./identity.js";
 import type { SubagentConfigSpec, SubagentDeclaration } from "./types.js";
 
 export interface SubagentResolvedTarget {

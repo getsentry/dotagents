@@ -1,39 +1,41 @@
-export { getAgent, allAgentIds } from "./registry.js";
-export { writeMcpConfigs, verifyMcpConfigs, toMcpDeclarations, projectMcpResolver } from "./mcp-writer.js";
-export type { McpTargetResolver, McpResolvedTarget } from "./mcp-writer.js";
-export { writeHookConfigs, verifyHookConfigs, toHookDeclarations, projectHookResolver } from "./hook-writer.js";
-export type { HookTargetResolver, HookResolvedTarget } from "./hook-writer.js";
+// Compatibility barrel for older imports. Runtime ownership now lives in
+// targets/ for agent targets and subagents/ for subagent handling.
+export { getAgent, allAgentIds } from "../targets/registry.js";
+export { writeMcpConfigs, verifyMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../targets/mcp-writer.js";
+export type { McpTargetResolver, McpResolvedTarget } from "../targets/mcp-writer.js";
+export { writeHookConfigs, verifyHookConfigs, toHookDeclarations, projectHookResolver } from "../targets/hook-writer.js";
+export type { HookTargetResolver, HookResolvedTarget } from "../targets/hook-writer.js";
 export {
   writeSubagentConfigs,
   pruneSubagentConfigs,
   verifySubagentConfigs,
   projectSubagentResolver,
   userSubagentResolver,
-} from "./subagent-writer.js";
+} from "../subagents/writer.js";
 export {
   resolveSubagent,
   writeInstalledSubagents,
   loadInstalledSubagents,
   pruneInstalledSubagents,
   lockEntryForSubagent,
-} from "./subagent-store.js";
+} from "../subagents/store.js";
 export type {
   SubagentTargetResolver,
   SubagentResolvedTarget,
   SubagentWriteWarning,
   SubagentWriteResult,
   SubagentVerifyIssue,
-} from "./subagent-writer.js";
+} from "../subagents/writer.js";
 export type {
   SubagentResolveOptions,
   ResolvedSubagent,
   ResolvedSubagentType,
   InstalledSubagentLoadIssue,
-} from "./subagent-store.js";
+} from "../subagents/store.js";
 export type { LockedSubagent } from "../lockfile/schema.js";
-export { UnsupportedFeature } from "./errors.js";
-export { getUserMcpTarget, userMcpResolver } from "./paths.js";
-export type { UserMcpTarget } from "./paths.js";
+export { UnsupportedFeature } from "../targets/errors.js";
+export { getUserMcpTarget, userMcpResolver } from "../targets/paths.js";
+export type { UserMcpTarget } from "../targets/paths.js";
 export type {
   AgentDefinition,
   McpDeclaration,
@@ -42,6 +44,8 @@ export type {
   HookDeclaration,
   HookConfigSpec,
   HookSerializer,
+} from "../targets/types.js";
+export type {
   SubagentDeclaration,
   NativeSubagentConfig,
   NativeSubagentContent,
@@ -49,4 +53,4 @@ export type {
   SubagentConfigSpec,
   SubagentIdentityStrategy,
   SubagentSerializer,
-} from "./types.js";
+} from "../subagents/types.js";

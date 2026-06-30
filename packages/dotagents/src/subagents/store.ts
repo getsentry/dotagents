@@ -14,9 +14,9 @@ import {
   type RepositorySource,
   type TrustPolicy,
 } from "@sentry/dotagents-lib";
-import { hasDotagentsMarkdownSubagentMarker, serializeMarkdownSubagent } from "./definitions/helpers.js";
-import { getAgent } from "./registry.js";
-import { subagentIdentityFromMarkdownMeta } from "./subagent-identity.js";
+import { getAgent } from "../targets/registry.js";
+import { hasDotagentsMarkdownSubagentMarker, serializeMarkdownSubagent } from "./format.js";
+import { subagentIdentityFromMarkdownMeta } from "./identity.js";
 import { SUBAGENT_NAME_PATTERN, type SubagentConfig } from "../config/schema.js";
 import type { LockedSubagent } from "../lockfile/schema.js";
 import type {

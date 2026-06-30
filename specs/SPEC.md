@@ -774,14 +774,22 @@ dotagents/
             mcp.ts
             trust.ts
             doctor.ts
+        targets/
+          types.ts           # Target agent interfaces and MCP/hook declarations
+          registry.ts        # Target registry (claude, cursor, codex, vscode, opencode)
+          definitions/       # Per-target definitions
+          mcp-writer.ts      # MCP config file generation per target
+          hook-writer.ts     # Hook config file generation per target
+          paths.ts           # Target config path resolution
+          errors.ts          # Target-specific error types
+        subagents/
+          types.ts           # Subagent declaration and runtime projection types
+          identity.ts        # Runtime subagent identity parsing
+          store.ts           # Canonical installed subagent loading/writing
+          writer.ts          # Runtime subagent config generation
+          format.ts          # Subagent serialization and managed markers
         agents/
-          types.ts           # McpDeclaration, AgentDefinition interfaces
-          registry.ts        # Agent registry (claude, cursor, codex, vscode, opencode)
-          definitions/       # Per-agent definitions
-          mcp-writer.ts      # MCP config file generation per agent
-          hook-writer.ts     # Hook config file generation per agent
-          paths.ts           # Agent config path resolution
-          errors.ts          # Agent-specific error types
+          index.ts           # Compatibility re-export barrel
         config/              # agents.toml schema, loader, writer
         lockfile/            # agents.lock schema, loader, writer
         symlinks/            # Symlink create/verify/repair

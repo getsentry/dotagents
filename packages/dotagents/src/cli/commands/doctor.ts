@@ -10,7 +10,7 @@ import { isWildcardDep } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { verifySymlinks } from "../../symlinks/manager.js";
-import { getAgent } from "../../agents/registry.js";
+import { getAgent } from "../../targets/registry.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { exec } from "@sentry/dotagents-lib";
 import { isInPlaceSkill } from "../../utils/fs.js";

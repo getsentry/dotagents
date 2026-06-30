@@ -1,0 +1,94 @@
+import { describe, expect, it } from "vitest";
+import {
+  extractCodexHeaders,
+  interpolateEnvRefs,
+  interpolateHeaders,
+} from "./helpers.js";
+
+const cursorTpl = (key: string) => `\${env:${key}}`;
+
+describe("interpolateEnvRefs", () => {
+  it("passes through strings with no refs", () => {
+    expect(interpolateEnvRefs("Bearer tok", cursorTpl)).toBe("Bearer tok");
+  });
+
+  it("replaces a single ref", () => {
+    expect(interpolateEnvRefs("${API_KEY}", cursorTpl)).toBe("${env:API_KEY}");
+  });
+
+  it("replaces ref in a mixed string", () => {
+    expect(interpolateEnvRefs("Bearer ${TOKEN}", cursorTpl)).toBe("Bearer ${env:TOKEN}");
+  });
+
+  it("replaces multiple refs", () => {
+    expect(interpolateEnvRefs("${A}:${B}", cursorTpl)).toBe("${env:A}:${env:B}");
+  });
+
+  it("ignores non-matching patterns", () => {
+    // No braces, empty braces, leading digit, hyphen in name
+    for (const s of ["$NOBRACES", "${}", "${123}", "${foo-bar}"]) {
+      expect(interpolateEnvRefs(s, cursorTpl)).toBe(s);
+    }
+  });
+
+  it("replaces underscore-prefixed and numeric-suffixed vars", () => {
+    expect(interpolateEnvRefs("${_FOO_2}", cursorTpl)).toBe("${env:_FOO_2}");
+  });
+});
+
+describe("interpolateHeaders", () => {
+  it("transforms all header values", () => {
+    const headers = { "X-Key": "${KEY}", "Authorization": "Bearer ${TOKEN}" };
+    const result = interpolateHeaders(headers, (key) => `{env:${key}}`);
+    expect(result).toEqual({ "X-Key": "{env:KEY}", Authorization: "Bearer {env:TOKEN}" });
+  });
+
+  it("returns undefined for undefined input", () => {
+    const noHeaders: Record<string, string> | undefined = undefined;
+    expect(interpolateHeaders(noHeaders, (key) => key)).toBeUndefined();
+  });
+});
+
+describe("extractCodexHeaders", () => {
+  it("maps pure env ref to envHttpHeaders", () => {
+    const { httpHeaders, envHttpHeaders } = extractCodexHeaders({
+      "X-Api-Key": "${GOOGLE_API_KEY}",
+    });
+    expect(httpHeaders).toBeUndefined();
+    expect(envHttpHeaders).toEqual({ GOOGLE_API_KEY: "X-Api-Key" });
+  });
+
+  it("keeps static values in httpHeaders", () => {
+    const { httpHeaders, envHttpHeaders } = extractCodexHeaders({
+      Authorization: "Bearer tok",
+    });
+    expect(httpHeaders).toEqual({ Authorization: "Bearer tok" });
+    expect(envHttpHeaders).toBeUndefined();
+  });
+
+  it("keeps mixed values in httpHeaders as literal fallback", () => {
+    const { httpHeaders, envHttpHeaders } = extractCodexHeaders({
+      Authorization: "Bearer ${TOKEN}",
+    });
+    expect(httpHeaders).toEqual({ Authorization: "Bearer ${TOKEN}" });
+    expect(envHttpHeaders).toBeUndefined();
+  });
+
+  it("splits mixed and pure refs correctly", () => {
+    const { httpHeaders, envHttpHeaders } = extractCodexHeaders({
+      "X-Api-Key": "${API_KEY}",
+      Authorization: "Bearer tok",
+      "X-Mixed": "prefix ${VAR} suffix",
+    });
+    expect(envHttpHeaders).toEqual({ API_KEY: "X-Api-Key" });
+    expect(httpHeaders).toEqual({
+      Authorization: "Bearer tok",
+      "X-Mixed": "prefix ${VAR} suffix",
+    });
+  });
+
+  it("returns empty object for undefined input", () => {
+    const noHeaders: Record<string, string> | undefined = undefined;
+    expect(extractCodexHeaders(noHeaders)).toEqual({});
+  });
+});

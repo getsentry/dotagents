@@ -10,7 +10,7 @@ import { writeLockfile } from "../../lockfile/writer.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { loadConfig } from "../../config/loader.js";
 import { resolveScope } from "../../scope.js";
-import { DOTAGENTS_SUBAGENT_MARKER } from "../../agents/definitions/helpers.js";
+import { DOTAGENTS_SUBAGENT_MARKER } from "../../subagents/format.js";
 import { exec } from "@sentry/dotagents-lib";
 
 const SKILL_MD = (name: string) => `---

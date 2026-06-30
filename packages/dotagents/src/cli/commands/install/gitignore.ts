@@ -4,7 +4,7 @@ import type { Lockfile } from "../../../lockfile/schema.js";
 import type { ScopeRoot } from "../../../scope.js";
 import { checkRootGitignoreEntries, writeAgentsGitignore } from "../../../gitignore/writer.js";
 import { isInPlaceSkill } from "../../../utils/fs.js";
-import type { SubagentDeclaration } from "../../../agents/types.js";
+import type { SubagentDeclaration } from "../../../subagents/types.js";
 
 export interface InstallGitignoreArtifacts {
   installedSkillNames: string[];

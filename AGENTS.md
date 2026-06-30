@@ -21,7 +21,9 @@ packages/
 │       ├── index.ts          # Library entry point (re-exports lib symbols with @deprecated)
 │       ├── scope.ts          # Project/user scope resolution
 │       ├── cli/              # CLI entry point + commands (init, install, add, remove, sync, list, mcp, doctor, trust)
-│       ├── agents/           # Agent definitions, MCP/hook config writers
+│       ├── targets/          # Target agent definitions plus MCP/hook config writers
+│       ├── subagents/        # Subagent identity, store, and runtime writer
+│       ├── agents/           # Compatibility re-export barrel for older internal imports
 │       ├── config/           # agents.toml schema, loader, writer
 │       ├── lockfile/         # agents.lock schema, loader, writer
 │       ├── symlinks/         # Symlink creation/management

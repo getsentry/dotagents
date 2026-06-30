@@ -2,7 +2,7 @@ import { join } from "node:path";
 import type { AgentsConfig, SubagentConfig } from "../../../config/schema.js";
 import type { Lockfile } from "../../../lockfile/schema.js";
 import type { ScopeRoot } from "../../../scope.js";
-import type { SubagentDeclaration } from "../../../agents/types.js";
+import type { SubagentDeclaration } from "../../../subagents/types.js";
 import {
   InstalledSubagentWriteError,
   lockEntryForSubagent,
@@ -10,7 +10,7 @@ import {
   pruneInstalledSubagents,
   resolveSubagent,
   writeInstalledSubagents,
-} from "../../../agents/subagent-store.js";
+} from "../../../subagents/store.js";
 import { GitError, TrustError } from "@sentry/dotagents-lib";
 import { getCacheStateDir } from "../../cache.js";
 import { InstallError } from "./errors.js";
