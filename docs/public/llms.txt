@@ -2,7 +2,7 @@
 
 > Shared tooling for coding agents
 
-dotagents manages agent skills, MCP servers, hooks, and subagents declared in `agents.toml`, and handles symlinks and config generation so tools like Claude Code, Cursor, Codex, VS Code, and OpenCode are configured from a single source of truth.
+dotagents manages agent skills, MCP servers, hooks, subagents, and plugins declared in `agents.toml`, and handles symlinks and config generation so tools like Claude Code, Cursor, Codex, Grok, VS Code, and OpenCode are configured from a single source of truth.
 
 Install: `npm install -g @sentry/dotagents`
 Run without installing: `npx @sentry/dotagents <command>`
@@ -37,16 +37,16 @@ name = "find-bugs"
 source = "getsentry/skills"
 ```
 
-And a lockfile (`agents.lock`) tracking which skills and subagents are managed. Both `agents.lock` and `.agents/.gitignore` are automatically gitignored.
+And a lockfile (`agents.lock`) tracking which skills, subagents, and plugins are managed. Both `agents.lock` and `.agents/.gitignore` are automatically gitignored.
 
 ## How It Works
 
 1. Declare skill dependencies in `agents.toml` at the project root (or `~/.agents/agents.toml` for user scope)
 2. `install` clones or refreshes sources, discovers skills by convention, and copies them into `.agents/skills/`
-3. `agents.lock` tracks which skills and subagents are managed (gitignored automatically)
-4. Managed skills and canonical installed subagents under `.agents/` are gitignored. Collaborators run `npx @sentry/dotagents install` after cloning. Custom skills in `.agents/skills/` are tracked by git normally.
+3. `agents.lock` tracks which skills, subagents, and plugins are managed (gitignored automatically)
+4. Managed skills, canonical installed subagents, and managed plugin bundles under `.agents/` are gitignored. Collaborators run `npx @sentry/dotagents install` after cloning. Custom skills in `.agents/skills/` and project-authored plugin source directories in `.agents/plugins/` are tracked by git normally when they are not installed dependencies.
 5. Symlinks connect `.agents/skills/` to each agent's expected location (`.claude/skills/` for Claude and Cursor)
-6. MCP, hook, and subagent configs are generated for each declared agent where supported
+6. MCP, hook, subagent, and plugin configs are generated for each declared agent where supported
 
 ## Configuration (agents.toml)
 
@@ -54,7 +54,7 @@ Full example with all sections:
 
 ```toml
 version = 1
-agents = ["claude", "cursor", "codex", "opencode"]
+agents = ["claude", "cursor", "codex", "grok", "opencode"]
 minimum_release_age = 60
 minimum_release_age_exclude = ["getsentry/*"]
 
@@ -131,6 +131,13 @@ command = "notify-done"
 name = "code-reviewer"
 source = "getsentry/agent-pack"
 targets = ["claude", "codex", "opencode"]
+
+# Plugin bundle
+[[plugins]]
+name = "review-tools"
+source = "getsentry/agent-plugins"
+path = "plugins/review-tools"
+targets = ["claude", "cursor", "codex", "grok", "opencode"]
 ```
 
 ### Top-level Fields
@@ -139,9 +146,10 @@ targets = ["claude", "codex", "opencode"]
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version. Always `1`. |
 | `defaultRepositorySource` | string | No | `github` | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. |
-| `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Creates symlinks and config files for each. |
+| `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `grok`, `vscode`, `opencode`. Creates symlinks and config files for each where supported. |
 | `subagents` | table[] | No | `[]` | Custom subagent declarations. Generates runtime-specific files for Claude, Cursor, Codex, and OpenCode. |
-| `minimum_release_age` | integer | No | -- | Minimum commit age, in minutes, before a git skill can install. |
+| `plugins` | table[] | No | `[]` | Plugin declarations. Installs canonical bundles into `.agents/plugins/` and generates runtime plugin outputs for Claude, Cursor, Codex, Grok, and OpenCode where supported. |
+| `minimum_release_age` | integer | No | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install. |
 | `minimum_release_age_exclude` | string[] | No | `[]` | Sources that bypass the minimum release age gate. Supports org names, `org/repo`, and `org/*`. |
 
 ### Skills
@@ -266,9 +274,32 @@ Generated subagent files:
 
 Generated files include a dotagents header marker. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the generated header marker. In `--frozen` mode, `install` loads subagents from existing installed files, preserves managed subagent files and lock entries instead of pruning removed subagents, and does not resolve subagent sources. They also avoid creating duplicate runtime identities when an unmanaged file in the same agent directory already declares the same subagent.
 
+### Plugins
+
+Each `[[plugins]]` entry requires `name` and `source`. Optional: `ref`, `path`, and `targets`. When `targets` is absent or empty, dotagents targets every agent listed in `agents`.
+
+dotagents installs canonical plugin bundles under `.agents/plugins/<name>/`. The canonical plugin input format is `.agents/plugins/marketplace.json` plus `.agents/plugins/<name>/plugin.json`, using a generalized Codex-compatible marketplace and manifest shape. Known fields are validated, unknown manifest and marketplace extension fields are preserved, and component paths must be relative without `..`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Lowercase plugin identifier. Must start with lowercase `a-z`, end with lowercase `a-z` or `0-9`, and contain only lowercase letters, numbers, hyphens, and dots. |
+| `source` | string | Yes | Source repository or local directory. Supports GitHub/GitLab shorthands, git URLs, and `path:` sources; HTTPS well-known skill indexes are not supported for plugins. |
+| `ref` | string | No | Optional git ref override. |
+| `path` | string | No | Optional explicit plugin directory path inside the source. |
+| `targets` | string[] | No | Optional subset of configured agent IDs. When absent or empty, defaults to every configured agent in `agents`; targets not listed in top-level `agents` are skipped with a warning. |
+
+Generated project-scope plugin outputs:
+- Claude: `.claude-plugin/marketplace.json`
+- Cursor: `.cursor-plugin/marketplace.json`
+- Codex: `.agents/plugins/marketplace.json` and `.agents/plugins/<name>/.codex-plugin/plugin.json`
+- Grok: `.grok/plugins/<name>/` managed copy
+- OpenCode: `.opencode/plugins/<name>.js|ts` re-export module when the plugin declares or contains one OpenCode module
+
+Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated runtime marketplaces and generated Codex plugin manifests are overwritten or pruned only when they carry `metadata.managedBy = "dotagents"`. Managed Grok and OpenCode projections are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself.
+
 ### Trust
 
-Optional `[trust]` section to restrict allowed skill and subagent sources.
+Optional `[trust]` section to restrict allowed skill, subagent, and plugin sources.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -282,7 +313,7 @@ Rules:
 - `allow_all = true` = all sources allowed (explicit intent)
 - `[trust]` present without `allow_all` = allowlist mode (source must match at least one rule)
 - Local `path:` sources are always allowed
-- Trust is validated before any network operations in `add` for skills and `install` for configured skills and subagents
+- Trust is validated before any network operations in `add` for skills and `install` for configured skills, subagents, and plugins
 
 ## CLI Commands
 
@@ -310,7 +341,7 @@ Create `agents.toml` and `.agents/skills/` directory. Automatically includes the
 npx @sentry/dotagents install
 ```
 
-Install and refresh dependencies from `agents.toml`. Resolves sources, copies skills, writes the lockfile, creates symlinks, and generates MCP, hook, and subagent configs. There is no separate update command. With `--frozen`, declared skills and subagents must already exist in `agents.lock`, subagents are loaded from existing installed files without resolving sources, the lockfile is not updated, and existing managed subagent files are not pruned.
+Install and refresh dependencies from `agents.toml`. Resolves sources, copies skills, installs subagents and plugins, writes the lockfile, creates symlinks, and generates MCP, hook, subagent, and plugin configs. There is no separate update command. With `--frozen`, declared skills, subagents, and plugins must already exist in `agents.lock`; subagents and plugins are loaded from existing installed files without resolving sources; the lockfile is not updated; and existing managed subagent/plugin files are not pruned.
 
 ### add
 
@@ -347,7 +378,7 @@ When the argument is a source specifier (e.g. `owner/repo`, a URL) instead of a 
 npx @sentry/dotagents sync
 ```
 
-Reconcile project state without network access: adopt truly local orphaned skills, prune stale managed skills and subagents removed from config, regenerate `.agents/.gitignore`, check for missing skills, repair symlinks, and verify/repair MCP, hook, and subagent configs. Reports issues as warnings or errors.
+Reconcile project state without network access: adopt truly local orphaned skills, prune stale managed skills/subagents/plugins removed from config, regenerate `.agents/.gitignore`, check for missing skills and plugins, repair symlinks, and verify/repair MCP, hook, subagent, and plugin configs. Reports issues as warnings or errors.
 
 ### mcp add
 
@@ -413,7 +444,7 @@ Show trusted sources with their type. Use `--json` for machine-readable output. 
 npx @sentry/dotagents list [--json]
 ```
 
-Show installed skills and status.
+Show declared skills, plugins, and status. JSON output is an object with `skills` and `plugins` arrays.
 
 | Status | Meaning |
 |--------|---------|
@@ -519,6 +550,12 @@ source = "getsentry/agent-pack"
 resolved_url = "https://github.com/getsentry/agent-pack.git"
 resolved_path = "agents/code-reviewer.md"
 resolved_commit = "fedcba9876543210fedcba9876543210fedcba98"
+
+[plugins.review-tools]
+source = "getsentry/agent-plugins"
+resolved_url = "https://github.com/getsentry/agent-plugins.git"
+resolved_path = "plugins/review-tools"
+resolved_commit = "0123456789abcdef0123456789abcdef01234567"
 ```
 
 | Field | Present For | Description |
@@ -529,7 +566,7 @@ resolved_commit = "fedcba9876543210fedcba9876543210fedcba98"
 | `resolved_ref` | Git sources (optional) | Resolved ref name (omitted for default branch) |
 | `resolved_commit` | Git sources (optional) | Full commit SHA that was installed. Informational only; install does not use it for locking. |
 
-Local `path:` skills and subagents have `source` only. Subagent entries use the same fields under `[subagents.<name>]`; `resolved_path` points to the subagent file inside a git source.
+Local `path:` skills, subagents, and plugins have `source` only. Subagent entries use the same fields under `[subagents.<name>]`; `resolved_path` points to the subagent file inside a git source. Plugin entries use the same fields under `[plugins.<name>]`; `resolved_path` points to the plugin directory inside a git source.
 
 ## Caching
 
@@ -549,18 +586,18 @@ Location: `~/.local/dotagents/` (override: `DOTAGENTS_STATE_DIR`)
 ## Gitignore
 
 dotagents always manages gitignore. Two files are gitignored automatically:
-- `agents.lock` -- tracks managed skills and subagents
-- `.agents/.gitignore` -- excludes managed skill directories and canonical installed subagent files from git
+- `agents.lock` -- tracks managed skills, subagents, and plugins
+- `.agents/.gitignore` -- excludes managed skill directories, canonical installed subagent files, and managed plugin bundles from git
 
 `npx @sentry/dotagents init` adds both to the root `.gitignore`. If they're missing, `install` and `sync` warn. Run `npx @sentry/dotagents doctor --fix` to add them.
 
-Custom skills created directly in `.agents/skills/` are not gitignored. They're tracked by git normally.
+Custom skills created directly in `.agents/skills/` and project-authored plugin source directories in `.agents/plugins/` are not gitignored unless they are managed installed dependencies. They're tracked by git normally.
 
 `.agents/.gitignore` is regenerated on every `install`, `add`, `remove`, and `sync`.
 
 ## Refresh Strategy
 
-Run `npx @sentry/dotagents install` after cloning or pulling changes. It fetches or refreshes managed skills and subagents unless a ref is pinned. There is no separate update command.
+Run `npx @sentry/dotagents install` after cloning or pulling changes. It fetches or refreshes managed skills, subagents, and plugins unless a ref is pinned. There is no separate update command.
 
 ## Links
 

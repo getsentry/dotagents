@@ -1,16 +1,16 @@
 # dotagents
 
-Shared tooling for coding agents. Declare skills, MCP servers, hooks, and subagents in `agents.toml` — dotagents wires them into every agent tool on your team.
+Shared tooling for coding agents. Declare skills, MCP servers, hooks, subagents, and plugins in `agents.toml` — dotagents wires them into every agent tool on your team.
 
 ## Why dotagents?
 
 **One source of truth.** Skills live in `.agents/skills/` and symlink into `.claude/skills/` or wherever your tools expect them. Cursor shares Claude-compatible skills. No copy-pasting between directories.
 
-**One command to install.** `agents.toml` is committed, managed skills and canonical installed subagents under `.agents/` are gitignored. Collaborators run `dotagents install` to fetch or refresh local agent state.
+**One command to install.** `agents.toml` is committed, managed skills, canonical installed subagents, and managed plugin bundles under `.agents/` are gitignored. Collaborators run `dotagents install` to fetch or refresh local agent state.
 
 **Shareable.** Skills are directories with a `SKILL.md`. Host them in any git repo, discover them automatically, install with one command.
 
-**Multi-agent.** Configure Claude, Cursor, Codex, VS Code, and OpenCode from a single `agents.toml` -- skills, MCP servers, hooks, and subagents where supported. Pi reads `.agents/skills/` directly.
+**Multi-agent.** Configure Claude, Cursor, Codex, Grok, VS Code, and OpenCode from a single `agents.toml` -- skills, MCP servers, hooks, subagents, and plugins where supported. Pi reads `.agents/skills/` directly.
 
 ## Quick Start
 
@@ -31,9 +31,9 @@ npx @sentry/dotagents add getsentry/skills find-bugs code-review commit
 npx @sentry/dotagents add getsentry/skills --all
 ```
 
-This creates an `agents.toml` at your project root and an `agents.lock` tracking installed skills and subagents.
+This creates an `agents.toml` at your project root and an `agents.lock` tracking installed skills, subagents, and plugins.
 
-After cloning a project that already has `agents.toml`, run `install` to fetch skills and subagents. Run it again to refresh managed local state:
+After cloning a project that already has `agents.toml`, run `install` to fetch skills, subagents, and plugins. Run it again to refresh managed local state:
 
 ```bash
 npx @sentry/dotagents install
@@ -47,7 +47,7 @@ npx @sentry/dotagents install
 | `add <source> [skills...]` | Add skill dependencies |
 | `remove <name\|source> [-y]` | Remove a skill or all skills from a source |
 | `install` | Install all dependencies from `agents.toml` |
-| `list` | Show installed skills and their status |
+| `list` | Show declared skills, plugins, and their status |
 | `sync` | Reconcile state offline: adopt local skills, prune stale managed ones, repair configs |
 | `mcp` | Manage MCP server declarations |
 | `trust` | Manage trusted sources |
@@ -100,6 +100,7 @@ agents = ["claude", "cursor", "codex", "opencode"]
 | `claude` | `.claude` | `.mcp.json` | `.claude/settings.json` | `.claude/agents/*.md` |
 | `cursor` | `.cursor` | `.cursor/mcp.json` | `.cursor/hooks.json` | `.cursor/agents/*.md` |
 | `codex` | `.codex` | `.codex/config.toml` | -- | `.codex/agents/*.toml` |
+| `grok` | `.grok` | -- | -- | -- |
 | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` | -- |
 | `opencode` | `.opencode` | `opencode.json` | -- | `.opencode/agents/*.md` |
 
@@ -127,11 +128,23 @@ Review the current diff and return findings with file references.
 
 dotagents can also import native runtime subagent files from `.claude/agents/`, `.cursor/agents/`, `.codex/agents/*.toml`, and `.opencode/agents/`. Input and matching-runtime output use the same native format: Markdown with YAML frontmatter for Claude, Cursor, and OpenCode; TOML for Codex. Claude and Codex identify agents by `name`, Cursor can derive `name` from the filename when omitted, and OpenCode uses the filename as the agent name. Multiple portable matches for the same subagent are rejected as ambiguous, while matching native runtime artifacts are merged. When the source format matches a target runtime, dotagents reuses the native source content for that runtime and only adds its managed-file marker. Other runtimes are generated from the portable `name`, `description`, and instructions. Subagent declarations intentionally cover only dependency source and runtime targets, not universal model/tool/permission behavior.
 
+Plugins are declared with `[[plugins]]` entries. dotagents installs canonical bundles into `.agents/plugins/<name>/` and generates runtime plugin outputs such as `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, `.cursor-plugin/marketplace.json`, `.grok/plugins/<name>/`, and `.opencode/plugins/<name>.js|ts` where supported:
+
+```toml
+[[plugins]]
+name = "review-tools"
+source = "getsentry/agent-plugins"
+path = "plugins/review-tools"
+targets = ["claude", "cursor", "codex", "grok", "opencode"]
+```
+
+The canonical plugin format is `.agents/plugins/marketplace.json` plus `.agents/plugins/<name>/plugin.json`, using a Codex-compatible marketplace baseline. Known input fields are validated, unknown manifest and marketplace extension fields are preserved, `targets` are limited to configured agents, and generated outputs are deterministic. dotagents rejects plugin sources that resolve to the same project's `.agents/plugins/<name>/` install destination, so same-repo plugins are never installed onto themselves.
+
 [Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively and needs no configuration.
 
 ## Documentation
 
-For the full guide -- including MCP servers, hooks, subagents, trust policies, wildcard skills, user scope, and CI setup -- see the [documentation site](https://dotagents.sentry.dev).
+For the full guide -- including MCP servers, hooks, subagents, plugins, trust policies, wildcard skills, user scope, and CI setup -- see the [documentation site](https://dotagents.sentry.dev).
 
 ## Contributing
 

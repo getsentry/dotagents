@@ -621,6 +621,151 @@ agents = ["claude"]
     expect(gitignore).not.toContain("/agents/old-reviewer.md");
   });
 
+  it("repairs plugin runtime artifacts from installed plugin bundles", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "review-tools",
+        version: "1.0.0",
+        description: "Review workflow helpers",
+      }, null, 2),
+    );
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex", "claude", "cursor"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.pluginsRepaired).toBeGreaterThan(0);
+    expect(result.issues).toEqual([
+      {
+        type: "plugins",
+        name: "marketplace",
+        message: `Plugin marketplace missing: ${join(projectRoot, ".agents", "plugins", "marketplace.json")}`,
+      },
+      {
+        type: "plugins",
+        name: "marketplace",
+        message: `Plugin marketplace missing: ${join(projectRoot, ".claude-plugin", "marketplace.json")}`,
+      },
+      {
+        type: "plugins",
+        name: "marketplace",
+        message: `Plugin marketplace missing: ${join(projectRoot, ".cursor-plugin", "marketplace.json")}`,
+      },
+      {
+        type: "plugins",
+        name: "review-tools",
+        message: `Codex plugin manifest missing: ${join(pluginDir, ".codex-plugin", "plugin.json")}`,
+      },
+    ]);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".claude-plugin", "marketplace.json"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".cursor-plugin", "marketplace.json"))).toBe(true);
+  });
+
+  it("reports same-project plugins without generating runtime outputs", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "local-tools",
+        description: "Local plugin",
+      }, null, 2),
+    );
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "local-tools"
+source = "path:./.agents/plugins/local-tools"
+`,
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.issues).toContainEqual({
+      type: "plugins",
+      name: "local-tools",
+      message: 'Plugin "local-tools" resolves to .agents/plugins/local-tools. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.',
+    });
+    expect(existsSync(pluginDir)).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(false);
+    expect(existsSync(join(pluginDir, ".codex-plugin", "plugin.json"))).toBe(false);
+  });
+
+  it("reports same-project plugins resolved through path aliases", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }, null, 2));
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "local-tools"
+source = "path:."
+path = ".agents/plugins/local-tools"
+`,
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.issues).toContainEqual({
+      type: "plugins",
+      name: "local-tools",
+      message: 'Plugin "local-tools" resolves to .agents/plugins/local-tools. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.',
+    });
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(false);
+    expect(existsSync(join(pluginDir, ".codex-plugin", "plugin.json"))).toBe(false);
+  });
+
+  it("only prunes stale managed plugin directories from the lockfile", async () => {
+    await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
+    await mkdir(join(projectRoot, ".agents", "plugins", "stale-managed"), { recursive: true });
+    await mkdir(join(projectRoot, ".agents", "plugins", "local-unmanaged"), { recursive: true });
+    await writeFile(
+      join(projectRoot, ".agents", "plugins", "local-unmanaged", "plugin.json"),
+      JSON.stringify({ name: "local-unmanaged" }, null, 2),
+    );
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {
+        "stale-managed": {
+          source: "getsentry/plugins",
+          resolved_url: "https://github.com/getsentry/plugins.git",
+          resolved_path: "stale-managed",
+        },
+      },
+    });
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.pluginsRepaired).toBe(1);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "stale-managed"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "local-unmanaged"))).toBe(true);
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.plugins).toEqual({});
+  });
+
   it("does not auto-create root .gitignore", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

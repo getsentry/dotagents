@@ -17,9 +17,19 @@ export interface SkillStatus {
   wildcard?: string;
 }
 
+export interface PluginStatus {
+  name: string;
+  source: string;
+  status: "ok" | "missing" | "unlocked";
+}
+
 export interface ListOptions {
   scope: ScopeRoot;
   json?: boolean;
+}
+
+export interface PluginListOptions {
+  scope: ScopeRoot;
 }
 
 export async function runList(opts: ListOptions): Promise<SkillStatus[]> {
@@ -78,6 +88,34 @@ export async function runList(opts: ListOptions): Promise<SkillStatus[]> {
   return results;
 }
 
+export async function runPluginList(opts: PluginListOptions): Promise<PluginStatus[]> {
+  const { scope } = opts;
+  const { configPath, lockPath, pluginsDir } = scope;
+
+  const config = await loadConfig(configPath);
+  const lockfile = await loadLockfile(lockPath);
+
+  const results: PluginStatus[] = [];
+  for (const plugin of config.plugins.toSorted((a, b) => a.name.localeCompare(b.name))) {
+    const locked = lockfile?.plugins[plugin.name];
+    const installed = join(pluginsDir, plugin.name);
+
+    if (!existsSync(installed)) {
+      results.push({ name: plugin.name, source: plugin.source, status: "missing" });
+      continue;
+    }
+
+    if (!locked) {
+      results.push({ name: plugin.name, source: plugin.source, status: "unlocked" });
+      continue;
+    }
+
+    results.push({ name: plugin.name, source: plugin.source, status: "ok" });
+  }
+
+  return results;
+}
+
 function formatStatus(s: SkillStatus): string {
   const source = chalk.dim(s.source);
   const wildcard = s.wildcard ? chalk.dim(" (* wildcard)") : "";
@@ -89,6 +127,19 @@ function formatStatus(s: SkillStatus): string {
       return `  ${chalk.red("✗")} ${s.name}  ${source}${wildcard}  ${chalk.red("not installed")}`;
     case "unlocked":
       return `  ${chalk.yellow("?")} ${s.name}  ${source}${wildcard}  ${chalk.yellow("not in lockfile")}`;
+  }
+}
+
+function formatPluginStatus(s: PluginStatus): string {
+  const source = chalk.dim(s.source);
+
+  switch (s.status) {
+    case "ok":
+      return `  ${chalk.green("✓")} ${s.name}  ${source}`;
+    case "missing":
+      return `  ${chalk.red("✗")} ${s.name}  ${source}  ${chalk.red("not installed")}`;
+    case "unlocked":
+      return `  ${chalk.yellow("?")} ${s.name}  ${source}  ${chalk.yellow("not in lockfile")}`;
   }
 }
 
@@ -117,19 +168,31 @@ export default async function list(args: string[], flags?: { user?: boolean }): 
     scope,
     json: values["json"],
   });
+  const pluginResults = await runPluginList({
+    scope,
+  });
 
-  if (results.length === 0) {
-    console.log(chalk.dim("No skills declared in agents.toml."));
+  if (results.length === 0 && pluginResults.length === 0) {
+    console.log(chalk.dim("No skills or plugins declared in agents.toml."));
     return;
   }
 
   if (values["json"]) {
-    console.log(JSON.stringify(results, null, 2));
+    console.log(JSON.stringify({ skills: results, plugins: pluginResults }, null, 2));
     return;
   }
 
-  console.log(chalk.bold("Skills:"));
-  for (const s of results) {
-    console.log(formatStatus(s));
+  if (results.length > 0) {
+    console.log(chalk.bold("Skills:"));
+    for (const s of results) {
+      console.log(formatStatus(s));
+    }
+  }
+  if (pluginResults.length > 0) {
+    if (results.length > 0) {console.log("");}
+    console.log(chalk.bold("Plugins:"));
+    for (const p of pluginResults) {
+      console.log(formatPluginStatus(p));
+    }
   }
 }

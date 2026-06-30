@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
 import { agentsConfigSchema, isWildcardDep, type AgentsConfig } from "./schema.js";
-import { allAgentIds } from "../targets/registry.js";
+import { allAgentIds, allConfigAgentIds } from "../targets/registry.js";
 import { applyDefaultRepositorySource, parseSource } from "@sentry/dotagents-lib";
 
 export class ConfigError extends Error {
@@ -36,7 +36,8 @@ export async function loadConfig(filePath: string): Promise<AgentsConfig> {
   }
 
   // Post-parse validation: reject unknown agent IDs
-  const validIds = allAgentIds();
+  const validIds = allConfigAgentIds();
+  const registryAgentIds = allAgentIds();
   const unknown = result.data.agents.filter((id) => !validIds.includes(id));
   if (unknown.length > 0) {
     throw new ConfigError(
@@ -47,13 +48,26 @@ export async function loadConfig(filePath: string): Promise<AgentsConfig> {
   const unknownSubagentTargets = [
     ...new Set(
       result.data.subagents.flatMap((subagent) =>
-        (subagent.targets ?? []).filter((id) => !validIds.includes(id))
+        (subagent.targets ?? []).filter((id) => !registryAgentIds.includes(id))
       ),
     ),
   ];
   if (unknownSubagentTargets.length > 0) {
     throw new ConfigError(
-      `Unknown subagent target(s) in ${filePath}: ${unknownSubagentTargets.join(", ")}. Valid agents: ${validIds.join(", ")}`,
+      `Unknown subagent target(s) in ${filePath}: ${unknownSubagentTargets.join(", ")}. Valid agents: ${registryAgentIds.join(", ")}`,
+    );
+  }
+
+  const unknownPluginTargets = [
+    ...new Set(
+      result.data.plugins.flatMap((plugin) =>
+        (plugin.targets ?? []).filter((id) => !validIds.includes(id))
+      ),
+    ),
+  ];
+  if (unknownPluginTargets.length > 0) {
+    throw new ConfigError(
+      `Unknown plugin target(s) in ${filePath}: ${unknownPluginTargets.join(", ")}. Valid agents: ${validIds.join(", ")}`,
     );
   }
 
@@ -65,6 +79,18 @@ export async function loadConfig(filePath: string): Promise<AgentsConfig> {
     if (parseSource(sourceForResolve).type === "well-known") {
       throw new ConfigError(
         `Subagent "${subagent.name}" uses an unsupported HTTPS well-known source in ${filePath}. Use a git: URL, GitHub/GitLab repository, or path: source.`,
+      );
+    }
+  }
+
+  for (const plugin of result.data.plugins) {
+    const sourceForResolve = applyDefaultRepositorySource(
+      plugin.source,
+      result.data.defaultRepositorySource,
+    );
+    if (parseSource(sourceForResolve).type === "well-known") {
+      throw new ConfigError(
+        `Plugin "${plugin.name}" uses an unsupported HTTPS well-known source in ${filePath}. Use a git: URL, GitHub/GitLab repository, or path: source.`,
       );
     }
   }
@@ -91,6 +117,17 @@ export async function loadConfig(filePath: string): Promise<AgentsConfig> {
       );
     }
     subagentNames.add(subagent.name);
+  }
+
+  // Post-parse validation: no two plugin entries may share the same name.
+  const pluginNames = new Set<string>();
+  for (const plugin of result.data.plugins) {
+    if (pluginNames.has(plugin.name)) {
+      throw new ConfigError(
+        `Duplicate plugin in ${filePath}: "${plugin.name}". Plugin names must be unique.`,
+      );
+    }
+    pluginNames.add(plugin.name);
   }
 
   return result.data;

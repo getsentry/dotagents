@@ -13,6 +13,7 @@ export async function writeAgentsGitignore(
   agentsDir: string,
   managedSkillNames: string[],
   managedSubagentNames: string[] = [],
+  managedPluginNames: string[] = [],
 ): Promise<void> {
   const lines = [HEADER];
   for (const name of managedSkillNames.toSorted()) {
@@ -20,6 +21,12 @@ export async function writeAgentsGitignore(
   }
   for (const name of managedSubagentNames.toSorted()) {
     lines.push(`/agents/${name}.md`);
+  }
+  for (const name of managedPluginNames.toSorted()) {
+    lines.push(`/plugins/${name}/`);
+  }
+  if (managedPluginNames.length > 0) {
+    lines.push("/plugins/marketplace.json");
   }
   lines.push(""); // trailing newline
 

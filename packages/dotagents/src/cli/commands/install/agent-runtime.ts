@@ -12,6 +12,8 @@ import {
   userSubagentResolver,
   writeSubagentConfigs,
 } from "../../../subagents/writer.js";
+import { prunePluginOutputs, writePluginOutputs } from "../../../agents/plugin-writer.js";
+import type { PluginDeclaration } from "../../../agents/plugin-store.js";
 import type { SubagentDeclaration } from "../../../subagents/types.js";
 
 /** Writes agent skill symlinks after canonical install artifacts are ready. */
@@ -85,6 +87,21 @@ export async function writeSubagentRuntime(
   const result = await writeSubagentConfigs(config.agents, subagents, resolver);
   if (!frozen) {
     await pruneSubagentConfigs(config.agents, subagents, resolver);
+  }
+  return result.warnings;
+}
+
+/** Writes project-scoped plugin runtime projections. */
+export async function writePluginRuntime(
+  config: AgentsConfig,
+  scope: ScopeRoot,
+  plugins: PluginDeclaration[],
+  frozen?: boolean,
+): Promise<{ agent: string; name: string; message: string }[]> {
+  if (scope.scope !== "project") {return [];}
+  const result = await writePluginOutputs(config.agents, plugins, scope.root);
+  if (!frozen) {
+    await prunePluginOutputs(config.agents, plugins, scope.root);
   }
   return result.warnings;
 }

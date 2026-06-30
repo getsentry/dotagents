@@ -12,10 +12,12 @@ import { formatGitError, formatTrustError } from "../errors.js";
 import { InstallError } from "./install/errors.js";
 import { installSkills } from "./install/skills.js";
 import { installSubagents, writeCanonicalSubagents } from "./install/subagents.js";
+import { installPlugins } from "./install/plugins.js";
 import { writeInstallGitignore } from "./install/gitignore.js";
 import {
   writeHookRuntime,
   writeMcpRuntime,
+  writePluginRuntime,
   writeSkillSymlinks,
   writeSubagentRuntime,
 } from "./install/agent-runtime.js";
@@ -34,8 +36,10 @@ export interface InstallResult {
   installed: string[];
   skipped: string[];
   pruned: string[];
+  prunedPlugins: string[];
   hookWarnings: { agent: string; message: string }[];
   subagentWarnings: { agent: string; name: string; message: string }[];
+  pluginWarnings: { agent: string; name: string; message: string }[];
 }
 
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
@@ -44,17 +48,20 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   const lockfile = await loadLockfile(scope.lockPath);
   const skills = await installSkills(config, lockfile, scope, frozen);
   const subagents = await installSubagents(config, lockfile, scope, frozen);
+  const plugins = await installPlugins(config, lockfile, scope, frozen);
   const newLock: Lockfile = {
     version: 1,
     skills: skills.lockEntries,
     subagents: subagents.lockEntries,
+    plugins: plugins.lockEntries,
   };
 
   await writeCanonicalSubagents(config, scope, subagents.subagents, frozen);
   const writeLock = !frozen && (
     !!lockfile ||
     config.skills.length > 0 ||
-    config.subagents.length > 0
+    config.subagents.length > 0 ||
+    config.plugins.length > 0
   );
   if (writeLock) {
     await writeLockfile(scope.lockPath, newLock);
@@ -63,18 +70,22 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   await writeInstallGitignore(config, lockfile, scope, {
     installedSkillNames: skills.installed,
     subagents: subagents.subagents,
+    plugins: plugins.plugins,
   }, frozen);
   await writeSkillSymlinks(config, scope);
   await writeMcpRuntime(config, scope);
   const hookWarnings = await writeHookRuntime(config, scope);
   const subagentWarnings = await writeSubagentRuntime(config, scope, subagents.subagents, frozen);
+  const pluginWarnings = await writePluginRuntime(config, scope, plugins.plugins, frozen);
 
   return {
     installed: skills.installed,
     skipped: [],
     pruned: skills.pruned,
+    prunedPlugins: plugins.pruned,
     hookWarnings,
     subagentWarnings,
+    pluginWarnings,
   };
 }
 
@@ -109,10 +120,18 @@ export default async function install(args: string[], flags?: { user?: boolean }
         chalk.yellow(`Pruned ${result.pruned.length} stale skill(s): ${result.pruned.join(", ")}`),
       );
     }
+    if (result.prunedPlugins.length > 0) {
+      console.log(
+        chalk.yellow(`Pruned ${result.prunedPlugins.length} stale plugin(s): ${result.prunedPlugins.join(", ")}`),
+      );
+    }
     for (const w of result.hookWarnings) {
       console.log(chalk.yellow(`  warn: ${w.message}`));
     }
     for (const w of result.subagentWarnings) {
+      console.log(chalk.yellow(`  warn: ${w.message}`));
+    }
+    for (const w of result.pluginWarnings) {
       console.log(chalk.yellow(`  warn: ${w.message}`));
     }
   } catch (err) {

@@ -1,10 +1,10 @@
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { readdir, rm } from "node:fs/promises";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
-import { normalizeSource } from "@sentry/dotagents-lib";
+import { normalizeSource, parseSource } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { addSkillToConfig } from "../../config/writer.js";
@@ -15,13 +15,15 @@ import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolve
 import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../targets/hook-writer.js";
 import { pruneSubagentConfigs, verifySubagentConfigs, writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../subagents/writer.js";
 import { loadInstalledSubagents, pruneInstalledSubagents } from "../../subagents/store.js";
+import { isInPlacePluginSource, isProjectPluginSource, loadInstalledPlugins, pruneInstalledPlugins } from "../../agents/plugin-store.js";
+import { prunePluginOutputs, verifyPluginOutputs, writePluginOutputs } from "../../agents/plugin-writer.js";
 import { userMcpResolver } from "../../targets/paths.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 import { isInPlaceSkill, managedSkillPath } from "../../utils/fs.js";
 
 export interface SyncIssue {
-  type: "symlink" | "missing" | "mcp" | "hooks" | "subagents";
+  type: "symlink" | "missing" | "mcp" | "hooks" | "subagents" | "plugins";
   name: string;
   message: string;
 }
@@ -39,11 +41,12 @@ export interface SyncResult {
   mcpRepaired: number;
   hooksRepaired: number;
   subagentsRepaired: number;
+  pluginsRepaired: number;
 }
 
 export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const { scope } = opts;
-  const { configPath, lockPath, agentsDir, skillsDir } = scope;
+  const { configPath, lockPath, agentsDir, skillsDir, pluginsDir } = scope;
   const subagentsDir = join(agentsDir, "agents");
 
   let config = await loadConfig(configPath);
@@ -67,6 +70,22 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const issues: SyncIssue[] = [];
   const adopted: string[] = [];
   const pruned: string[] = [];
+  const selfInstalledPluginNames = new Set(
+    scope.scope === "project"
+      ? config.plugins
+        .filter((plugin) => isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
+        .map((plugin) => plugin.name)
+      : [],
+  );
+  const runtimePluginConfigs = config.plugins.filter((plugin) => !selfInstalledPluginNames.has(plugin.name));
+
+  for (const name of selfInstalledPluginNames) {
+    issues.push({
+      type: "plugins",
+      name,
+      message: `Plugin "${name}" resolves to .agents/plugins/${name}. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.`,
+    });
+  }
 
   // 1. Adopt orphaned skills (installed but not in agents.toml)
   if (existsSync(skillsDir)) {
@@ -100,6 +119,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
         version: 1,
         skills: { ...lockfile?.skills, ...adoptedLockEntries },
         subagents: lockfile?.subagents ?? {},
+        plugins: lockfile?.plugins ?? {},
       };
       await writeLockfile(lockPath, lockfile);
     }
@@ -114,6 +134,20 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       Object.entries(lockfile.subagents).filter(([name]) => declaredSubagentNames.has(name)),
     );
     lockfile = { ...lockfile, subagents };
+    await writeLockfile(lockPath, lockfile);
+  }
+  const declaredPluginNames = new Set(config.plugins.map((plugin) => plugin.name));
+  const staleManagedPluginNames: string[] = [];
+  if (lockfile && Object.keys(lockfile.plugins).some((name) => !declaredPluginNames.has(name))) {
+    for (const [name, locked] of Object.entries(lockfile.plugins)) {
+      if (declaredPluginNames.has(name)) {continue;}
+      if (isInPlacePluginSource(locked.source)) {continue;}
+      staleManagedPluginNames.push(name);
+    }
+    const plugins = Object.fromEntries(
+      Object.entries(lockfile.plugins).filter(([name]) => declaredPluginNames.has(name)),
+    );
+    lockfile = { ...lockfile, plugins };
     await writeLockfile(lockPath, lockfile);
   }
 
@@ -137,10 +171,21 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
         managedSubagentNames.add(name);
       }
     }
+    const managedPluginNames = new Set(config.plugins
+      .filter((plugin) => !isInPlacePluginSource(plugin.source))
+      .map((plugin) => plugin.name));
+    if (lockNow) {
+      for (const [name, locked] of Object.entries(lockNow.plugins)) {
+        if (!isInPlacePluginSource(locked.source)) {
+          managedPluginNames.add(name);
+        }
+      }
+    }
     await writeAgentsGitignore(
       agentsDir,
       managedNames,
       [...managedSubagentNames],
+      [...managedPluginNames],
     );
     gitignoreUpdated = true;
 
@@ -158,6 +203,15 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
         type: "missing",
         name,
         message: `"${name}" is in agents.toml but not installed. Run 'npx @sentry/dotagents install'.`,
+      });
+    }
+  }
+  for (const plugin of runtimePluginConfigs) {
+    if (!existsSync(join(pluginsDir, plugin.name))) {
+      issues.push({
+        type: "plugins",
+        name: plugin.name,
+        message: `Plugin "${plugin.name}" is in agents.toml but not installed. Run 'npx @sentry/dotagents install'.`,
       });
     }
   }
@@ -302,6 +356,44 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
+  // 8. Verify and repair plugin runtime projections
+  let pluginsRepaired = 0;
+  const installedPluginResult = await loadInstalledPlugins(pluginsDir, runtimePluginConfigs);
+  const pluginDecls = installedPluginResult.plugins;
+  const prunedInstalledPlugins = await pruneInstalledPlugins(pluginsDir, staleManagedPluginNames);
+  const pluginIssues = scope.scope === "project"
+    ? await verifyPluginOutputs(config.agents, pluginDecls, scope.root)
+    : [];
+
+  if (scope.scope === "project") {
+    const pluginResult = await writePluginOutputs(config.agents, pluginDecls, scope.root);
+    const prunedPluginOutputs = await prunePluginOutputs(config.agents, pluginDecls, scope.root);
+    pluginsRepaired = pluginResult.written + prunedPluginOutputs.length + prunedInstalledPlugins.length;
+
+    for (const warning of pluginResult.warnings) {
+      issues.push({
+        type: "plugins",
+        name: warning.name,
+        message: warning.message,
+      });
+    }
+  }
+
+  for (const issue of installedPluginResult.issues) {
+    issues.push({
+      type: "plugins",
+      name: "plugin",
+      message: issue,
+    });
+  }
+  for (const issue of pluginIssues) {
+    issues.push({
+      type: "plugins",
+      name: issue.name,
+      message: issue.issue,
+    });
+  }
+
   return {
     issues,
     adopted,
@@ -311,7 +403,29 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     mcpRepaired,
     hooksRepaired,
     subagentsRepaired,
+    pluginsRepaired,
   };
+}
+
+function isSameProjectPluginConfig(
+  plugin: { source: string; path?: string },
+  pluginsDir: string,
+  projectRoot: string,
+): boolean {
+  if (isInPlacePluginSource(plugin.source)) {return true;}
+  if (!plugin.path) {return false;}
+
+  try {
+    const parsed = parseSource(plugin.source);
+    if (parsed.type !== "local" || !parsed.path) {return false;}
+    const sourceDir = resolve(projectRoot, parsed.path);
+    const pluginDir = resolve(sourceDir, plugin.path);
+    const relPath = relative(sourceDir, pluginDir);
+    if (relPath.startsWith("..") || isAbsolute(relPath)) {return false;}
+    return isProjectPluginSource(pluginDir, pluginsDir);
+  } catch {
+    return false;
+  }
 }
 
 async function removeStaleManagedSkill(skillsDir: string, name: string): Promise<boolean> {
@@ -364,6 +478,10 @@ export default async function sync(_args: string[], flags?: { user?: boolean }):
     console.log(chalk.green(`Repaired ${result.subagentsRepaired} subagent config(s)`));
   }
 
+  if (result.pluginsRepaired > 0) {
+    console.log(chalk.green(`Repaired ${result.pluginsRepaired} plugin artifact(s)`));
+  }
+
   if (result.issues.length === 0) {
     console.log(chalk.green("Everything in sync."));
     return;
@@ -374,6 +492,7 @@ export default async function sync(_args: string[], flags?: { user?: boolean }):
       case "mcp":
       case "hooks":
       case "subagents":
+      case "plugins":
         console.log(chalk.yellow(`  warn: ${issue.message}`));
         break;
       case "missing":

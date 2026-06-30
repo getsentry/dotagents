@@ -16,6 +16,8 @@ export interface ScopeRoot {
   lockPath: string;
   /** skills/ directory */
   skillsDir: string;
+  /** plugins/ directory */
+  pluginsDir: string;
 }
 
 /**
@@ -34,6 +36,7 @@ export function resolveScope(scope: Scope, projectRoot?: string): ScopeRoot {
       configPath: join(home, "agents.toml"),
       lockPath: join(home, "agents.lock"),
       skillsDir: join(home, "skills"),
+      pluginsDir: join(home, "plugins"),
     };
   }
 
@@ -46,6 +49,7 @@ export function resolveScope(scope: Scope, projectRoot?: string): ScopeRoot {
     configPath: join(root, "agents.toml"),
     lockPath: join(root, "agents.lock"),
     skillsDir: join(agentsDir, "skills"),
+    pluginsDir: join(agentsDir, "plugins"),
   };
 }
 

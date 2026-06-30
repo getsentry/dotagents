@@ -120,6 +120,248 @@ describe("runInstall", () => {
     expect("integrity" in lockfile!.skills["pdf"]!).toBe(false);
   });
 
+  it("installs a local plugin and writes deterministic runtime artifacts", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await mkdir(join(sourceDir, "commands"), { recursive: true });
+    await writeFile(
+      join(sourceDir, "plugin.json"),
+      JSON.stringify({
+        name: "review-tools",
+        version: "1.0.0",
+        description: "Review workflow helpers",
+        category: "Coding",
+        author: { name: "Sentry" },
+        "x-extra": { kept: true },
+      }, null, 2),
+    );
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(join(sourceDir, "commands", "review.md"), "Review command");
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex", "claude", "cursor"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools", "skills", "review", "SKILL.md"))).toBe(true);
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.plugins["review-tools"]).toEqual({
+      source: "path:plugin-source/review-tools",
+    });
+
+    expect(await readFile(join(projectRoot, ".agents", "plugins", "marketplace.json"), "utf-8")).toBe(`{
+  "interface": {
+    "displayName": "Dotagents Plugins"
+  },
+  "metadata": {
+    "managedBy": "dotagents"
+  },
+  "name": "dotagents",
+  "owner": {
+    "name": "dotagents"
+  },
+  "plugins": [
+    {
+      "category": "Coding",
+      "description": "Review workflow helpers",
+      "name": "review-tools",
+      "policy": {
+        "authentication": "ON_INSTALL",
+        "installation": "AVAILABLE"
+      },
+      "source": {
+        "path": ".agents/plugins/review-tools",
+        "source": "local"
+      },
+      "version": "1.0.0"
+    }
+  ]
+}
+`);
+    expect(await readFile(join(projectRoot, ".claude-plugin", "marketplace.json"), "utf-8")).toBe(`{
+  "metadata": {
+    "managedBy": "dotagents"
+  },
+  "name": "dotagents",
+  "owner": {
+    "name": "dotagents"
+  },
+  "plugins": [
+    {
+      "description": "Review workflow helpers",
+      "name": "review-tools",
+      "source": ".agents/plugins/review-tools",
+      "version": "1.0.0"
+    }
+  ]
+}
+`);
+    expect(await readFile(join(projectRoot, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(await readFile(join(projectRoot, ".claude-plugin", "marketplace.json"), "utf-8"));
+
+    const codexManifest = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(codexManifest["name"]).toBe("review-tools");
+    expect(codexManifest["skills"]).toBe("./skills");
+    expect(codexManifest["commands"]).toBe("./commands");
+    expect(codexManifest["x-extra"]).toEqual({ kept: true });
+
+    const agentsGitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(agentsGitignore).toContain("/plugins/review-tools/");
+  });
+
+  it("rejects same-project plugins that would install onto themselves", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "local-tools",
+        description: "Local plugin",
+      }, null, 2),
+    );
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "local-tools"
+source = "path:./.agents/plugins/local-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(/Same-project plugins cannot be installed into the same project/);
+    expect(existsSync(pluginDir)).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(false);
+  });
+
+  it("rejects same-project plugin sources nested under their install destination", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    const sourceDir = join(pluginDir, "source");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(sourceDir, "plugin.json"),
+      JSON.stringify({
+        name: "local-tools",
+        description: "Local plugin",
+      }, null, 2),
+    );
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "local-tools"
+source = "path:./.agents/plugins/local-tools/source"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(/Same-project plugins cannot be installed into the same project/);
+    expect(existsSync(sourceDir)).toBe(true);
+  });
+
+  it("prefers canonical plugin directories before marketplace entries", async () => {
+    const sourceRoot = join(projectRoot, "plugin-source");
+    const canonicalDir = join(sourceRoot, ".agents", "plugins", "review-tools");
+    const marketplaceDir = join(sourceRoot, "plugins", "review-tools-alt");
+    await mkdir(canonicalDir, { recursive: true });
+    await mkdir(marketplaceDir, { recursive: true });
+    await writeFile(
+      join(canonicalDir, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "Canonical plugin" }, null, 2),
+    );
+    await writeFile(
+      join(marketplaceDir, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "Marketplace plugin" }, null, 2),
+    );
+    await writeFile(
+      join(sourceRoot, "marketplace.json"),
+      JSON.stringify({
+        name: "source",
+        plugins: [
+          {
+            name: "review-tools",
+            source: {
+              source: "local",
+              path: "plugins/review-tools-alt",
+            },
+          },
+        ],
+      }, null, 2),
+    );
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const installed = JSON.parse(
+      await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    expect(installed["description"]).toBe("Canonical plugin");
+  });
+
+  it("generates plugin runtime outputs in frozen mode from installed bundles", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "review-tools",
+        description: "Review workflow helpers",
+      }, null, 2),
+    );
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:external-source"
+`,
+    );
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {
+        "review-tools": {
+          source: "path:external-source",
+        },
+      },
+    });
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope, frozen: true });
+
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"))).toBe(true);
+  });
+
   it("installs multiple skills", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -453,6 +695,7 @@ path = "code-reviewer.md"
           source: "path:old-agents",
         },
       },
+      plugins: {},
     };
     await writeLockfile(join(projectRoot, "agents.lock"), originalLockfile);
 

@@ -38,4 +38,26 @@ describe("lockfileSchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("accepts plugin lock entries", () => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {
+        "review-tools": {
+          source: "getsentry/plugins",
+          resolved_url: "https://github.com/getsentry/plugins.git",
+          resolved_path: "review-tools",
+          resolved_ref: "v1.0.0",
+          resolved_commit: "abc123",
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.plugins["review-tools"]!.source).toBe("getsentry/plugins");
+    }
+  });
 });

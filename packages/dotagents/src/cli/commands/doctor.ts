@@ -14,6 +14,7 @@ import { getAgent } from "../../targets/registry.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { exec } from "@sentry/dotagents-lib";
 import { isInPlaceSkill } from "../../utils/fs.js";
+import { isInPlacePluginSource } from "../../agents/plugin-store.js";
 
 export interface DoctorCheck {
   name: string;
@@ -151,6 +152,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     } else {
       const managedNames = getManagedSkillNames(config, lockfile);
       const managedSubagentNames = getManagedSubagentNames(config, lockfile);
+      const managedPluginNames = getManagedPluginNames(config, lockfile);
       checks.push({
         name: ".agents/.gitignore",
         status: "warn",
@@ -160,6 +162,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
             scope.agentsDir,
             managedNames,
             managedSubagentNames,
+            managedPluginNames,
           );
         },
       });
@@ -192,7 +195,23 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     checks.push({ name: "installed skills", status: "ok", message: "No skills declared." });
   }
 
-  // 9. Symlinks (project scope only)
+  // 9. Declared plugins are installed
+  const missingPlugins = config.plugins
+    .filter((plugin) => !existsSync(`${scope.pluginsDir}/${plugin.name}`))
+    .map((plugin) => plugin.name);
+  if (missingPlugins.length > 0) {
+    checks.push({
+      name: "installed plugins",
+      status: "error",
+      message: `${missingPlugins.length} plugin(s) not installed: ${missingPlugins.join(", ")}. Run 'npx @sentry/dotagents install'.`,
+    });
+  } else if (config.plugins.length > 0) {
+    checks.push({ name: "installed plugins", status: "ok", message: `All ${config.plugins.length} declared plugin(s) installed.` });
+  } else {
+    checks.push({ name: "installed plugins", status: "ok", message: "No plugins declared." });
+  }
+
+  // 10. Symlinks (project scope only)
   if (scope.scope === "project" && existsSync(scope.agentsDir)) {
     const targets: string[] = [];
     const seenDirs = new Set<string>();
@@ -290,6 +309,25 @@ function getManagedSubagentNames(
   if (lockfile) {
     for (const name of Object.keys(lockfile.subagents)) {
       names.add(name);
+    }
+  }
+  return [...names];
+}
+
+function getManagedPluginNames(
+  config: Awaited<ReturnType<typeof loadConfig>>,
+  lockfile: Awaited<ReturnType<typeof loadLockfile>>,
+): string[] {
+  const names = new Set(
+    config.plugins
+      .filter((plugin) => !isInPlacePluginSource(plugin.source))
+      .map((plugin) => plugin.name),
+  );
+  if (lockfile) {
+    for (const [name, locked] of Object.entries(lockfile.plugins)) {
+      if (!isInPlacePluginSource(locked.source)) {
+        names.add(name);
+      }
     }
   }
   return [...names];

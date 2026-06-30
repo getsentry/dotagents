@@ -4,11 +4,13 @@ import type { Lockfile } from "../../../lockfile/schema.js";
 import type { ScopeRoot } from "../../../scope.js";
 import { checkRootGitignoreEntries, writeAgentsGitignore } from "../../../gitignore/writer.js";
 import { isInPlaceSkill } from "../../../utils/fs.js";
+import { isInPlacePluginSource, type PluginDeclaration } from "../../../agents/plugin-store.js";
 import type { SubagentDeclaration } from "../../../subagents/types.js";
 
 export interface InstallGitignoreArtifacts {
   installedSkillNames: string[];
   subagents: SubagentDeclaration[];
+  plugins: PluginDeclaration[];
 }
 
 function managedSkillNames(
@@ -32,6 +34,20 @@ function managedSubagentNames(
     : subagents.map((subagent) => subagent.name);
 }
 
+function managedPluginNames(
+  lockfile: Lockfile | null,
+  plugins: PluginDeclaration[],
+  frozen?: boolean,
+): string[] {
+  return frozen
+    ? Object.entries(lockfile?.plugins ?? {})
+      .filter(([, locked]) => !isInPlacePluginSource(locked.source))
+      .map(([name]) => name)
+    : plugins
+      .filter((plugin) => !isInPlacePluginSource(plugin.source))
+      .map((plugin) => plugin.name);
+}
+
 /** Regenerates project `.agents/.gitignore` from install results and lockfile state. */
 export async function writeInstallGitignore(
   config: AgentsConfig,
@@ -46,6 +62,7 @@ export async function writeInstallGitignore(
     scope.agentsDir,
     managedSkillNames(config, artifacts.installedSkillNames),
     managedSubagentNames(lockfile, artifacts.subagents, frozen),
+    managedPluginNames(lockfile, artifacts.plugins, frozen),
   );
 
   const missing = await checkRootGitignoreEntries(scope.root);

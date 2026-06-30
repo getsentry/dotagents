@@ -13,6 +13,7 @@ import { sourcesMatch, parseOwnerRepoShorthand, isExplicitSourceSpecifier } from
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 import { isInPlaceSkill } from "../../utils/fs.js";
+import { isInPlacePluginSource } from "../../agents/plugin-store.js";
 
 export class RemoveError extends Error {
   constructor(message: string) {
@@ -162,10 +163,23 @@ async function updateProjectGitignore(scope: ScopeRoot): Promise<void> {
       managedSubagentNames.add(name);
     }
   }
+  const managedPluginNames = new Set(
+    config.plugins
+      .filter((plugin) => !isInPlacePluginSource(plugin.source))
+      .map((plugin) => plugin.name),
+  );
+  if (lockfile) {
+    for (const [name, locked] of Object.entries(lockfile.plugins)) {
+      if (!isInPlacePluginSource(locked.source)) {
+        managedPluginNames.add(name);
+      }
+    }
+  }
   await writeAgentsGitignore(
     scope.agentsDir,
     managedNames,
     [...managedSubagentNames],
+    [...managedPluginNames],
   );
 }
 

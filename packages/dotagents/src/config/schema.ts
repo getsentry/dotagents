@@ -169,6 +169,27 @@ const subagentSchema = z.object({
 
 export type SubagentConfig = z.infer<typeof subagentSchema>;
 
+export const PLUGIN_NAME_PATTERN = /^[a-z][a-z0-9.-]*[a-z0-9]$|^[a-z]$/;
+
+const pluginNameSchema = z
+  .string()
+  .regex(
+    PLUGIN_NAME_PATTERN,
+    "Plugin names must start with lowercase a-z, end with lowercase a-z or 0-9, and contain only lowercase letters, numbers, hyphens, and dots",
+  );
+
+const pluginTargetSchema = z.string().min(1);
+
+const pluginSchema = z.object({
+  name: pluginNameSchema,
+  source: skillSourceSchema,
+  ref: z.string().optional(),
+  path: z.string().optional(),
+  targets: z.array(pluginTargetSchema).optional(),
+}).strict();
+
+export type PluginConfig = z.infer<typeof pluginSchema>;
+
 const trustConfigSchema = z.object({
   allow_all: z.boolean().default(false),
   github_orgs: z.array(z.string()).default([]),
@@ -190,6 +211,7 @@ export const agentsConfigSchema = z.object({
   mcp: z.array(mcpSchema).default([]),
   hooks: z.array(hookSchema).default([]),
   subagents: z.array(subagentSchema).default([]),
+  plugins: z.array(pluginSchema).default([]),
   trust: trustConfigSchema.optional(),
   minimum_release_age: z.number().int().min(0).optional(),
   minimum_release_age_exclude: z.array(z.string()).default([]),

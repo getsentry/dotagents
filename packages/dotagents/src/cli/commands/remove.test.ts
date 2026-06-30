@@ -102,6 +102,45 @@ describe("runRemove", () => {
     expect(gitignore).toContain("/agents/old-reviewer.md");
   });
 
+  it("keeps managed plugins in .agents/.gitignore after removing a skill", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[skills]]
+name = "pdf"
+source = "path:local-skills/pdf"
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugins/review-tools"
+`,
+    );
+    await mkdir(join(projectRoot, ".agents", "skills", "pdf"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"), SKILL_MD("pdf"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        pdf: {
+          source: "path:local-skills/pdf",
+        },
+      },
+      plugins: {
+        "review-tools": {
+          source: "path:plugins/review-tools",
+        },
+      },
+    });
+
+    const scope = resolveScope("project", projectRoot);
+    await runRemove({ scope, skillName: "pdf" });
+
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).not.toContain("/skills/pdf/");
+    expect(gitignore).toContain("/plugins/review-tools/");
+    expect(gitignore).toContain("/plugins/marketplace.json");
+  });
+
   it("throws RemoveError for skill not in config", async () => {
     await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
     const scope = resolveScope("project", projectRoot);
