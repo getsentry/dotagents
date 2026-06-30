@@ -20,10 +20,9 @@ For user scope, isolate `HOME` and `DOTAGENTS_HOME`, then assert generated Curso
 
 This QA skill does not currently include an automated Cursor desktop/runtime proof. Do not claim Cursor runtime discovery from file-level checks alone.
 
-Cursor runtime proof uses Cursor auth, not the generic OpenRouter path. Read
-[runtime-auth.md](runtime-auth.md) before using secrets. Use `CURSOR_API_KEY`
-or browser login for Cursor CLI/headless checks. Do not claim OpenRouter proof
-for Cursor unless current Cursor docs or observed local behavior proves an
-OpenRouter-compatible endpoint.
+Cursor runtime proof uses Cursor auth. Use `CURSOR_API_KEY` or browser login
+for Cursor CLI/headless checks. Do not claim generic gateway proof for Cursor
+unless current Cursor docs or observed local behavior proves a compatible
+endpoint.
 
 If a branch specifically requires Cursor runtime proof, use a real Cursor session or a documented headless path if one exists in the local environment. Report the exact interaction and evidence. Otherwise report file-level Cursor wiring only.

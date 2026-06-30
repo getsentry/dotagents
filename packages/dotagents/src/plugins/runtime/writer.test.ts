@@ -284,55 +284,26 @@ describe("plugin writer", () => {
     expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"))).toBe(true);
   });
 
-  it("does not overwrite unmanaged Codex plugin manifests", async () => {
+  it.each([
+    ["codex", "Codex", ".codex-plugin"],
+    ["claude", "Claude", ".claude-plugin"],
+    ["cursor", "Cursor", ".cursor-plugin"],
+  ] as const)("does not overwrite unmanaged %s plugin manifests", async (agent, label, manifestDir) => {
     const alpha = await plugin("alpha-tools");
-    await mkdir(join(alpha.pluginDir, ".codex-plugin"), { recursive: true });
-    await writeFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "{ \"name\": \"mine\" }\n", "utf-8");
+    const manifestPath = join(alpha.pluginDir, manifestDir, "plugin.json");
+    await mkdir(join(alpha.pluginDir, manifestDir), { recursive: true });
+    await writeFile(manifestPath, "{ \"name\": \"mine\" }\n", "utf-8");
 
-    const result = await writePluginOutputs(["codex"], [alpha], root);
+    const result = await writePluginOutputs([agent], [alpha], root);
 
     expect(result.warnings).toEqual([
       {
-        agent: "codex",
+        agent,
         name: "alpha-tools",
-        message: `Codex plugin manifest exists and is not managed by dotagents: ${join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json")}`,
+        message: `${label} plugin manifest exists and is not managed by dotagents: ${join(root, ".agents", "plugins", "alpha-tools", manifestDir, "plugin.json")}`,
       },
     ]);
-    expect(await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8")).toBe("{ \"name\": \"mine\" }\n");
-  });
-
-  it("does not overwrite unmanaged Claude plugin manifests", async () => {
-    const alpha = await plugin("alpha-tools");
-    await mkdir(join(alpha.pluginDir, ".claude-plugin"), { recursive: true });
-    await writeFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "{ \"name\": \"mine\" }\n", "utf-8");
-
-    const result = await writePluginOutputs(["claude"], [alpha], root);
-
-    expect(result.warnings).toEqual([
-      {
-        agent: "claude",
-        name: "alpha-tools",
-        message: `Claude plugin manifest exists and is not managed by dotagents: ${join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json")}`,
-      },
-    ]);
-    expect(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8")).toBe("{ \"name\": \"mine\" }\n");
-  });
-
-  it("does not overwrite unmanaged Cursor plugin manifests", async () => {
-    const alpha = await plugin("alpha-tools");
-    await mkdir(join(alpha.pluginDir, ".cursor-plugin"), { recursive: true });
-    await writeFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "{ \"name\": \"mine\" }\n", "utf-8");
-
-    const result = await writePluginOutputs(["cursor"], [alpha], root);
-
-    expect(result.warnings).toEqual([
-      {
-        agent: "cursor",
-        name: "alpha-tools",
-        message: `Cursor plugin manifest exists and is not managed by dotagents: ${join(root, ".agents", "plugins", "alpha-tools", ".cursor-plugin", "plugin.json")}`,
-      },
-    ]);
-    expect(await readFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "utf-8")).toBe("{ \"name\": \"mine\" }\n");
+    expect(await readFile(manifestPath, "utf-8")).toBe("{ \"name\": \"mine\" }\n");
   });
 
   it("does not generate runtime outputs when no agent targets are selected", async () => {

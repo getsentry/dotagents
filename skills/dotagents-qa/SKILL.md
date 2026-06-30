@@ -35,7 +35,6 @@ Write down the QA target before running commands:
 
 Read the targeted reference before running runtime-specific QA:
 - Core install/sync example: [references/core-agentic-qa.md](references/core-agentic-qa.md)
-- Runtime auth, gateway, and `.env.qa.local` handling: [references/runtime-auth.md](references/runtime-auth.md)
 - Plugin runtime verification matrix: [references/plugin-runtime.md](references/plugin-runtime.md)
 - Codex custom agents and plugin marketplace/install proof: [references/codex.md](references/codex.md)
 - Claude Code files, plugin validation, and runtime caveats: [references/claude.md](references/claude.md)
@@ -65,11 +64,8 @@ runtime discovery by itself; for plugins, prefer native dry-run/management
 commands where available: `claude plugin validate` for Claude plugin and
 marketplace shape, and `codex plugin marketplace add/list` plus
 `codex plugin add/list` for Codex marketplace installation. Authenticated
-model-backed checks are still explicit opt-ins. When a model-backed check needs
-secrets, put them in host `.env.qa.local`, keep that file out of git, and pass
-only the specific variables required for the check into Docker; do not copy the
-env file into the fixture or retained `/qa-out` artifacts. See
-[references/runtime-auth.md](references/runtime-auth.md).
+model-backed checks are still explicit opt-ins. Keep runtime credentials out of
+fixtures and retained `/qa-out` artifacts.
 
 Use an interactive container so the QA steps stay change-specific:
 
@@ -370,12 +366,9 @@ Claude has no cheap dry-run skill list. If auth/network/model cost is
 acceptable, run a minimal non-interactive prompt from the temp project;
 otherwise report it as skipped.
 
-Provider and gateway checks are runtime-specific. OpenRouter can be used where
-the runtime supports an Anthropic-compatible or OpenAI-compatible custom
-provider, but Cursor's documented runtime auth is Cursor login/API-key based.
-Before claiming runtime proof through a gateway, read
-[references/runtime-auth.md](references/runtime-auth.md), run the check inside
-Docker, and report the exact provider config used with secret values redacted.
+Provider and gateway checks are runtime-specific. Before claiming model-backed
+runtime proof, run the check inside Docker and report the exact provider config
+used with secret values redacted.
 
 ## 7. Report Evidence
 

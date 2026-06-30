@@ -109,7 +109,7 @@ Expected evidence:
 
 Manual final check with model auth:
 
-- Use `OPENROUTER_API_KEY` or another configured provider key
+- Use a configured provider key
 - Run `opencode run --model "$OPENCODE_QA_MODEL" --format json "<prompt>"`
 - For generated subagents, ask the primary agent to call the `task` tool with
   `subagent_type = "code-reviewer"`; do not pass the subagent to `--agent`

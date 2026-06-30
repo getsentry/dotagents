@@ -40,10 +40,9 @@ With `--keep`, inspect:
 - `codex-runtime.jsonl` for `spawn_agent`, `wait`, and child-agent response events
 - `project/.codex/agents/code-reviewer.toml` for the generated file Codex loaded
 
-For OpenRouter or other gateway-backed Codex proof, read
-[runtime-auth.md](runtime-auth.md) first. Put provider config in the isolated
+For gateway-backed Codex proof, put provider config in the isolated
 `CODEX_HOME/config.toml`; Codex ignores provider redirects in project
-`.codex/config.toml`. Pass `OPENROUTER_API_KEY` into Docker only for the
+`.codex/config.toml`. Pass provider credentials into Docker only for the
 runtime invocation.
 
 ## Important Caveats

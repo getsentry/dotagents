@@ -54,10 +54,9 @@ use relative string sources like `"./.agents/plugins/qa-tools"`.
 
 There is no cheap dry-run in this QA skill that proves Claude Code loads custom agents. Do not claim Claude runtime discovery from file-level checks alone.
 
-For authenticated or OpenRouter-backed runtime proof, read
-[runtime-auth.md](runtime-auth.md) first. Keep credentials in `.env.qa.local`,
-pass only `OPENROUTER_API_KEY` or `ANTHROPIC_*` variables into Docker, and keep
-`HOME` isolated to the temp container home.
+For authenticated runtime proof, pass only the required provider variables into
+Docker, keep credentials out of retained fixtures, and keep `HOME` isolated to
+the temp container home.
 
 If a branch specifically requires Claude runtime proof, run an explicit Claude Code invocation only when auth/model cost is acceptable, keep it isolated to a temp project, and report:
 

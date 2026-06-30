@@ -20,11 +20,9 @@ This QA skill does not currently include an automated Grok runtime proof, and
 the QA Docker image does not install `grok` yet. Do not claim Grok runtime
 discovery from file-level checks alone.
 
-For authenticated or OpenRouter-backed runtime proof, read
-[runtime-auth.md](runtime-auth.md) first. Use a temp Grok config with a custom
-model provider and `env_key = "OPENROUTER_API_KEY"` or `env_key =
-"XAI_API_KEY"`, then run `grok inspect` before any paid prompt to prove Grok
-discovered the temp project config, skills, plugins, hooks, and MCP servers.
+For authenticated runtime proof, use a temp Grok config and run `grok inspect`
+before any paid prompt to prove Grok discovered the temp project config, skills,
+plugins, hooks, and MCP servers.
 
 If a branch specifically requires Grok runtime proof, install or make `grok`
 available inside the Docker container and report:

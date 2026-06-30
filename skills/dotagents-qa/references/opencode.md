@@ -47,13 +47,11 @@ Manual Docker probes can prove more when the branch affects OpenCode output:
   `.opencode/skills/*`; verify from raw output instead of assuming it is
   stable across OpenCode versions
 
-For authenticated or OpenRouter-backed runtime proof, read
-[runtime-auth.md](runtime-auth.md) first. Use a temp `opencode.json` provider
-configuration with `@ai-sdk/openai-compatible`, `options.baseURL`, and
-`options.apiKey` referencing `{env:OPENROUTER_API_KEY}`. Keep credentials in
-the environment, not in retained fixture files.
+For authenticated runtime proof, use a temp `opencode.json` provider
+configuration and keep credentials in the environment, not in retained fixture
+files.
 
-With `OPENROUTER_API_KEY` forwarded into Docker, a minimal proof is:
+With provider credentials forwarded into Docker, a minimal proof is:
 
 - `opencode auth list` reports the OpenRouter environment credential
 - `opencode models openrouter` lists the chosen model
