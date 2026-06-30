@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import {
   applyDefaultRepositorySource,
@@ -81,6 +81,10 @@ const NATIVE_MANIFEST_PATHS = [
   ".plugin/plugin.json",
 ] as const;
 
+export const DOTAGENTS_MANAGED_PLUGIN_MARKER = ".dotagents-managed";
+
+let tempInstallCounter = 0;
+
 /** Resolves a plugin declaration to a trusted local or cached git source bundle. */
 export async function resolvePlugin(
   config: PluginConfig,
@@ -154,10 +158,38 @@ export async function installPluginBundle(
     );
   }
   const installed = { ...resolved.plugin, pluginDir: destDir };
+  const tempDir = join(
+    pluginsDir,
+    `.${resolved.plugin.name}.tmp-${process.pid}-${Date.now()}-${tempInstallCounter++}`,
+  );
+  const backupDir = join(
+    pluginsDir,
+    `.${resolved.plugin.name}.backup-${process.pid}-${Date.now()}-${tempInstallCounter++}`,
+  );
 
-  await copyDir(resolved.plugin.pluginDir, destDir);
+  try {
+    await copyDir(resolved.plugin.pluginDir, tempDir);
+    const staged = { ...resolved.plugin, pluginDir: tempDir };
+    await ensureCanonicalManifest(staged);
+    await writeManagedMarker(tempDir);
 
-  await ensureCanonicalManifest(installed);
+    if (existsSync(destDir)) {
+      await rename(destDir, backupDir);
+      try {
+        await rename(tempDir, destDir);
+      } catch (err) {
+        await rename(backupDir, destDir).catch(() => {});
+        throw err;
+      }
+      await rm(backupDir, { recursive: true, force: true });
+    } else {
+      await rename(tempDir, destDir);
+    }
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+    await rm(backupDir, { recursive: true, force: true });
+  }
+
   return installed;
 }
 
@@ -209,6 +241,11 @@ export async function pruneInstalledPlugins(
     pruned.push(name);
   }
   return pruned;
+}
+
+/** Returns true when an existing plugin bundle was previously installed by dotagents. */
+export function isManagedPluginInstall(pluginDir: string): boolean {
+  return existsSync(join(pluginDir, DOTAGENTS_MANAGED_PLUGIN_MARKER));
 }
 
 /** Converts a resolved plugin to its lockfile entry. */
@@ -381,6 +418,7 @@ async function loadPluginCandidate(
   overlay: Partial<PluginManifest> = {},
 ): Promise<PluginCandidate | null> {
   if (!existsSync(pluginDir)) {return null;}
+  await assertInsideSourceRoot(sourceRoot, pluginDir, "Plugin source");
 
   const manifest = await loadManifest(pluginDir);
   if (!manifest && !await hasPluginComponents(pluginDir)) {return null;}
@@ -439,6 +477,10 @@ async function ensureCanonicalManifest(plugin: PluginDeclaration): Promise<void>
   const filePath = join(plugin.pluginDir, "plugin.json");
   if (existsSync(filePath)) {return;}
   await writeFile(filePath, `${JSON.stringify(plugin.manifest, null, 2)}\n`, "utf-8");
+}
+
+async function writeManagedMarker(pluginDir: string): Promise<void> {
+  await writeFile(join(pluginDir, DOTAGENTS_MANAGED_PLUGIN_MARKER), "managedBy=dotagents\n", "utf-8");
 }
 
 function toDeclaration(
@@ -528,14 +570,23 @@ async function resolveInside(root: string, childPath: string, label: string): Pr
     throw new Error(`${label} resolves outside source: ${childPath}`);
   }
   if (existsSync(filePath)) {
-    const rootRealPath = await realpath(rootPath);
-    const fileRealPath = await realpath(filePath);
-    const realRelPath = relative(rootRealPath, fileRealPath);
-    if (realRelPath.startsWith("..") || isAbsolute(realRelPath)) {
-      throw new Error(`${label} resolves outside source: ${childPath}`);
-    }
+    await assertInsideSourceRoot(rootPath, filePath, label, childPath);
   }
   return filePath;
+}
+
+async function assertInsideSourceRoot(
+  root: string,
+  filePath: string,
+  label: string,
+  displayPath = relativePath(root, filePath),
+): Promise<void> {
+  const rootRealPath = await realpath(root);
+  const fileRealPath = await realpath(filePath);
+  const realRelPath = relative(rootRealPath, fileRealPath);
+  if (realRelPath.startsWith("..") || isAbsolute(realRelPath)) {
+    throw new Error(`${label} resolves outside source: ${displayPath}`);
+  }
 }
 
 function managedPluginPath(pluginsDir: string, name: string): string | null {

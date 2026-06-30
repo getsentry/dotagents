@@ -137,4 +137,27 @@ describe("plugin store", () => {
       await rm(projectRoot, { recursive: true, force: true });
     }
   });
+
+  it("rejects conventional plugin discovery symlinks that escape the source root", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const outsideDir = join(projectRoot, "outside", "review-tools");
+      await mkdir(join(sourceRoot, "plugins"), { recursive: true });
+      await mkdir(outsideDir, { recursive: true });
+      await writeFile(
+        join(outsideDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools" }),
+        "utf-8",
+      );
+      await symlink(outsideDir, join(sourceRoot, "plugins", "review-tools"));
+
+      await expect(resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      )).rejects.toThrow(/Plugin source resolves outside source/);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
 });
