@@ -278,7 +278,7 @@ Generated files include a dotagents header marker. `install` and `sync` overwrit
 
 Each `[[plugins]]` entry requires `name` and `source`. Optional: `ref`, `path`, and `targets`. When `targets` is absent or empty, dotagents targets every agent listed in `agents`.
 
-dotagents installs canonical plugin bundles under `.agents/plugins/<name>/`. The canonical plugin input format is `.agents/plugins/marketplace.json` plus `.agents/plugins/<name>/plugin.json`, using a generalized Codex-compatible marketplace and manifest shape. Known fields are validated, unknown manifest extension fields are preserved in installed bundles, marketplace extension fields are accepted but not projected, and component paths must be relative filesystem paths without `..` or URL/scheme prefixes.
+dotagents installs canonical plugin bundles under `.agents/plugins/<name>/`. The canonical plugin input format is `.agents/plugins/marketplace.json` plus `.agents/plugins/<name>/plugin.json`, using a generalized Codex-compatible marketplace and manifest shape. Known fields are validated, component paths must be relative filesystem paths without `..` or URL/scheme prefixes, unknown manifest extension fields are preserved in installed bundles and the generated Codex manifest, and Claude/Cursor manifests project known supported fields plus managed metadata. Marketplace extension fields are accepted but not projected.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

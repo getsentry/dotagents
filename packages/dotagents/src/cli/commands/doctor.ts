@@ -152,7 +152,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     } else {
       const managedNames = getManagedSkillNames(config, lockfile);
       const managedSubagentNames = getManagedSubagentNames(config, lockfile);
-      const managedPluginNames = getManagedPluginNames(config, lockfile);
+      const managedPluginNames = getManagedPluginNames(config, lockfile, scope);
       checks.push({
         name: ".agents/.gitignore",
         status: "warn",
@@ -338,10 +338,11 @@ function getManagedSubagentNames(
 function getManagedPluginNames(
   config: Awaited<ReturnType<typeof loadConfig>>,
   lockfile: Awaited<ReturnType<typeof loadLockfile>>,
+  scope: ScopeRoot,
 ): string[] {
   const names = new Set(
     config.plugins
-      .filter((plugin) => !isInPlacePluginSource(plugin.source))
+      .filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
       .map((plugin) => plugin.name),
   );
   if (lockfile) {

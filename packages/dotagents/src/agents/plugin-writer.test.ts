@@ -143,6 +143,38 @@ describe("plugin writer", () => {
     expect(await verifyPluginOutputs(["cursor", "codex", "claude"], [beta, alpha], root)).toEqual([]);
   });
 
+  it("projects explicit Claude and Cursor component paths before conventional discovery", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: {
+        agents: "custom-agents",
+        commands: ["cmds/review.md"],
+        hooks: "config/hooks.json",
+        mcpServers: "config/mcp.json",
+        rules: "cursor-rules",
+        skills: "plugin-skills",
+      },
+    });
+
+    const result = await writePluginOutputs(["claude", "cursor"], [alpha], root);
+
+    expect(result.warnings).toEqual([]);
+    expect(result.written).toBe(4);
+    const claudeManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(claudeManifest["agents"]).toBe("./custom-agents");
+    expect(claudeManifest["commands"]).toEqual(["./cmds/review.md"]);
+    expect(claudeManifest["hooks"]).toBe("./config/hooks.json");
+    expect(claudeManifest["mcpServers"]).toBe("./config/mcp.json");
+    expect(claudeManifest["skills"]).toBe("./plugin-skills");
+
+    const cursorManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(cursorManifest["agents"]).toBe("./custom-agents");
+    expect(cursorManifest["commands"]).toEqual(["./cmds/review.md"]);
+    expect(cursorManifest["hooks"]).toBe("./config/hooks.json");
+    expect(cursorManifest["mcpServers"]).toBe("./config/mcp.json");
+    expect(cursorManifest["rules"]).toBe("./cursor-rules");
+    expect(cursorManifest["skills"]).toBe("./plugin-skills");
+  });
+
   it("does not overwrite unmanaged marketplace files", async () => {
     const alpha = await plugin("alpha-tools");
     await mkdir(join(root, ".claude-plugin"), { recursive: true });
@@ -348,5 +380,19 @@ describe("plugin writer", () => {
 
     expect(first.written).toBe(1);
     expect(second.written).toBe(0);
+  });
+
+  it("compares managed Grok projection files as bytes", async () => {
+    const alpha = await plugin("alpha-tools");
+    await mkdir(join(alpha.pluginDir, "bin"), { recursive: true });
+    await writeFile(join(alpha.pluginDir, "bin", "blob"), Buffer.from([0xff]));
+
+    const first = await writePluginOutputs(["grok"], [alpha], root);
+    await writeFile(join(alpha.pluginDir, "bin", "blob"), Buffer.from([0xef, 0xbf, 0xbd]));
+    const second = await writePluginOutputs(["grok"], [alpha], root);
+
+    expect(first.written).toBe(1);
+    expect(second.written).toBe(1);
+    expect(await readFile(join(root, ".grok", "plugins", "alpha-tools", "bin", "blob"))).toEqual(Buffer.from([0xef, 0xbf, 0xbd]));
   });
 });

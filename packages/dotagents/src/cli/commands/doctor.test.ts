@@ -277,6 +277,27 @@ source = "getsentry/plugins"
       expect(existsSync(join(projectRoot, ".agents", ".gitignore"))).toBe(true);
     });
 
+    it("does not gitignore same-project canonical plugins when recreating .agents/.gitignore", async () => {
+      const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }));
+      await writeFile(
+        join(projectRoot, "agents.toml"),
+        `version = 1
+
+[[plugins]]
+name = "local-tools"
+source = "path:."
+`,
+      );
+      await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+
+      await runDoctor({ scope: resolveScope("project", projectRoot), fix: true });
+
+      const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+      expect(gitignore).not.toContain("/plugins/local-tools/");
+    });
+
     it("includes lockfile subagents when recreating .agents/.gitignore", async () => {
       await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
       await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");

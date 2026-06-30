@@ -243,7 +243,7 @@ Generated paths:
 
 Plugin dependencies. Each entry selects one plugin bundle from a source. dotagents installs the canonical plugin bundle into `.agents/plugins/<name>/` and writes deterministic runtime-specific plugin outputs for the configured agents selected by the plugin's `targets`.
 
-The canonical plugin input format is `.agents/plugins/marketplace.json` plus `.agents/plugins/<name>/plugin.json`, using a generalized Codex-compatible marketplace and manifest shape. Canonical plugin manifests and marketplaces validate known fields tightly while allowing unknown extension fields. Manifest extensions are preserved in installed bundles and generated native manifests; marketplace extensions are accepted as input metadata but are not projected into generated marketplaces.
+The canonical plugin input format is `.agents/plugins/marketplace.json` plus `.agents/plugins/<name>/plugin.json`, using a generalized Codex-compatible marketplace and manifest shape. Canonical plugin manifests and marketplaces validate known fields tightly while allowing unknown extension fields. Manifest extensions are preserved in installed bundles and the generated Codex manifest; Claude and Cursor manifests project known supported fields plus managed metadata. Marketplace extensions are accepted as input metadata but are not projected into generated marketplaces.
 
 See [Plugin Support Specification](plugins.md) for the canonical layout, exact input/output contract, native docs captured for each runtime, discovery rules, generated runtime outputs, and non-goals.
 

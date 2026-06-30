@@ -190,7 +190,7 @@ dotagents may also import plugin sources that already use native runtime manifes
 
 ## Native Formats
 
-Input and matching-runtime output should use the same native format where possible. dotagents should preserve raw native manifests and component files for matching runtimes, adding only generated metadata needed to make the runtime discover the plugin.
+Input and matching-runtime output should use the same native format where possible. dotagents should preserve component files for matching runtimes. Generated native manifests project the portable fields each runtime needs to discover the plugin; the Codex manifest additionally preserves unknown manifest extensions from the canonical bundle.
 
 | Runtime | Native Manifest | Native Plugin Roots | Components from Docs | Notes |
 |---------|-----------------|---------------------|----------------------|-------|

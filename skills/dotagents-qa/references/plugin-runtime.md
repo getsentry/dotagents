@@ -23,6 +23,11 @@ This proves install/sync/list/doctor behavior, generated plugin files, Claude
 validation, Codex marketplace install, and OpenCode projection surface. It does
 not prove every runtime loaded and invoked every plugin component.
 
+`pnpm qa:example` is the install/sync repair proof. It intentionally runs only
+the `install-files` and `sync-repair` tasks. Run the separate `plugin-claude`,
+`plugin-codex`, and `plugin-opencode` tasks when the branch needs native
+plugin-management or runtime-projection evidence.
+
 ## Claude Code
 
 Best automated proof in Docker:
@@ -42,8 +47,8 @@ Expected evidence:
 - `plugin list --available --json` includes `qa-tools@dotagents`
 - `plugin install` succeeds at local scope
 - `plugin list --json` shows `enabled: true`
-- `plugin details qa-tools` lists plugin skills, agents, hooks, MCP servers, and
-  LSP servers from the generated bundle
+- `plugin details qa-tools` lists the generated bundle's available components,
+  such as plugin skills, commands, and agents in the checked-in fixture
 
 Manual final check when authenticated:
 
@@ -86,11 +91,7 @@ model-backed prompt because the plugin management CLI does not execute skills.
 
 Best automated proof in Docker:
 
-1. Install the example with dotagents.
-2. Confirm `.opencode/plugins/qa-tools.ts` re-exports the canonical plugin
-   module.
-3. For a deterministic plugin-execution proof, make the fixture plugin register
-   an observable config hook:
+The checked-in `qa-tools` fixture registers an observable config hook:
 
 ```ts
 export default async () => ({
@@ -104,7 +105,9 @@ export default async () => ({
 });
 ```
 
-Then run:
+`node skills/dotagents-qa/scripts/qa-example.mjs plugin-opencode` installs the
+fixture, confirms `.opencode/plugins/qa-tools.ts` re-exports the canonical
+module, then runs:
 
 ```bash
 opencode debug config > /tmp/opencode-config.json

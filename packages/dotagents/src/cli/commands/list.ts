@@ -88,6 +88,7 @@ export async function runList(opts: ListOptions): Promise<SkillStatus[]> {
   return results;
 }
 
+/** Returns configured plugin install and lock status for the selected scope. */
 export async function runPluginList(opts: PluginListOptions): Promise<PluginStatus[]> {
   const { scope } = opts;
   const { configPath, lockPath, pluginsDir } = scope;

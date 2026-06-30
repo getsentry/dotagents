@@ -5,7 +5,6 @@ describe("plugin store", () => {
   it("preserves an empty resolved path for root git plugins", () => {
     const resolved = {
       type: "git",
-      source: "org/review-tools",
       resolvedUrl: "https://github.com/org/review-tools.git",
       resolvedPath: "",
       commit: "abc123",

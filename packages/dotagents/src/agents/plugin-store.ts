@@ -44,13 +44,11 @@ export interface PluginDeclaration {
 
 interface ResolvedLocalPlugin {
   type: "local";
-  source: string;
   plugin: PluginDeclaration;
 }
 
 interface ResolvedGitPlugin {
   type: "git";
-  source: string;
   resolvedUrl: string;
   resolvedPath: string;
   resolvedRef?: string;
@@ -104,7 +102,6 @@ export async function resolvePlugin(
     }
     return {
       type: "local",
-      source: config.source,
       plugin: toDeclaration(config, discovered),
     };
   }
@@ -137,7 +134,6 @@ export async function resolvePlugin(
 
   return {
     type: "git",
-    source: config.source,
     resolvedUrl: cloneUrl,
     resolvedPath: discovered.path,
     resolvedRef: ref,
@@ -218,10 +214,10 @@ export async function pruneInstalledPlugins(
 /** Converts a resolved plugin to its lockfile entry. */
 export function lockEntryForPlugin(resolved: ResolvedPlugin): LockedPlugin {
   if (resolved.type === "local") {
-    return { source: resolved.source };
+    return { source: resolved.plugin.source };
   }
   return {
-    source: resolved.source,
+    source: resolved.plugin.source,
     resolved_url: resolved.resolvedUrl,
     resolved_path: resolved.resolvedPath,
     ...(resolved.resolvedRef === undefined ? {} : { resolved_ref: resolved.resolvedRef }),

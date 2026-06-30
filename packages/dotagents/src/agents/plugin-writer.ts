@@ -136,7 +136,7 @@ export async function prunePluginOutputs(
 ): Promise<string[]> {
   const pruned: string[] = [];
   const desiredMarketplacePaths = new Set(
-    marketplaceOutputsForTargets(agentIds, projectRoot, plugins).map((output) => output.filePath),
+    marketplaceOutputs(agentIds, projectRoot, plugins).map((output) => output.filePath),
   );
   for (const filePath of marketplaceOutputPaths(projectRoot)) {
     if (desiredMarketplacePaths.has(filePath)) {continue;}
@@ -285,31 +285,6 @@ function marketplaceOutputs(
   return outputs;
 }
 
-function marketplaceOutputsForTargets(
-  agentIds: string[],
-  projectRoot: string,
-  plugins: Array<Pick<PluginDeclaration, "name" | "targets">>,
-): RuntimeOutput[] {
-  if (plugins.length === 0) {return [];}
-
-  const outputs: RuntimeOutput[] = [];
-  const hasClaude = plugins.some((plugin) => selectedAgentIds(agentIds, plugin).includes("claude"));
-  const hasCursor = plugins.some((plugin) => selectedAgentIds(agentIds, plugin).includes("cursor"));
-  const hasCodex = plugins.some((plugin) => selectedAgentIds(agentIds, plugin).includes("codex"));
-
-  if (hasClaude) {
-    outputs.push({ agent: "claude", filePath: join(projectRoot, ".claude-plugin", "marketplace.json"), content: "" });
-  }
-  if (hasCursor) {
-    outputs.push({ agent: "cursor", filePath: join(projectRoot, ".cursor-plugin", "marketplace.json"), content: "" });
-  }
-  if (hasCodex) {
-    outputs.push({ agent: "codex", filePath: join(projectRoot, ".agents", "plugins", "marketplace.json"), content: "" });
-  }
-
-  return outputs;
-}
-
 function pathMarketplace(
   projectRoot: string,
   name: string,
@@ -449,18 +424,24 @@ function claudeRuntimeManifest(plugin: PluginDeclaration): Record<string, unknow
   copyManifestField(plugin.manifest, manifest, "license");
   copyManifestField(plugin.manifest, manifest, "keywords");
 
-  if (existsSync(join(plugin.pluginDir, "skills"))) {
+  if (!copyRuntimeComponentField(plugin.manifest, manifest, "skills") && existsSync(join(plugin.pluginDir, "skills"))) {
     manifest["skills"] = "./skills";
   }
-  if (existsSync(join(plugin.pluginDir, "commands"))) {
+  if (!copyRuntimeComponentField(plugin.manifest, manifest, "agents") && existsSync(join(plugin.pluginDir, "agents"))) {
+    manifest["agents"] = "./agents";
+  }
+  if (!copyRuntimeComponentField(plugin.manifest, manifest, "commands") && existsSync(join(plugin.pluginDir, "commands"))) {
     manifest["commands"] = "./commands";
   }
-  if (existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
+  if (!copyRuntimeComponentField(plugin.manifest, manifest, "hooks") && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
     manifest["hooks"] = "./hooks/hooks.json";
   }
-  if (existsSync(join(plugin.pluginDir, ".mcp.json"))) {
+  if (!copyRuntimeComponentField(plugin.manifest, manifest, "mcpServers") && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
     manifest["mcpServers"] = "./.mcp.json";
   }
+  copyRuntimeComponentField(plugin.manifest, manifest, "lspServers");
+  copyRuntimeComponentField(plugin.manifest, manifest, "monitors");
+  copyRuntimeComponentField(plugin.manifest, manifest, "bin");
   const metadata = plugin.manifest["metadata"];
   manifest["metadata"] = {
     ...(metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {}),
@@ -482,26 +463,28 @@ function cursorRuntimeManifest(plugin: PluginDeclaration): Record<string, unknow
   copyManifestField(plugin.manifest, manifest, "license");
   copyManifestField(plugin.manifest, manifest, "keywords");
 
-  if (existsSync(join(plugin.pluginDir, "skills"))) {
+  if (!copyRuntimeComponentField(plugin.manifest, manifest, "skills") && existsSync(join(plugin.pluginDir, "skills"))) {
     manifest["skills"] = "./skills";
   }
-  if (existsSync(join(plugin.pluginDir, "agents"))) {
+  if (!copyRuntimeComponentField(plugin.manifest, manifest, "agents") && existsSync(join(plugin.pluginDir, "agents"))) {
     manifest["agents"] = "./agents";
   }
-  if (existsSync(join(plugin.pluginDir, "commands"))) {
+  if (!copyRuntimeComponentField(plugin.manifest, manifest, "commands") && existsSync(join(plugin.pluginDir, "commands"))) {
     manifest["commands"] = "./commands";
   }
-  if (existsSync(join(plugin.pluginDir, "rules"))) {
+  if (!copyRuntimeComponentField(plugin.manifest, manifest, "rules") && existsSync(join(plugin.pluginDir, "rules"))) {
     manifest["rules"] = "./rules";
   }
-  if (existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
+  if (!copyRuntimeComponentField(plugin.manifest, manifest, "hooks") && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
     manifest["hooks"] = "./hooks/hooks.json";
   }
-  if (existsSync(join(plugin.pluginDir, ".mcp.json"))) {
+  const hasExplicitMcpServers = copyRuntimeComponentField(plugin.manifest, manifest, "mcpServers");
+  if (!hasExplicitMcpServers && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
     manifest["mcpServers"] = "./.mcp.json";
-  } else if (existsSync(join(plugin.pluginDir, "mcp.json"))) {
+  } else if (!hasExplicitMcpServers && existsSync(join(plugin.pluginDir, "mcp.json"))) {
     manifest["mcpServers"] = "./mcp.json";
   }
+  copyRuntimeComponentField(plugin.manifest, manifest, "bin");
   const metadata = plugin.manifest["metadata"];
   manifest["metadata"] = {
     ...(metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {}),
@@ -626,6 +609,23 @@ function copyManifestField(source: PluginManifest, dest: Record<string, unknown>
   if (source[key] !== undefined) {
     dest[key] = source[key];
   }
+}
+
+function copyRuntimeComponentField(source: PluginManifest, dest: Record<string, unknown>, key: keyof PluginManifest): boolean {
+  const value = source[key];
+  if (typeof value === "string") {
+    dest[key] = runtimePath(value);
+    return true;
+  }
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+    dest[key] = value.map(runtimePath);
+    return true;
+  }
+  return false;
+}
+
+function runtimePath(value: string): string {
+  return value.startsWith(".") ? value : `./${value}`;
 }
 
 function opencodeModules(
@@ -774,7 +774,7 @@ async function directoriesMatch(source: string, dest: string, ignoredNames = new
       if (await readlink(sourcePath) !== await readlink(destPath)) {return false;}
       continue;
     }
-    if (await readFile(sourcePath, "utf-8") !== await readFile(destPath, "utf-8")) {
+    if (!(await readFile(sourcePath)).equals(await readFile(destPath))) {
       return false;
     }
   }
