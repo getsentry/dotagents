@@ -5,7 +5,7 @@ import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
-import { isWildcardDep } from "../../config/schema.js";
+import { isWildcardDep, type PluginConfig } from "../../config/schema.js";
 import {
   addExcludeToWildcard,
   removePluginBlocksBySource,
@@ -21,7 +21,13 @@ import { sourcesMatch, parseOwnerRepoShorthand, isExplicitSourceSpecifier } from
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 import { isInPlaceSkill } from "../../utils/fs.js";
-import { isInPlacePluginSource, isSameProjectPluginConfig, loadInstalledPlugins, pruneInstalledPlugins } from "../../plugins/store.js";
+import {
+  isInPlacePluginSource,
+  isManagedPluginInstall,
+  isSameProjectPluginConfig,
+  loadInstalledPlugins,
+  pruneInstalledPlugins,
+} from "../../plugins/store.js";
 import { projectedPiSkillNames, prunePluginOutputs } from "../../plugins/runtime/writer.js";
 
 export class RemoveError extends Error {
@@ -68,7 +74,7 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
 
     if (explicitPlugin) {
       await removePluginFromConfig(configPath, name);
-      await removePluginArtifacts(scope, [name], lockfile);
+      await removePluginArtifacts(scope, [name], [explicitPlugin], lockfile);
       return;
     }
 
@@ -82,7 +88,7 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
   if (explicitPlugin) {
     const lockfile = await loadLockfile(lockPath);
     await removePluginFromConfig(configPath, name);
-    await removePluginArtifacts(scope, [name], lockfile);
+    await removePluginArtifacts(scope, [name], [explicitPlugin], lockfile);
     return;
   }
 
@@ -201,10 +207,12 @@ export async function runRemoveSource(opts: RemoveSourceOptions): Promise<string
 export async function runRemovePluginSource(opts: RemoveSourceOptions): Promise<string[]> {
   const { scope, source } = opts;
   const pluginNames = await collectPluginsFromSource(scope, source);
+  const config = await loadConfig(scope.configPath);
+  const removedPlugins = config.plugins.filter((plugin) => pluginNames.includes(plugin.name));
   const lockfile = await loadLockfile(scope.lockPath);
 
   await removePluginBlocksBySource(scope.configPath, source);
-  await removePluginArtifacts(scope, pluginNames, lockfile);
+  await removePluginArtifacts(scope, pluginNames, removedPlugins, lockfile);
 
   return pluginNames;
 }
@@ -213,13 +221,31 @@ export async function runRemovePluginSource(opts: RemoveSourceOptions): Promise<
 async function removePluginArtifacts(
   scope: ScopeRoot,
   pluginNames: string[],
+  plugins: PluginConfig[],
   lockfile: Awaited<ReturnType<typeof loadLockfile>>,
 ): Promise<void> {
-  const managedPluginNames = pluginNames.filter((name) => {
+  const managedPluginNames = new Set<string>();
+  for (const plugin of plugins) {
+    const name = plugin.name;
+    const pluginDir = join(scope.pluginsDir, name);
+    if (isManagedPluginInstall(pluginDir)) {
+      managedPluginNames.add(name);
+      continue;
+    }
+    if (!existsSync(pluginDir)) {continue;}
+
+    if (!isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root)) {
+      managedPluginNames.add(name);
+    }
+  }
+
+  for (const name of pluginNames) {
     const locked = lockfile?.plugins[name];
-    return locked && !isInPlacePluginSource(locked.source);
-  });
-  const managedPluginRoots = managedPluginNames.map((name) => join(scope.pluginsDir, name));
+    if (locked && !isInPlacePluginSource(locked.source)) {
+      managedPluginNames.add(name);
+    }
+  }
+  const managedPluginRoots = [...managedPluginNames].map((name) => join(scope.pluginsDir, name));
 
   if (scope.scope === "project") {
     await pruneInstalledPlugins(scope.pluginsDir, managedPluginNames);

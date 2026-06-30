@@ -17,6 +17,7 @@ import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { loadConfig } from "../../config/loader.js";
 import { resolveScope } from "../../scope.js";
+import { DOTAGENTS_MANAGED_PLUGIN_MARKER } from "../../plugins/store.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -304,6 +305,37 @@ source = "path:plugins/review-tools"
     expect(existsSync(join(projectRoot, ".agents", "skills", "review-tools"))).toBe(false);
     expect(existsSync(join(projectRoot, ".agents", "skills", "plugin-review"))).toBe(false);
     expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(false);
+  });
+
+  it("removes an installed plugin even when its lock entry is missing", async () => {
+    const pluginSource = join(projectRoot, "plugins", "review-tools");
+    await mkdir(join(pluginSource, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginSource, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(join(pluginSource, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex", "pi"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugins/review-tools"
+`,
+    );
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    delete lockfile!.plugins["review-tools"];
+    await writeLockfile(join(projectRoot, "agents.lock"), lockfile!);
+    await rm(join(projectRoot, ".agents", "plugins", "review-tools", DOTAGENTS_MANAGED_PLUGIN_MARKER), { force: true });
+
+    await runRemove({ scope, name: "review-tools" });
+
+    const config = await loadConfig(join(projectRoot, "agents.toml"));
+    expect(config.plugins.find((plugin) => plugin.name === "review-tools")).toBeUndefined();
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
   });
 
   it("removes plugins by source", async () => {

@@ -366,7 +366,12 @@ async function discoverFromMarketplaces(
     const filePath = join(sourceDir, marketplacePath);
     if (!existsSync(filePath)) {continue;}
 
-    const marketplace = parsePluginMarketplace(await readJson(filePath), filePath);
+    let marketplace: ReturnType<typeof parsePluginMarketplace>;
+    try {
+      marketplace = parsePluginMarketplace(await readJson(filePath), filePath);
+    } catch {
+      continue;
+    }
     const root = typeof marketplace.metadata?.pluginRoot === "string"
       ? marketplace.metadata.pluginRoot
       : ".";

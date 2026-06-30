@@ -944,6 +944,50 @@ source = "path:plugin-source"
     );
   });
 
+  it("skips malformed marketplace files during plugin discovery", async () => {
+    const sourceRoot = join(projectRoot, "plugin-source");
+    await mkdir(sourceRoot, { recursive: true });
+    await writeFile(
+      join(sourceRoot, "marketplace.json"),
+      JSON.stringify({
+        name: "source-marketplace",
+        plugins: [
+          {
+            name: "review-tools",
+            source: { source: "local" },
+          },
+        ],
+      }, null, 2),
+    );
+    const pluginDir = join(sourceRoot, "plugins", "review-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "review-tools",
+        description: "Fallback local plugin",
+      }, null, 2),
+    );
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const installedManifest = JSON.parse(
+      await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    expect(installedManifest["description"]).toBe("Fallback local plugin");
+  });
+
   it("reports unsupported marketplace source objects when no compatible plugin is found", async () => {
     const sourceRoot = join(projectRoot, "plugin-source");
     await mkdir(sourceRoot, { recursive: true });
