@@ -90,7 +90,7 @@ describe("plugin writer", () => {
           description: "Tools for alpha-tools",
           name: "alpha-tools",
           source: {
-            path: "./.agents/plugins/alpha-tools",
+            path: "./alpha-tools",
             source: "local",
           },
           version: "1.0.0",
@@ -100,14 +100,18 @@ describe("plugin writer", () => {
           description: "Tools for beta-tools",
           name: "beta-tools",
           source: {
-            path: "./.agents/plugins/beta-tools",
+            path: "./beta-tools",
             source: "local",
           },
           version: "1.0.0",
         },
       ],
     });
-    expect(await readFile(join(root, ".claude-plugin", "marketplace.json"), "utf-8")).toBe(`{
+    const codexPlugin = (codexMarketplace["plugins"] as Array<{ source: { path: string } }>)[0]!;
+    expect(resolve(join(root, ".agents", "plugins"), codexPlugin["source"].path)).toBe(alpha.pluginDir);
+
+    const claudeMarketplaceJson = await readFile(join(root, ".claude-plugin", "marketplace.json"), "utf-8");
+    expect(claudeMarketplaceJson).toBe(`{
   "metadata": {
     "managedBy": "dotagents"
   },
@@ -119,19 +123,21 @@ describe("plugin writer", () => {
     {
       "description": "Tools for alpha-tools",
       "name": "alpha-tools",
-      "source": "./.agents/plugins/alpha-tools",
+      "source": "../.agents/plugins/alpha-tools",
       "version": "1.0.0"
     },
     {
       "description": "Tools for beta-tools",
       "name": "beta-tools",
-      "source": "./.agents/plugins/beta-tools",
+      "source": "../.agents/plugins/beta-tools",
       "version": "1.0.0"
     }
   ]
 }
 `);
-    expect(await readFile(join(root, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(await readFile(join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
+    const claudeMarketplace = JSON.parse(claudeMarketplaceJson) as { plugins: Array<{ source: string }> };
+    expect(resolve(join(root, ".claude-plugin"), claudeMarketplace["plugins"][0]!["source"])).toBe(alpha.pluginDir);
+    expect(await readFile(join(root, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(claudeMarketplaceJson);
 
     const claudeManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
     expect(claudeManifest["skills"]).toBe("./skills");
