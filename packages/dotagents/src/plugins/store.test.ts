@@ -192,10 +192,10 @@ describe("plugin store", () => {
           name: "test-marketplace",
           plugins: [
             {
-              name: "external-tools",
+              name: "review-tools",
               source: {
                 source: "github",
-                repo: "org/external-tools",
+                repo: "org/review-tools",
               },
             },
             {
