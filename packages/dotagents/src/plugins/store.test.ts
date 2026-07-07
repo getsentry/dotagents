@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,13 +9,16 @@ vi.mock("node:fs/promises", async () => {
   const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
   return {
     ...actual,
+    realpath: vi.fn(actual.realpath),
     rename: vi.fn(actual.rename),
   };
 });
 
 describe("plugin store", () => {
-  afterEach(() => {
-    vi.mocked(rename).mockReset();
+  afterEach(async () => {
+    const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    vi.mocked(realpath).mockImplementation(actual.realpath);
+    vi.mocked(rename).mockImplementation(actual.rename);
   });
 
   it("preserves an empty resolved path for root git plugins", () => {
@@ -139,6 +142,46 @@ describe("plugin store", () => {
         { name: "review-tools", source: "path:source" },
         { stateDir: join(projectRoot, "state"), projectRoot },
       )).rejects.toThrow(/Canonical plugin source resolves outside source/);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a controlled error when the plugin source root disappears during realpath checks", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const pluginDir = join(sourceRoot, "plugins", "review-tools");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(
+        join(pluginDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools" }),
+        "utf-8",
+      );
+
+      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+      const missingRoot = new Error("missing source root") as NodeJS.ErrnoException;
+      missingRoot.code = "ENOENT";
+      vi.mocked(realpath).mockImplementation(async (path, options) => {
+        if (String(path) === sourceRoot) {
+          throw missingRoot;
+        }
+        return actual.realpath(path, options);
+      });
+
+      let error: unknown;
+      try {
+        await resolvePlugin(
+          { name: "review-tools", source: "path:source", path: "plugins/review-tools" },
+          { stateDir: join(projectRoot, "state"), projectRoot },
+        );
+      } catch (err) {
+        error = err;
+      }
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe("Plugin path source root does not exist: plugins/review-tools");
+      expect((error as Error).cause).toBe(missingRoot);
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }
