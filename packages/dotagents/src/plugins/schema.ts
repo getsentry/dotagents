@@ -64,8 +64,10 @@ const localMarketplaceSourceSchema = z.object({
 
 const extensionMarketplaceSourceSchema = z.object({
   source: z.string().optional(),
-  path: pluginPathSchema,
-}).passthrough();
+  path: pluginPathSchema.optional(),
+}).passthrough().check(
+  z.refine((value) => value.source !== "local", "Local marketplace sources must include a path"),
+);
 
 export const marketplaceSourceSchema = z.union([
   marketplacePathSchema,

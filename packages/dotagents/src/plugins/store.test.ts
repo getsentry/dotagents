@@ -175,6 +175,49 @@ describe("plugin store", () => {
     }
   });
 
+  it("skips unsupported marketplace entries without dropping local entries", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const pluginDir = join(sourceRoot, "marketplace", "review-tools");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(
+        join(pluginDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools", description: "Local marketplace plugin" }),
+        "utf-8",
+      );
+      await writeFile(
+        join(sourceRoot, "marketplace.json"),
+        JSON.stringify({
+          name: "test-marketplace",
+          plugins: [
+            {
+              name: "external-tools",
+              source: {
+                source: "github",
+                repo: "org/external-tools",
+              },
+            },
+            {
+              name: "review-tools",
+              source: { source: "local", path: "marketplace/review-tools" },
+            },
+          ],
+        }),
+        "utf-8",
+      );
+
+      const fromMarketplace = await resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+      expect(fromMarketplace.plugin.pluginDir).toBe(pluginDir);
+      expect(fromMarketplace.plugin.manifest.description).toBe("Local marketplace plugin");
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("rejects marketplace paths that traverse outside the source root", async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
     try {

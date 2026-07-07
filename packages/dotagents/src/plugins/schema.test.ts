@@ -104,6 +104,29 @@ describe("plugin marketplace schema", () => {
     });
   });
 
+  it("accepts unsupported extension source objects without local paths", () => {
+    const marketplace = parsePluginMarketplace(
+      {
+        name: "dotagents",
+        plugins: [
+          {
+            name: "external-tools",
+            source: {
+              source: "github",
+              repo: "org/external-tools",
+            },
+          },
+        ],
+      },
+      "marketplace.json",
+    );
+
+    expect(marketplace.plugins[0]!.source).toEqual({
+      source: "github",
+      repo: "org/external-tools",
+    });
+  });
+
   it("rejects unsafe marketplace paths", () => {
     expect(pluginMarketplaceSchema.safeParse({
       name: "dotagents",
@@ -120,14 +143,10 @@ describe("plugin marketplace schema", () => {
     }).success).toBe(false);
   });
 
-  it("rejects marketplace source objects without a path selector", () => {
+  it("rejects local marketplace source objects without a path selector", () => {
     expect(pluginMarketplaceSchema.safeParse({
       name: "dotagents",
       plugins: [{ name: "bad", source: { source: "local" } }],
-    }).success).toBe(false);
-    expect(pluginMarketplaceSchema.safeParse({
-      name: "dotagents",
-      plugins: [{ name: "bad", source: { url: "https://example.com/plugin.git" } }],
     }).success).toBe(false);
   });
 });
