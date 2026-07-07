@@ -209,7 +209,7 @@ Without an explicit `path`, dotagents should scan source directories in this ord
 
 Directory-name matches for `agents.toml` `name` take precedence over manifest-name matches. Multiple matches in one source are rejected as ambiguous unless a marketplace manifest explicitly selects a path.
 
-Marketplace entries should be treated as plugin selectors. If a marketplace entry points at a local path, dotagents resolves it relative to the marketplace root, optionally applying the marketplace's `metadata.pluginRoot` prefix when present. If a marketplace entry points at a remote source object that dotagents cannot resolve yet, it should produce an unsupported-source warning rather than guessing.
+Marketplace entries should be treated as plugin selectors. If a marketplace entry points at a local path, dotagents resolves it relative to the marketplace file directory, optionally applying the marketplace's `metadata.pluginRoot` prefix when present. If a marketplace entry points at a remote source object that dotagents cannot resolve yet, it should produce an unsupported-source warning rather than guessing.
 
 ## Component Handling
 

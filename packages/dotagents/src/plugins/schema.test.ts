@@ -111,6 +111,10 @@ describe("plugin marketplace schema", () => {
     }).success).toBe(false);
     expect(pluginMarketplaceSchema.safeParse({
       name: "dotagents",
+      plugins: [{ name: "bad", source: { source: "github", path: "../outside" } }],
+    }).success).toBe(false);
+    expect(pluginMarketplaceSchema.safeParse({
+      name: "dotagents",
       metadata: { pluginRoot: "../plugins" },
       plugins: [{ name: "bad", source: "./bad" }],
     }).success).toBe(false);

@@ -64,7 +64,7 @@ const localMarketplaceSourceSchema = z.object({
 
 const extensionMarketplaceSourceSchema = z.object({
   source: z.string().optional(),
-  path: marketplacePathSchema,
+  path: pluginPathSchema,
 }).passthrough();
 
 export const marketplaceSourceSchema = z.union([
