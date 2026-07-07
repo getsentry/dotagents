@@ -222,23 +222,28 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     .filter((plugin) => !sameProjectPlugins.includes(plugin.name))
     .filter((plugin) => !existsSync(`${scope.pluginsDir}/${plugin.name}`))
     .map((plugin) => plugin.name);
+  const pluginErrors: string[] = [];
   if (userScopePlugins.length > 0) {
+    pluginErrors.push(
+      `${userScopePlugins.length} plugin(s) declared in user scope: ${userScopePlugins.join(", ")}. User-scope plugins are not supported yet; declare plugins in a project agents.toml instead.`,
+    );
+  } else {
+    if (sameProjectPlugins.length > 0) {
+      pluginErrors.push(
+        `${sameProjectPlugins.length} plugin(s) resolve inside this project's .agents/plugins/ tree: ${sameProjectPlugins.join(", ")}. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.`,
+      );
+    }
+    if (missingPlugins.length > 0) {
+      pluginErrors.push(
+        `${missingPlugins.length} plugin(s) not installed: ${missingPlugins.join(", ")}. Run 'npx @sentry/dotagents install'.`,
+      );
+    }
+  }
+  if (pluginErrors.length > 0) {
     checks.push({
       name: "installed plugins",
       status: "error",
-      message: `${userScopePlugins.length} plugin(s) declared in user scope: ${userScopePlugins.join(", ")}. User-scope plugins are not supported yet; declare plugins in a project agents.toml instead.`,
-    });
-  } else if (sameProjectPlugins.length > 0) {
-    checks.push({
-      name: "installed plugins",
-      status: "error",
-      message: `${sameProjectPlugins.length} plugin(s) resolve inside this project's .agents/plugins/ tree: ${sameProjectPlugins.join(", ")}. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.`,
-    });
-  } else if (missingPlugins.length > 0) {
-    checks.push({
-      name: "installed plugins",
-      status: "error",
-      message: `${missingPlugins.length} plugin(s) not installed: ${missingPlugins.join(", ")}. Run 'npx @sentry/dotagents install'.`,
+      message: pluginErrors.join(" "),
     });
   } else if (config.plugins.length > 0) {
     checks.push({ name: "installed plugins", status: "ok", message: `All ${config.plugins.length} declared plugin(s) installed.` });
