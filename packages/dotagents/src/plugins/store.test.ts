@@ -1,10 +1,23 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, mkdir, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { describe, expect, it } from "vitest";
-import { isSameProjectPluginConfig, lockEntryForPlugin, resolvePlugin, type ResolvedPlugin } from "./store.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { installPluginBundle, isSameProjectPluginConfig, lockEntryForPlugin, resolvePlugin, type ResolvedPlugin } from "./store.js";
+
+vi.mock("node:fs/promises", async () => {
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  return {
+    ...actual,
+    rename: vi.fn(actual.rename),
+  };
+});
 
 describe("plugin store", () => {
+  afterEach(() => {
+    vi.mocked(rename).mockReset();
+  });
+
   it("preserves an empty resolved path for root git plugins", () => {
     const resolved = {
       type: "git",
@@ -37,6 +50,58 @@ describe("plugin store", () => {
       pluginsDir,
       projectRoot,
     )).toBe(false);
+  });
+
+  it("keeps the backup when replacing an installed plugin fails and rollback also fails", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const sourceDir = join(projectRoot, "source", "review-tools");
+      const pluginsDir = join(projectRoot, ".agents", "plugins");
+      const destDir = join(pluginsDir, "review-tools");
+      await mkdir(sourceDir, { recursive: true });
+      await mkdir(destDir, { recursive: true });
+      await writeFile(
+        join(sourceDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools", description: "New plugin" }),
+        "utf-8",
+      );
+      await writeFile(
+        join(destDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools", description: "Original plugin" }),
+        "utf-8",
+      );
+
+      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+      vi.mocked(rename).mockImplementation(async (oldPath, newPath) => {
+        const oldString = String(oldPath);
+        const newString = String(newPath);
+        if (oldString.includes(".tmp-") && newString === destDir) {
+          throw new Error("destination rename failed");
+        }
+        if (oldString.includes(".backup-") && newString === destDir) {
+          throw new Error("rollback failed");
+        }
+        await actual.rename(oldPath, newPath);
+      });
+
+      await expect(installPluginBundle(pluginsDir, {
+        type: "local",
+        plugin: {
+          name: "review-tools",
+          source: "path:source/review-tools",
+          pluginDir: sourceDir,
+          manifest: { name: "review-tools", description: "New plugin" },
+        },
+      })).rejects.toThrow("destination rename failed");
+
+      expect(existsSync(destDir)).toBe(false);
+      const backupName = (await readdir(pluginsDir)).find((name) => name.startsWith(".review-tools.backup-"));
+      expect(backupName).toBeDefined();
+      const backupManifest = JSON.parse(await readFile(join(pluginsDir, backupName!, "plugin.json"), "utf-8"));
+      expect(backupManifest.description).toBe("Original plugin");
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
   });
 
   it("detects same-project plugins without requiring the explicit source path to exist", async () => {

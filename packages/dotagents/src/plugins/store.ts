@@ -187,7 +187,6 @@ export async function installPluginBundle(
     }
   } finally {
     await rm(tempDir, { recursive: true, force: true });
-    await rm(backupDir, { recursive: true, force: true });
   }
 
   return installed;
@@ -604,12 +603,24 @@ async function assertInsideSourceRoot(
   label: string,
   displayPath = relativePath(root, filePath),
 ): Promise<void> {
-  const rootRealPath = await realpath(root);
+  let rootRealPath: string;
+  try {
+    rootRealPath = await realpath(root);
+  } catch (err) {
+    if (isNotFoundError(err)) {
+      throw new Error(`${label} source root does not exist: ${displayPath}`, { cause: err });
+    }
+    throw err;
+  }
   const fileRealPath = await realpath(filePath);
   const realRelPath = relative(rootRealPath, fileRealPath);
   if (realRelPath.startsWith("..") || isAbsolute(realRelPath)) {
     throw new Error(`${label} resolves outside source: ${displayPath}`);
   }
+}
+
+function isNotFoundError(err: unknown): boolean {
+  return err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT";
 }
 
 function managedPluginPath(pluginsDir: string, name: string): string | null {
