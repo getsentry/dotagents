@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { runInstall as runInstallCommand, InstallError, type InstallOptions, type InstallResult } from "./install.js";
 import { runSync } from "./sync.js";
@@ -178,14 +178,20 @@ source = "path:plugin-source/review-tools"
           description: "Review workflow helpers",
           name: "review-tools",
           source: {
-            path: "./.agents/plugins/review-tools",
+            path: "./review-tools",
             source: "local",
           },
           version: "1.0.0",
         },
       ],
     });
-    expect(await readFile(join(projectRoot, ".claude-plugin", "marketplace.json"), "utf-8")).toBe(`{
+    const codexPlugin = (codexMarketplace["plugins"] as Array<{ source: { path: string } }>)[0]!;
+    expect(resolve(join(projectRoot, ".agents", "plugins"), codexPlugin["source"].path)).toBe(
+      join(projectRoot, ".agents", "plugins", "review-tools"),
+    );
+
+    const claudeMarketplaceJson = await readFile(join(projectRoot, ".claude-plugin", "marketplace.json"), "utf-8");
+    expect(claudeMarketplaceJson).toBe(`{
   "metadata": {
     "managedBy": "dotagents"
   },
@@ -197,13 +203,17 @@ source = "path:plugin-source/review-tools"
     {
       "description": "Review workflow helpers",
       "name": "review-tools",
-      "source": "./.agents/plugins/review-tools",
+      "source": "../.agents/plugins/review-tools",
       "version": "1.0.0"
     }
   ]
 }
 `);
-    expect(await readFile(join(projectRoot, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(await readFile(join(projectRoot, ".claude-plugin", "marketplace.json"), "utf-8"));
+    const claudeMarketplace = JSON.parse(claudeMarketplaceJson) as { plugins: Array<{ source: string }> };
+    expect(resolve(join(projectRoot, ".claude-plugin"), claudeMarketplace["plugins"][0]!["source"])).toBe(
+      join(projectRoot, ".agents", "plugins", "review-tools"),
+    );
+    expect(await readFile(join(projectRoot, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(claudeMarketplaceJson);
 
     const claudeManifest = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".claude-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
     expect(claudeManifest["name"]).toBe("review-tools");

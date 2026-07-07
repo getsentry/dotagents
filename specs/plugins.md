@@ -25,9 +25,9 @@ Every other runtime output is generated from `.agents/plugins/` when that runtim
 The canonical inputs are tightly defined but forward-compatible:
 
 1. `agents.toml` `[[plugins]]` declarations are strict operational config. Unknown fields are rejected.
-2. `.agents/plugins/marketplace.json` must be a JSON object with `name` and `plugins[]`. Each plugin entry must have `name` and `source`. dotagents resolves local plugin selectors only when `source` is a relative path string or `{ "source": "local", "path": "<relative>" }`. Runtime extension source objects may be accepted when their known path fields are safe, but dotagents must report them as unsupported instead of guessing how to resolve them.
+2. `.agents/plugins/marketplace.json` must be a JSON object with `name` and `plugins[]`. Each plugin entry must have `name` and `source`. dotagents resolves local plugin selectors only when `source` is a relative path string or `{ "source": "local", "path": "<relative>" }`; selectors are anchored at the marketplace file directory and rejected when the resolved path escapes the source root. Runtime extension source objects may be accepted when their known path fields are safe, but dotagents must report them as unsupported instead of guessing how to resolve them.
 3. `.agents/plugins/<name>/plugin.json` must be a JSON object. Known component path fields are validated as relative filesystem paths without `..` or URL/scheme prefixes when present. Unknown fields are allowed and preserved so native runtimes and future dotagents versions can add metadata without breaking older installs.
-4. All component paths in canonical manifests and marketplaces must be relative filesystem paths and must not contain `..`, URL/scheme prefixes, absolute POSIX paths, absolute Windows paths, or backslash-rooted paths.
+4. All component paths in canonical manifests and marketplace component fields must be relative filesystem paths and must not contain `..`, URL/scheme prefixes, absolute POSIX paths, absolute Windows paths, or backslash-rooted paths.
 5. The portable plugin `name` in `agents.toml` is authoritative. If a discovered manifest also declares `name`, it must match the configured name.
 
 Generated outputs are deterministic:
@@ -148,7 +148,7 @@ Example canonical marketplace:
       "name": "my-plugin",
       "source": {
         "source": "local",
-        "path": "./.agents/plugins/my-plugin"
+        "path": "./my-plugin"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -250,9 +250,9 @@ Generated project-scope outputs should be:
 
 | Agent | Project Scope Output | User Scope Output | Notes |
 |-------|----------------------|-------------------|-------|
-| Claude Code | `.claude-plugin/marketplace.json` and `.agents/plugins/<name>/.claude-plugin/plugin.json` | Not generated yet | Generated marketplace uses deterministic `./.agents/plugins/<name>` sources and each targeted plugin gets a Claude-native manifest. |
-| Cursor | `.cursor-plugin/marketplace.json` and `.agents/plugins/<name>/.cursor-plugin/plugin.json` | Not generated yet | Generated marketplace uses deterministic `./.agents/plugins/<name>` sources and each targeted plugin gets a Cursor-native manifest. |
-| Codex | `.agents/plugins/marketplace.json` and generated `.codex-plugin/plugin.json` in installed bundle | Not generated yet | Generated marketplace uses deterministic `{ "source": "local", "path": "./.agents/plugins/<name>" }` entries relative to the project root. |
+| Claude Code | `.claude-plugin/marketplace.json` and `.agents/plugins/<name>/.claude-plugin/plugin.json` | Not generated yet | Generated marketplace uses deterministic `../.agents/plugins/<name>` sources relative to `.claude-plugin/marketplace.json`, and each targeted plugin gets a Claude-native manifest. |
+| Cursor | `.cursor-plugin/marketplace.json` and `.agents/plugins/<name>/.cursor-plugin/plugin.json` | Not generated yet | Generated marketplace uses deterministic `../.agents/plugins/<name>` sources relative to `.cursor-plugin/marketplace.json`, and each targeted plugin gets a Cursor-native manifest. |
+| Codex | `.agents/plugins/marketplace.json` and generated `.codex-plugin/plugin.json` in installed bundle | Not generated yet | Generated marketplace uses deterministic `{ "source": "local", "path": "./<name>" }` entries relative to `.agents/plugins/marketplace.json`. |
 | Grok Build | `.grok/plugins/<name>` for targeted plugins | Not generated yet | The projection is a managed copy of the canonical plugin bundle with a `.dotagents-managed` marker. |
 | OpenCode | Plugin `skills/` symlinked into `.opencode/skills/`; plugin Markdown `agents/` symlinked into `.opencode/agents/` | Not generated yet | dotagents exposes bundle components through OpenCode's native resource directories and skips collisions with user-authored files. |
 | Pi | Plugin `skills/` symlinked into `.agents/skills/` when `pi` is a configured plugin target | Not generated yet | Pi reads agentskills from `.agents/skills/`; only plugin skills are projected. |

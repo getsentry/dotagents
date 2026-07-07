@@ -13,6 +13,15 @@ export const pluginPathSchema = z.string().check(
   }, "Plugin paths must be relative filesystem paths and must not contain '..'"),
 );
 
+const marketplacePathSchema = z.string().check(
+  z.refine((value) => {
+    if (value.length === 0) {return false;}
+    if (value.startsWith("/") || value.startsWith("\\")) {return false;}
+    if (/^[a-zA-Z]:[\\/]/.test(value)) {return false;}
+    return !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value);
+  }, "Marketplace paths must be relative filesystem paths"),
+);
+
 const pluginAuthorSchema = z.object({
   name: z.string().optional(),
   email: z.string().optional(),
@@ -50,16 +59,16 @@ export type PluginManifest = z.infer<typeof pluginManifestSchema>;
 
 const localMarketplaceSourceSchema = z.object({
   source: z.literal("local"),
-  path: pluginPathSchema,
+  path: marketplacePathSchema,
 }).passthrough();
 
 const extensionMarketplaceSourceSchema = z.object({
   source: z.string().optional(),
-  path: pluginPathSchema,
+  path: marketplacePathSchema,
 }).passthrough();
 
 export const marketplaceSourceSchema = z.union([
-  pluginPathSchema,
+  marketplacePathSchema,
   localMarketplaceSourceSchema,
   extensionMarketplaceSourceSchema,
 ]);

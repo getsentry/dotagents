@@ -385,7 +385,7 @@ async function discoverFromMarketplaces(
       }
 
       const marketplaceRoot = dirname(filePath);
-      const pluginDir = await resolveInside(marketplaceRoot, join(root, path), "Marketplace plugin source");
+      const pluginDir = await resolveMarketplaceSource(sourceDir, marketplaceRoot, join(root, path), "Marketplace plugin source");
       const candidate = await loadPluginCandidate(sourceDir, pluginDir, marketplaceManifestOverlay(entry));
       if (candidate) {return candidate;}
     }
@@ -576,6 +576,24 @@ async function resolveInside(root: string, childPath: string, label: string): Pr
   }
   if (existsSync(filePath)) {
     await assertInsideSourceRoot(rootPath, filePath, label, childPath);
+  }
+  return filePath;
+}
+
+async function resolveMarketplaceSource(
+  sourceRoot: string,
+  marketplaceRoot: string,
+  childPath: string,
+  label: string,
+): Promise<string> {
+  const filePath = resolve(marketplaceRoot, childPath);
+  const sourceRootPath = resolve(sourceRoot);
+  const relPath = relative(sourceRootPath, filePath);
+  if (relPath.startsWith("..") || isAbsolute(relPath)) {
+    throw new Error(`${label} resolves outside source: ${childPath}`);
+  }
+  if (existsSync(filePath)) {
+    await assertInsideSourceRoot(sourceRootPath, filePath, label, childPath);
   }
   return filePath;
 }

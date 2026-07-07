@@ -76,11 +76,35 @@ describe("plugin marketplace schema", () => {
     expect(marketplace.plugins[0]!["extra"]).toBe("kept");
   });
 
+  it("accepts marketplace-file-relative local entries", () => {
+    const marketplace = parsePluginMarketplace(
+      {
+        name: "dotagents",
+        plugins: [
+          {
+            name: "review-tools",
+            source: "../.agents/plugins/review-tools",
+          },
+          {
+            name: "codex-tools",
+            source: {
+              source: "local",
+              path: "./codex-tools",
+            },
+          },
+        ],
+      },
+      "marketplace.json",
+    );
+
+    expect(marketplace.plugins[0]!.source).toBe("../.agents/plugins/review-tools");
+    expect(marketplace.plugins[1]!.source).toEqual({
+      source: "local",
+      path: "./codex-tools",
+    });
+  });
+
   it("rejects unsafe marketplace paths", () => {
-    expect(pluginMarketplaceSchema.safeParse({
-      name: "dotagents",
-      plugins: [{ name: "bad", source: "../bad" }],
-    }).success).toBe(false);
     expect(pluginMarketplaceSchema.safeParse({
       name: "dotagents",
       plugins: [{ name: "bad", source: "https://example.com/plugin.git" }],

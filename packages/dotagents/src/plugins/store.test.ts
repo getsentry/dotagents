@@ -138,6 +138,78 @@ describe("plugin store", () => {
     }
   });
 
+  it("resolves marketplace paths relative to nested marketplace files", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const pluginDir = join(sourceRoot, ".agents", "plugins", "marketplace-review-tools");
+      await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(
+        join(pluginDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools", description: "Nested marketplace plugin" }),
+        "utf-8",
+      );
+      await writeFile(
+        join(sourceRoot, ".claude-plugin", "marketplace.json"),
+        JSON.stringify({
+          name: "test-marketplace",
+          plugins: [
+            {
+              name: "review-tools",
+              source: "../.agents/plugins/marketplace-review-tools",
+            },
+          ],
+        }),
+        "utf-8",
+      );
+
+      const fromMarketplace = await resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+      expect(fromMarketplace.plugin.pluginDir).toBe(pluginDir);
+      expect(fromMarketplace.plugin.manifest.description).toBe("Nested marketplace plugin");
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects marketplace paths that traverse outside the source root", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const outsideDir = join(projectRoot, "outside", "review-tools");
+      await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
+      await mkdir(outsideDir, { recursive: true });
+      await writeFile(
+        join(outsideDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools" }),
+        "utf-8",
+      );
+      await writeFile(
+        join(sourceRoot, ".claude-plugin", "marketplace.json"),
+        JSON.stringify({
+          name: "test-marketplace",
+          plugins: [
+            {
+              name: "review-tools",
+              source: "../../outside/review-tools",
+            },
+          ],
+        }),
+        "utf-8",
+      );
+
+      await expect(resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      )).rejects.toThrow(/Marketplace plugin source resolves outside source/);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("rejects conventional plugin discovery symlinks that escape the source root", async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
     try {
