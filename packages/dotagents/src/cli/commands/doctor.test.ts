@@ -102,6 +102,20 @@ describe("runDoctor", () => {
     expect(check?.message).toContain("pdf");
   });
 
+  it("detects a missing agent skill symlink", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\nagents = ["claude", "cursor", "codex"]\n`,
+    );
+    await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+    await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");
+
+    const result = await runDoctor({ scope: resolveScope("project", projectRoot) });
+    const check = result.checks.find((c) => c.name === "symlinks");
+    expect(check?.status).toBe("warn");
+    expect(check?.message).toContain("1 symlink(s)");
+  });
+
   it("detects generated files tracked by git", async () => {
     // Initialize a git repo so git ls-files works
     const { execSync } = await import("node:child_process");

@@ -1,8 +1,7 @@
-import { join } from "node:path";
 import type { AgentsConfig } from "../../../config/schema.js";
 import type { ScopeRoot } from "../../../scope.js";
-import { getAgent } from "../../../targets/registry.js";
 import { ensureSkillsSymlink } from "../../../symlinks/manager.js";
+import { skillSymlinkTargets } from "../../../targets/skill-symlinks.js";
 import { projectMcpResolver, toMcpDeclarations, writeMcpConfigs } from "../../../targets/mcp-writer.js";
 import { projectHookResolver, toHookDeclarations, writeHookConfigs } from "../../../targets/hook-writer.js";
 import { userMcpResolver } from "../../../targets/paths.js";
@@ -19,32 +18,13 @@ export async function writeSkillSymlinks(
   config: AgentsConfig,
   scope: ScopeRoot,
 ): Promise<void> {
-  if (scope.scope === "user") {
-    const seen = new Set<string>();
-    for (const agentId of config.agents) {
-      const agent = getAgent(agentId);
-      if (!agent?.userSkillsParentDirs) {continue;}
-      for (const dir of agent.userSkillsParentDirs) {
-        if (seen.has(dir)) {continue;}
-        seen.add(dir);
-        await ensureSkillsSymlink(scope.agentsDir, dir);
-      }
-    }
-    return;
-  }
-
-  const targets = config.symlinks?.targets ?? [];
+  const targets = skillSymlinkTargets(
+    scope,
+    config.agents,
+    config.symlinks?.targets,
+  );
   for (const target of targets) {
-    await ensureSkillsSymlink(scope.agentsDir, join(scope.root, target));
-  }
-
-  const seenParentDirs = new Set(targets);
-  for (const agentId of config.agents) {
-    const agent = getAgent(agentId);
-    if (!agent?.skillsParentDir) {continue;}
-    if (seenParentDirs.has(agent.skillsParentDir)) {continue;}
-    seenParentDirs.add(agent.skillsParentDir);
-    await ensureSkillsSymlink(scope.agentsDir, join(scope.root, agent.skillsParentDir));
+    await ensureSkillsSymlink(scope.agentsDir, target);
   }
 }
 

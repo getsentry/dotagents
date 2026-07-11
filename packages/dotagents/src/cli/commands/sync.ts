@@ -10,7 +10,7 @@ import { writeLockfile } from "../../lockfile/writer.js";
 import { addSkillToConfig } from "../../config/writer.js";
 import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
-import { getAgent } from "../../targets/registry.js";
+import { skillSymlinkTargets } from "../../targets/skill-symlinks.js";
 import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../targets/mcp-writer.js";
 import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../targets/hook-writer.js";
 import { pruneSubagentConfigs, verifySubagentConfigs, writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../subagents/writer.js";
@@ -164,51 +164,15 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 
   // 4. Verify and repair symlinks
   let symlinksRepaired = 0;
-
-  if (scope.scope === "user") {
-    const seen = new Set<string>();
-    const targets: string[] = [];
-    for (const agentId of config.agents) {
-      const agent = getAgent(agentId);
-      if (!agent?.userSkillsParentDirs) {continue;}
-      for (const dir of agent.userSkillsParentDirs) {
-        if (seen.has(dir)) {continue;}
-        seen.add(dir);
-        targets.push(dir);
-      }
-    }
-
-    const symlinkIssues = await verifySymlinks(agentsDir, targets);
-    for (const issue of symlinkIssues) {
-      await ensureSkillsSymlink(agentsDir, issue.target);
-      symlinksRepaired++;
-    }
-  } else {
-    const legacyTargets = config.symlinks?.targets ?? [];
-    const legacyIssues = await verifySymlinks(
-      agentsDir,
-      legacyTargets.map((t) => join(scope.root, t)),
-    );
-    for (const issue of legacyIssues) {
-      await ensureSkillsSymlink(agentsDir, join(scope.root, issue.target));
-      symlinksRepaired++;
-    }
-
-    const seenParentDirs = new Set(legacyTargets);
-    const agentTargets: string[] = [];
-    for (const agentId of config.agents) {
-      const agent = getAgent(agentId);
-      if (!agent?.skillsParentDir) {continue;}
-      if (seenParentDirs.has(agent.skillsParentDir)) {continue;}
-      seenParentDirs.add(agent.skillsParentDir);
-      agentTargets.push(join(scope.root, agent.skillsParentDir));
-    }
-
-    const agentSymlinkIssues = await verifySymlinks(agentsDir, agentTargets);
-    for (const issue of agentSymlinkIssues) {
-      await ensureSkillsSymlink(agentsDir, issue.target);
-      symlinksRepaired++;
-    }
+  const symlinkTargets = skillSymlinkTargets(
+    scope,
+    config.agents,
+    config.symlinks?.targets,
+  );
+  const symlinkIssues = await verifySymlinks(agentsDir, symlinkTargets);
+  for (const issue of symlinkIssues) {
+    await ensureSkillsSymlink(agentsDir, issue.target);
+    symlinksRepaired++;
   }
 
   // 5. Verify and repair MCP configs
