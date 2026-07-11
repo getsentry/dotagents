@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -344,6 +344,7 @@ describe("runSync", () => {
 
     const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.symlinksRepaired).toBe(1);
+    expect((await lstat(join(projectRoot, ".claude", "skills"))).isSymbolicLink()).toBe(true);
   });
 
   it("regenerates gitignore", async () => {
@@ -386,6 +387,7 @@ describe("runSync", () => {
 
     const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.symlinksRepaired).toBe(1);
+    expect((await lstat(join(projectRoot, ".claude", "skills"))).isSymbolicLink()).toBe(true);
   });
 
   it("repairs missing hook configs", async () => {
