@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -67,6 +67,7 @@ description: Code review skill
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await rm(tmpDir, { recursive: true });
   });
 
@@ -132,6 +133,61 @@ description: A local skill
     if (result.type === "git") {
       expect(result.resolvedPath).toBe("pdf");
     }
+  });
+
+  it("prefers an explicit ref over an inline ref for single and wildcard resolution", async () => {
+    await exec("git", ["branch", "inline-ref"], { cwd: repoDir });
+    await exec("git", ["checkout", "-b", "explicit-ref"], { cwd: repoDir });
+    await mkdir(join(repoDir, "explicit-only"), { recursive: true });
+    await writeFile(
+      join(repoDir, "explicit-only", "SKILL.md"),
+      `---
+name: explicit-only
+description: Only available from the explicit ref
+---
+`,
+    );
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "add explicit-only skill"], {
+      cwd: repoDir,
+    });
+
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv(
+      "GIT_CONFIG_KEY_0",
+      `url.file://${repoDir}.insteadOf`,
+    );
+    vi.stubEnv(
+      "GIT_CONFIG_VALUE_0",
+      "https://github.com/example/skills",
+    );
+
+    const source = "https://github.com/example/skills@inline-ref";
+    const [single, wildcard] = await Promise.all([
+      resolveSkill(
+        "explicit-only",
+        { source, ref: "explicit-ref" },
+        { stateDir: join(stateDir, "single") },
+      ),
+      resolveWildcardSkills(
+        { source, ref: "explicit-ref" },
+        { stateDir: join(stateDir, "wildcard") },
+      ),
+    ]);
+
+    expect(single).toMatchObject({
+      type: "git",
+      resolvedRef: "explicit-ref",
+      resolvedPath: "explicit-only",
+    });
+    expect(wildcard).toContainEqual({
+      name: "explicit-only",
+      resolved: expect.objectContaining({
+        type: "git",
+        resolvedRef: "explicit-ref",
+        resolvedPath: "explicit-only",
+      }),
+    });
   });
 
   it("throws ResolveError when skill not found in repo", async () => {
