@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, readFile, writeFile, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
 import { parse as parseTOML } from "smol-toml";
@@ -303,18 +303,32 @@ describe("verifyMcpConfigs", () => {
     expect(issues.some((i) => i.issue.includes("remote"))).toBe(true);
   });
 
-  it("reports a non-object config as unreadable", async () => {
-    await writeFile(join(dir, ".mcp.json"), "null\n");
+  it.each([
+    ["non-object document", "null\n"],
+    ["non-object MCP root", '{"mcpServers": []}\n'],
+  ])("reports a %s without changing it", async (_description, content) => {
+    const filePath = join(dir, ".mcp.json");
+    await writeFile(filePath, content);
 
-    const issues = await verifyMcpConfigs(
+    const inspected = await reconcileMcpConfigs(
       ["claude"],
       [STDIO_SERVER],
       projectMcpResolver(dir),
+      "inspect",
     );
-
-    expect(issues).toEqual([
+    expect(inspected.issues).toEqual([
       expect.objectContaining({ issue: expect.stringContaining("Failed to read") }),
     ]);
+    expect(await readFile(filePath, "utf-8")).toBe(content);
+
+    const applied = await reconcileMcpConfigs(
+      ["claude"],
+      [STDIO_SERVER],
+      projectMcpResolver(dir),
+      "apply",
+    );
+    expect(applied.written).toEqual([]);
+    expect(await readFile(filePath, "utf-8")).toBe(content);
   });
 
   it("returns empty when no servers declared", async () => {
@@ -328,10 +342,12 @@ describe("verifyMcpConfigs", () => {
     expect(issues).toEqual([]);
   });
 
-  it("detects and repairs transport drift under existing names", async () => {
+  it("repairs declared transport drift while preserving external content", async () => {
     const filePath = join(dir, ".mcp.json");
     const expected = {
+      editor: "manual",
       mcpServers: {
+        manual: { command: "manual" },
         github: {
           command: "npx",
           args: ["-y", "@mcp/server-github"],
@@ -345,7 +361,9 @@ describe("verifyMcpConfigs", () => {
       },
     };
     await writeFile(filePath, JSON.stringify({
+      editor: "manual",
       mcpServers: {
+        manual: { command: "manual" },
         github: { command: "old", args: ["old"], env: { GITHUB_TOKEN: "old" } },
         remote: { type: "http", url: "https://old.example.com", headers: { Authorization: "old" } },
       },
@@ -382,39 +400,44 @@ describe("verifyMcpConfigs", () => {
       resolver,
       "apply",
     );
-    expect(stale.issues.map((issue) => issue.issue)).toEqual([
-      expect.stringContaining("MCP config drifted"),
-    ]);
-    expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual(expected);
+    expect(stale).toEqual({ issues: [], unresolved: [], written: [] });
+    expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual({
+      ...expected,
+      mcpServers: { ...expected.mcpServers, stale: { command: "stale" } },
+    });
   });
 
-  it("removes an empty fully owned target", async () => {
-    const filePath = join(dir, ".cursor", "mcp.json");
-    const resolver = projectMcpResolver(dir);
-    await writeMcpConfigs(["cursor"], [STDIO_SERVER], resolver);
-
-    const result = await reconcileMcpConfigs(["cursor"], [], resolver, "apply");
-
-    expect(result.removed).toEqual([filePath]);
-    expect(existsSync(filePath)).toBe(false);
-  });
-
-  it("leaves shared files unchanged when no servers are desired", async () => {
-    const filePath = join(dir, "opencode.json");
-    const content = JSON.stringify({
-      theme: "dark",
-      mcp: { manual: { type: "local", command: ["manual"] } },
-    }, null, 2);
+  it.each([
+    {
+      agent: "cursor",
+      relativePath: join(".cursor", "mcp.json"),
+      content: JSON.stringify({ mcpServers: { manual: { command: "manual" } } }),
+    },
+    {
+      agent: "opencode",
+      relativePath: "opencode.json",
+      content: JSON.stringify({
+        theme: "dark",
+        mcp: { manual: { type: "local", command: ["manual"] } },
+      }, null, 2),
+    },
+  ])("leaves $agent files unchanged when no servers are desired", async ({
+    agent,
+    relativePath,
+    content,
+  }) => {
+    const filePath = join(dir, relativePath);
+    await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, content);
 
     const result = await reconcileMcpConfigs(
-      ["opencode"],
+      [agent],
       [],
       projectMcpResolver(dir),
       "apply",
     );
 
-    expect(result).toEqual({ issues: [], written: [], removed: [] });
+    expect(result).toEqual({ issues: [], unresolved: [], written: [] });
     expect(await readFile(filePath, "utf-8")).toBe(content);
   });
 });

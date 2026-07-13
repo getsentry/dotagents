@@ -136,30 +136,50 @@ describe("runInstall", () => {
     );
 
     const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
+    const result = await runInstall({ scope });
 
     const mcp = JSON.parse(await readFile(join(projectRoot, ".mcp.json"), "utf-8"));
     expect(mcp.mcpServers.github).toBeDefined();
+    expect(result.mcpWarnings).toEqual([]);
 
     // Agent symlinks should also be created
     const stat = await lstat(join(projectRoot, ".claude", "skills"));
     expect(stat.isSymbolicLink()).toBe(true);
   });
 
-  it("removes a dedicated MCP config after its last declaration is removed", async () => {
+  it("preserves a pre-existing MCP config when no servers are declared", async () => {
     const configPath = join(projectRoot, "agents.toml");
-    await writeFile(
-      configPath,
-      `version = 1\nagents = ["claude"]\n\n[[mcp]]\nname = "github"\ncommand = "npx"\n`,
-    );
+    const mcpPath = join(projectRoot, ".mcp.json");
+    const content = JSON.stringify({
+      editor: "manual",
+      mcpServers: { manual: { command: "manual" } },
+    });
+    await writeFile(configPath, `version = 1\nagents = ["claude"]\n`);
+    await writeFile(mcpPath, content);
+
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
-    expect(existsSync(join(projectRoot, ".mcp.json"))).toBe(true);
 
-    await writeFile(configPath, `version = 1\nagents = ["claude"]\n`);
-    await runInstall({ scope });
+    expect(await readFile(mcpPath, "utf-8")).toBe(content);
+  });
 
-    expect(existsSync(join(projectRoot, ".mcp.json"))).toBe(false);
+  it("warns without changing an incompatible MCP config", async () => {
+    const configPath = join(projectRoot, "agents.toml");
+    const mcpPath = join(projectRoot, ".mcp.json");
+    const content = '{"mcpServers":[]}\n';
+    await writeFile(
+      configPath,
+      `version = 1\nagents = ["claude"]\n\n[[mcp]]\nname = "github"\ncommand = "github-mcp"\n`,
+    );
+    await writeFile(mcpPath, content);
+
+    const result = await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.mcpWarnings).toEqual([{
+      agent: "claude",
+      message: `Failed to read MCP config: ${mcpPath}`,
+    }]);
+    expect(await readFile(mcpPath, "utf-8")).toBe(content);
   });
 
   it("fails with --frozen when no lockfile exists", async () => {

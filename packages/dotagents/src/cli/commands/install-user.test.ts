@@ -65,7 +65,13 @@ describe("runInstall user scope", () => {
     await writeFile(join(sourceDir, "SKILL.md"), SKILL_MD);
     await writeFile(
       join(homeDir, ".claude.json"),
-      JSON.stringify({ theme: "dark", mcpServers: { fixture: { command: "old" } } }),
+      JSON.stringify({
+        theme: "dark",
+        mcpServers: {
+          manual: { command: "manual" },
+          fixture: { command: "old" },
+        },
+      }),
     );
     const scope = resolveScope("user");
     await mkdir(scope.root, { recursive: true });
@@ -99,9 +105,25 @@ args = ["server.js"]
     expect(JSON.parse(await readFile(join(homeDir, ".claude.json"), "utf-8"))).toEqual({
       theme: "dark",
       mcpServers: {
+        manual: { command: "manual" },
         fixture: { command: "node", args: ["server.js"] },
       },
     });
+
+    const mcpPath = join(homeDir, ".claude.json");
+    const beforeEmptyInstall = await readFile(mcpPath, "utf-8");
+    await writeFile(
+      scope.configPath,
+      `version = 1
+agents = ["claude"]
+
+[[skills]]
+name = "pdf"
+source = "path:skill-source/pdf"
+`,
+    );
+    await runInstall({ scope });
+    expect(await readFile(mcpPath, "utf-8")).toBe(beforeEmptyInstall);
 
     const lockfile = await loadLockfile(scope.lockPath);
     expect(lockfile!.skills["pdf"]).toEqual({ source: "path:skill-source/pdf" });

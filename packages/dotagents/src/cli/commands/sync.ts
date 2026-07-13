@@ -181,7 +181,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const mcpResolver = scope.scope === "user" ? userMcpResolver() : projectMcpResolver(scope.root);
 
   const mcpResult = await reconcileMcpConfigs(config.agents, mcpServers, mcpResolver, "apply");
-  mcpRepaired = mcpResult.written.length + mcpResult.removed.length;
+  mcpRepaired = mcpResult.written.length;
   if (mcpResult.issues.length > 0) {
     for (const issue of mcpResult.issues) {
       issues.push({

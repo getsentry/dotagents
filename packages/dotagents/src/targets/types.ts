@@ -47,7 +47,8 @@ export interface McpConfigSpec {
   format: "json" | "toml";
   /**
    * If true, the config file is shared with other content and must be
-   * read-merge-written. If false, dotagents owns the entire file.
+   * read-merge-written. This describes file shape, not dotagents ownership;
+   * undeclared MCP servers are preserved for every target.
    */
   shared: boolean;
 }

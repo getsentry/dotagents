@@ -32,11 +32,17 @@ export async function writeSkillSymlinks(
 export async function writeMcpRuntime(
   config: AgentsConfig,
   scope: ScopeRoot,
-): Promise<void> {
+): Promise<{ agent: string; message: string }[]> {
   const resolver = scope.scope === "user"
     ? userMcpResolver()
     : projectMcpResolver(scope.root);
-  await reconcileMcpConfigs(config.agents, toMcpDeclarations(config.mcp), resolver, "apply");
+  const result = await reconcileMcpConfigs(
+    config.agents,
+    toMcpDeclarations(config.mcp),
+    resolver,
+    "apply",
+  );
+  return result.unresolved.map(({ agent, issue }) => ({ agent, message: issue }));
 }
 
 /** Writes project-scoped hook runtime config for configured agents. */

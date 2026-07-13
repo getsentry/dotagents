@@ -34,6 +34,7 @@ export interface InstallResult {
   installed: string[];
   skipped: string[];
   pruned: string[];
+  mcpWarnings: { agent: string; message: string }[];
   hookWarnings: { agent: string; message: string }[];
   subagentWarnings: { agent: string; name: string; message: string }[];
 }
@@ -65,7 +66,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     subagents: subagents.subagents,
   }, frozen);
   await writeSkillSymlinks(config, scope);
-  await writeMcpRuntime(config, scope);
+  const mcpWarnings = await writeMcpRuntime(config, scope);
   const hookWarnings = await writeHookRuntime(config, scope);
   const subagentWarnings = await writeSubagentRuntime(config, scope, subagents.subagents, frozen);
 
@@ -73,6 +74,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     installed: skills.installed,
     skipped: [],
     pruned: skills.pruned,
+    mcpWarnings,
     hookWarnings,
     subagentWarnings,
   };
@@ -108,6 +110,9 @@ export default async function install(args: string[], flags?: { user?: boolean }
       console.log(
         chalk.yellow(`Pruned ${result.pruned.length} stale skill(s): ${result.pruned.join(", ")}`),
       );
+    }
+    for (const w of result.mcpWarnings) {
+      console.log(chalk.yellow(`  warn: ${w.message}`));
     }
     for (const w of result.hookWarnings) {
       console.log(chalk.yellow(`  warn: ${w.message}`));

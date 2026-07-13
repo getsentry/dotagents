@@ -250,6 +250,7 @@ describe("runAdd", () => {
       installed: [],
       skipped: [],
       pruned: [],
+      mcpWarnings: [],
       hookWarnings: [],
       subagentWarnings: [],
     });
@@ -366,6 +367,7 @@ describe("runAdd", () => {
       installed: [],
       skipped: [],
       pruned: [],
+      mcpWarnings: [],
       hookWarnings: [],
       subagentWarnings: [],
     });
@@ -391,6 +393,7 @@ describe("runAdd", () => {
       installed: [],
       skipped: [],
       pruned: [],
+      mcpWarnings: [],
       hookWarnings: [],
       subagentWarnings: [],
     });

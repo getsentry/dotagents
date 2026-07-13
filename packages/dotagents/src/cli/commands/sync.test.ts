@@ -394,8 +394,12 @@ url = "https://mcp.example.com/sse"
 headers = { Authorization = "Bearer tok" }
 `,
     );
-    await writeFile(join(projectRoot, ".mcp.json"), JSON.stringify({
+    const configPath = join(projectRoot, "agents.toml");
+    const mcpPath = join(projectRoot, ".mcp.json");
+    await writeFile(mcpPath, JSON.stringify({
+      editor: "manual",
       mcpServers: {
+        manual: { command: "manual" },
         github: { command: "old", args: ["old"], env: { GITHUB_TOKEN: "old" } },
         remote: { type: "http", url: "https://old.example.com", headers: { Authorization: "old" } },
       },
@@ -404,8 +408,10 @@ headers = { Authorization = "Bearer tok" }
     const result = await runSync({ scope: resolveScope("project", projectRoot) });
 
     expect(result.mcpRepaired).toBe(1);
-    expect(JSON.parse(await readFile(join(projectRoot, ".mcp.json"), "utf-8"))).toEqual({
+    expect(JSON.parse(await readFile(mcpPath, "utf-8"))).toEqual({
+      editor: "manual",
       mcpServers: {
+        manual: { command: "manual" },
         github: {
           command: "npx",
           args: ["-y", "@mcp/server-github"],
@@ -418,6 +424,12 @@ headers = { Authorization = "Bearer tok" }
         },
       },
     });
+
+    await writeFile(configPath, `version = 1\nagents = ["claude"]\n`);
+    const beforeEmptySync = await readFile(mcpPath, "utf-8");
+    const emptyResult = await runSync({ scope: resolveScope("project", projectRoot) });
+    expect(emptyResult.mcpRepaired).toBe(0);
+    expect(await readFile(mcpPath, "utf-8")).toBe(beforeEmptySync);
   });
 
   it("repairs agent-specific symlinks", async () => {
