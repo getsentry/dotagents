@@ -87,40 +87,7 @@ describe("runInstall", () => {
     await rm(tmpDir, { recursive: true });
   });
 
-  it("installs a skill from a git source", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    const result = await runInstall({ scope });
-    expect(result.installed).toContain("pdf");
-
-    // Skill directory should exist
-    expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
-    expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "prompt.md"))).toBe(true);
-  });
-
-  it("creates agents.lock after install", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
-
-    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
-    expect(lockfile).not.toBeNull();
-    expect(lockfile!.skills["pdf"]).toBeDefined();
-    expect(lockfile!.skills["pdf"]!.source).toBeDefined();
-    // resolved_commit is informational, should be present for git skills
-    expect("resolved_commit" in lockfile!.skills["pdf"]!).toBe(true);
-    expect("integrity" in lockfile!.skills["pdf"]!).toBe(false);
-  });
-
-  it("installs multiple skills", async () => {
+  it("installs configured skills and records their durable state", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "review"\nsource = "git:${repoDir}"\n`,
@@ -128,25 +95,27 @@ describe("runInstall", () => {
 
     const scope = resolveScope("project", projectRoot);
     const result = await runInstall({ scope });
-    expect(result.installed).toHaveLength(2);
+    expect(result.installed.toSorted()).toEqual(["pdf", "review"]);
+
     expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "prompt.md"))).toBe(true);
     expect(existsSync(join(projectRoot, ".agents", "skills", "review", "SKILL.md"))).toBe(true);
-  });
 
-  it("regenerates .agents/.gitignore", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile).not.toBeNull();
+    expect(Object.keys(lockfile!.skills).toSorted()).toEqual(["pdf", "review"]);
+    for (const entry of Object.values(lockfile!.skills)) {
+      expect(entry.source).toBeDefined();
+      expect("resolved_commit" in entry).toBe(true);
+      expect("integrity" in entry).toBe(false);
+    }
 
     const gitignore = await readFile(
       join(projectRoot, ".agents", ".gitignore"),
       "utf-8",
     );
     expect(gitignore).toContain("/skills/pdf/");
+    expect(gitignore).toContain("/skills/review/");
   });
 
   it("handles empty skills list", async () => {
