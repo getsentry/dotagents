@@ -376,6 +376,75 @@ describe("runSync", () => {
     expect(existsSync(join(projectRoot, ".mcp.json"))).toBe(true);
   });
 
+  it("repairs MCP transport drift under unchanged server names", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+
+[[mcp]]
+name = "github"
+command = "npx"
+args = ["-y", "@mcp/server-github"]
+env = ["GITHUB_TOKEN"]
+
+[[mcp]]
+name = "remote"
+url = "https://mcp.example.com/sse"
+headers = { Authorization = "Bearer tok" }
+`,
+    );
+    const configPath = join(projectRoot, "agents.toml");
+    const mcpPath = join(projectRoot, ".mcp.json");
+    await writeFile(mcpPath, JSON.stringify({
+      editor: "manual",
+      mcpServers: {
+        manual: { command: "manual" },
+        github: { command: "old", args: ["old"], env: { GITHUB_TOKEN: "old" } },
+        remote: { type: "http", url: "https://old.example.com", headers: { Authorization: "old" } },
+      },
+    }));
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.mcpRepaired).toBe(1);
+    expect(result.issues.filter(({ type }) => type === "mcp")).toEqual([]);
+    expect(JSON.parse(await readFile(mcpPath, "utf-8"))).toEqual({
+      editor: "manual",
+      mcpServers: {
+        manual: { command: "manual" },
+        github: {
+          command: "npx",
+          args: ["-y", "@mcp/server-github"],
+          env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
+        },
+        remote: {
+          type: "http",
+          url: "https://mcp.example.com/sse",
+          headers: { Authorization: "Bearer tok" },
+        },
+      },
+    });
+
+    await writeFile(configPath, `version = 1\nagents = ["claude"]\n`);
+    const beforeEmptySync = await readFile(mcpPath, "utf-8");
+    const emptyResult = await runSync({ scope: resolveScope("project", projectRoot) });
+    expect(emptyResult.mcpRepaired).toBe(0);
+    expect(await readFile(mcpPath, "utf-8")).toBe(beforeEmptySync);
+
+    await writeFile(configPath, `version = 1\nagents = ["claude"]\n\n[[mcp]]\nname = "github"\ncommand = "npx"\n`);
+    const incompatible = '{"mcpServers":[]}\n';
+    await writeFile(mcpPath, incompatible);
+    const incompatibleResult = await runSync({ scope: resolveScope("project", projectRoot) });
+    expect(incompatibleResult.mcpRepaired).toBe(0);
+    expect(incompatibleResult.issues).toEqual([{
+      type: "mcp",
+      name: "claude",
+      message: `Failed to read MCP config: ${mcpPath}`,
+    }]);
+    expect(await readFile(mcpPath, "utf-8")).toBe(incompatible);
+  });
+
   it("repairs agent-specific symlinks", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
