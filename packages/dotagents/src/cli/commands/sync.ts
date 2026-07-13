@@ -182,8 +182,8 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 
   const mcpResult = await reconcileMcpConfigs(config.agents, mcpServers, mcpResolver, "apply");
   mcpRepaired = mcpResult.written.length;
-  if (mcpResult.issues.length > 0) {
-    for (const issue of mcpResult.issues) {
+  if (mcpResult.unresolved.length > 0) {
+    for (const issue of mcpResult.unresolved) {
       issues.push({
         type: "mcp",
         name: issue.agent,

@@ -408,6 +408,7 @@ headers = { Authorization = "Bearer tok" }
     const result = await runSync({ scope: resolveScope("project", projectRoot) });
 
     expect(result.mcpRepaired).toBe(1);
+    expect(result.issues.filter(({ type }) => type === "mcp")).toEqual([]);
     expect(JSON.parse(await readFile(mcpPath, "utf-8"))).toEqual({
       editor: "manual",
       mcpServers: {
@@ -430,6 +431,18 @@ headers = { Authorization = "Bearer tok" }
     const emptyResult = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(emptyResult.mcpRepaired).toBe(0);
     expect(await readFile(mcpPath, "utf-8")).toBe(beforeEmptySync);
+
+    await writeFile(configPath, `version = 1\nagents = ["claude"]\n\n[[mcp]]\nname = "github"\ncommand = "npx"\n`);
+    const incompatible = '{"mcpServers":[]}\n';
+    await writeFile(mcpPath, incompatible);
+    const incompatibleResult = await runSync({ scope: resolveScope("project", projectRoot) });
+    expect(incompatibleResult.mcpRepaired).toBe(0);
+    expect(incompatibleResult.issues).toEqual([{
+      type: "mcp",
+      name: "claude",
+      message: `Failed to read MCP config: ${mcpPath}`,
+    }]);
+    expect(await readFile(mcpPath, "utf-8")).toBe(incompatible);
   });
 
   it("repairs agent-specific symlinks", async () => {
