@@ -199,6 +199,8 @@ Config files generated per agent:
 - VS Code: `.vscode/mcp.json` (JSON)
 - OpenCode: `opencode.json` (JSON, shared)
 
+Install and sync repair changed MCP entries, including transport fields under an unchanged server name. Dedicated MCP files are removed when no servers remain. Shared Codex and OpenCode files preserve servers outside the names currently declared in `agents.toml`, because their historical ownership is unknown.
+
 ### Hooks
 
 Each `[[hooks]]` entry requires `event` and `command`. Optional: `matcher` to filter by tool name.

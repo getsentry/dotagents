@@ -103,6 +103,8 @@ agents = ["claude", "cursor", "codex", "opencode"]
 | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` | -- |
 | `opencode` | `.opencode` | `opencode.json` | -- | `.opencode/agents/*.md` |
 
+Install and sync repair changed MCP entries, including transport fields under an unchanged server name. Dedicated MCP files are removed when no servers remain; shared Codex and OpenCode files preserve undeclared servers because their historical ownership is unknown.
+
 Custom subagents are declared with `[[subagents]]` entries. dotagents writes generated runtime-specific files during `install` and repairs them during `sync`:
 
 ```toml

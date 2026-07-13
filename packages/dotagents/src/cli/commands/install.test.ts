@@ -146,6 +146,22 @@ describe("runInstall", () => {
     expect(stat.isSymbolicLink()).toBe(true);
   });
 
+  it("removes a dedicated MCP config after its last declaration is removed", async () => {
+    const configPath = join(projectRoot, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1\nagents = ["claude"]\n\n[[mcp]]\nname = "github"\ncommand = "npx"\n`,
+    );
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+    expect(existsSync(join(projectRoot, ".mcp.json"))).toBe(true);
+
+    await writeFile(configPath, `version = 1\nagents = ["claude"]\n`);
+    await runInstall({ scope });
+
+    expect(existsSync(join(projectRoot, ".mcp.json"))).toBe(false);
+  });
+
   it("fails with --frozen when no lockfile exists", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

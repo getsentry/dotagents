@@ -11,7 +11,7 @@ import { addSkillToConfig } from "../../config/writer.js";
 import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
 import { skillSymlinkTargets } from "../../targets/skill-symlinks.js";
-import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../targets/mcp-writer.js";
+import { reconcileMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../targets/mcp-writer.js";
 import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../targets/hook-writer.js";
 import { pruneSubagentConfigs, verifySubagentConfigs, writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../subagents/writer.js";
 import { loadInstalledSubagents, pruneInstalledSubagents } from "../../subagents/store.js";
@@ -180,11 +180,10 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const mcpServers = toMcpDeclarations(config.mcp);
   const mcpResolver = scope.scope === "user" ? userMcpResolver() : projectMcpResolver(scope.root);
 
-  const mcpIssues = await verifyMcpConfigs(config.agents, mcpServers, mcpResolver);
-  if (mcpIssues.length > 0) {
-    await writeMcpConfigs(config.agents, mcpServers, mcpResolver);
-    mcpRepaired = mcpIssues.length;
-    for (const issue of mcpIssues) {
+  const mcpResult = await reconcileMcpConfigs(config.agents, mcpServers, mcpResolver, "apply");
+  mcpRepaired = mcpResult.written.length + mcpResult.removed.length;
+  if (mcpResult.issues.length > 0) {
+    for (const issue of mcpResult.issues) {
       issues.push({
         type: "mcp",
         name: issue.agent,

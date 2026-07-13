@@ -1,9 +1,14 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { existsSync } from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 import { stringify as tomlStringify, parse as parseTOML } from "smol-toml";
 import { getAgent } from "./registry.js";
-import type { McpDeclaration, McpConfigSpec } from "./types.js";
+import type {
+  McpDeclaration,
+  McpConfigSpec,
+  NormalizedMcpDeclaration,
+} from "./types.js";
 import type { McpConfig } from "../config/schema.js";
 
 export interface McpResolvedTarget {
@@ -13,18 +18,22 @@ export interface McpResolvedTarget {
 
 export type McpTargetResolver = (agentId: string, spec: McpConfigSpec) => McpResolvedTarget;
 
+export interface McpReconcileIssue {
+  agent: string;
+  issue: string;
+}
+
+export interface McpReconcileResult {
+  issues: McpReconcileIssue[];
+  written: string[];
+  removed: string[];
+}
+
 /**
  * Convert McpConfig entries (from agents.toml) to universal McpDeclarations.
  */
-export function toMcpDeclarations(configs: McpConfig[]): McpDeclaration[] {
-  return configs.map((m) => ({
-    name: m.name,
-    ...(m.command && { command: m.command }),
-    ...(m.args && { args: m.args }),
-    ...(m.url && { url: m.url }),
-    ...(m.headers && { headers: m.headers }),
-    ...(m.env.length > 0 && { env: m.env }),
-  }));
+export function toMcpDeclarations(configs: McpConfig[]): NormalizedMcpDeclaration[] {
+  return configs.map(normalizeMcpDeclaration);
 }
 
 /**
@@ -49,9 +58,35 @@ export async function writeMcpConfigs(
   resolveTarget: McpTargetResolver,
 ): Promise<void> {
   if (servers.length === 0) {return;}
+  await reconcileMcpConfigs(agentIds, servers, resolveTarget, "apply");
+}
 
-  // Deduplicate by resolved filePath so shared files aren't written twice
+/** Inspect MCP configs for semantic drift without applying repairs. */
+export async function verifyMcpConfigs(
+  agentIds: string[],
+  servers: McpDeclaration[],
+  resolveTarget: McpTargetResolver,
+): Promise<{ agent: string; issue: string }[]> {
+  if (servers.length === 0) {return [];}
+  return (await reconcileMcpConfigs(agentIds, servers, resolveTarget, "inspect")).issues;
+}
+
+/**
+ * Inspect or apply desired MCP state. Dedicated targets are fully owned;
+ * shared targets update desired names while preserving every other entry.
+ * Returned issues describe the drift observed before any repair.
+ */
+export async function reconcileMcpConfigs(
+  agentIds: string[],
+  servers: McpDeclaration[],
+  resolveTarget: McpTargetResolver,
+  mode: "inspect" | "apply",
+): Promise<McpReconcileResult> {
+  const issues: McpReconcileIssue[] = [];
+  const written: string[] = [];
+  const removed: string[] = [];
   const seen = new Set<string>();
+  const normalized = servers.map(normalizeMcpDeclaration);
 
   for (const id of agentIds) {
     const agent = getAgent(id);
@@ -62,88 +97,139 @@ export async function writeMcpConfigs(
     if (seen.has(filePath)) {continue;}
     seen.add(filePath);
 
-    const serialized: Record<string, unknown> = {};
-    for (const server of servers) {
-      const [name, config] = agent.serializeServer(server);
-      serialized[name] = config;
-    }
-
-    await mkdir(dirname(filePath), { recursive: true });
-
-    if (shared) {
-      await mergeWrite(filePath, mcp, serialized);
-    } else {
-      await freshWrite(filePath, mcp, serialized);
-    }
-  }
-}
-
-/**
- * Verify MCP configs exist and contain the expected servers.
- * Returns a list of issues found.
- */
-export async function verifyMcpConfigs(
-  agentIds: string[],
-  servers: McpDeclaration[],
-  resolveTarget: McpTargetResolver,
-): Promise<{ agent: string; issue: string }[]> {
-  if (servers.length === 0) {return [];}
-
-  const issues: { agent: string; issue: string }[] = [];
-  const seen = new Set<string>();
-
-  for (const id of agentIds) {
-    const agent = getAgent(id);
-    if (!agent) {continue;}
-
-    const { mcp } = agent;
-    const { filePath } = resolveTarget(id, mcp);
-    if (seen.has(filePath)) {continue;}
-    seen.add(filePath);
-
-    if (!existsSync(filePath)) {
-      issues.push({ agent: id, issue: `MCP config missing: ${filePath}` });
+    if (normalized.length === 0) {
+      if (!shared && existsSync(filePath)) {
+        issues.push({ agent: id, issue: `Stale MCP config: ${filePath}` });
+        if (mode === "apply") {
+          await rm(filePath);
+          removed.push(filePath);
+        }
+      }
       continue;
     }
 
-    // Verify content has the expected servers
-    const expectedNames = servers.map((s) => s.name);
-    try {
-      const existing = await readExisting(filePath, mcp);
-      const existingServers = existing[mcp.rootKey] as Record<string, unknown> | undefined;
-      for (const name of expectedNames) {
-        if (!existingServers || !(name in existingServers)) {
-          issues.push({ agent: id, issue: `MCP server "${name}" missing from ${filePath}` });
-        }
+    const expectedServers = renderServers(agent.serializeServer, normalized);
+    const expected = { [mcp.rootKey]: expectedServers };
+
+    if (!existsSync(filePath)) {
+      issues.push({ agent: id, issue: `MCP config missing: ${filePath}` });
+      if (mode === "apply") {
+        await writeDocument(filePath, mcp, expected);
+        written.push(filePath);
       }
-    } catch {
+      continue;
+    }
+
+    let existing: Record<string, unknown>;
+    try {
+      existing = await readExisting(filePath, mcp);
+    } catch (error) {
       issues.push({ agent: id, issue: `Failed to read MCP config: ${filePath}` });
+      if (mode === "apply" && !shared) {
+        await writeDocument(filePath, mcp, expected);
+        written.push(filePath);
+        continue;
+      }
+      if (mode === "apply") {
+        throw error;
+      }
+      continue;
+    }
+
+    const existingServers = asRecord(existing[mcp.rootKey]);
+    const targetIssues = shared
+      ? sharedIssues(id, filePath, existingServers, expectedServers)
+      : dedicatedIssues(id, filePath, existing, expected, existingServers, expectedServers);
+    issues.push(...targetIssues);
+
+    if (mode === "apply" && targetIssues.length > 0) {
+      const next = shared
+        ? { ...existing, [mcp.rootKey]: { ...existingServers, ...expectedServers } }
+        : expected;
+      await writeDocument(filePath, mcp, next);
+      written.push(filePath);
     }
   }
 
-  return issues;
+  return { issues, written, removed };
 }
 
 // --- Internal helpers ---
 
-async function freshWrite(
-  filePath: string,
-  spec: McpConfigSpec,
-  servers: Record<string, unknown>,
-): Promise<void> {
-  const doc = { [spec.rootKey]: servers };
-  await writeFileIfChanged(filePath, serialize(doc, spec.format));
+function normalizeMcpDeclaration(mcp: McpDeclaration): NormalizedMcpDeclaration {
+  if (mcp.url) {
+    return {
+      name: mcp.name,
+      url: mcp.url,
+      ...(mcp.headers && { headers: mcp.headers }),
+      ...(mcp.env?.length && { env: mcp.env }),
+    };
+  }
+  if (!mcp.command) {
+    throw new TypeError(`MCP declaration "${mcp.name}" has no transport`);
+  }
+  return {
+    name: mcp.name,
+    command: mcp.command,
+    ...(mcp.args && { args: mcp.args }),
+    ...(mcp.env?.length && { env: mcp.env }),
+  };
 }
 
-async function mergeWrite(
+function renderServers(
+  serializeServer: (server: McpDeclaration) => [string, unknown],
+  servers: NormalizedMcpDeclaration[],
+): Record<string, unknown> {
+  return Object.fromEntries(servers.map(serializeServer));
+}
+
+function sharedIssues(
+  agent: string,
+  filePath: string,
+  existing: Record<string, unknown>,
+  expected: Record<string, unknown>,
+): McpReconcileIssue[] {
+  return Object.entries(expected).flatMap(([name, value]) => {
+    if (!(name in existing)) {
+      return [{ agent, issue: `MCP server "${name}" missing from ${filePath}` }];
+    }
+    if (!isDeepStrictEqual(existing[name], value)) {
+      return [{ agent, issue: `MCP server "${name}" drifted in ${filePath}` }];
+    }
+    return [];
+  });
+}
+
+function dedicatedIssues(
+  agent: string,
+  filePath: string,
+  existing: Record<string, unknown>,
+  expected: Record<string, unknown>,
+  existingServers: Record<string, unknown>,
+  expectedServers: Record<string, unknown>,
+): McpReconcileIssue[] {
+  if (isDeepStrictEqual(existing, expected)) {return [];}
+  const issues = sharedIssues(agent, filePath, existingServers, expectedServers);
+  return issues.length > 0
+    ? issues
+    : [{ agent, issue: `MCP config drifted: ${filePath}` }];
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+async function writeDocument(
   filePath: string,
   spec: McpConfigSpec,
-  servers: Record<string, unknown>,
+  doc: Record<string, unknown>,
 ): Promise<void> {
-  const existing = existsSync(filePath) ? await readExisting(filePath, spec) : {};
-  const prev = (existing[spec.rootKey] ?? {}) as Record<string, unknown>;
-  existing[spec.rootKey] = { ...prev, ...servers };
-  await writeFileIfChanged(filePath, serialize(existing, spec.format));
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFileIfChanged(filePath, serialize(doc, spec.format));
 }
 
 async function readExisting(
@@ -151,10 +237,11 @@ async function readExisting(
   spec: McpConfigSpec,
 ): Promise<Record<string, unknown>> {
   const raw = await readFile(filePath, "utf-8");
-  if (spec.format === "toml") {
-    return parseTOML(raw) as Record<string, unknown>;
+  const parsed: unknown = spec.format === "toml" ? parseTOML(raw) : JSON.parse(raw);
+  if (!isRecord(parsed)) {
+    throw new TypeError(`MCP config must contain an object: ${filePath}`);
   }
-  return JSON.parse(raw) as Record<string, unknown>;
+  return parsed;
 }
 
 function serialize(doc: Record<string, unknown>, format: "json" | "toml"): string {

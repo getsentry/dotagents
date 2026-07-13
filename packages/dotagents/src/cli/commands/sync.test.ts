@@ -376,6 +376,50 @@ describe("runSync", () => {
     expect(existsSync(join(projectRoot, ".mcp.json"))).toBe(true);
   });
 
+  it("repairs MCP transport drift under unchanged server names", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+
+[[mcp]]
+name = "github"
+command = "npx"
+args = ["-y", "@mcp/server-github"]
+env = ["GITHUB_TOKEN"]
+
+[[mcp]]
+name = "remote"
+url = "https://mcp.example.com/sse"
+headers = { Authorization = "Bearer tok" }
+`,
+    );
+    await writeFile(join(projectRoot, ".mcp.json"), JSON.stringify({
+      mcpServers: {
+        github: { command: "old", args: ["old"], env: { GITHUB_TOKEN: "old" } },
+        remote: { type: "http", url: "https://old.example.com", headers: { Authorization: "old" } },
+      },
+    }));
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.mcpRepaired).toBe(1);
+    expect(JSON.parse(await readFile(join(projectRoot, ".mcp.json"), "utf-8"))).toEqual({
+      mcpServers: {
+        github: {
+          command: "npx",
+          args: ["-y", "@mcp/server-github"],
+          env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
+        },
+        remote: {
+          type: "http",
+          url: "https://mcp.example.com/sse",
+          headers: { Authorization: "Bearer tok" },
+        },
+      },
+    });
+  });
+
   it("repairs agent-specific symlinks", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

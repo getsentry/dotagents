@@ -243,6 +243,8 @@ Generated paths:
 
 Each agent has its own MCP config format. dotagents translates the universal `[[mcp]]` declarations into the format each tool expects during `install` and `sync`.
 
+Dedicated MCP files are fully managed: install and sync repair changed entries and remove the file when no MCP servers remain. Shared Codex and OpenCode files preserve servers outside the names currently declared in `agents.toml`, because dotagents cannot determine whether undeclared entries were previously generated or manually configured.
+
 ### Source Types
 
 The source format is inferred from the value. Shorthand `owner/repo` resolves using `defaultRepositorySource` (default: GitHub).

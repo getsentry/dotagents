@@ -2,7 +2,7 @@ import type { AgentsConfig } from "../../../config/schema.js";
 import type { ScopeRoot } from "../../../scope.js";
 import { ensureSkillsSymlink } from "../../../symlinks/manager.js";
 import { skillSymlinkTargets } from "../../../targets/skill-symlinks.js";
-import { projectMcpResolver, toMcpDeclarations, writeMcpConfigs } from "../../../targets/mcp-writer.js";
+import { projectMcpResolver, reconcileMcpConfigs, toMcpDeclarations } from "../../../targets/mcp-writer.js";
 import { projectHookResolver, toHookDeclarations, writeHookConfigs } from "../../../targets/hook-writer.js";
 import { userMcpResolver } from "../../../targets/paths.js";
 import {
@@ -36,7 +36,7 @@ export async function writeMcpRuntime(
   const resolver = scope.scope === "user"
     ? userMcpResolver()
     : projectMcpResolver(scope.root);
-  await writeMcpConfigs(config.agents, toMcpDeclarations(config.mcp), resolver);
+  await reconcileMcpConfigs(config.agents, toMcpDeclarations(config.mcp), resolver, "apply");
 }
 
 /** Writes project-scoped hook runtime config for configured agents. */

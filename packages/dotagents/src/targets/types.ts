@@ -17,6 +17,24 @@ export interface McpDeclaration {
   env?: string[];
 }
 
+interface McpDeclarationBase {
+  name: string;
+  env?: string[];
+}
+
+interface StdioMcpDeclaration extends McpDeclarationBase {
+  command: string;
+  args?: string[];
+}
+
+interface HttpMcpDeclaration extends McpDeclarationBase {
+  url: string;
+  headers?: Record<string, string>;
+}
+
+/** Validated internal form used while rendering MCP target configs. */
+export type NormalizedMcpDeclaration = StdioMcpDeclaration | HttpMcpDeclaration;
+
 /**
  * Describes how an agent tool writes its MCP config file.
  */
