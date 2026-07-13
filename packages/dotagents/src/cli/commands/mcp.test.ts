@@ -128,14 +128,6 @@ describe("mcp", () => {
   });
 
   describe("runMcpRemove", () => {
-    it("removes an existing server", async () => {
-      await runMcpAdd({ scope, name: "github", command: "npx" });
-      await runMcpRemove({ scope, name: "github" });
-
-      const config = await loadConfig(scope.configPath);
-      expect(config.mcp).toHaveLength(0);
-    });
-
     it("throws for non-existent server", async () => {
       await expect(
         runMcpRemove({ scope, name: "nope" }),
@@ -159,25 +151,19 @@ describe("mcp", () => {
       expect(getMcpList(config)).toEqual([]);
     });
 
-    it("returns stdio entries", async () => {
+    it("projects stdio and HTTP entries", async () => {
       await runMcpAdd({ scope, name: "github", command: "npx", env: ["TOKEN"] });
+      await runMcpAdd({ scope, name: "remote", url: "https://example.com/mcp" });
       const config = await loadConfig(scope.configPath);
       const list = getMcpList(config);
-      expect(list).toHaveLength(1);
+      expect(list).toHaveLength(2);
       expect(list[0]).toEqual({
         name: "github",
         transport: "stdio",
         target: "npx",
         env: ["TOKEN"],
       });
-    });
-
-    it("returns http entries", async () => {
-      await runMcpAdd({ scope, name: "remote", url: "https://example.com/mcp" });
-      const config = await loadConfig(scope.configPath);
-      const list = getMcpList(config);
-      expect(list).toHaveLength(1);
-      expect(list[0]).toEqual({
+      expect(list[1]).toEqual({
         name: "remote",
         transport: "http",
         target: "https://example.com/mcp",

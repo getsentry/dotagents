@@ -91,14 +91,6 @@ describe("writeMcpConfigs", () => {
     });
   });
 
-  it("handles multiple agents", async () => {
-    await writeMcpConfigs(["claude", "cursor", "vscode"], [STDIO_SERVER], projectMcpResolver(dir));
-
-    expect(existsSync(join(dir, ".mcp.json"))).toBe(true);
-    expect(existsSync(join(dir, ".cursor", "mcp.json"))).toBe(true);
-    expect(existsSync(join(dir, ".vscode", "mcp.json"))).toBe(true);
-  });
-
   it("handles multiple servers", async () => {
     await writeMcpConfigs(["claude"], [STDIO_SERVER, HTTP_SERVER], projectMcpResolver(dir));
 
@@ -106,60 +98,6 @@ describe("writeMcpConfigs", () => {
     expect(Object.keys(content.mcpServers)).toHaveLength(2);
     expect(content.mcpServers.github).toBeDefined();
     expect(content.mcpServers.remote).toBeDefined();
-  });
-
-  it("writes claude HTTP server with type: http", async () => {
-    await writeMcpConfigs(["claude"], [HTTP_SERVER], projectMcpResolver(dir));
-
-    const content = JSON.parse(await readFile(join(dir, ".mcp.json"), "utf-8"));
-    expect(content.mcpServers.remote).toEqual({
-      type: "http",
-      url: "https://mcp.example.com/sse",
-      headers: { Authorization: "Bearer tok" },
-    });
-  });
-
-  it("writes cursor HTTP server without type field", async () => {
-    await writeMcpConfigs(["cursor"], [HTTP_SERVER], projectMcpResolver(dir));
-
-    const content = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf-8"));
-    expect(content.mcpServers.remote).toEqual({
-      url: "https://mcp.example.com/sse",
-      headers: { Authorization: "Bearer tok" },
-    });
-  });
-
-  it("writes vscode HTTP server with type: http", async () => {
-    await writeMcpConfigs(["vscode"], [HTTP_SERVER], projectMcpResolver(dir));
-
-    const content = JSON.parse(await readFile(join(dir, ".vscode", "mcp.json"), "utf-8"));
-    expect(content.servers.remote).toEqual({
-      type: "http",
-      url: "https://mcp.example.com/sse",
-      headers: { Authorization: "Bearer tok" },
-    });
-  });
-
-  it("writes opencode HTTP server with type: remote", async () => {
-    await writeMcpConfigs(["opencode"], [HTTP_SERVER], projectMcpResolver(dir));
-
-    const content = JSON.parse(await readFile(join(dir, "opencode.json"), "utf-8"));
-    expect(content.mcp.remote).toEqual({
-      type: "remote",
-      url: "https://mcp.example.com/sse",
-      headers: { Authorization: "Bearer tok" },
-    });
-  });
-
-  it("writes codex HTTP server with http_headers and no type", async () => {
-    await writeMcpConfigs(["codex"], [HTTP_SERVER], projectMcpResolver(dir));
-
-    const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
-    const content = parseTOML(raw) as Record<string, Record<string, Record<string, unknown>>>;
-    expect(content["mcp_servers"]!["remote"]).toEqual({
-      url: "https://mcp.example.com/sse",
-      http_headers: { Authorization: "Bearer tok" },
-    });
   });
 
   it("writes correct HTTP servers for all agents", async () => {

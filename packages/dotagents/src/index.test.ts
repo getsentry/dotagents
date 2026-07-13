@@ -28,22 +28,17 @@ describe("host re-exports preserve dotagents scan dirs", () => {
     await rm(repoDir, { recursive: true, force: true });
   });
 
-  it("discoverSkill finds a skill under .agents/skills/", async () => {
+  it("discoverSkill finds skills under both host scan dirs", async () => {
     await mkdir(join(repoDir, ".agents", "skills", "lint"), { recursive: true });
     await writeFile(join(repoDir, ".agents", "skills", "lint", "SKILL.md"), SKILL_MD("lint"));
-
-    const result = await discoverSkill(repoDir, "lint");
-    expect(result).not.toBeNull();
-    expect(result!.path).toBe(".agents/skills/lint");
-  });
-
-  it("discoverSkill finds a skill under .claude/skills/", async () => {
     await mkdir(join(repoDir, ".claude", "skills", "commit"), { recursive: true });
     await writeFile(join(repoDir, ".claude", "skills", "commit", "SKILL.md"), SKILL_MD("commit"));
 
-    const result = await discoverSkill(repoDir, "commit");
-    expect(result).not.toBeNull();
-    expect(result!.path).toBe(".claude/skills/commit");
+    const agentsSkill = await discoverSkill(repoDir, "lint");
+    expect(agentsSkill?.path).toBe(".agents/skills/lint");
+
+    const claudeSkill = await discoverSkill(repoDir, "commit");
+    expect(claudeSkill?.path).toBe(".claude/skills/commit");
   });
 
   it("discoverAllSkills walks .agents/skills/ and .claude/skills/", async () => {

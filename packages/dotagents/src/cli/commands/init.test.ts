@@ -22,21 +22,18 @@ describe("runInit", () => {
     await rm(dir, { recursive: true });
   });
 
-  it("creates agents.toml in project root", async () => {
+  it("creates a complete default project", async () => {
     await runInit({ scope: resolveScope("project", dir) });
 
     const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.version).toBe(1);
-  });
-
-  it("includes bootstrap dotagents skill by default", async () => {
-    await runInit({ scope: resolveScope("project", dir) });
-
-    const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.skills).toHaveLength(1);
     const skill = config.skills[0]!;
     expect(skill.name).toBe("dotagents");
     expect(skill.source).toBe("getsentry/dotagents");
+    expect(existsSync(join(dir, ".agents", "skills"))).toBe(true);
+    expect(existsSync(join(dir, ".agents", ".gitignore"))).toBe(true);
+    expect(existsSync(join(dir, ".claude"))).toBe(false);
   });
 
   it("omits bootstrap skill when skills: [] is passed", async () => {
@@ -44,19 +41,6 @@ describe("runInit", () => {
 
     const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.skills).toEqual([]);
-  });
-
-  it("creates .agents/skills/ directory", async () => {
-    await runInit({ scope: resolveScope("project", dir) });
-
-    const stat = await lstat(join(dir, ".agents", "skills"));
-    expect(stat.isDirectory()).toBe(true);
-  });
-
-  it("always creates .agents/.gitignore", async () => {
-    await runInit({ scope: resolveScope("project", dir) });
-
-    expect(existsSync(join(dir, ".agents", ".gitignore"))).toBe(true);
   });
 
   it("throws InitError if agents.toml exists without --force", async () => {
@@ -84,22 +68,6 @@ describe("runInit", () => {
     const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.version).toBe(1);
     expect(existsSync(join(dir, ".agents", "skills"))).toBe(true);
-  });
-
-  it("does not create symlinks with default config", async () => {
-    await runInit({ scope: resolveScope("project", dir) });
-
-    // Default config has no symlinks configured, so .claude should not exist
-    expect(existsSync(join(dir, ".claude"))).toBe(false);
-  });
-
-  it("creates all expected files and directories", async () => {
-    await runInit({ scope: resolveScope("project", dir) });
-
-    expect(existsSync(join(dir, "agents.toml"))).toBe(true);
-    expect(existsSync(join(dir, ".agents"))).toBe(true);
-    expect(existsSync(join(dir, ".agents", "skills"))).toBe(true);
-    expect(existsSync(join(dir, ".agents", ".gitignore"))).toBe(true);
   });
 
   it("preserves existing .agents/skills/ contents", async () => {
