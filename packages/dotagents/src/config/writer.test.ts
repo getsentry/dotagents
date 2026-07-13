@@ -7,6 +7,7 @@ import {
   addWildcardToConfig,
   addExcludeToWildcard,
   removeSkillFromConfig,
+  removeSkillBlocksBySource,
   addMcpToConfig,
   removeMcpFromConfig,
   generateDefaultConfig,
@@ -233,6 +234,40 @@ describe("writer", () => {
       const after = await readFile(configPath, "utf-8");
       expect(after).toBe(before);
     });
+
+    it.each([
+      {
+        operation: "named skill",
+        input: `version = 1\n# keep this comment\n\n  [[skills]]\n  name\t=\t'remove-me' # target\n  source\t=\t'org/remove'\n\n[[skills]]\nname = 'keep-me'\nsource = 'org/keep'\n\n[misc]\nvalue = 'unchanged'\n`,
+        expected: `version = 1\n# keep this comment\n\n[[skills]]\nname = 'keep-me'\nsource = 'org/keep'\n\n[misc]\nvalue = 'unchanged'\n`,
+        expectedNames: ["keep-me"],
+        mutate: () => removeSkillFromConfig(configPath, "remove-me"),
+      },
+      {
+        operation: "matching source",
+        input: `version = 1\n\n[[skills]]\nname = 'remove-a'\nsource = 'org/remove'\n\n[[skills]]\nname = "keep"\nsource = "org/keep"\n\n[[skills]]\nname = 'remove-b'\nsource = 'https://github.com/org/remove.git'\n\n[[mcp]]\nname = 'manual'\ncommand = 'keep-this'\n`,
+        expected: `version = 1\n\n[[skills]]\nname = "keep"\nsource = "org/keep"\n\n[[mcp]]\nname = 'manual'\ncommand = 'keep-this'\n`,
+        expectedNames: ["keep"],
+        mutate: () => removeSkillBlocksBySource(configPath, "org/remove"),
+      },
+    ])("preserves unrelated text when removing a $operation", async ({ input, expected, expectedNames, mutate }) => {
+      await writeFile(configPath, input);
+
+      await mutate();
+
+      expect(await readFile(configPath, "utf-8")).toBe(expected);
+      const config = await loadConfig(configPath);
+      expect(config.skills.map((skill) => skill.name)).toEqual(expectedNames);
+    });
+
+    it("leaves source-based removal text unchanged when no source matches", async () => {
+      const input = `version = 1\n\n[[skills]]\n  name = 'keep'\n  source = 'org/keep' # comment\n`;
+      await writeFile(configPath, input);
+
+      await removeSkillBlocksBySource(configPath, "org/missing");
+
+      expect(await readFile(configPath, "utf-8")).toBe(input);
+    });
   });
 
   describe("addWildcardToConfig", () => {
@@ -317,6 +352,20 @@ describe("writer", () => {
       const anthropics = config.skills.find((s) => s.source === "anthropics/skills");
       expect(isWildcardDep(getsentry!) && getsentry!.exclude).toContain("my-skill");
       expect(isWildcardDep(anthropics!) && anthropics!.exclude).toEqual([]);
+    });
+
+    it("preserves indentation and comments around an existing exclude list", async () => {
+      const input = `version = 1\n\n  [[skills]]\n  name = '*'\n  source = 'getsentry/skills'\n  exclude = ['old'] # keep this\n\n[misc]\nvalue = 'unchanged'\n`;
+      await writeFile(configPath, input);
+
+      await addExcludeToWildcard(configPath, "getsentry/skills", "new");
+
+      expect(await readFile(configPath, "utf-8")).toBe(
+        `version = 1\n\n  [[skills]]\n  name = '*'\n  source = 'getsentry/skills'\n  exclude = ['old', "new"] # keep this\n\n[misc]\nvalue = 'unchanged'\n`,
+      );
+      const config = await loadConfig(configPath);
+      const wildcard = config.skills[0]!;
+      expect(isWildcardDep(wildcard) && wildcard.exclude).toEqual(["old", "new"]);
     });
   });
 
@@ -423,6 +472,19 @@ describe("writer", () => {
       const config = await loadConfig(configPath);
       expect(config.mcp).toHaveLength(0);
       expect(config.skills.find((s) => s.name === "github")).toBeDefined();
+    });
+
+    it("preserves comments, quoting, indentation, and adjacent sections", async () => {
+      const input = `version = 1\n# retained\n\n  [[mcp]]\n  name = 'remove-me'\n  command = 'old-command'\n[[mcp]]\nname = 'keep-me'\ncommand = 'keep-command' # retained inline\n\n[trust]\ngithub_orgs = ['example']\n`;
+      const expected = `version = 1\n# retained\n[[mcp]]\nname = 'keep-me'\ncommand = 'keep-command' # retained inline\n\n[trust]\ngithub_orgs = ['example']\n`;
+      await writeFile(configPath, input);
+
+      await removeMcpFromConfig(configPath, "remove-me");
+
+      expect(await readFile(configPath, "utf-8")).toBe(expected);
+      const config = await loadConfig(configPath);
+      expect(config.mcp.map((server) => server.name)).toEqual(["keep-me"]);
+      expect(config.trust?.github_orgs).toEqual(["example"]);
     });
   });
 });
