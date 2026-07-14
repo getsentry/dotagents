@@ -3,7 +3,13 @@ import { mkdtemp, readFile, writeFile, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
-import { writeHookConfigs, verifyHookConfigs, toHookDeclarations, projectHookResolver } from "./hook-writer.js";
+import {
+  projectHookResolver,
+  reconcileHookConfigs,
+  toHookDeclarations,
+  verifyHookConfigs,
+  writeHookConfigs,
+} from "./hook-writer.js";
 import type { HookDeclaration } from "./types.js";
 import type { HookConfig } from "../config/schema.js";
 
@@ -41,10 +47,15 @@ describe("writeHookConfigs", () => {
     await rm(dir, { recursive: true });
   });
 
-  it("skips when no hooks declared", async () => {
-    const warnings = await writeHookConfigs(["claude"], [], projectHookResolver(dir));
+  it("preserves the legacy empty-input no-op", async () => {
+    const filePath = join(dir, ".cursor", "hooks.json");
+    const content = '{"version":1,"hooks":{"stop":[]}}';
+    await mkdir(join(dir, ".cursor"), { recursive: true });
+    await writeFile(filePath, content);
+
+    const warnings = await writeHookConfigs(["cursor"], [], projectHookResolver(dir));
     expect(warnings).toEqual([]);
-    expect(existsSync(join(dir, ".claude", "settings.json"))).toBe(false);
+    expect(await readFile(filePath, "utf-8")).toBe(content);
   });
 
   it("writes claude .claude/settings.json", async () => {
@@ -179,9 +190,15 @@ describe("verifyHookConfigs", () => {
     expect(issues).toEqual([]);
   });
 
-  it("returns empty when no hooks declared", async () => {
+  it("preserves the legacy empty-input no-op", async () => {
+    const filePath = join(dir, ".cursor", "hooks.json");
+    const content = '{"version":1,"hooks":{"stop":[]}}';
+    await mkdir(join(dir, ".cursor"), { recursive: true });
+    await writeFile(filePath, content);
+
     const issues = await verifyHookConfigs(["claude"], [], projectHookResolver(dir));
     expect(issues).toEqual([]);
+    expect(await readFile(filePath, "utf-8")).toBe(content);
   });
 
   it("reports missing hooks key", async () => {
@@ -195,6 +212,152 @@ describe("verifyHookConfigs", () => {
 
     const issues = await verifyHookConfigs(["claude"], HOOKS, projectHookResolver(dir));
     expect(issues).toHaveLength(1);
-    expect(issues[0]!.issue).toContain("hooks");
+    expect(issues[0]!.issue).toContain("drifted");
+  });
+
+  it("reports a non-object document instead of throwing", async () => {
+    const claudeDir = join(dir, ".claude");
+    await mkdir(claudeDir, { recursive: true });
+    await writeFile(join(claudeDir, "settings.json"), "null\n");
+
+    const issues = await verifyHookConfigs(["claude"], HOOKS, projectHookResolver(dir));
+    expect(issues).toEqual([{
+      agent: "claude",
+      issue: `Failed to read hook config: ${join(claudeDir, "settings.json")}`,
+    }]);
+  });
+});
+
+describe("reconcileHookConfigs", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "dotagents-hooks-reconcile-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true });
+  });
+
+  it("repairs shared hook drift while preserving unrelated settings", async () => {
+    const filePath = join(dir, ".claude", "settings.json");
+    await mkdir(join(dir, ".claude"), { recursive: true });
+    await writeFile(filePath, JSON.stringify({
+      permissions: { allow: ["Read"] },
+      hooks: {
+        PreToolUse: [{ matcher: "Write", hooks: [{ type: "command", command: "old.sh" }] }],
+      },
+    }));
+
+    const inspected = await reconcileHookConfigs(
+      ["claude"],
+      HOOKS,
+      projectHookResolver(dir),
+      "inspect",
+    );
+    expect(inspected.issues).toEqual([{
+      agent: "claude",
+      issue: `Hook config drifted: ${filePath}`,
+    }]);
+    expect(inspected.written).toEqual([]);
+
+    const applied = await reconcileHookConfigs(
+      ["claude"],
+      HOOKS,
+      projectHookResolver(dir),
+      "apply",
+    );
+    expect(applied.written).toEqual([filePath]);
+    expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual({
+      permissions: { allow: ["Read"] },
+      hooks: {
+        PreToolUse: [{
+          matcher: "Bash",
+          hooks: [{ type: "command", command: ".agents/hooks/block-rm.sh" }],
+        }],
+        Stop: [{ hooks: [{ type: "command", command: ".agents/hooks/check-tests.sh" }] }],
+      },
+    });
+  });
+
+  it("repairs Cursor event mapping and dedicated document fields", async () => {
+    const filePath = join(dir, ".cursor", "hooks.json");
+    await mkdir(join(dir, ".cursor"), { recursive: true });
+    await writeFile(filePath, JSON.stringify({
+      version: 2,
+      hooks: { beforeShellExecution: [{ command: "old.sh" }] },
+    }));
+
+    const result = await reconcileHookConfigs(
+      ["cursor"],
+      HOOKS,
+      projectHookResolver(dir),
+      "apply",
+    );
+
+    expect(result.written).toEqual([filePath]);
+    expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual({
+      version: 1,
+      hooks: {
+        beforeShellExecution: [{ command: ".agents/hooks/block-rm.sh" }],
+        beforeMCPExecution: [{ command: ".agents/hooks/block-rm.sh" }],
+        stop: [{ command: ".agents/hooks/check-tests.sh" }],
+      },
+    });
+  });
+
+  it("removes an empty shared hook root once for Claude and VS Code", async () => {
+    const filePath = join(dir, ".claude", "settings.json");
+    await mkdir(join(dir, ".claude"), { recursive: true });
+    await writeFile(filePath, JSON.stringify({
+      permissions: { allow: ["Read"] },
+      hooks: { Stop: [{ hooks: [{ type: "command", command: "stale.sh" }] }] },
+    }));
+
+    const result = await reconcileHookConfigs(
+      ["claude", "vscode"],
+      [],
+      projectHookResolver(dir),
+      "apply",
+    );
+
+    expect(result.written).toEqual([filePath]);
+    expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual({
+      permissions: { allow: ["Read"] },
+    });
+  });
+
+  it("removes a dedicated Cursor hook file when no hooks remain", async () => {
+    const filePath = join(dir, ".cursor", "hooks.json");
+    await mkdir(join(dir, ".cursor"), { recursive: true });
+    await writeFile(filePath, JSON.stringify({ version: 1, hooks: { stop: [] } }));
+
+    const result = await reconcileHookConfigs(
+      ["cursor"],
+      [],
+      projectHookResolver(dir),
+      "apply",
+    );
+
+    expect(result.removed).toEqual([filePath]);
+    expect(existsSync(filePath)).toBe(false);
+  });
+
+  it("returns unsupported-agent warnings separately from drift", async () => {
+    const result = await reconcileHookConfigs(
+      ["claude", "codex"],
+      HOOKS,
+      projectHookResolver(dir),
+      "inspect",
+    );
+
+    expect(result.issues).toEqual([{
+      agent: "claude",
+      issue: `Hook config missing: ${join(dir, ".claude", "settings.json")}`,
+    }]);
+    expect(result.warnings).toEqual([{
+      agent: "codex",
+      message: 'Agent "Codex" does not support hooks',
+    }]);
   });
 });

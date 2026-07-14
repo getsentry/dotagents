@@ -223,6 +223,8 @@ Cursor event mapping:
 - `UserPromptSubmit` -> `beforeSubmitPrompt`
 - `Stop` -> `stop`
 
+Install and sync compare the complete serialized hook root and repair stale commands, matchers, and target event mappings. The hook root is dotagents-owned: unrelated top-level settings in shared files are preserved, while removing all hook declarations removes the shared hook root or the dedicated Cursor hook file.
+
 ### Subagents
 
 Each `[[subagents]]` entry requires `name` and `source`. Optional: `ref`, `path`, and `targets`. When `targets` is absent or empty, dotagents attempts every agent listed in `agents` and warns for agents that do not support custom subagents.

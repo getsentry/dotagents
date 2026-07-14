@@ -12,7 +12,7 @@ import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore
 import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
 import { skillSymlinkTargets } from "../../targets/skill-symlinks.js";
 import { reconcileMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../targets/mcp-writer.js";
-import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../targets/hook-writer.js";
+import { reconcileHookConfigs, toHookDeclarations, projectHookResolver } from "../../targets/hook-writer.js";
 import { pruneSubagentConfigs, verifySubagentConfigs, writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../subagents/writer.js";
 import { loadInstalledSubagents, pruneInstalledSubagents } from "../../subagents/store.js";
 import { userMcpResolver } from "../../targets/paths.js";
@@ -198,18 +198,13 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     const hookDecls = toHookDeclarations(config.hooks);
     const hookResolver = projectHookResolver(scope.root);
 
-    const hookIssues = await verifyHookConfigs(config.agents, hookDecls, hookResolver);
-    if (hookIssues.length > 0) {
-      await writeHookConfigs(config.agents, hookDecls, hookResolver);
-      hooksRepaired = hookIssues.length;
-      for (const issue of hookIssues) {
-        issues.push({
-          type: "hooks",
-          name: issue.agent,
-          message: issue.issue,
-        });
-      }
-    }
+    const hookResult = await reconcileHookConfigs(
+      config.agents,
+      hookDecls,
+      hookResolver,
+      "apply",
+    );
+    hooksRepaired = hookResult.written.length + hookResult.removed.length;
   }
 
   // 7. Verify and repair custom subagent files
