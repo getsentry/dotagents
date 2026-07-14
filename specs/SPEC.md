@@ -193,6 +193,8 @@ Hook declarations. Each entry defines a hook that dotagents will configure for a
 | `matcher` | No | Tool name to match (e.g. `Bash`). Only for `PreToolUse` and `PostToolUse`. |
 | `command` | Yes | Shell command to execute when the hook fires. |
 
+Install and sync compare the complete serialized hook root and repair stale commands, matchers, and target event mappings. The hook root is dotagents-owned: unrelated top-level settings in shared files are preserved, while removing all hook declarations removes the shared hook root or the dedicated Cursor hook file.
+
 #### `[[subagents]]`
 
 Custom subagent dependencies. Each entry selects one subagent artifact from a source. dotagents imports the artifact into a portable subagent declaration, installs canonical managed Markdown into `.agents/agents/`, and writes generated runtime files for agents listed in `agents` that support custom subagents: Claude, Cursor, Codex, and OpenCode.

@@ -459,35 +459,43 @@ headers = { Authorization = "Bearer tok" }
     expect((await lstat(join(projectRoot, ".claude", "skills"))).isSymbolicLink()).toBe(true);
   });
 
-  it("repairs missing hook configs", async () => {
+  it("reconciles missing, drifted, and removed hook configs", async () => {
+    const configPath = join(projectRoot, "agents.toml");
+    const settingsPath = join(projectRoot, ".claude", "settings.json");
     await writeFile(
-      join(projectRoot, "agents.toml"),
+      configPath,
       `version = 1\nagents = ["claude"]\n\n[[hooks]]\nevent = "PreToolUse"\nmatcher = "Bash"\ncommand = ".agents/hooks/block-rm.sh"\n`,
     );
 
-    const result = await runSync({ scope: resolveScope("project", projectRoot) });
-    expect(result.hooksRepaired).toBeGreaterThan(0);
-
-    // Verify config was created
-    expect(existsSync(join(projectRoot, ".claude", "settings.json"))).toBe(true);
-
-    const settings = JSON.parse(await readFile(join(projectRoot, ".claude", "settings.json"), "utf-8"));
+    const scope = resolveScope("project", projectRoot);
+    const missing = await runSync({ scope });
+    expect(missing.hooksRepaired).toBe(1);
+    const settings = JSON.parse(await readFile(settingsPath, "utf-8"));
     expect(settings.hooks.PreToolUse).toBeDefined();
-  });
 
-  it("reports no hook issues when configs are present", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\nagents = ["claude"]\n\n[[hooks]]\nevent = "Stop"\ncommand = "check.sh"\n`,
-    );
+    await writeFile(settingsPath, JSON.stringify({
+      permissions: { allow: ["Read"] },
+      hooks: { PreToolUse: [{ matcher: "Write", hooks: [{ type: "command", command: "old.sh" }] }] },
+    }));
+    const drifted = await runSync({ scope });
+    expect(drifted.hooksRepaired).toBe(1);
+    expect(drifted.issues.filter((issue) => issue.type === "hooks")).toEqual([]);
+    expect(JSON.parse(await readFile(settingsPath, "utf-8"))).toEqual({
+      permissions: { allow: ["Read"] },
+      hooks: {
+        PreToolUse: [{
+          matcher: "Bash",
+          hooks: [{ type: "command", command: ".agents/hooks/block-rm.sh" }],
+        }],
+      },
+    });
 
-    // First sync to create the config
-    await runSync({ scope: resolveScope("project", projectRoot) });
-
-    // Second sync should find everything in order
-    const result = await runSync({ scope: resolveScope("project", projectRoot) });
-    expect(result.hooksRepaired).toBe(0);
-    expect(result.issues.filter((i) => i.type === "hooks")).toHaveLength(0);
+    await writeFile(configPath, `version = 1\nagents = ["claude"]\n`);
+    const removed = await runSync({ scope });
+    expect(removed.hooksRepaired).toBe(1);
+    expect(JSON.parse(await readFile(settingsPath, "utf-8"))).toEqual({
+      permissions: { allow: ["Read"] },
+    });
   });
 
   it("repairs missing subagent configs", async () => {

@@ -255,6 +255,44 @@ describe("runInstall", () => {
     ]);
   });
 
+  it("reconciles hook drift and removes owned hook state when declarations are removed", async () => {
+    const configPath = join(projectRoot, "agents.toml");
+    const claudePath = join(projectRoot, ".claude", "settings.json");
+    const cursorPath = join(projectRoot, ".cursor", "hooks.json");
+    await mkdir(join(projectRoot, ".claude"), { recursive: true });
+    await mkdir(join(projectRoot, ".cursor"), { recursive: true });
+    await writeFile(
+      configPath,
+      `version = 1\nagents = ["claude", "cursor"]\n\n[[hooks]]\nevent = "Stop"\ncommand = "check.sh"\n`,
+    );
+    await writeFile(claudePath, JSON.stringify({
+      permissions: { allow: ["Read"] },
+      hooks: { Stop: [{ hooks: [{ type: "command", command: "old.sh" }] }] },
+    }));
+    await writeFile(cursorPath, JSON.stringify({
+      version: 2,
+      hooks: { stop: [{ command: "old.sh" }] },
+    }));
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+    expect(JSON.parse(await readFile(claudePath, "utf-8"))).toEqual({
+      permissions: { allow: ["Read"] },
+      hooks: { Stop: [{ hooks: [{ type: "command", command: "check.sh" }] }] },
+    });
+    expect(JSON.parse(await readFile(cursorPath, "utf-8"))).toEqual({
+      version: 1,
+      hooks: { stop: [{ command: "check.sh" }] },
+    });
+
+    await writeFile(configPath, `version = 1\nagents = ["claude", "cursor"]\n`);
+    await runInstall({ scope });
+    expect(JSON.parse(await readFile(claudePath, "utf-8"))).toEqual({
+      permissions: { allow: ["Read"] },
+    });
+    expect(existsSync(cursorPath)).toBe(false);
+  });
+
   it("returns hook warnings for unsupported agents", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

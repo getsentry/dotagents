@@ -3,7 +3,7 @@ import type { ScopeRoot } from "../../../scope.js";
 import { ensureSkillsSymlink } from "../../../symlinks/manager.js";
 import { skillSymlinkTargets } from "../../../targets/skill-symlinks.js";
 import { projectMcpResolver, reconcileMcpConfigs, toMcpDeclarations } from "../../../targets/mcp-writer.js";
-import { projectHookResolver, toHookDeclarations, writeHookConfigs } from "../../../targets/hook-writer.js";
+import { projectHookResolver, reconcileHookConfigs, toHookDeclarations } from "../../../targets/hook-writer.js";
 import { userMcpResolver } from "../../../targets/paths.js";
 import {
   pruneSubagentConfigs,
@@ -51,11 +51,13 @@ export async function writeHookRuntime(
   scope: ScopeRoot,
 ): Promise<{ agent: string; message: string }[]> {
   if (scope.scope !== "project") {return [];}
-  return writeHookConfigs(
+  const result = await reconcileHookConfigs(
     config.agents,
     toHookDeclarations(config.hooks),
     projectHookResolver(scope.root),
+    "apply",
   );
+  return result.warnings;
 }
 
 /** Writes agent-specific subagent runtime projections. */
