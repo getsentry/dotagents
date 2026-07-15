@@ -34,7 +34,7 @@ export interface SubagentVerifyIssue {
 
 export interface SubagentReconcileOptions {
   mode: "inspect" | "apply";
-  desiredSubagents?: Pick<SubagentDeclaration, "name" | "targets">[];
+  retainedSubagents?: Pick<SubagentDeclaration, "name" | "targets">[];
   prune?: boolean;
 }
 
@@ -49,6 +49,12 @@ interface DesiredDir {
   extension: string;
   spec: SubagentConfigSpec;
   files: Set<string>;
+}
+
+interface PlannedWrite {
+  dirPath: string;
+  filePath: string;
+  content: string;
 }
 
 export function projectSubagentResolver(projectRoot: string): SubagentTargetResolver {
@@ -91,12 +97,14 @@ export async function verifySubagentConfigs(
   if (subagents.length === 0) {return [];}
   const result = await reconcileSubagentConfigs(agentIds, subagents, resolveTarget, {
     mode: "inspect",
-    prune: false,
   });
   return result.issues;
 }
 
-/** Inspect or apply agent-specific runtime projections for declared subagents. */
+/**
+ * Inspects or applies runtime projections, pruning in apply mode by default.
+ * Use retainedSubagents when pruning must preserve declarations that could not be loaded for writing.
+ */
 export async function reconcileSubagentConfigs(
   agentIds: string[],
   subagents: SubagentDeclaration[],
@@ -105,7 +113,7 @@ export async function reconcileSubagentConfigs(
 ): Promise<SubagentReconcileResult> {
   const issues: SubagentVerifyIssue[] = [];
   const warnings: SubagentWriteWarning[] = [];
-  let written = 0;
+  const plannedWrites: PlannedWrite[] = [];
   const configuredAgents = new Set(agentIds);
   const seen = new Set<string>();
 
@@ -160,9 +168,7 @@ export async function reconcileSubagentConfigs(
       if (!existsSync(filePath)) {
         issues.push({ ...issueBase, issue: `Subagent config missing: ${filePath}` });
         if (options.mode === "apply") {
-          await mkdir(dirPath, { recursive: true });
-          await writeFile(filePath, content, "utf-8");
-          written++;
+          plannedWrites.push({ dirPath, filePath, content });
         }
         continue;
       }
@@ -189,22 +195,28 @@ export async function reconcileSubagentConfigs(
       if (existing !== content) {
         issues.push({ ...issueBase, issue: `Subagent config out of date: ${filePath}` });
         if (options.mode === "apply") {
-          await writeFile(filePath, content, "utf-8");
-          written++;
+          plannedWrites.push({ dirPath, filePath, content });
         }
       }
     }
   }
 
-  const pruned = options.mode === "apply" && options.prune !== false
-    ? await pruneManagedFiles(initDesiredDirs(
+  const desiredByDir = options.mode === "apply" && options.prune !== false
+    ? initDesiredDirs(
       agentIds,
-      options.desiredSubagents ?? subagents,
+      options.retainedSubagents ?? subagents,
       resolveTarget,
-    ))
-    : [];
+    )
+    : null;
 
-  return { issues, warnings, written, pruned };
+  for (const write of plannedWrites) {
+    await mkdir(write.dirPath, { recursive: true });
+    await writeFile(write.filePath, write.content, "utf-8");
+  }
+
+  const pruned = desiredByDir ? await pruneManagedFiles(desiredByDir) : [];
+
+  return { issues, warnings, written: plannedWrites.length, pruned };
 }
 
 function initDesiredDirs(

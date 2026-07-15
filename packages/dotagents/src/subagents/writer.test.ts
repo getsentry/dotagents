@@ -622,7 +622,7 @@ describe("reconcileSubagentConfigs", () => {
       projectSubagentResolver(dir),
       {
         mode: "apply",
-        desiredSubagents: [SUBAGENT, { name: "failed-reviewer" }],
+        retainedSubagents: [SUBAGENT, { name: "failed-reviewer" }],
       },
     );
 
@@ -647,6 +647,22 @@ describe("reconcileSubagentConfigs", () => {
     expect(result.written).toBe(0);
     expect(result.pruned).toEqual([]);
     expect(existsSync(join(dir, ".vscode"))).toBe(false);
+  });
+
+  it("finishes inspection before writing any runtime files", async () => {
+    const resolver = (agentId: string, spec: { projectDir: string }) => {
+      if (agentId === "codex") {throw new Error("failed to resolve codex target");}
+      return { dirPath: join(dir, spec.projectDir) };
+    };
+
+    await expect(reconcileSubagentConfigs(
+      ["claude", "codex"],
+      [{ ...SUBAGENT, targets: ["claude", "codex"] }],
+      resolver,
+      { mode: "apply" },
+    )).rejects.toThrow("failed to resolve codex target");
+
+    expect(existsSync(join(dir, ".claude", "agents", "code-reviewer.md"))).toBe(false);
   });
 
   it("reports unreadable configs during inspection and fails during apply", async () => {

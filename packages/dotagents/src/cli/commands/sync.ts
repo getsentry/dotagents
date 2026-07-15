@@ -221,7 +221,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     subagentResolver,
     {
       mode: "apply",
-      desiredSubagents: config.subagents,
+      retainedSubagents: config.subagents,
     },
   );
   subagentsRepaired = subagentResult.written + subagentResult.pruned.length + prunedInstalledSubagents.length;
@@ -240,19 +240,6 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       message: issue.issue,
     });
   }
-  for (const warning of subagentResult.warnings) {
-    const alreadyReported = issues.some(
-      (issue) => issue.type === "subagents" && issue.message === warning.message,
-    );
-    if (!alreadyReported) {
-      issues.push({
-        type: "subagents",
-        name: warning.name,
-        message: warning.message,
-      });
-    }
-  }
-
   return {
     issues,
     adopted,
