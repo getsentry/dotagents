@@ -13,7 +13,7 @@ import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
 import { skillSymlinkTargets } from "../../targets/skill-symlinks.js";
 import { reconcileMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../targets/mcp-writer.js";
 import { reconcileHookConfigs, toHookDeclarations, projectHookResolver } from "../../targets/hook-writer.js";
-import { pruneSubagentConfigs, verifySubagentConfigs, writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../subagents/writer.js";
+import { projectSubagentResolver, reconcileSubagentConfigs, userSubagentResolver } from "../../subagents/writer.js";
 import { loadInstalledSubagents, pruneInstalledSubagents } from "../../subagents/store.js";
 import { userMcpResolver } from "../../targets/paths.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
@@ -215,23 +215,16 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const subagentResolver = scope.scope === "user"
     ? userSubagentResolver()
     : projectSubagentResolver(scope.root);
-  const subagentIssues = await verifySubagentConfigs(
+  const subagentResult = await reconcileSubagentConfigs(
     config.agents,
     subagentDecls,
     subagentResolver,
+    {
+      mode: "apply",
+      retainedSubagents: config.subagents,
+    },
   );
-
-  const subagentResult = await writeSubagentConfigs(
-    config.agents,
-    subagentDecls,
-    subagentResolver,
-  );
-  const prunedSubagentConfigs = await pruneSubagentConfigs(
-    config.agents,
-    config.subagents,
-    subagentResolver,
-  );
-  subagentsRepaired = subagentResult.written + prunedSubagentConfigs.length + prunedInstalledSubagents.length;
+  subagentsRepaired = subagentResult.written + subagentResult.pruned.length + prunedInstalledSubagents.length;
 
   for (const issue of installedSubagentResult.issues) {
     issues.push({
@@ -240,26 +233,13 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       message: issue.issue,
     });
   }
-  for (const issue of subagentIssues) {
+  for (const issue of subagentResult.issues) {
     issues.push({
       type: "subagents",
       name: issue.name,
       message: issue.issue,
     });
   }
-  for (const warning of subagentResult.warnings) {
-    const alreadyReported = issues.some(
-      (issue) => issue.type === "subagents" && issue.message === warning.message,
-    );
-    if (!alreadyReported) {
-      issues.push({
-        type: "subagents",
-        name: warning.name,
-        message: warning.message,
-      });
-    }
-  }
-
   return {
     issues,
     adopted,
