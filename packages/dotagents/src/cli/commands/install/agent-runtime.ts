@@ -6,10 +6,9 @@ import { projectMcpResolver, reconcileMcpConfigs, toMcpDeclarations } from "../.
 import { projectHookResolver, reconcileHookConfigs, toHookDeclarations } from "../../../targets/hook-writer.js";
 import { userMcpResolver } from "../../../targets/paths.js";
 import {
-  pruneSubagentConfigs,
   projectSubagentResolver,
+  reconcileSubagentConfigs,
   userSubagentResolver,
-  writeSubagentConfigs,
 } from "../../../subagents/writer.js";
 import type { SubagentDeclaration } from "../../../subagents/types.js";
 
@@ -70,9 +69,9 @@ export async function writeSubagentRuntime(
   const resolver = scope.scope === "user"
     ? userSubagentResolver()
     : projectSubagentResolver(scope.root);
-  const result = await writeSubagentConfigs(config.agents, subagents, resolver);
-  if (!frozen) {
-    await pruneSubagentConfigs(config.agents, subagents, resolver);
-  }
+  const result = await reconcileSubagentConfigs(config.agents, subagents, resolver, {
+    mode: "apply",
+    prune: !frozen,
+  });
   return result.warnings;
 }

@@ -32,6 +32,19 @@ export interface SubagentVerifyIssue {
   issue: string;
 }
 
+export interface SubagentReconcileOptions {
+  mode: "inspect" | "apply";
+  desiredSubagents?: Pick<SubagentDeclaration, "name" | "targets">[];
+  prune?: boolean;
+}
+
+export interface SubagentReconcileResult {
+  issues: SubagentVerifyIssue[];
+  warnings: SubagentWriteWarning[];
+  written: number;
+  pruned: string[];
+}
+
 interface DesiredDir {
   extension: string;
   spec: SubagentConfigSpec;
@@ -55,71 +68,11 @@ export async function writeSubagentConfigs(
   subagents: SubagentDeclaration[],
   resolveTarget: SubagentTargetResolver,
 ): Promise<SubagentWriteResult> {
-  const warnings: SubagentWriteWarning[] = [];
-  let written = 0;
-  const configuredAgents = new Set(agentIds);
-
-  for (const subagent of subagents) {
-    for (const agentId of selectedAgentIds(agentIds, subagent)) {
-      if (!configuredAgents.has(agentId)) {
-        warnings.push({
-          agent: agentId,
-          name: subagent.name,
-          message: `Subagent "${subagent.name}" targets agent "${agentId}", but "${agentId}" is not listed in agents`,
-        });
-        continue;
-      }
-
-      const agent = getAgent(agentId);
-      if (!agent) {continue;}
-      if (!agent.subagents) {
-        warnings.push({
-          agent: agentId,
-          name: subagent.name,
-          message: `Agent "${agent.displayName}" does not support custom subagents`,
-        });
-        continue;
-      }
-
-      const { dirPath } = resolveTarget(agentId, agent.subagents);
-      const generated = agent.subagents.serialize(subagent);
-      const content = normalizeContent(generated.content);
-      if (!hasDotagentsSubagentMarker(agent.subagents, content)) {
-        throw new Error(`Internal error: generated subagent "${subagent.name}" is missing the dotagents marker`);
-      }
-      const generatedIdentity = generatedSubagentIdentity(
-        agent.subagents,
-        generated.fileName,
-        content,
-        subagent.name,
-      );
-
-      await mkdir(dirPath, { recursive: true });
-      const identityConflict = await findUnmanagedIdentityConflict(
-        dirPath,
-        generated.fileName,
-        agent.subagents,
-        generatedIdentity,
-      );
-      if (identityConflict) {
-        warnings.push({
-          agent: agentId,
-          name: subagent.name,
-          message: `Subagent config identity conflicts with unmanaged file: ${identityConflict}`,
-        });
-        continue;
-      }
-      const didWrite = await writeManagedFile(join(dirPath, generated.fileName), content, {
-        agent: agentId,
-        name: subagent.name,
-        spec: agent.subagents,
-        warnings,
-      });
-      if (didWrite) {written++;}
-    }
-  }
-
-  return { warnings, written };
+  const result = await reconcileSubagentConfigs(agentIds, subagents, resolveTarget, {
+    mode: "apply",
+    prune: false,
+  });
+  return { warnings: result.warnings, written: result.written };
 }
 
 export async function pruneSubagentConfigs(
@@ -136,30 +89,42 @@ export async function verifySubagentConfigs(
   resolveTarget: SubagentTargetResolver,
 ): Promise<SubagentVerifyIssue[]> {
   if (subagents.length === 0) {return [];}
+  const result = await reconcileSubagentConfigs(agentIds, subagents, resolveTarget, {
+    mode: "inspect",
+    prune: false,
+  });
+  return result.issues;
+}
 
+/** Inspect or apply agent-specific runtime projections for declared subagents. */
+export async function reconcileSubagentConfigs(
+  agentIds: string[],
+  subagents: SubagentDeclaration[],
+  resolveTarget: SubagentTargetResolver,
+  options: SubagentReconcileOptions,
+): Promise<SubagentReconcileResult> {
   const issues: SubagentVerifyIssue[] = [];
+  const warnings: SubagentWriteWarning[] = [];
+  let written = 0;
   const configuredAgents = new Set(agentIds);
   const seen = new Set<string>();
 
   for (const subagent of subagents) {
     for (const agentId of selectedAgentIds(agentIds, subagent)) {
       const issueBase = { agent: agentId, name: subagent.name };
-
       if (!configuredAgents.has(agentId)) {
-        issues.push({
-          ...issueBase,
-          issue: `Subagent "${subagent.name}" targets agent "${agentId}", but "${agentId}" is not listed in agents`,
-        });
+        const message = `Subagent "${subagent.name}" targets agent "${agentId}", but "${agentId}" is not listed in agents`;
+        issues.push({ ...issueBase, issue: message });
+        warnings.push({ ...issueBase, message });
         continue;
       }
 
       const agent = getAgent(agentId);
       if (!agent) {continue;}
       if (!agent.subagents) {
-        issues.push({
-          ...issueBase,
-          issue: `Agent "${agent.displayName}" does not support custom subagents`,
-        });
+        const message = `Agent "${agent.displayName}" does not support custom subagents`;
+        issues.push({ ...issueBase, issue: message });
+        warnings.push({ ...issueBase, message });
         continue;
       }
 
@@ -169,55 +134,77 @@ export async function verifySubagentConfigs(
       if (seen.has(filePath)) {continue;}
       seen.add(filePath);
       const content = normalizeContent(generated.content);
+      if (!hasDotagentsSubagentMarker(agent.subagents, content)) {
+        throw new Error(`Internal error: generated subagent "${subagent.name}" is missing the dotagents marker`);
+      }
+      const generatedIdentity = generatedSubagentIdentity(
+        agent.subagents,
+        generated.fileName,
+        content,
+        subagent.name,
+      );
 
       const identityConflict = await findUnmanagedIdentityConflict(
         dirPath,
         generated.fileName,
         agent.subagents,
-        generatedSubagentIdentity(agent.subagents, generated.fileName, content, subagent.name),
+        generatedIdentity,
       );
       if (identityConflict) {
-        issues.push({
-          ...issueBase,
-          issue: `Subagent config identity conflicts with unmanaged file: ${identityConflict}`,
-        });
+        const message = `Subagent config identity conflicts with unmanaged file: ${identityConflict}`;
+        issues.push({ ...issueBase, issue: message });
+        warnings.push({ ...issueBase, message });
         continue;
       }
 
       if (!existsSync(filePath)) {
-        issues.push({
-          ...issueBase,
-          issue: `Subagent config missing: ${filePath}`,
-        });
+        issues.push({ ...issueBase, issue: `Subagent config missing: ${filePath}` });
+        if (options.mode === "apply") {
+          await mkdir(dirPath, { recursive: true });
+          await writeFile(filePath, content, "utf-8");
+          written++;
+        }
         continue;
       }
 
+      let existing: string;
       try {
-        const existing = await readFile(filePath, "utf-8");
-        if (!hasDotagentsSubagentMarker(agent.subagents, existing)) {
-          issues.push({
-            ...issueBase,
-            issue: `Subagent config exists and is not managed by dotagents: ${filePath}`,
-          });
-          continue;
-        }
-
-        if (existing !== normalizeContent(generated.content)) {
-          issues.push({
-            ...issueBase,
-            issue: `Subagent config out of date: ${filePath}`,
-          });
-        }
-      } catch {
+        existing = await readFile(filePath, "utf-8");
+      } catch (error) {
         issues.push({
           ...issueBase,
           issue: `Failed to read subagent config: ${filePath}`,
         });
+        if (options.mode === "apply") {throw error;}
+        continue;
+      }
+
+      if (!hasDotagentsSubagentMarker(agent.subagents, existing)) {
+        const message = `Subagent config exists and is not managed by dotagents: ${filePath}`;
+        issues.push({ ...issueBase, issue: message });
+        warnings.push({ ...issueBase, message });
+        continue;
+      }
+
+      if (existing !== content) {
+        issues.push({ ...issueBase, issue: `Subagent config out of date: ${filePath}` });
+        if (options.mode === "apply") {
+          await writeFile(filePath, content, "utf-8");
+          written++;
+        }
       }
     }
   }
 
-  return issues;
+  const pruned = options.mode === "apply" && options.prune !== false
+    ? await pruneManagedFiles(initDesiredDirs(
+      agentIds,
+      options.desiredSubagents ?? subagents,
+      resolveTarget,
+    ))
+    : [];
+
+  return { issues, warnings, written, pruned };
 }
 
 function initDesiredDirs(
@@ -279,30 +266,6 @@ function markDesired(
     desired.files.add(fileName);
   }
   desiredByDir.set(dirPath, desired);
-}
-
-async function writeManagedFile(
-  filePath: string,
-  content: string,
-  context: { agent: string; name: string; spec: SubagentConfigSpec; warnings: SubagentWriteWarning[] },
-): Promise<boolean> {
-  try {
-    const existing = await readFile(filePath, "utf-8");
-    if (existing === content) {return false;}
-    if (!hasDotagentsSubagentMarker(context.spec, existing)) {
-      context.warnings.push({
-        agent: context.agent,
-        name: context.name,
-        message: `Subagent config exists and is not managed by dotagents: ${filePath}`,
-      });
-      return false;
-    }
-  } catch (err) {
-    if (!isNotFoundError(err)) {throw err;}
-  }
-
-  await writeFile(filePath, content, "utf-8");
-  return true;
 }
 
 async function pruneManagedFiles(
@@ -367,8 +330,4 @@ function hasDotagentsSubagentMarker(spec: SubagentConfigSpec, content: string): 
 
 function normalizeContent(content: string): string {
   return content.endsWith("\n") ? content : `${content}\n`;
-}
-
-function isNotFoundError(err: unknown): boolean {
-  return err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT";
 }

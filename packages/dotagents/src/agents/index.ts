@@ -9,6 +9,7 @@ export {
   writeSubagentConfigs,
   pruneSubagentConfigs,
   verifySubagentConfigs,
+  reconcileSubagentConfigs,
   projectSubagentResolver,
   userSubagentResolver,
 } from "../subagents/writer.js";
@@ -25,6 +26,8 @@ export type {
   SubagentWriteWarning,
   SubagentWriteResult,
   SubagentVerifyIssue,
+  SubagentReconcileOptions,
+  SubagentReconcileResult,
 } from "../subagents/writer.js";
 export type {
   SubagentResolveOptions,
