@@ -222,7 +222,7 @@ Review the current diff and return findings with file references.
 
 dotagents intentionally does not standardize runtime-specific subagent behavior such as model routing, tool permissions, read-only modes, background execution, or reasoning effort. Those controls differ across runtimes and should stay in each tool's native config until there is a maintainable common contract.
 
-Installed and generated files are marked as dotagents-managed with a generated header marker. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the generated header marker. In `--frozen` mode, `install` loads subagents from existing installed files, preserves managed subagent files and lock entries instead of pruning removed subagents, and does not resolve subagent sources.
+Installed and generated files are marked as dotagents-managed with a generated header marker. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the generated header marker. The deprecated `--frozen` option is accepted as a warned compatibility no-op and does not change subagent installation or pruning.
 
 Generated paths:
 
@@ -450,7 +450,6 @@ dotagents install
    b. Discover skill within the repo
    c. Copy skill directory into `.agents/skills/<name>/`
 3. Write `agents.lock` with the current configured skills and subagents
-   - In `--frozen` mode, require configured dependencies to already be present in `agents.lock`, load subagents from installed files, do not update the lockfile, and do not prune existing managed subagent files
 4. Regenerate `.agents/.gitignore`
 5. Warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
 6. Create/verify symlinks (legacy `[symlinks]` and agent-specific)
@@ -458,6 +457,8 @@ dotagents install
 8. Write hook config files for each declared agent that supports hooks
 9. Write generated subagent files for each declared agent that supports custom subagents
 10. Print summary
+
+The deprecated `--frozen` option is accepted for compatibility, prints a warning, and follows this normal install flow. It is ignored and will be removed in the next major release. Use explicit `ref` values to pin sources.
 
 ### `dotagents add <specifier>`
 

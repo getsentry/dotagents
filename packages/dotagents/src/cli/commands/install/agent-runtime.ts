@@ -64,14 +64,12 @@ export async function writeSubagentRuntime(
   config: AgentsConfig,
   scope: ScopeRoot,
   subagents: SubagentDeclaration[],
-  frozen?: boolean,
 ): Promise<{ agent: string; name: string; message: string }[]> {
   const resolver = scope.scope === "user"
     ? userSubagentResolver()
     : projectSubagentResolver(scope.root);
   const result = await reconcileSubagentConfigs(config.agents, subagents, resolver, {
     mode: "apply",
-    prune: !frozen,
   });
   return result.warnings;
 }

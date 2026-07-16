@@ -57,9 +57,9 @@ dotagents install
 Install and refresh skill and subagent dependencies from `agents.toml`. Resolves
 sources, copies skills, writes the lockfile, creates symlinks, and generates MCP,
 hook, and subagent configs. There is no separate update command. With
-`--frozen`, declared skills and subagents must already exist in `agents.lock`,
-subagents are loaded from existing installed files without resolving sources,
-the lockfile is not updated, and existing managed subagent files are not pruned.
+`--frozen`, dotagents prints a compatibility warning and performs the same normal
+install. The flag is ignored and will be removed in the next major release; use
+explicit `ref` values in `agents.toml` to pin sources.
 
 Example:
 
@@ -405,7 +405,7 @@ Generated files:
 - Codex: `.codex/agents/<name>.toml`
 - OpenCode: `.opencode/agents/<name>.md`
 
-Generated files include a dotagents header marker. `install` and `sync` update managed files and do not overwrite hand-written files without the generated header marker. In `--frozen` mode, `install` loads subagents from existing installed files, preserves managed subagent files and lock entries instead of pruning removed subagents, and does not resolve subagent sources. They also avoid creating duplicate runtime identities when an unmanaged file in the same agent directory already declares the same subagent.
+Generated files include a dotagents header marker. `install` and `sync` update managed files and do not overwrite hand-written files without the generated header marker. They also avoid creating duplicate runtime identities when an unmanaged file in the same agent directory already declares the same subagent. The deprecated `--frozen` option does not change this behavior.
 
 ## Scopes
 

@@ -1,12 +1,11 @@
 import { join } from "node:path";
-import type { AgentsConfig, SubagentConfig } from "../../../config/schema.js";
+import type { AgentsConfig } from "../../../config/schema.js";
 import type { Lockfile } from "../../../lockfile/schema.js";
 import type { ScopeRoot } from "../../../scope.js";
 import type { SubagentDeclaration } from "../../../subagents/types.js";
 import {
   InstalledSubagentWriteError,
   lockEntryForSubagent,
-  loadInstalledSubagents,
   pruneInstalledSubagents,
   resolveSubagent,
   writeInstalledSubagents,
@@ -20,46 +19,13 @@ export interface InstallSubagentsResult {
   lockEntries: Lockfile["subagents"];
 }
 
-function validateFrozenSubagents(
-  subagents: SubagentConfig[],
-  lockfile: Lockfile | null,
-): void {
-  if (subagents.length === 0) {return;}
-  if (!lockfile) {
-    throw new InstallError("--frozen requires agents.lock to exist.");
-  }
-
-  for (const subagent of subagents) {
-    if (!lockfile.subagents[subagent.name]) {
-      throw new InstallError(
-        `--frozen: subagent "${subagent.name}" is in agents.toml but missing from agents.lock.`,
-      );
-    }
-  }
-}
-
 /** Resolves subagent declarations and lock entries without writing runtime files. */
 export async function installSubagents(
   config: AgentsConfig,
-  lockfile: Lockfile | null,
   scope: ScopeRoot,
-  frozen?: boolean,
 ): Promise<InstallSubagentsResult> {
-  const subagentsDir = join(scope.agentsDir, "agents");
   const subagents: SubagentDeclaration[] = [];
   const lockEntries: Lockfile["subagents"] = {};
-
-  if (frozen) {
-    validateFrozenSubagents(config.subagents, lockfile);
-    if (config.subagents.length > 0) {
-      const loaded = await loadInstalledSubagents(subagentsDir, config.subagents);
-      if (loaded.issues.length > 0) {
-        throw new InstallError(loaded.issues.map((issue) => issue.issue).join("\n"));
-      }
-      subagents.push(...loaded.subagents);
-    }
-    return { subagents, lockEntries };
-  }
 
   for (const subagentConfig of config.subagents) {
     let resolved: Awaited<ReturnType<typeof resolveSubagent>>;
@@ -90,9 +56,7 @@ export async function writeCanonicalSubagents(
   config: AgentsConfig,
   scope: ScopeRoot,
   subagents: SubagentDeclaration[],
-  frozen?: boolean,
 ): Promise<void> {
-  if (frozen) {return;}
   const subagentsDir = join(scope.agentsDir, "agents");
   try {
     await writeInstalledSubagents(subagentsDir, subagents);

@@ -111,7 +111,7 @@ Generated runtime paths:
 | Codex | `.codex/agents/<name>.toml` | `~/.codex/agents/<name>.toml` | TOML |
 | OpenCode | `.opencode/agents/<name>.md` | `~/.config/opencode/agents/<name>.md` | Markdown with YAML frontmatter |
 
-Installed and generated files are marked as dotagents-managed with a generated header marker. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the generated header marker. In `--frozen` mode, `install` loads subagents from existing installed files, preserves managed subagent files and lock entries instead of pruning removed subagents, and does not resolve subagent sources. For runtimes whose agent identity can differ from the filename, dotagents also avoids writing a managed file when an unmanaged file in the same runtime directory already declares the same runtime identity.
+Installed and generated files are marked as dotagents-managed with a generated header marker. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the generated header marker. The deprecated `--frozen` option is a warned compatibility no-op and does not change this behavior. For runtimes whose agent identity can differ from the filename, dotagents also avoids writing a managed file when an unmanaged file in the same runtime directory already declares the same runtime identity.
 
 ## Non-goals
 

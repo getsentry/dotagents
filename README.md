@@ -55,6 +55,8 @@ npx @sentry/dotagents install
 
 All commands accept `--user` to operate on user scope (`~/.agents/`) instead of the current project.
 
+`install --frozen` is a deprecated compatibility no-op. It warns, performs a normal install, and will be removed in the next major release. Use explicit `ref` values in `agents.toml` to pin sources.
+
 ## Source Formats
 
 Skills can come from GitHub, GitLab, any git server, well-known HTTPS skill sources, or local directories:
