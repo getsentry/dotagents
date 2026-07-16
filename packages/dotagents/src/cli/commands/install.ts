@@ -27,7 +27,6 @@ export { InstallError };
 // writes have succeeded, then writes runtime projections and CLI output.
 export interface InstallOptions {
   scope: ScopeRoot;
-  frozen?: boolean;
 }
 
 export interface InstallResult {
@@ -40,19 +39,19 @@ export interface InstallResult {
 }
 
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
-  const { scope, frozen } = opts;
+  const { scope } = opts;
   const config = await loadConfig(scope.configPath);
   const lockfile = await loadLockfile(scope.lockPath);
-  const skills = await installSkills(config, lockfile, scope, frozen);
-  const subagents = await installSubagents(config, lockfile, scope, frozen);
+  const skills = await installSkills(config, lockfile, scope);
+  const subagents = await installSubagents(config, scope);
   const newLock: Lockfile = {
     version: 1,
     skills: skills.lockEntries,
     subagents: subagents.lockEntries,
   };
 
-  await writeCanonicalSubagents(config, scope, subagents.subagents, frozen);
-  const writeLock = !frozen && (
+  await writeCanonicalSubagents(config, scope, subagents.subagents);
+  const writeLock = (
     !!lockfile ||
     config.skills.length > 0 ||
     config.subagents.length > 0
@@ -61,14 +60,14 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     await writeLockfile(scope.lockPath, newLock);
   }
 
-  await writeInstallGitignore(config, lockfile, scope, {
+  await writeInstallGitignore(config, scope, {
     installedSkillNames: skills.installed,
     subagents: subagents.subagents,
-  }, frozen);
+  });
   await writeSkillSymlinks(config, scope);
   const mcpWarnings = await writeMcpRuntime(config, scope);
   const hookWarnings = await writeHookRuntime(config, scope);
-  const subagentWarnings = await writeSubagentRuntime(config, scope, subagents.subagents, frozen);
+  const subagentWarnings = await writeSubagentRuntime(config, scope, subagents.subagents);
 
   return {
     installed: skills.installed,
@@ -93,13 +92,10 @@ export default async function install(args: string[], flags?: { user?: boolean }
     const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
     await ensureUserScopeBootstrapped(scope);
     if (values["frozen"]) {
-      console.log(chalk.yellow("Warning: --frozen is deprecated and will be removed in a future release. Pinning is now managed via agents.toml refs."));
+      console.log(chalk.yellow("Warning: --frozen is ignored and will be removed in the next major release. Install now follows normal agents.toml resolution; use explicit refs to pin sources."));
     }
 
-    const result = await runInstall({
-      scope,
-      frozen: values["frozen"],
-    });
+    const result = await runInstall({ scope });
 
     if (result.installed.length > 0) {
       console.log(

@@ -41,8 +41,7 @@ async function expandSkills(
     trust?: Parameters<typeof validateTrustedSource>[1];
     defaultRepositorySource: RepositorySource;
   },
-  lockfile: Lockfile | null,
-  opts: { frozen?: boolean; projectRoot: string; minimumReleaseAge?: number; minimumReleaseAgeExclude?: string[] },
+  opts: { projectRoot: string; minimumReleaseAge?: number; minimumReleaseAgeExclude?: string[] },
 ): Promise<ExpandedSkill[]> {
   const regularDeps = config.skills.filter((d) => !isWildcardDep(d));
   const wildcardDeps = config.skills.filter(isWildcardDep);
@@ -60,18 +59,6 @@ async function expandSkills(
       config.defaultRepositorySource,
     );
     validateTrustedSource(wildcardSourceForTrust, config.trust);
-    const excludeSet = new Set(wDep.exclude);
-
-    if (opts.frozen) {
-      if (!lockfile) {continue;}
-      for (const [name, locked] of Object.entries(lockfile.skills)) {
-        if (!sourcesMatch(locked.source, wDep.source)) {continue;}
-        if (explicitNames.has(name)) {continue;}
-        if (excludeSet.has(name)) {continue;}
-        expanded.push({ name, dep: wDep });
-      }
-      continue;
-    }
 
     let named;
     try {
@@ -130,7 +117,6 @@ export async function installSkills(
   config: AgentsConfig,
   lockfile: Lockfile | null,
   scope: ScopeRoot,
-  frozen?: boolean,
 ): Promise<InstallSkillsResult> {
   const lockEntries: Lockfile["skills"] = {};
   const installed: string[] = [];
@@ -139,34 +125,18 @@ export async function installSkills(
   await mkdir(scope.skillsDir, { recursive: true });
 
   if (config.skills.length > 0) {
-    if (frozen && !lockfile) {
-      throw new InstallError("--frozen requires agents.lock to exist.");
-    }
-
     const expanded = await expandSkills(
       {
         skills: config.skills,
         trust: config.trust,
         defaultRepositorySource: config.defaultRepositorySource,
       },
-      lockfile,
       {
-        frozen,
         projectRoot: scope.root,
         minimumReleaseAge: config.minimum_release_age,
         minimumReleaseAgeExclude: config.minimum_release_age_exclude,
       },
     );
-
-    if (frozen) {
-      for (const { name } of expanded) {
-        if (!lockfile!.skills[name]) {
-          throw new InstallError(
-            `--frozen: skill "${name}" is in agents.toml but missing from agents.lock.`,
-          );
-        }
-      }
-    }
 
     for (const item of expanded) {
       const { name, dep } = item;
@@ -206,7 +176,7 @@ export async function installSkills(
     }
   }
 
-  if (!frozen && lockfile) {
+  if (lockfile) {
     for (const [name, locked] of Object.entries(lockfile.skills)) {
       if (lockEntries[name]) {continue;}
       if (isInPlaceSkill(locked.source)) {continue;}

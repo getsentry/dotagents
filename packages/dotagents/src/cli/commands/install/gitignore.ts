@@ -1,6 +1,5 @@
 import chalk from "chalk";
 import { isWildcardDep, type AgentsConfig } from "../../../config/schema.js";
-import type { Lockfile } from "../../../lockfile/schema.js";
 import type { ScopeRoot } from "../../../scope.js";
 import { checkRootGitignoreEntries, writeAgentsGitignore } from "../../../gitignore/writer.js";
 import { isInPlaceSkill } from "../../../utils/fs.js";
@@ -22,30 +21,18 @@ function managedSkillNames(
   });
 }
 
-function managedSubagentNames(
-  lockfile: Lockfile | null,
-  subagents: SubagentDeclaration[],
-  frozen?: boolean,
-): string[] {
-  return frozen
-    ? Object.keys(lockfile?.subagents ?? {})
-    : subagents.map((subagent) => subagent.name);
-}
-
-/** Regenerates project `.agents/.gitignore` from install results and lockfile state. */
+/** Regenerates project `.agents/.gitignore` from installed canonical artifacts. */
 export async function writeInstallGitignore(
   config: AgentsConfig,
-  lockfile: Lockfile | null,
   scope: ScopeRoot,
   artifacts: InstallGitignoreArtifacts,
-  frozen?: boolean,
 ): Promise<void> {
   if (scope.scope !== "project") {return;}
 
   await writeAgentsGitignore(
     scope.agentsDir,
     managedSkillNames(config, artifacts.installedSkillNames),
-    managedSubagentNames(lockfile, artifacts.subagents, frozen),
+    artifacts.subagents.map((subagent) => subagent.name),
   );
 
   const missing = await checkRootGitignoreEntries(scope.root);
