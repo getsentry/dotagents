@@ -1,6 +1,6 @@
 {
   "name": "@sentry/dotagents-lib",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "description": "Reusable core for SKILL.md loading, source resolution, and trust validation — the library powering @sentry/dotagents.",
   "type": "module",
   "main": "./dist/index.js",
