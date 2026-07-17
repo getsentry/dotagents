@@ -1,4 +1,51 @@
 # Changelog
+## 1.18.0
+
+### New Features ✨
+
+- (agents) Add subagent runtime support by @dcramer in [#106](https://github.com/getsentry/dotagents/pull/106)
+- (opencode) Support nested project config by @gricha in [#139](https://github.com/getsentry/dotagents/pull/139)
+- (skills) Add dotagents QA skill by @dcramer in [#110](https://github.com/getsentry/dotagents/pull/110)
+
+### Bug Fixes 🐛
+
+- (install) Write lockfile after canonical install by @dcramer in [#118](https://github.com/getsentry/dotagents/pull/118)
+- (mcp) Reconcile config drift by @gricha in [#134](https://github.com/getsentry/dotagents/pull/134)
+
+### Documentation 📚
+
+- (qa) Improve dotagents QA playbook by @dcramer in [#112](https://github.com/getsentry/dotagents/pull/112)
+- Recommend dotagents QA for runtime changes by @gricha in [#129](https://github.com/getsentry/dotagents/pull/129)
+- Move docs site to Starlight by @gricha in [#104](https://github.com/getsentry/dotagents/pull/104)
+
+### Internal Changes 🔧
+
+#### Cli
+
+- Simplify add command flow by @gricha in [#130](https://github.com/getsentry/dotagents/pull/130)
+- Centralize skill symlink targets by @gricha in [#128](https://github.com/getsentry/dotagents/pull/128)
+
+#### Install
+
+- Retire frozen behavior by @gricha in [#138](https://github.com/getsentry/dotagents/pull/138)
+- Split install command concerns by @dcramer in [#119](https://github.com/getsentry/dotagents/pull/119)
+
+#### Other
+
+- (config) Simplify text mutations by @gricha in [#132](https://github.com/getsentry/dotagents/pull/132)
+- (deps) Update vulnerable dependencies by @gricha in [#136](https://github.com/getsentry/dotagents/pull/136)
+- (docs) Bump @sentry/starlight-theme to 0.7.0 by @sentry-junior in [#105](https://github.com/getsentry/dotagents/pull/105)
+- (dotagents) Split agent runtime concerns by @dcramer in [#122](https://github.com/getsentry/dotagents/pull/122)
+- (hooks) Reconcile hook configs by @gricha in [#135](https://github.com/getsentry/dotagents/pull/135)
+- (lib) Deduplicate skill source acquisition by @gricha in [#127](https://github.com/getsentry/dotagents/pull/127)
+- (qa) Add task-based example runner by @dcramer in [#120](https://github.com/getsentry/dotagents/pull/120)
+- (subagents) Reconcile runtime configs by @gricha in [#137](https://github.com/getsentry/dotagents/pull/137)
+- Consolidate duplicate coverage by @gricha in [#133](https://github.com/getsentry/dotagents/pull/133)
+- Add PR risk experiment workflow by @betegon in [#124](https://github.com/getsentry/dotagents/pull/124)
+- Disable signing in temp git repos by @dcramer in [#117](https://github.com/getsentry/dotagents/pull/117)
+- Use org-wide Warden workflow by @dcramer in [#111](https://github.com/getsentry/dotagents/pull/111)
+- Use Warden code-review skill by @dcramer in [#109](https://github.com/getsentry/dotagents/pull/109)
+
 ## 1.17.0
 
 ### Bug Fixes 🐛
