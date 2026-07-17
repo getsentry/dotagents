@@ -103,7 +103,9 @@ agents = ["claude", "cursor", "codex", "opencode"]
 | `cursor` | `.cursor` | `.cursor/mcp.json` | `.cursor/hooks.json` | `.cursor/agents/*.md` |
 | `codex` | `.codex` | `.codex/config.toml` | -- | `.codex/agents/*.toml` |
 | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` | -- |
-| `opencode` | `.opencode` | `opencode.json` | -- | `.opencode/agents/*.md` |
+| `opencode` | `.opencode` | `.opencode/opencode.jsonc` | -- | `.opencode/agents/*.md` |
+
+For OpenCode, dotagents uses an existing config in this order: `.opencode/opencode.jsonc`, `.opencode/opencode.json`, `opencode.jsonc`, then `opencode.json`. New projects use `.opencode/opencode.jsonc`.
 
 Install and sync repair currently declared MCP entries while preserving undeclared servers and unrelated content in every existing target file. When no servers are declared, existing MCP files remain unchanged because dotagents has no durable evidence that it owns them. Unreadable or structurally incompatible files are reported and left unchanged.
 

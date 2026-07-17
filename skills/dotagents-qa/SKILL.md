@@ -260,7 +260,7 @@ test -L .claude/skills
 test -f .mcp.json
 test -f .cursor/mcp.json
 test -f .codex/config.toml
-test -f opencode.json
+test -f .opencode/opencode.jsonc
 test -f .claude/settings.json
 test -f .cursor/hooks.json
 test -f .agents/agents/code-reviewer.md

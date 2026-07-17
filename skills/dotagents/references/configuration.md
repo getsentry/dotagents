@@ -102,7 +102,9 @@ MCP configs are written per-agent in the appropriate format:
 - Cursor: `.cursor/mcp.json` (JSON)
 - Codex: `.codex/config.toml` (TOML, shared with other Codex config)
 - VS Code: `.vscode/mcp.json` (JSON)
-- OpenCode: `opencode.json` (JSON, shared)
+- OpenCode: `.opencode/opencode.jsonc` (JSONC, shared)
+
+For OpenCode, dotagents reuses the first existing config from `.opencode/opencode.jsonc`, `.opencode/opencode.json`, `opencode.jsonc`, or `opencode.json`. If none exists, it creates `.opencode/opencode.jsonc`.
 
 ## Hooks
 
