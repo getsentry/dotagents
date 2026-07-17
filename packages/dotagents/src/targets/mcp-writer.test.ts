@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, readFile, writeFile, rm, stat } from "node:fs/promises"
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
+import { parse as parseJSONC } from "jsonc-parser";
 import { parse as parseTOML } from "smol-toml";
 import {
   projectMcpResolver,
@@ -90,15 +91,33 @@ describe("writeMcpConfigs", () => {
     expect(raw).toContain("github");
   });
 
-  it("writes opencode.json", async () => {
+  it("writes .opencode/opencode.jsonc by default", async () => {
     await writeMcpConfigs(["opencode"], [STDIO_SERVER], projectMcpResolver(dir));
 
-    const content = JSON.parse(await readFile(join(dir, "opencode.json"), "utf-8"));
+    const content = JSON.parse(
+      await readFile(join(dir, ".opencode", "opencode.jsonc"), "utf-8"),
+    );
     expect(content.mcp.github).toEqual({
       type: "local",
       command: ["npx", "-y", "@mcp/server-github"],
       environment: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
     });
+  });
+
+  it.each([
+    join(".opencode", "opencode.json"),
+    "opencode.jsonc",
+    "opencode.json",
+  ])("uses existing OpenCode config at %s", async (relativePath) => {
+    const filePath = join(dir, relativePath);
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, JSON.stringify({ mcp: {} }));
+
+    await writeMcpConfigs(["opencode"], [STDIO_SERVER], projectMcpResolver(dir));
+
+    const content = JSON.parse(await readFile(filePath, "utf-8"));
+    expect(content.mcp.github).toBeDefined();
+    expect(existsSync(join(dir, ".opencode", "opencode.jsonc"))).toBe(false);
   });
 
   it("handles multiple servers", async () => {
@@ -138,7 +157,9 @@ describe("writeMcpConfigs", () => {
     });
 
     // OpenCode
-    const opencode = JSON.parse(await readFile(join(dir, "opencode.json"), "utf-8"));
+    const opencode = JSON.parse(
+      await readFile(join(dir, ".opencode", "opencode.jsonc"), "utf-8"),
+    );
     expect(opencode.mcp.remote).toEqual({
       type: "remote",
       url: "https://mcp.example.com/sse",
@@ -169,7 +190,7 @@ describe("writeMcpConfigs", () => {
   });
 
   it("preserves user-configured servers in shared config files", async () => {
-    // OpenCode is shared — pre-populate with a user-added server
+    // OpenCode is shared — pre-populate the legacy path with a user-added server
     await writeFile(
       join(dir, "opencode.json"),
       JSON.stringify({ mcp: { "my-custom-server": { type: "local", command: ["my-tool"] } } }, null, 2),
@@ -183,6 +204,79 @@ describe("writeMcpConfigs", () => {
     expect(content.mcp.github).toBeDefined();
     // User's custom server should NOT be deleted
     expect(content.mcp["my-custom-server"]).toEqual({ type: "local", command: ["my-tool"] });
+  });
+
+  it("prefers an existing nested JSONC config over legacy root config", async () => {
+    const nestedPath = join(dir, ".opencode", "opencode.jsonc");
+    const legacyPath = join(dir, "opencode.json");
+    await mkdir(dirname(nestedPath), { recursive: true });
+    await writeFile(nestedPath, "{\n  // Keep this comment\n  \"theme\": \"dark\",\n  \"mcp\": {},\n}\n");
+    await writeFile(legacyPath, JSON.stringify({ mcp: { legacy: { command: ["legacy"] } } }));
+
+    await writeMcpConfigs(["opencode"], [STDIO_SERVER], projectMcpResolver(dir));
+
+    const nested = await readFile(nestedPath, "utf-8");
+    expect(nested).toContain("// Keep this comment");
+    expect(
+      (parseJSONC(nested) as Record<string, Record<string, unknown>>)["mcp"]!["github"],
+    ).toBeDefined();
+    expect(JSON.parse(await readFile(legacyPath, "utf-8"))).toEqual({
+      mcp: { legacy: { command: ["legacy"] } },
+    });
+  });
+
+  it("preserves JSONC comments and trailing commas while repairing drift", async () => {
+    const filePath = join(dir, ".opencode", "opencode.jsonc");
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(
+      filePath,
+      [
+        "{",
+        "  // Project theme must remain documented",
+        '  "theme": "dark",',
+        '  "mcp": {',
+        "    // User-owned server",
+        '    "manual": { "type": "local", "command": ["manual"] },',
+        '    "github": { "type": "local", "command": ["old"] },',
+        "  },",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    await writeMcpConfigs(["opencode"], [STDIO_SERVER], projectMcpResolver(dir));
+
+    const raw = await readFile(filePath, "utf-8");
+    expect(raw).toContain("// Project theme must remain documented");
+    expect(raw).toContain("// User-owned server");
+    expect(raw).toMatch(/"github": \{[\s\S]*?\n    },\n  },\n}\n$/);
+    const content = parseJSONC(raw) as Record<string, Record<string, unknown>>;
+    expect(content["mcp"]!["manual"]).toEqual({ type: "local", command: ["manual"] });
+    expect(content["mcp"]!["github"]).toEqual({
+      type: "local",
+      command: ["npx", "-y", "@mcp/server-github"],
+      environment: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
+    });
+  });
+
+  it("reports malformed OpenCode JSONC without overwriting it", async () => {
+    const filePath = join(dir, ".opencode", "opencode.jsonc");
+    const malformed = '{\n  // broken\n  "mcp": { nope }\n}\n';
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, malformed);
+
+    const result = await reconcileMcpConfigs(
+      ["opencode"],
+      [STDIO_SERVER],
+      projectMcpResolver(dir),
+      "apply",
+    );
+
+    expect(result.unresolved).toEqual([
+      expect.objectContaining({ issue: expect.stringContaining("Failed to read") }),
+    ]);
+    expect(result.written).toEqual([]);
+    expect(await readFile(filePath, "utf-8")).toBe(malformed);
   });
 
   it("does not rewrite unchanged shared config files", async () => {
@@ -234,7 +328,9 @@ describe("writeMcpConfigs", () => {
   it("interpolates env refs in opencode HTTP headers/URL with {env:VAR} syntax", async () => {
     await writeMcpConfigs(["opencode"], [HTTP_SERVER_WITH_ENV_REFS], projectMcpResolver(dir));
 
-    const content = JSON.parse(await readFile(join(dir, "opencode.json"), "utf-8"));
+    const content = JSON.parse(
+      await readFile(join(dir, ".opencode", "opencode.jsonc"), "utf-8"),
+    );
     expect(content.mcp["authed-api"]).toEqual({
       type: "remote",
       url: "https://{env:API_HOST}/mcp",
@@ -415,7 +511,7 @@ describe("verifyMcpConfigs", () => {
     },
     {
       agent: "opencode",
-      relativePath: "opencode.json",
+      relativePath: join(".opencode", "opencode.jsonc"),
       content: JSON.stringify({
         theme: "dark",
         mcp: { manual: { type: "local", command: ["manual"] } },

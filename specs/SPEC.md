@@ -241,7 +241,9 @@ Generated paths:
 | `cursor` | Cursor | `.cursor` | `.cursor/mcp.json` | JSON | `.cursor/agents/*.md` |
 | `codex` | Codex | `.codex` | `.codex/config.toml` | TOML (shared) | `.codex/agents/*.toml` |
 | `vscode` | VS Code Copilot | `.vscode` | `.vscode/mcp.json` | JSON | Not supported |
-| `opencode` | OpenCode | `.opencode` | `opencode.json` | JSON (shared) | `.opencode/agents/*.md` |
+| `opencode` | OpenCode | `.opencode` | `.opencode/opencode.jsonc` | JSONC (shared) | `.opencode/agents/*.md` |
+
+OpenCode project MCP config resolution prefers existing files in this order: `.opencode/opencode.jsonc`, `.opencode/opencode.json`, `opencode.jsonc`, and `opencode.json`. If none exists, dotagents creates `.opencode/opencode.jsonc`. JSONC reconciliation preserves comments and trailing commas while updating declared MCP entries.
 
 Each agent has its own MCP config format. dotagents translates the universal `[[mcp]]` declarations into the format each tool expects during `install` and `sync`.
 

@@ -159,7 +159,7 @@ async function installAndAssert() {
   assertFile(".mcp.json");
   assertFile(".cursor/mcp.json");
   assertFile(".codex/config.toml");
-  assertFile("opencode.json");
+  assertFile(".opencode/opencode.jsonc");
   assertFile(".claude/settings.json");
   assertFile(".cursor/hooks.json");
   assertSubagentOutputs();

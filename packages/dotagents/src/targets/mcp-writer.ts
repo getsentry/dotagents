@@ -2,6 +2,12 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
+import {
+  applyEdits as applyJsoncEdits,
+  modify as modifyJsonc,
+  parse as parseJsonc,
+  type ParseError as JsoncParseError,
+} from "jsonc-parser";
 import { stringify as tomlStringify, parse as parseTOML } from "smol-toml";
 import { getAgent } from "./registry.js";
 import type {
@@ -37,13 +43,19 @@ export function toMcpDeclarations(configs: McpConfig[]): NormalizedMcpDeclaratio
 }
 
 /**
- * Convenience resolver for project-scope MCP: joins spec.filePath with projectRoot.
+ * Resolve project MCP config to the first existing preferred or fallback path.
+ * When no candidate exists, use the preferred path for creation.
  */
 export function projectMcpResolver(projectRoot: string): McpTargetResolver {
-  return (_id: string, spec: McpConfigSpec) => ({
-    filePath: join(projectRoot, spec.filePath),
-    shared: spec.shared,
-  });
+  return (_id: string, spec: McpConfigSpec) => {
+    const candidates = [spec.filePath, ...(spec.fallbackFilePaths ?? [])];
+    const relativePath = candidates.find((candidate) => existsSync(join(projectRoot, candidate)))
+      ?? spec.filePath;
+    return {
+      filePath: join(projectRoot, relativePath),
+      shared: spec.shared,
+    };
+  };
 }
 
 /**
@@ -129,7 +141,7 @@ export async function reconcileMcpConfigs(
         ...existing,
         [mcp.rootKey]: { ...existingServers, ...expectedServers },
       };
-      await writeDocument(filePath, mcp, next);
+      await writeReconciledDocument(filePath, mcp, next, expectedServers);
       written.push(filePath);
     }
   }
@@ -214,14 +226,43 @@ async function readExisting(
   spec: McpConfigSpec,
 ): Promise<Record<string, unknown>> {
   const raw = await readFile(filePath, "utf-8");
-  const parsed: unknown = spec.format === "toml" ? parseTOML(raw) : JSON.parse(raw);
+  const jsoncErrors: JsoncParseError[] = [];
+  const parsed: unknown = spec.format === "toml"
+    ? parseTOML(raw)
+    : spec.format === "jsonc"
+      ? parseJsonc(raw, jsoncErrors, { allowTrailingComma: true })
+      : JSON.parse(raw);
+  if (jsoncErrors.length > 0) {
+    throw new SyntaxError(`Invalid JSONC in ${filePath}`);
+  }
   if (!isRecord(parsed)) {
     throw new TypeError(`MCP config must contain an object: ${filePath}`);
   }
   return parsed;
 }
 
-function serialize(doc: Record<string, unknown>, format: "json" | "toml"): string {
+async function writeReconciledDocument(
+  filePath: string,
+  spec: McpConfigSpec,
+  doc: Record<string, unknown>,
+  expectedServers: Record<string, unknown>,
+): Promise<void> {
+  if (spec.format !== "jsonc") {
+    await writeDocument(filePath, spec, doc);
+    return;
+  }
+
+  let raw = await readFile(filePath, "utf-8");
+  for (const [name, server] of Object.entries(expectedServers)) {
+    const edits = modifyJsonc(raw, [spec.rootKey, name], server, {
+      formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
+    });
+    raw = applyJsoncEdits(raw, edits);
+  }
+  await writeFileIfChanged(filePath, raw.endsWith("\n") ? raw : `${raw}\n`);
+}
+
+function serialize(doc: Record<string, unknown>, format: "json" | "jsonc" | "toml"): string {
   if (format === "toml") {
     return `${tomlStringify(doc)}\n`;
   }

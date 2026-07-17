@@ -13,9 +13,14 @@ const opencode: AgentDefinition = {
   skillsParentDir: undefined,
   userSkillsParentDirs: undefined,
   mcp: {
-    filePath: "opencode.json",
+    filePath: ".opencode/opencode.jsonc",
+    fallbackFilePaths: [
+      ".opencode/opencode.json",
+      "opencode.jsonc",
+      "opencode.json",
+    ],
     rootKey: "mcp",
-    format: "json",
+    format: "jsonc",
     shared: true,
   },
   serializeServer(s) {
