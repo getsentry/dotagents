@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ensureCached, validateCacheKey, CacheError } from "./cache.js";
+import {
+  ensureCached,
+  sanitizeCacheKey,
+  validateCacheKey,
+  assertUrlUsableOnPlatform,
+  CacheError,
+} from "./cache.js";
 import { exec } from "../utils/exec.js";
 
 async function configureTestGitRepo(repoDir: string): Promise<void> {
@@ -34,6 +40,67 @@ describe("validateCacheKey", () => {
     "wellknown/cli.sentry.dev/path",
   ])("accepts %s", (key) => {
     expect(() => validateCacheKey(key)).not.toThrow();
+  });
+});
+
+describe("sanitizeCacheKey", () => {
+  it.each([
+    ["https URL", "https://github.com/owner/repo.git", "github.com/owner/repo"],
+    ["posix absolute path", "/home/foo/skills", "home/foo/skills"],
+    ["file:// URL", "file:///home/foo/skills", "home/foo/skills"],
+    // Windows local sources: a `git:C:\...` spec reaches here as a drive-lettered
+    // path. Both separator styles must reduce to a `/`-separated relative key with
+    // the colon dropped, keeping the drive as a segment so C: and D: don't collide.
+    ["windows backslash path", "C:\\Users\\ofek\\skills", "C/Users/ofek/skills"],
+    ["windows forward-slash path", "C:/Users/ofek/skills", "C/Users/ofek/skills"],
+    ["file:// windows path", "file:///C:/Users/ofek/skills", "C/Users/ofek/skills"],
+    // A doubled separator must not let the drive letter be read as a URL
+    // scheme and stripped; a bare drive must not collapse to an empty key.
+    ["windows doubled separator", "C:\\\\Users\\\\skills", "C/Users/skills"],
+    ["bare windows drive", "C:\\\\", "C"],
+    // Drive-relative paths have no separator after the colon; the colon still
+    // has to go, or the key is an invalid dir on Windows / an scp target.
+    ["drive-relative path", "C:foo", "Cfoo"],
+    ["file:// drive-relative", "file:///C:foo", "Cfoo"],
+  ])("derives %s -> a valid relative key", (_label, url, expected) => {
+    const key = sanitizeCacheKey(url);
+    expect(key).toBe(expected);
+    // The whole point: the derived key must survive validateCacheKey so
+    // ensureCached can join it under stateDir without throwing.
+    expect(() => validateCacheKey(key)).not.toThrow();
+  });
+
+  it("keeps different drives distinct", () => {
+    expect(sanitizeCacheKey("C://team/skills")).toBe("C/team/skills");
+    expect(sanitizeCacheKey("D://team/skills")).toBe("D/team/skills");
+  });
+});
+
+describe("assertUrlUsableOnPlatform", () => {
+  it("rejects a Windows drive path off Windows", () => {
+    // Off win32 git reads `C:` as an scp host and tries to SSH to host "C";
+    // fail with a legible error instead.
+    expect(() => assertUrlUsableOnPlatform("C:\\Users\\me\\repo", "linux")).toThrow(
+      CacheError,
+    );
+    expect(() => assertUrlUsableOnPlatform("C:/Users/me/repo", "darwin")).toThrow(
+      /Windows drive path/,
+    );
+  });
+
+  it("allows a Windows drive path on Windows", () => {
+    expect(() =>
+      assertUrlUsableOnPlatform("C:\\Users\\me\\repo", "win32"),
+    ).not.toThrow();
+  });
+
+  it.each([
+    "https://example.com/repo.git",
+    "/home/me/repo",
+    "git@example.com:owner/repo.git",
+    "file:///home/me/repo",
+  ])("allows %s on any platform", (url) => {
+    expect(() => assertUrlUsableOnPlatform(url, "linux")).not.toThrow();
   });
 });
 

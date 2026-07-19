@@ -26,6 +26,14 @@ description: Test skill ${name}
 # ${name}
 `;
 
+/**
+ * A raw Windows path can't embed in a TOML basic string (backslashes are escape
+ * chars); POSIX separators stay a valid git/fs path on Windows. No-op on POSIX.
+ */
+function posixPath(p: string): string {
+  return p.replaceAll("\\", "/");
+}
+
 describe("runAdd", () => {
   let tmpDir: string;
   let stateDir: string;
@@ -36,7 +44,7 @@ describe("runAdd", () => {
     tmpDir = await mkdtemp(join(tmpdir(), "dotagents-add-"));
     stateDir = join(tmpDir, "state");
     projectRoot = join(tmpDir, "project");
-    repoDir = join(tmpDir, "repo");
+    repoDir = posixPath(join(tmpDir, "repo"));
 
     process.env["DOTAGENTS_STATE_DIR"] = stateDir;
 
@@ -495,7 +503,7 @@ describe("add() CLI parsing", () => {
     tmpDir = await mkdtemp(join(tmpdir(), "dotagents-add-cli-"));
     stateDir = join(tmpDir, "state");
     projectRoot = join(tmpDir, "project");
-    repoDir = join(tmpDir, "repo");
+    repoDir = posixPath(join(tmpDir, "repo"));
 
     process.env["DOTAGENTS_STATE_DIR"] = stateDir;
     originalExitCode = process.exitCode;

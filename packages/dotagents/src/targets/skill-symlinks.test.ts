@@ -15,8 +15,10 @@ describe("skillSymlinkTargets", () => {
         [".legacy", ".claude", ".legacy"],
       ),
     ).toEqual([
-      join(scope.root, ".legacy"),
-      join(scope.root, ".claude"),
+      // skillSymlinkTargets resolves to absolute paths, which on Windows adds
+      // the drive letter that a bare join() leaves off.
+      resolve(join(scope.root, ".legacy")),
+      resolve(join(scope.root, ".claude")),
     ]);
   });
 

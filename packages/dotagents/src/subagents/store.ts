@@ -1,10 +1,11 @@
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, extname, join, relative, resolve } from "node:path";
 import { parse as parseTOML } from "smol-toml";
 import {
   applyDefaultRepositorySource,
   ensureCached,
+  isInsideDir,
   isSourceExcluded,
   loadMarkdownFrontmatter,
   parseSource,
@@ -261,8 +262,7 @@ async function discoverSubagent(
   if (config.path) {
     const sourceRoot = resolve(sourceDir);
     const filePath = resolve(sourceRoot, config.path);
-    const relPath = relative(sourceRoot, filePath);
-    if (relPath.startsWith("..") || isAbsolute(relPath)) {
+    if (!isInsideDir(sourceRoot, filePath)) {
       throw new Error(`Subagent path resolves outside source: ${config.path}`);
     }
     const nativeTarget = inferNativeTarget(config.path);

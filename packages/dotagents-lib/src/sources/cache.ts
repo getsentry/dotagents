@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { mkdir, rm } from "node:fs/promises";
 import { clone, fetchAndReset, fetchRef, headCommit, headCommitDate, findCommitOlderThan, checkout, isGitRepo } from "./git.js";
+import { isAbsolutePathString, isWindowsDrivePath } from "../utils/fs.js";
 
 export class CacheError extends Error {
   constructor(message: string) {
@@ -10,19 +11,30 @@ export class CacheError extends Error {
 }
 
 /**
- * Derive a safe relative cache-key from a clone URL.
+ * Derive a safe relative cache-key from a clone URL or local path.
  *
- * Strips schemes, leading slashes (so `file:///abs/path` and `/abs/path`
- * both land under `<stateDir>/abs/path/`), and `.git` suffixes. Drops `.`
+ * Normalizes Windows separators to `/`, strips schemes, leading slashes (so
+ * `file:///abs/path` and `/abs/path` both land under `<stateDir>/abs/path/`),
+ * a Windows drive-letter colon (`C:\repo` -> `C/repo`, keeping the drive as a
+ * segment so different drives don't collide), and `.git` suffixes. Drops `.`
  * and `..` segments to keep the result inside the cache root.
+ *
+ * The result always satisfies `validateCacheKey` (relative, `/`-separated, no
+ * drive prefix), so a local `git:C:\...` source on Windows caches cleanly.
  *
  * Callers that build a cacheKey from a hosted owner/repo (e.g. GitHub) can
  * skip this and use the parsed values directly.
  */
 export function sanitizeCacheKey(url: string): string {
   const stripped = url
-    .replace(/^[a-z]+:\/\//i, "")
+    .replaceAll("\\", "/")
+    // Require 2+ scheme letters so a Windows drive (`C://...`) isn't mistaken
+    // for a URL scheme and stripped (which would drop the drive and collide).
+    .replace(/^[a-z]{2,}:\/\//i, "")
     .replace(/^\/+/, "")
+    // Drop a leading drive-letter colon (`C:` -> `C`); no lookahead, so a
+    // drive-relative `C:foo` collapses to `Cfoo` rather than leaking a colon.
+    .replace(/^([a-zA-Z]):/, "$1")
     .replace(/\.git$/, "");
   const segments = stripped
     .split("/")
@@ -43,7 +55,7 @@ export function validateCacheKey(cacheKey: string): void {
   if (!cacheKey) {
     throw new CacheError("cacheKey must be a non-empty string");
   }
-  if (cacheKey.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(cacheKey)) {
+  if (isAbsolutePathString(cacheKey)) {
     throw new CacheError(`cacheKey must be a relative path, got "${cacheKey}"`);
   }
   if (cacheKey.includes("\\")) {
@@ -53,6 +65,26 @@ export function validateCacheKey(cacheKey: string): void {
     if (segment === "" || segment === "." || segment === "..") {
       throw new CacheError(`cacheKey may not contain "${segment}" segments, got "${cacheKey}"`);
     }
+  }
+}
+
+/**
+ * Reject a Windows drive path (`C:\repo`, `C:/repo`) on a non-Windows host.
+ *
+ * Only Windows git treats a leading drive letter as a local directory.
+ * Everywhere else the colon before the first slash makes `git clone` read it as
+ * scp syntax (`host:path`) and attempt an SSH connection to a host named `C`,
+ * which fails confusingly or hangs on a network timeout.
+ *
+ * The config schema stays platform-independent — it validates the *form* of a
+ * source — so this checks whether that form is usable on *this* machine.
+ */
+export function assertUrlUsableOnPlatform(url: string, platform: string): void {
+  if (platform !== "win32" && isWindowsDrivePath(url)) {
+    throw new CacheError(
+      `Source "${url}" is a Windows drive path and cannot be used on ${platform}. ` +
+        `Use a POSIX absolute path or a remote git URL.`,
+    );
   }
 }
 
@@ -109,6 +141,7 @@ export async function ensureCached(opts: {
   /** When set, resolve to the newest commit at least this many minutes old. */
   minimumReleaseAge?: number;
 }): Promise<CacheResult> {
+  assertUrlUsableOnPlatform(opts.url, process.platform);
   validateCacheKey(opts.cacheKey);
   const repoDir = join(opts.stateDir, opts.cacheKey);
 

@@ -1,4 +1,5 @@
 import { parseSource } from "../skills/resolver.js";
+import { isAbsolutePathString } from "../utils/fs.js";
 import type { TrustPolicy } from "./policy.js";
 
 /**
@@ -101,6 +102,47 @@ export function extractDomainPath(url: string): string | undefined {
   }
 }
 
+/**
+ * Whether `s` is a UNC network path (`\\server\share`, `//server/share`).
+ *
+ * UNC looks absolute but names a remote host reached over SMB, which is exactly
+ * what `git_domains` exists to gate. Matches any run of two or more leading
+ * separators, in either slash direction.
+ */
+function isUncPath(s: string): boolean {
+  return /^[\\/]{2}/.test(s);
+}
+
+/**
+ * Whether a `git:` URL points at the local filesystem rather than a remote host.
+ *
+ * Local git sources read files the user already has on disk — the same trust
+ * surface as a `path:` source, which is unconditionally allowed — and they
+ * expose no domain for `git_domains` to match, so gating them on domain would
+ * make them impossible to allow at all (short of `allow_all`).
+ *
+ * Only absolute *local* forms count: a bare relative path and any UNC network
+ * path stay subject to the domain rules so neither can be smuggled through.
+ */
+function isLocalFilesystemUrl(url: string): boolean {
+  // Reject UNC before the absolute-path check, which would otherwise accept
+  // `//server/share` on its leading slash.
+  if (isUncPath(url)) {return false;}
+  if (isAbsolutePathString(url)) {return true;}
+  // `file:///abs/path` is local. `file://host/share` names a host, and
+  // `file:////server/share` has an empty host but a UNC path — both stay
+  // subject to the domain rules below.
+  if (/^file:\/\//i.test(url)) {
+    try {
+      const { host, pathname } = new URL(url);
+      return !host && !isUncPath(pathname);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 function formatAllowed(trust: TrustPolicy): string {
   const parts: string[] = [];
   if (trust.github_orgs.length > 0) {
@@ -120,7 +162,8 @@ function formatAllowed(trust: TrustPolicy): string {
  *
  * - No trust config → allow all (backward compat)
  * - allow_all = true → allow all
- * - Local path: sources → always allowed
+ * - Local sources → always allowed: `path:`, and `git:` pointing at an
+ *   absolute local path (`git:/abs/repo`, `git:C:\repo`, `file:///abs/repo`)
  * - Otherwise → must match at least one rule (org, repo, or domain)
  */
 export function validateTrustedSource(
@@ -158,6 +201,11 @@ export function validateTrustedSource(
   }
 
   if (parsed.type === "git" || parsed.type === "well-known") {
+    // A `git:` source pointing at a local absolute path has no domain to match,
+    // and the same trust surface as `path:` — allow it rather than throwing an
+    // error the user has no `git_domains` entry to fix.
+    if (parsed.type === "git" && isLocalFilesystemUrl(parsed.url!)) {return;}
+
     const domainPath = extractDomainPath(parsed.url!)?.toLowerCase();
     if (domainPath && trust.git_domains.some((d) => {
       const entry = d.toLowerCase();

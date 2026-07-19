@@ -97,4 +97,10 @@ export type {
 
 // General-purpose utilities used by callers
 export { exec, ExecError } from "./utils/exec.js";
-export { copyDir, stripTrailingSlashes } from "./utils/fs.js";
+export {
+  copyDir,
+  isAbsolutePathString,
+  isInsideDir,
+  isWindowsDrivePath,
+  stripTrailingSlashes,
+} from "./utils/fs.js";

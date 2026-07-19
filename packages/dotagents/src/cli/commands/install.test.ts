@@ -28,6 +28,14 @@ description: Review code for correctness.
 Review the current diff.
 `;
 
+/**
+ * A raw Windows path can't embed in a TOML basic string (backslashes are escape
+ * chars); POSIX separators stay a valid git/fs path on Windows. No-op on POSIX.
+ */
+function posixPath(p: string): string {
+  return p.replaceAll("\\", "/");
+}
+
 async function initTestGitRepo(repoDir: string): Promise<void> {
   await exec("git", ["init"], { cwd: repoDir });
   await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
@@ -46,7 +54,7 @@ describe("runInstall", () => {
     tmpDir = await mkdtemp(join(tmpdir(), "dotagents-install-"));
     stateDir = join(tmpDir, "state");
     projectRoot = join(tmpDir, "project");
-    repoDir = join(tmpDir, "repo");
+    repoDir = posixPath(join(tmpDir, "repo"));
     repoInitialized = false;
 
     process.env["DOTAGENTS_STATE_DIR"] = stateDir;
@@ -472,7 +480,11 @@ path = "code-reviewer.md"
     expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
   });
 
-  it("does not write the lockfile when stale subagent pruning fails", async () => {
+  // Needs chmod(0o000) to make the prune's rm() fail, which only bites on
+  // POSIX. The usual Windows substitute — putting a directory at the path —
+  // doesn't work here: pruneManagedFiles skips non-files before it ever
+  // reaches the rm, so nothing fails and install succeeds.
+  it.skipIf(process.platform === "win32")("does not write the lockfile when stale subagent pruning fails", async () => {
     const sourceDir = join(projectRoot, "agents");
     await mkdir(sourceDir, { recursive: true });
     await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
@@ -930,7 +942,7 @@ path = "reviewer.md"
 
   it("errors on name conflict between two wildcard sources", async () => {
     // Create a second repo that also has a "pdf" skill
-    const repoDir2 = join(tmpDir, "repo2");
+    const repoDir2 = posixPath(join(tmpDir, "repo2"));
     await mkdir(repoDir2, { recursive: true });
     await initTestGitRepo(repoDir2);
     await mkdir(join(repoDir2, "pdf"), { recursive: true });
@@ -985,7 +997,7 @@ path = "reviewer.md"
 
   it("prunes stale managed skills whose source does not match a wildcard", async () => {
     // Create a second repo with a "helper" skill
-    const repoDir2 = join(tmpDir, "repo2");
+    const repoDir2 = posixPath(join(tmpDir, "repo2"));
     await mkdir(repoDir2, { recursive: true });
     await initTestGitRepo(repoDir2);
     await mkdir(join(repoDir2, "helper"), { recursive: true });

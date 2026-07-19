@@ -666,28 +666,26 @@ describe("reconcileSubagentConfigs", () => {
   });
 
   it("reports unreadable configs during inspection and fails during apply", async () => {
+    // Put a directory at the config path: existsSync still passes, but readFile
+    // fails with EISDIR on every platform. chmod(0o000) would be POSIX-only —
+    // Windows ignores the mode, reads the file, and lands on the "not managed"
+    // branch instead of the read-failure one this test is about.
     const filePath = join(dir, ".claude", "agents", "code-reviewer.md");
-    await mkdir(join(dir, ".claude", "agents"), { recursive: true });
-    await writeFile(filePath, `# ${DOTAGENTS_SUBAGENT_MARKER}\n`, "utf-8");
-    await chmod(filePath, 0o000);
+    await mkdir(filePath, { recursive: true });
 
-    try {
-      const inspected = await reconcileSubagentConfigs(
-        ["claude"],
-        [SUBAGENT],
-        projectSubagentResolver(dir),
-        { mode: "inspect" },
-      );
-      expect(inspected.issues[0]!.issue).toContain("Failed to read");
+    const inspected = await reconcileSubagentConfigs(
+      ["claude"],
+      [SUBAGENT],
+      projectSubagentResolver(dir),
+      { mode: "inspect" },
+    );
+    expect(inspected.issues[0]!.issue).toContain("Failed to read");
 
-      await expect(reconcileSubagentConfigs(
-        ["claude"],
-        [SUBAGENT],
-        projectSubagentResolver(dir),
-        { mode: "apply" },
-      )).rejects.toThrow();
-    } finally {
-      await chmod(filePath, 0o600);
-    }
+    await expect(reconcileSubagentConfigs(
+      ["claude"],
+      [SUBAGENT],
+      projectSubagentResolver(dir),
+      { mode: "apply" },
+    )).rejects.toThrow();
   });
 });

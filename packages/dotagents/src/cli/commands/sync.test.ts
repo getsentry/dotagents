@@ -185,7 +185,8 @@ describe("runSync", () => {
   });
 
   it("prunes stale managed skills after a collaborator removes the dependency and another collaborator pulls", async () => {
-    const skillRepo = join(tmpDir, "skill-repo");
+    // POSIX separators: a raw Windows path can't embed in a TOML basic string.
+    const skillRepo = join(tmpDir, "skill-repo").replaceAll("\\", "/");
     const projectOrigin = join(tmpDir, "project-origin.git");
     const projectSeed = join(tmpDir, "project-seed");
     const aliceRepo = join(tmpDir, "alice");
