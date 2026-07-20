@@ -193,7 +193,7 @@ Hook declarations. Each entry defines a hook that dotagents will configure for a
 | `matcher` | No | Tool name to match (e.g. `Bash`). Only for `PreToolUse` and `PostToolUse`. |
 | `command` | Yes | Shell command to execute when the hook fires. |
 
-Install and sync compare the complete serialized hook root and repair stale commands, matchers, and target event mappings. The hook root is dotagents-owned: unrelated top-level settings in shared files are preserved, while removing all hook declarations removes the shared hook root or the dedicated Cursor hook file.
+When hooks are declared, install and sync compare the complete serialized hook root and repair stale commands, matchers, and target event mappings. Unrelated top-level settings in shared files are preserved. When no hooks are declared, existing hook files remain unchanged because dotagents has no durable evidence that it owns them.
 
 #### `[[subagents]]`
 

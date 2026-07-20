@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
@@ -67,7 +67,7 @@ export async function verifyHookConfigs(
   return (await reconcileHookConfigs(agentIds, hooks, resolveTarget, "inspect")).issues;
 }
 
-/** Inspect or apply the target-specific hook root owned by dotagents. */
+/** Inspect or apply declared hooks without modifying configs for empty input. */
 export async function reconcileHookConfigs(
   agentIds: string[],
   hooks: HookDeclaration[],
@@ -79,18 +79,17 @@ export async function reconcileHookConfigs(
   const written: string[] = [];
   const removed: string[] = [];
   const seen = new Set<string>();
+  if (hooks.length === 0) {return { issues, warnings, written, removed };}
 
   for (const id of agentIds) {
     const agent = getAgent(id);
     if (!agent) {continue;}
 
     if (!agent.hooks) {
-      if (hooks.length > 0) {
-        warnings.push({
-          agent: id,
-          message: `Agent "${agent.displayName}" does not support hooks`,
-        });
-      }
+      warnings.push({
+        agent: id,
+        message: `Agent "${agent.displayName}" does not support hooks`,
+      });
       continue;
     }
 
@@ -98,28 +97,6 @@ export async function reconcileHookConfigs(
     const { filePath, shared } = resolveTarget(id, spec);
     if (seen.has(filePath)) {continue;}
     seen.add(filePath);
-
-    if (hooks.length === 0) {
-      if (!existsSync(filePath)) {continue;}
-      if (!shared) {
-        issues.push({ agent: id, issue: `Stale hook config: ${filePath}` });
-        if (mode === "apply") {
-          await rm(filePath);
-          removed.push(filePath);
-        }
-        continue;
-      }
-
-      const existing = await readForCleanup(filePath, issues, id);
-      if (!existing || !(spec.rootKey in existing)) {continue;}
-      issues.push({ agent: id, issue: `Stale hook root "${spec.rootKey}" in ${filePath}` });
-      if (mode === "apply") {
-        delete existing[spec.rootKey];
-        await writeDocument(filePath, existing);
-        written.push(filePath);
-      }
-      continue;
-    }
 
     const serialized = agent.serializeHooks(hooks);
     const expected = { ...spec.extraFields, [spec.rootKey]: serialized };
@@ -160,19 +137,6 @@ export async function reconcileHookConfigs(
   }
 
   return { issues, warnings, written, removed };
-}
-
-async function readForCleanup(
-  filePath: string,
-  issues: HookReconcileIssue[],
-  agent: string,
-): Promise<Record<string, unknown> | undefined> {
-  try {
-    return await readExisting(filePath);
-  } catch {
-    issues.push({ agent, issue: `Failed to read hook config: ${filePath}` });
-    return undefined;
-  }
 }
 
 async function writeDocument(

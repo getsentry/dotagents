@@ -306,31 +306,34 @@ describe("reconcileHookConfigs", () => {
     });
   });
 
-  it("removes an empty shared hook root once for Claude and VS Code", async () => {
-    const filePath = join(dir, ".claude", "settings.json");
-    await mkdir(join(dir, ".claude"), { recursive: true });
-    await writeFile(filePath, JSON.stringify({
-      permissions: { allow: ["Read"] },
-      hooks: { Stop: [{ hooks: [{ type: "command", command: "stale.sh" }] }] },
-    }));
+  it.each(["inspect", "apply"] as const)(
+    "leaves an existing shared hook root unchanged in %s mode when no hooks are declared",
+    async (mode) => {
+      const filePath = join(dir, ".claude", "settings.json");
+      await mkdir(join(dir, ".claude"), { recursive: true });
+      const content = JSON.stringify({
+        permissions: { allow: ["Read"] },
+        hooks: { SessionStart: [{ hooks: [{ type: "command", command: "project-owned.sh" }] }] },
+      });
+      await writeFile(filePath, content);
 
-    const result = await reconcileHookConfigs(
-      ["claude", "vscode"],
-      [],
-      projectHookResolver(dir),
-      "apply",
-    );
+      const result = await reconcileHookConfigs(
+        ["claude", "vscode"],
+        [],
+        projectHookResolver(dir),
+        mode,
+      );
 
-    expect(result.written).toEqual([filePath]);
-    expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual({
-      permissions: { allow: ["Read"] },
-    });
-  });
+      expect(result).toEqual({ issues: [], warnings: [], written: [], removed: [] });
+      expect(await readFile(filePath, "utf-8")).toBe(content);
+    },
+  );
 
-  it("removes a dedicated Cursor hook file when no hooks remain", async () => {
+  it("leaves an existing dedicated Cursor hook file unchanged when no hooks are declared", async () => {
     const filePath = join(dir, ".cursor", "hooks.json");
     await mkdir(join(dir, ".cursor"), { recursive: true });
-    await writeFile(filePath, JSON.stringify({ version: 1, hooks: { stop: [] } }));
+    const content = JSON.stringify({ version: 1, hooks: { stop: [{ command: "project-owned.sh" }] } });
+    await writeFile(filePath, content);
 
     const result = await reconcileHookConfigs(
       ["cursor"],
@@ -339,8 +342,8 @@ describe("reconcileHookConfigs", () => {
       "apply",
     );
 
-    expect(result.removed).toEqual([filePath]);
-    expect(existsSync(filePath)).toBe(false);
+    expect(result).toEqual({ issues: [], warnings: [], written: [], removed: [] });
+    expect(await readFile(filePath, "utf-8")).toBe(content);
   });
 
   it("returns unsupported-agent warnings separately from drift", async () => {

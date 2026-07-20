@@ -109,7 +109,7 @@ For OpenCode, dotagents uses an existing config in this order: `.opencode/openco
 
 Install and sync repair currently declared MCP entries while preserving undeclared servers and unrelated content in every existing target file. When no servers are declared, existing MCP files remain unchanged because dotagents has no durable evidence that it owns them. Unreadable or structurally incompatible files are reported and left unchanged.
 
-Install and sync also repair the complete generated hook root. Unrelated settings in shared files are preserved; removing all hook declarations removes the shared hook root or the dedicated Cursor hook file.
+Install and sync repair the complete generated hook root when hooks are declared. When no hooks are declared, existing hook files remain unchanged because dotagents has no durable evidence that it owns them.
 
 Custom subagents are declared with `[[subagents]]` entries. dotagents writes generated runtime-specific files during `install` and repairs them during `sync`:
 
