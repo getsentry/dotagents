@@ -459,7 +459,7 @@ headers = { Authorization = "Bearer tok" }
     expect((await lstat(join(projectRoot, ".claude", "skills"))).isSymbolicLink()).toBe(true);
   });
 
-  it("reconciles missing, drifted, and removed hook configs", async () => {
+  it("reconciles missing and drifted hook configs without removing empty declarations", async () => {
     const configPath = join(projectRoot, "agents.toml");
     const settingsPath = join(projectRoot, ".claude", "settings.json");
     await writeFile(
@@ -491,10 +491,16 @@ headers = { Authorization = "Bearer tok" }
     });
 
     await writeFile(configPath, `version = 1\nagents = ["claude"]\n`);
-    const removed = await runSync({ scope });
-    expect(removed.hooksRepaired).toBe(1);
+    const unchanged = await runSync({ scope });
+    expect(unchanged.hooksRepaired).toBe(0);
     expect(JSON.parse(await readFile(settingsPath, "utf-8"))).toEqual({
       permissions: { allow: ["Read"] },
+      hooks: {
+        PreToolUse: [{
+          matcher: "Bash",
+          hooks: [{ type: "command", command: ".agents/hooks/block-rm.sh" }],
+        }],
+      },
     });
   });
 

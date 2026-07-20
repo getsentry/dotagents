@@ -254,7 +254,34 @@ describe("runInstall", () => {
     ]);
   });
 
-  it("reconciles hook drift and removes owned hook state when declarations are removed", async () => {
+  it("leaves project-owned Claude hooks unchanged when no hooks are declared", async () => {
+    const settingsDir = join(projectRoot, ".claude");
+    const settingsPath = join(settingsDir, "settings.json");
+    await mkdir(settingsDir, { recursive: true });
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\nagents = ["claude", "codex"]\n`,
+    );
+    const content = JSON.stringify({
+      hooks: {
+        SessionStart: [{
+          matcher: "startup",
+          hooks: [{
+            type: "command",
+            command: '"$CLAUDE_PROJECT_DIR"/.claude/worktree-setup.sh',
+            timeout: 900,
+          }],
+        }],
+      },
+    }, null, 2);
+    await writeFile(settingsPath, content);
+
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    expect(await readFile(settingsPath, "utf-8")).toBe(content);
+  });
+
+  it("reconciles hook drift and preserves generated hook state when declarations are removed", async () => {
     const configPath = join(projectRoot, "agents.toml");
     const claudePath = join(projectRoot, ".claude", "settings.json");
     const cursorPath = join(projectRoot, ".cursor", "hooks.json");
@@ -288,8 +315,12 @@ describe("runInstall", () => {
     await runInstall({ scope });
     expect(JSON.parse(await readFile(claudePath, "utf-8"))).toEqual({
       permissions: { allow: ["Read"] },
+      hooks: { Stop: [{ hooks: [{ type: "command", command: "check.sh" }] }] },
     });
-    expect(existsSync(cursorPath)).toBe(false);
+    expect(JSON.parse(await readFile(cursorPath, "utf-8"))).toEqual({
+      version: 1,
+      hooks: { stop: [{ command: "check.sh" }] },
+    });
   });
 
   it("returns hook warnings for unsupported agents", async () => {
