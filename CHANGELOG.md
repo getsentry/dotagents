@@ -1,4 +1,10 @@
 # Changelog
+## 1.19.0
+
+### Bug Fixes 🐛
+
+- (hooks) Preserve hooks without declarations by @gricha in [#142](https://github.com/getsentry/dotagents/pull/142)
+
 ## 1.18.0
 
 ### New Features ✨
