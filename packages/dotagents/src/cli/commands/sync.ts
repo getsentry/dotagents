@@ -1,9 +1,9 @@
-import { join, resolve } from "node:path";
+import { join, posix, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { readdir, rm } from "node:fs/promises";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
-import { isWildcardDep } from "../../config/schema.js";
+import { isWildcardDep, type WildcardSkillDependency } from "../../config/schema.js";
 import { normalizeSource } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
@@ -41,6 +41,20 @@ export interface SyncResult {
   subagentsRepaired: number;
 }
 
+function wildcardContainsLockedSkill(
+  wildcard: WildcardSkillDependency,
+  name: string,
+  resolvedPath: string | undefined,
+): boolean {
+  if (wildcard.exclude.includes(name)) {return false;}
+  if (!wildcard.path) {return true;}
+  if (!resolvedPath) {return false;}
+
+  const path = posix.normalize(wildcard.path.replaceAll("\\", "/"));
+  if (path === ".") {return true;}
+  return resolvedPath === path || resolvedPath.startsWith(`${path}/`);
+}
+
 export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const { scope } = opts;
   const { configPath, lockPath, agentsDir, skillsDir } = scope;
@@ -54,12 +68,17 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   );
   if (lockfile) {
     for (const [name, locked] of Object.entries(lockfile.skills)) {
-      const wildcardDep = config.skills.find(
-        (s): s is Extract<typeof s, { name: "*" }> =>
+      const wildcardDep = config.skills.some(
+        (s) =>
           isWildcardDep(s) &&
-          normalizeSource(s.source) === normalizeSource(locked.source),
+          normalizeSource(s.source) === normalizeSource(locked.source) &&
+          wildcardContainsLockedSkill(
+            s,
+            name,
+            "resolved_path" in locked ? locked.resolved_path : undefined,
+          ),
       );
-      if (wildcardDep && !wildcardDep.exclude.includes(name)) {
+      if (wildcardDep) {
         declaredNames.add(name);
       }
     }

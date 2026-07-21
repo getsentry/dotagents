@@ -71,7 +71,7 @@ exclude = ["deprecated-skill"]
 | `name` | literal `"*"` | yes | Wildcard marker |
 | `source` | string | yes | Same source formats as named skills |
 | `ref` | string | no | Git tag, branch, or commit |
-| `path` | string | no | Recursive discovery root within the source |
+| `path` | string | no | Existing contained recursive discovery root within the source |
 | `exclude` | string[] | no | Skill names to omit; defaults to `[]` |
 
 Only one wildcard entry per source is allowed.
@@ -163,11 +163,11 @@ Subagent names must match `[a-z][a-z0-9-]*`, and duplicate names are rejected.
 |-------|---------|
 | `source` | Original dependency source |
 | `resolved_url` | Resolved Git or HTTP source |
-| `resolved_path` | Skill path within the source |
+| `resolved_path` | Path within the source where the skill was discovered |
 | `resolved_ref` | Resolved Git ref |
 | `resolved_commit` | Informational installed commit SHA |
 
-Subagents use the same Git resolution fields. Never edit the lockfile manually.
+Wildcard-expanded local skills record `resolved_path` for offline scope reconciliation. Subagents use the same Git resolution fields. Never edit the lockfile manually.
 
 ## Environment Variables
 

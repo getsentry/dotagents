@@ -937,6 +937,24 @@ path = "reviewer.md"
     }));
   });
 
+  it("records resolved paths for scoped local wildcards", async () => {
+    const localSkillDir = join(projectRoot, "local-skills", "engineering", "review");
+    await mkdir(localSkillDir, { recursive: true });
+    await writeFile(join(localSkillDir, "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "path:local-skills"\npath = "engineering"\n`,
+    );
+
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills["review"]).toEqual({
+      source: "path:local-skills",
+      resolved_path: "engineering/review",
+    });
+  });
+
   it("wildcard respects exclude list", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

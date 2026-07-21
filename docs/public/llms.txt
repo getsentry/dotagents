@@ -153,7 +153,7 @@ Each `[[skills]]` entry requires `name` and `source`. Optional fields: `ref` (gi
 | `name` | string | Yes | Skill name. Pattern: `^[a-zA-Z0-9][a-zA-Z0-9._-]*$`. Use `"*"` for wildcard. |
 | `source` | string | Yes | `owner/repo` (resolved via `defaultRepositorySource`), `owner/repo@ref`, `https://github.com/owner/repo`, `https://gitlab.com/group/repo`, `https://<domain>` (well-known), `git:<url>`, or `path:<relative>` |
 | `ref` | string | No | Git ref (tag, branch, or SHA). Also supported inline: `owner/repo@ref`. |
-| `path` | string | No | For named skills, the exact skill directory within the source. For wildcard skills, the subdirectory whose complete skill subtree is discovered. |
+| `path` | string | No | For named skills, the exact skill directory within the source. For wildcard skills, an existing source subdirectory whose complete skill subtree is discovered. Wildcard paths must remain inside the source root. |
 
 Source formats:
 - `owner/repo` -- shorthand resolved by `defaultRepositorySource` (defaults to GitHub)
@@ -176,7 +176,7 @@ path = "skills/engineering"
 exclude = ["deprecated-skill"]
 ```
 
-When `path` is set, wildcard discovery is limited to that subdirectory and remains recursive. Wildcards are expanded during `install`; each discovered skill gets its source-relative path in the lockfile.
+When `path` is set, wildcard discovery is limited to that subdirectory and remains recursive. Wildcards are expanded during `install`; each discovered skill gets its source-relative path in the lockfile. Offline `sync` uses those paths to prune managed skills outside the current scope after `path` changes.
 
 ### MCP Servers
 
@@ -532,11 +532,11 @@ resolved_commit = "fedcba9876543210fedcba9876543210fedcba98"
 |-------|-------------|-------------|
 | `source` | All | Original source from `agents.toml` |
 | `resolved_url` | Git and well-known sources | Resolved git clone URL or HTTP base URL |
-| `resolved_path` | Git sources | Subdirectory within repo where skill was found |
+| `resolved_path` | Discovered skills | Path within the source where the skill was found. Recorded for Git sources and wildcard-expanded local or well-known sources. |
 | `resolved_ref` | Git sources (optional) | Resolved ref name (omitted for default branch) |
 | `resolved_commit` | Git sources (optional) | Full commit SHA that was installed. Informational only; install does not use it for locking. |
 
-Local `path:` skills and subagents have `source` only. Subagent entries use the same fields under `[subagents.<name>]`; `resolved_path` points to the subagent file inside a git source.
+Explicit local `path:` skills have `source` only. Wildcard-expanded local skills also record `resolved_path` so offline sync can enforce the configured path scope. Subagent entries use the same fields under `[subagents.<name>]`; `resolved_path` points to the subagent file inside a git source.
 
 ## Caching
 

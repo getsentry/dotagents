@@ -12,10 +12,12 @@ const lockedGitSkillSchema = z.object({
 const lockedWellKnownSkillSchema = z.object({
   source: z.string(),
   resolved_url: z.string(),
+  resolved_path: z.string().optional(),
 });
 
 const lockedLocalSkillSchema = z.object({
   source: z.string(),
+  resolved_path: z.string().optional(),
 });
 
 const lockedSkillSchema = z.union([lockedGitSkillSchema, lockedWellKnownSkillSchema, lockedLocalSkillSchema]);

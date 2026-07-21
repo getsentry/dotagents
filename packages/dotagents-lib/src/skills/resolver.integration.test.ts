@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { resolveSkill, resolveWildcardSkills } from "./resolver.js";
@@ -370,6 +370,7 @@ describe("resolveWildcardSkills integration", () => {
 
     expect(results.map((result) => result.name)).toEqual(["review"]);
     expect(results[0]!.resolved.type).toBe("local");
+    expect(results[0]!.resolved.resolvedPath).toBe("engineering/review");
     expect(results[0]!.resolved.skillDir).toBe(
       join(localSkills, "engineering", "review"),
     );
@@ -381,6 +382,52 @@ describe("resolveWildcardSkills integration", () => {
     await expect(
       resolveWildcardSkills(
         { source: "path:local-repo", path: "../outside", exclude: [] },
+        { stateDir, projectRoot },
+      ),
+    ).rejects.toThrow(/resolves outside source root/);
+  });
+
+  it("rejects a wildcard path that does not exist", async () => {
+    await mkdir(join(projectRoot, "local-repo"), { recursive: true });
+
+    await expect(
+      resolveWildcardSkills(
+        { source: "path:local-repo", path: "missing", exclude: [] },
+        { stateDir, projectRoot },
+      ),
+    ).rejects.toThrow(/does not exist in source/);
+  });
+
+  it("rejects a wildcard path that is not a directory", async () => {
+    await mkdir(join(projectRoot, "local-repo"), { recursive: true });
+    await writeFile(join(projectRoot, "local-repo", "skill.txt"), "not a directory");
+
+    await expect(
+      resolveWildcardSkills(
+        { source: "path:local-repo", path: "skill.txt", exclude: [] },
+        { stateDir, projectRoot },
+      ),
+    ).rejects.toThrow(/is not a directory in source/);
+  });
+
+  it("rejects a wildcard path symlinked outside the source root", async () => {
+    const localRoot = join(projectRoot, "local-repo");
+    const outside = join(projectRoot, "outside");
+    await mkdir(localRoot, { recursive: true });
+    await mkdir(join(outside, "review"), { recursive: true });
+    await writeFile(
+      join(outside, "review", "SKILL.md"),
+      `---\nname: review\ndescription: Review skill\n---\n`,
+    );
+    await symlink(
+      outside,
+      join(localRoot, "escaped"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    await expect(
+      resolveWildcardSkills(
+        { source: "path:local-repo", path: "escaped", exclude: [] },
         { stateDir, projectRoot },
       ),
     ).rejects.toThrow(/resolves outside source root/);

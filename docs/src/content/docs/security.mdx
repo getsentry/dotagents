@@ -95,13 +95,15 @@ resolved_commit = "fedcba9876543210fedcba9876543210fedcba98"
 | --- | --- |
 | `source` | Original source from agents.toml |
 | `resolved_url` | Resolved git clone URL or HTTP base URL |
-| `resolved_path` | Subdirectory within repo where skill was found |
+| `resolved_path` | Path within the source where the skill was found |
 | `resolved_ref` | Resolved ref name, omitted for default branch |
 | `resolved_commit` | Installed commit SHA. Informational only |
 
-Local `path:` skills and subagents have `source` only. Subagent entries use the
-same fields under `[subagents.<name>]`; `resolved_path` points to the subagent
-file inside a git source.
+Explicit local `path:` skills and local subagents have `source` only.
+Wildcard-expanded local skills also record `resolved_path` so offline sync can
+enforce the configured path scope. Subagent entries use the same fields under
+`[subagents.<name>]`; `resolved_path` points to the subagent file inside a git
+source.
 
 ## Caching
 

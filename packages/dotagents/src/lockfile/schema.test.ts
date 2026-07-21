@@ -25,6 +25,20 @@ describe("lockfileSchema", () => {
     }
   });
 
+  it("allows resolved paths for wildcard-expanded local skills", () => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        review: {
+          source: "path:local-skills",
+          resolved_path: "engineering/review",
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it("rejects well-known-style subagent lock entries", () => {
     const result = lockfileSchema.safeParse({
       version: 1,

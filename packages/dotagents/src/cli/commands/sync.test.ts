@@ -184,6 +184,43 @@ describe("runSync", () => {
     expect(existsSync(reviewDir)).toBe(false);
   });
 
+  it("prunes wildcard skills outside the configured path", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "org/repo"\npath = "skills/engineering"\n`,
+    );
+    const deployDir = join(projectRoot, ".agents", "skills", "deploy");
+    const notesDir = join(projectRoot, ".agents", "skills", "notes");
+    await mkdir(deployDir, { recursive: true });
+    await mkdir(notesDir, { recursive: true });
+    await writeFile(join(deployDir, "SKILL.md"), SKILL_MD("deploy"));
+    await writeFile(join(notesDir, "SKILL.md"), SKILL_MD("notes"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        deploy: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "skills/engineering/deploy",
+        },
+        notes: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "skills/productivity/notes",
+        },
+      },
+    });
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.pruned).toEqual(["notes"]);
+    expect(existsSync(deployDir)).toBe(true);
+    expect(existsSync(notesDir)).toBe(false);
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills["deploy"]).toBeDefined();
+    expect(lockfile!.skills["notes"]).toBeUndefined();
+  });
+
   it("prunes stale managed skills after a collaborator removes the dependency and another collaborator pulls", async () => {
     const skillRepo = join(tmpDir, "skill-repo");
     const projectOrigin = join(tmpDir, "project-origin.git");

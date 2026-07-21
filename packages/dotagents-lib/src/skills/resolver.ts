@@ -1,4 +1,5 @@
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { realpath, stat } from "node:fs/promises";
 import {
   GITHUB_HTTPS_URL,
   GITHUB_SSH_URL,
@@ -70,6 +71,8 @@ export interface ResolvedGitSkill {
 export interface ResolvedLocalSkill {
   type: "local";
   source: string;
+  /** Path within the local source root, when discovered from a wildcard. */
+  resolvedPath?: string;
   /** Absolute path to the skill directory */
   skillDir: string;
 }
@@ -80,6 +83,8 @@ export interface ResolvedWellKnownSkill {
   source: string;
   /** Resolved HTTP URL */
   resolvedUrl: string;
+  /** Path within the cached source, when available. */
+  resolvedPath?: string;
   /** Absolute path to the cached skill directory */
   skillDir: string;
 }
@@ -463,6 +468,11 @@ interface ScopedDiscoveredSkill extends DiscoveredSkill {
   skillDir: string;
 }
 
+function isOutsideRoot(root: string, target: string): boolean {
+  const path = relative(root, target);
+  return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
+}
+
 async function discoverWildcardScope(
   sourceRoot: string,
   path: string | undefined,
@@ -471,8 +481,22 @@ async function discoverWildcardScope(
   const root = resolve(sourceRoot);
   const scopeDir = path ? resolve(root, path) : root;
   const scopePath = relative(root, scopeDir);
-  if (scopePath === ".." || scopePath.startsWith(`..${sep}`) || isAbsolute(scopePath)) {
+  if (isOutsideRoot(root, scopeDir)) {
     throw new ResolveError(`Wildcard path "${path}" resolves outside source root`);
+  }
+  if (path) {
+    let scopeStat;
+    try {
+      scopeStat = await stat(scopeDir);
+    } catch {
+      throw new ResolveError(`Wildcard path "${path}" does not exist in source`);
+    }
+    if (!scopeStat.isDirectory()) {
+      throw new ResolveError(`Wildcard path "${path}" is not a directory in source`);
+    }
+    if (isOutsideRoot(await realpath(root), await realpath(scopeDir))) {
+      throw new ResolveError(`Wildcard path "${path}" resolves outside source root`);
+    }
   }
 
   const pathPrefix = scopePath.split(sep).join("/");
@@ -495,8 +519,9 @@ async function discoverWildcardScope(
 export const VALID_SKILL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
 /**
- * Resolve a wildcard dependency: discover all skills from a source and return them.
- * Excludes are filtered out. Skill names are validated to prevent path traversal.
+ * Resolve a wildcard dependency, optionally restricting recursive discovery to
+ * a contained source subdirectory. Excludes are filtered out and skill names
+ * are validated before they are used as install paths.
  */
 export async function resolveWildcardSkills(
   dep: WildcardDependencyInput,
@@ -521,6 +546,7 @@ export async function resolveWildcardSkills(
         resolved: {
           type: "local" as const,
           source: dep.source,
+          resolvedPath: d.path,
           skillDir: d.skillDir,
         },
       }));
@@ -546,6 +572,7 @@ export async function resolveWildcardSkills(
           type: "well-known" as const,
           source: dep.source,
           resolvedUrl: acquired.resolvedUrl,
+          resolvedPath: d.path,
           skillDir: d.skillDir,
         },
       }));

@@ -156,7 +156,7 @@ Trust is checked before any network work in `dotagents add` for skills and `dota
 | `name` | Yes | Skill name. Must start with alphanumeric and contain only `[a-zA-Z0-9._-]`. |
 | `source` | Yes | Skill source. `owner/repo` (resolved via `defaultRepositorySource`), `owner/repo@ref`, GitHub/GitLab URLs, well-known `https://<domain>` sources, `git:<url>`, or `path:<relative>`. |
 | `ref` | No | Git ref (tag, branch, or SHA). Can also be specified inline as `owner/repo@ref`. Defaults to repo's default branch. |
-| `path` | No | For named skills, the exact skill directory within the source. For wildcard skills, a subdirectory whose complete skill subtree is discovered. |
+| `path` | No | For named skills, the exact skill directory within the source. For wildcard skills, an existing source subdirectory whose complete skill subtree is discovered. Wildcard paths must remain inside the source root. |
 
 #### `[[mcp]]`
 
@@ -393,7 +393,7 @@ source = "path:../shared-agents"
 |-------|-------------|-------------|
 | `source` | All | Original source specifier from agents.toml. |
 | `resolved_url` | Git and well-known sources | Resolved clone URL or HTTP base URL. |
-| `resolved_path` | Git sources | Subdirectory within the repo where the skill was discovered. |
+| `resolved_path` | Discovered skills | Path within the source where the skill was discovered. Recorded for Git sources and wildcard-expanded local or well-known sources. |
 | `resolved_ref` | Git sources (optional) | The ref that was resolved (tag/branch name). Omitted when using default branch. |
 | `resolved_commit` | Git sources (optional) | Full 40-char commit SHA that was installed. **Informational only** — not used for resolution. The lockfile is not checked in, so this field must never be relied on for locking behavior. |
 

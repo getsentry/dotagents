@@ -66,7 +66,7 @@ path = "skills/engineering"
 exclude = ["deprecated-skill"]
 ```
 
-Set `path` to limit recursive discovery to one source subdirectory. New skills appearing in that scope are discovered by later installs. Removing one wildcard-provided skill adds it to `exclude`.
+Set `path` to an existing subdirectory to limit recursive discovery; it cannot escape the source root. Each discovered skill records its source-relative path so offline `sync` can reconcile a changed scope. New skills appearing in that scope are discovered by later installs. Removing one wildcard-provided skill adds it to `exclude`.
 
 ## Trust
 
