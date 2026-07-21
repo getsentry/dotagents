@@ -283,6 +283,45 @@ describe("resolveWildcardSkills integration", () => {
     expect(results[0]!.name).toBe("pdf");
   });
 
+  it("scopes wildcard discovery to path and preserves repo-relative paths", async () => {
+    await mkdir(join(repoDir, "skills", "engineering", "deploy"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "engineering", "deploy", "SKILL.md"),
+      `---\nname: deploy\ndescription: Deploy skill\n---\n`,
+    );
+    await mkdir(join(repoDir, "skills", "engineering", "platform", "observe"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(repoDir, "skills", "engineering", "platform", "observe", "SKILL.md"),
+      `---\nname: observe\ndescription: Observe skill\n---\n`,
+    );
+    await mkdir(join(repoDir, "skills", "productivity", "notes"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "productivity", "notes", "SKILL.md"),
+      `---\nname: notes\ndescription: Notes skill\n---\n`,
+    );
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "add categorized skills"], { cwd: repoDir });
+
+    const results = await resolveWildcardSkills(
+      {
+        source: `git:${repoDir}`,
+        path: "skills/engineering",
+        exclude: ["deploy"],
+      },
+      { stateDir, projectRoot },
+    );
+
+    expect(results.map((result) => result.name)).toEqual(["observe"]);
+    expect(results[0]!.resolved.type).toBe("git");
+    if (results[0]!.resolved.type === "git") {
+      expect(results[0]!.resolved.resolvedPath).toBe(
+        "skills/engineering/platform/observe",
+      );
+    }
+  });
+
   it("returns empty array when all skills excluded", async () => {
     const results = await resolveWildcardSkills(
       { source: `git:${repoDir}`, exclude: ["pdf", "review"] },
@@ -309,6 +348,42 @@ describe("resolveWildcardSkills integration", () => {
     expect(results).toHaveLength(1);
     expect(results[0]!.name).toBe("my-skill");
     expect(results[0]!.resolved.type).toBe("local");
+  });
+
+  it("scopes wildcard discovery within a local source", async () => {
+    const localSkills = join(projectRoot, "local-repo");
+    await mkdir(join(localSkills, "engineering", "review"), { recursive: true });
+    await writeFile(
+      join(localSkills, "engineering", "review", "SKILL.md"),
+      `---\nname: review\ndescription: Review skill\n---\n`,
+    );
+    await mkdir(join(localSkills, "productivity", "notes"), { recursive: true });
+    await writeFile(
+      join(localSkills, "productivity", "notes", "SKILL.md"),
+      `---\nname: notes\ndescription: Notes skill\n---\n`,
+    );
+
+    const results = await resolveWildcardSkills(
+      { source: "path:local-repo", path: "engineering", exclude: [] },
+      { stateDir, projectRoot },
+    );
+
+    expect(results.map((result) => result.name)).toEqual(["review"]);
+    expect(results[0]!.resolved.type).toBe("local");
+    expect(results[0]!.resolved.skillDir).toBe(
+      join(localSkills, "engineering", "review"),
+    );
+  });
+
+  it("rejects wildcard paths outside the source root", async () => {
+    await mkdir(join(projectRoot, "local-repo"), { recursive: true });
+
+    await expect(
+      resolveWildcardSkills(
+        { source: "path:local-repo", path: "../outside", exclude: [] },
+        { stateDir, projectRoot },
+      ),
+    ).rejects.toThrow(/resolves outside source root/);
   });
 
   it("each resolved skill has correct commit and path", async () => {

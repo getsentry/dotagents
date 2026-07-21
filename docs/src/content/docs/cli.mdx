@@ -352,7 +352,7 @@ Status output:
 | `name` | string | Yes | Skill identifier. Use `"*"` for wildcard. |
 | `source` | string | Yes | `owner/repo`, `owner/repo@ref`, GitHub/GitLab URL, `git:url`, or `path:relative` |
 | `ref` | string | No | Tag, branch, or commit SHA to pin |
-| `path` | string | No | Subdirectory within repo, when auto-discovery fails |
+| `path` | string | No | Exact directory for a named skill, or recursive discovery root for a wildcard |
 | `exclude` | string[] | No | Skills to skip. Wildcard entries only. |
 
 ### MCP Servers

@@ -67,6 +67,7 @@ const wildcardSkillDependencySchema = z.object({
   name: z.literal("*"),
   source: skillSourceSchema,
   ref: z.string().optional(),
+  path: z.string().optional(),
   exclude: z.array(skillNameSchema).default([]),
 });
 

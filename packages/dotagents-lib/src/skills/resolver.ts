@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   GITHUB_HTTPS_URL,
   GITHUB_SSH_URL,
@@ -19,6 +19,7 @@ import type { TrustPolicy } from "../trust/policy.js";
 export interface WildcardDependencyInput {
   source: string;
   ref?: string;
+  path?: string;
   exclude?: readonly string[];
 }
 
@@ -458,6 +459,38 @@ export interface NamedResolvedSkill {
   resolved: ResolvedSkill;
 }
 
+interface ScopedDiscoveredSkill extends DiscoveredSkill {
+  skillDir: string;
+}
+
+async function discoverWildcardScope(
+  sourceRoot: string,
+  path: string | undefined,
+  scanDirs: readonly string[] | undefined,
+): Promise<ScopedDiscoveredSkill[]> {
+  const root = resolve(sourceRoot);
+  const scopeDir = path ? resolve(root, path) : root;
+  const scopePath = relative(root, scopeDir);
+  if (scopePath === ".." || scopePath.startsWith(`..${sep}`) || isAbsolute(scopePath)) {
+    throw new ResolveError(`Wildcard path "${path}" resolves outside source root`);
+  }
+
+  const pathPrefix = scopePath.split(sep).join("/");
+  const discovered = await discoverAllSkills(scopeDir, {
+    scanDirs: path ? ["."] : scanDirs,
+  });
+  return discovered.map((skill) => {
+    const resolvedPath = pathPrefix
+      ? skill.path === "." ? pathPrefix : `${pathPrefix}/${skill.path}`
+      : skill.path;
+    return {
+      path: resolvedPath,
+      meta: skill.meta,
+      skillDir: join(scopeDir, skill.path),
+    };
+  });
+}
+
 /** Skill names must be safe for use in file paths. */
 export const VALID_SKILL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
@@ -473,7 +506,11 @@ export async function resolveWildcardSkills(
   const excludeSet = new Set(dep.exclude);
 
   if (acquired.type === "local") {
-    const discovered = await discoverAllSkills(acquired.skillDir, { scanDirs: opts.scanDirs });
+    const discovered = await discoverWildcardScope(
+      acquired.skillDir,
+      dep.path,
+      opts.scanDirs,
+    );
     return discovered
       .filter(
         (d) =>
@@ -484,7 +521,7 @@ export async function resolveWildcardSkills(
         resolved: {
           type: "local" as const,
           source: dep.source,
-          skillDir: join(acquired.skillDir, d.path),
+          skillDir: d.skillDir,
         },
       }));
   }
@@ -494,10 +531,11 @@ export async function resolveWildcardSkills(
       return [];
     }
 
-    const cacheDir = acquired.cacheDir;
-    const discovered = await discoverAllSkills(cacheDir, {
-      scanDirs: opts.scanDirs,
-    });
+    const discovered = await discoverWildcardScope(
+      acquired.cacheDir,
+      dep.path,
+      opts.scanDirs,
+    );
     return discovered
       .filter(
         (d) => !excludeSet.has(d.meta.name) && VALID_SKILL_NAME.test(d.meta.name),
@@ -508,12 +546,16 @@ export async function resolveWildcardSkills(
           type: "well-known" as const,
           source: dep.source,
           resolvedUrl: acquired.resolvedUrl,
-          skillDir: join(cacheDir, d.path),
+          skillDir: d.skillDir,
         },
       }));
   }
 
-  const discovered = await discoverAllSkills(acquired.repoDir, { scanDirs: opts.scanDirs });
+  const discovered = await discoverWildcardScope(
+    acquired.repoDir,
+    dep.path,
+    opts.scanDirs,
+  );
 
   return discovered
     .filter(
@@ -528,7 +570,7 @@ export async function resolveWildcardSkills(
         resolvedPath: d.path,
         resolvedRef: acquired.resolvedRef,
         commit: acquired.commit,
-        skillDir: join(acquired.repoDir, d.path),
+        skillDir: d.skillDir,
       },
     }));
 }

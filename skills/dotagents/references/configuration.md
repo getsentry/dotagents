@@ -62,10 +62,11 @@ Equivalent configuration:
 [[skills]]
 name = "*"
 source = "getsentry/skills"
+path = "skills/engineering"
 exclude = ["deprecated-skill"]
 ```
 
-New skills appearing in the source are discovered by later installs. Removing one wildcard-provided skill adds it to `exclude`.
+Set `path` to limit recursive discovery to one source subdirectory. New skills appearing in that scope are discovered by later installs. Removing one wildcard-provided skill adds it to `exclude`.
 
 ## Trust
 

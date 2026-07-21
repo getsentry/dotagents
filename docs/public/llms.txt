@@ -153,7 +153,7 @@ Each `[[skills]]` entry requires `name` and `source`. Optional fields: `ref` (gi
 | `name` | string | Yes | Skill name. Pattern: `^[a-zA-Z0-9][a-zA-Z0-9._-]*$`. Use `"*"` for wildcard. |
 | `source` | string | Yes | `owner/repo` (resolved via `defaultRepositorySource`), `owner/repo@ref`, `https://github.com/owner/repo`, `https://gitlab.com/group/repo`, `https://<domain>` (well-known), `git:<url>`, or `path:<relative>` |
 | `ref` | string | No | Git ref (tag, branch, or SHA). Also supported inline: `owner/repo@ref`. |
-| `path` | string | No | Subdirectory within repo. Only needed when auto-discovery fails. |
+| `path` | string | No | For named skills, the exact skill directory within the source. For wildcard skills, the subdirectory whose complete skill subtree is discovered. |
 
 Source formats:
 - `owner/repo` -- shorthand resolved by `defaultRepositorySource` (defaults to GitHub)
@@ -172,10 +172,11 @@ Set `name = "*"` to install all skills from a source. Use `exclude` to skip spec
 [[skills]]
 name = "*"
 source = "getsentry/skills"
+path = "skills/engineering"
 exclude = ["deprecated-skill"]
 ```
 
-Wildcards are expanded during `install`. Each discovered skill gets its own lockfile entry.
+When `path` is set, wildcard discovery is limited to that subdirectory and remains recursive. Wildcards are expanded during `install`; each discovered skill gets its source-relative path in the lockfile.
 
 ### MCP Servers
 
@@ -491,7 +492,7 @@ After cloning a repo, dotagents scans these locations for skills:
 
 Single-skill repos with SKILL.md at the root are supported — the skill name is derived from the frontmatter `name` field. Child-directory skills take priority over root-level SKILL.md when names conflict.
 
-Use the `path` field for explicit overrides when auto-discovery does not find the skill.
+For named skills, use `path` as an explicit override when auto-discovery does not find the skill. For wildcard skills, `path` selects the recursive discovery root.
 
 A valid skill directory contains a `SKILL.md` file with YAML frontmatter:
 

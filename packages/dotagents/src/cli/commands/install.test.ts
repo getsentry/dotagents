@@ -903,6 +903,40 @@ path = "reviewer.md"
     expect(existsSync(join(projectRoot, ".agents", "skills", "review", "SKILL.md"))).toBe(true);
   });
 
+  it("installs only wildcard skills under path", async () => {
+    await ensureGitRepo();
+    await mkdir(join(repoDir, "skills", "engineering", "deploy"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "engineering", "deploy", "SKILL.md"),
+      SKILL_MD("deploy"),
+    );
+    await mkdir(join(repoDir, "skills", "productivity", "notes"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "productivity", "notes", "SKILL.md"),
+      SKILL_MD("notes"),
+    );
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "add categorized skills"], { cwd: repoDir });
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\npath = "skills/engineering"\n`,
+    );
+
+    const result = await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.installed).toContain("deploy");
+    expect(result.installed).not.toContain("pdf");
+    expect(result.installed).not.toContain("notes");
+    expect(existsSync(join(projectRoot, ".agents", "skills", "deploy", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "skills", "pdf"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".agents", "skills", "notes"))).toBe(false);
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills["deploy"]).toEqual(expect.objectContaining({
+      resolved_path: "skills/engineering/deploy",
+    }));
+  });
+
   it("wildcard respects exclude list", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

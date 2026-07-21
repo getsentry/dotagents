@@ -156,7 +156,7 @@ Trust is checked before any network work in `dotagents add` for skills and `dota
 | `name` | Yes | Skill name. Must start with alphanumeric and contain only `[a-zA-Z0-9._-]`. |
 | `source` | Yes | Skill source. `owner/repo` (resolved via `defaultRepositorySource`), `owner/repo@ref`, GitHub/GitLab URLs, well-known `https://<domain>` sources, `git:<url>`, or `path:<relative>`. |
 | `ref` | No | Git ref (tag, branch, or SHA). Can also be specified inline as `owner/repo@ref`. Defaults to repo's default branch. |
-| `path` | No | Explicit subdirectory path to the skill within the repo. Only needed when automatic discovery fails. |
+| `path` | No | For named skills, the exact skill directory within the source. For wildcard skills, a subdirectory whose complete skill subtree is discovered. |
 
 #### `[[mcp]]`
 

@@ -85,6 +85,11 @@ source = "https://cli.sentry.dev"        # Well-known HTTPS source
 [[skills]]
 name = "local"
 source = "path:./my-skills/local-skill"  # Local directory
+
+[[skills]]
+name = "*"
+source = "getsentry/skills"
+path = "skills/engineering"              # All skills under one subdirectory
 ```
 
 Shorthand (`owner/repo`) resolves to GitHub by default. Set `defaultRepositorySource = "gitlab"` in `agents.toml` to resolve to GitLab instead.

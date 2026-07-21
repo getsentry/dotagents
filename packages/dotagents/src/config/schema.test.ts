@@ -63,6 +63,28 @@ describe("agentsConfigSchema", () => {
     }
   });
 
+  it("preserves path on wildcard skill dependencies", () => {
+    const result = agentsConfigSchema.safeParse({
+      version: 1,
+      skills: [{
+        name: "*",
+        source: "getsentry/skills",
+        path: "skills/engineering",
+        exclude: ["deprecated"],
+      }],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.skills[0]).toEqual({
+        name: "*",
+        source: "getsentry/skills",
+        path: "skills/engineering",
+        exclude: ["deprecated"],
+      });
+    }
+  });
+
   it("rejects invalid version", () => {
     expect(agentsConfigSchema.safeParse({ version: 2 }).success).toBe(false);
   });
