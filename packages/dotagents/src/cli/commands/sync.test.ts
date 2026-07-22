@@ -221,6 +221,28 @@ describe("runSync", () => {
     expect(lockfile!.skills["notes"]).toBeUndefined();
   });
 
+  it("retains legacy wildcard entries without resolved paths", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "path:local-skills"\npath = "engineering"\n`,
+    );
+    const reviewDir = join(projectRoot, ".agents", "skills", "review");
+    await mkdir(reviewDir, { recursive: true });
+    await writeFile(join(reviewDir, "SKILL.md"), SKILL_MD("review"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        review: { source: "path:local-skills" },
+      },
+    });
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.pruned).toEqual([]);
+    expect(result.adopted).toEqual([]);
+    expect(existsSync(reviewDir)).toBe(true);
+  });
+
   it("prunes stale managed skills after a collaborator removes the dependency and another collaborator pulls", async () => {
     const skillRepo = join(tmpDir, "skill-repo");
     const projectOrigin = join(tmpDir, "project-origin.git");

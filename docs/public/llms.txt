@@ -176,7 +176,7 @@ path = "skills/engineering"
 exclude = ["deprecated-skill"]
 ```
 
-When `path` is set, wildcard discovery is limited to that subdirectory and remains recursive. Wildcards are expanded during `install`; each discovered skill gets its source-relative path in the lockfile. Offline `sync` uses those paths to prune managed skills outside the current scope after `path` changes.
+When `path` is set, wildcard discovery is limited to that subdirectory and remains recursive. Wildcards are expanded during `install`; each discovered skill gets its source-relative path in the lockfile. `list` and offline `sync` use those paths to enforce the current scope. Legacy lock entries without `resolved_path` are retained until the next successful install refreshes their metadata.
 
 ### MCP Servers
 

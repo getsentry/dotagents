@@ -92,6 +92,8 @@ source = "getsentry/skills"
 path = "skills/engineering"              # All skills under one subdirectory
 ```
 
+Wildcard `path` must name an existing directory inside the source. Discovered source-relative paths are stored in `agents.lock`, allowing `list` and offline `sync` to enforce the current scope. Legacy entries without path metadata remain selected until install refreshes them.
+
 Shorthand (`owner/repo`) resolves to GitHub by default. Set `defaultRepositorySource = "gitlab"` in `agents.toml` to resolve to GitLab instead.
 
 ## Agent Targets

@@ -158,6 +158,8 @@ Trust is checked before any network work in `dotagents add` for skills and `dota
 | `ref` | No | Git ref (tag, branch, or SHA). Can also be specified inline as `owner/repo@ref`. Defaults to repo's default branch. |
 | `path` | No | For named skills, the exact skill directory within the source. For wildcard skills, an existing source subdirectory whose complete skill subtree is discovered. Wildcard paths must remain inside the source root. |
 
+Wildcard-expanded lock entries record their source-relative paths. `list` and offline `sync` use that metadata to enforce the current wildcard scope. Legacy lock entries without `resolved_path` remain selected until a successful install refreshes them.
+
 #### `[[mcp]]`
 
 MCP server declarations. Each entry defines an MCP server that dotagents will configure for the agents listed in the `agents` field.

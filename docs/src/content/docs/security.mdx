@@ -105,6 +105,10 @@ enforce the configured path scope. Subagent entries use the same fields under
 `[subagents.<name>]`; `resolved_path` points to the subagent file inside a git
 source.
 
+`list` and offline `sync` filter wildcard entries when `resolved_path` is
+available. Legacy entries without that metadata remain selected until a
+successful install refreshes the lockfile.
+
 ## Caching
 
 Cloned repositories are cached at `~/.local/dotagents/`, and you can override
