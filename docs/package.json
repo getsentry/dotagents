@@ -12,7 +12,7 @@
     "@astrojs/starlight": "^0.39.2",
     "@fontsource-variable/rubik": "^5.2.8",
     "@fontsource/ibm-plex-mono": "^5.2.7",
-    "@sentry/starlight-theme": "^0.7.0",
+    "@sentry/starlight-theme": "^0.8.0",
     "astro": "^6.4.8"
   },
   "devDependencies": {
