@@ -90,13 +90,54 @@ targets = ["claude", "codex", "opencode"]`}</code></pre>
       <p>The `agents` array tells dotagents which tools to configure. Pi reads `.agents/skills/` directly and does not need generated config.</p>
     </div>
 
-    | Agent | Config Dir | MCP Config | Hooks | Subagents |
-    | --- | --- | --- | --- | --- |
-    | `claude` | `.claude` | `.mcp.json` | `.claude/settings.json` | `.claude/agents/*.md` |
-    | `cursor` | `.cursor` | `.cursor/mcp.json` | `.cursor/hooks.json` | `.cursor/agents/*.md` |
-    | `codex` | `.codex` | `.codex/config.toml` | None | `.codex/agents/*.toml` |
-    | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` | None |
-    | `opencode` | `.opencode` | `.opencode/opencode.jsonc` | None | `.opencode/agents/*.md` |
+    <table>
+      <thead>
+        <tr>
+          <th>Agent</th>
+          <th>Config Dir</th>
+          <th>MCP Config</th>
+          <th>Hooks</th>
+          <th>Subagents</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>claude</code></td>
+          <td><code>.claude</code></td>
+          <td><code>.mcp.json</code></td>
+          <td><code>.claude/settings.json</code></td>
+          <td><code>.claude/agents/*.md</code></td>
+        </tr>
+        <tr>
+          <td><code>cursor</code></td>
+          <td><code>.cursor</code></td>
+          <td><code>.cursor/mcp.json</code></td>
+          <td><code>.cursor/hooks.json</code></td>
+          <td><code>.cursor/agents/*.md</code></td>
+        </tr>
+        <tr>
+          <td><code>codex</code></td>
+          <td><code>.codex</code></td>
+          <td><code>.codex/config.toml</code></td>
+          <td>None</td>
+          <td><code>.codex/agents/*.toml</code></td>
+        </tr>
+        <tr>
+          <td><code>vscode</code></td>
+          <td><code>.vscode</code></td>
+          <td><code>.vscode/mcp.json</code></td>
+          <td><code>.claude/settings.json</code></td>
+          <td>None</td>
+        </tr>
+        <tr>
+          <td><code>opencode</code></td>
+          <td><code>.opencode</code></td>
+          <td><code>.opencode/opencode.jsonc</code></td>
+          <td>None</td>
+          <td><code>.opencode/agents/*.md</code></td>
+        </tr>
+      </tbody>
+    </table>
 
     OpenCode reuses existing project config from `.opencode/opencode.jsonc`, `.opencode/opencode.json`, `opencode.jsonc`, or `opencode.json`, in that order. New projects use `.opencode/opencode.jsonc`.
   </section>
