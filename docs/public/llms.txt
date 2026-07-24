@@ -459,7 +459,7 @@ Claude uses `.claude/skills/`, and Cursor shares the same Claude-compatible skil
 
 ### Project Scope (default)
 
-Operates on the current project directory. Requires `agents.toml` at the project root.
+Operates on the current Git repository. Commands run from a subdirectory discover the repository root and use its `agents.toml`.
 
 - Config: `<project>/agents.toml`
 - Skills: `<project>/.agents/skills/`

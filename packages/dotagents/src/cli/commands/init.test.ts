@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile, readFile, lstat, readdir } from "node:fs
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
-import { runInit, InitError, installPostMergeHook } from "./init.js";
+import init, { runInit, InitError, installPostMergeHook } from "./init.js";
 import { loadConfig } from "../../config/loader.js";
 
 vi.mock("./install.js", () => ({
@@ -34,6 +34,23 @@ describe("runInit", () => {
     expect(existsSync(join(dir, ".agents", "skills"))).toBe(true);
     expect(existsSync(join(dir, ".agents", ".gitignore"))).toBe(true);
     expect(existsSync(join(dir, ".claude"))).toBe(false);
+  });
+
+  it("initializes the repository root when run from a subdirectory", async () => {
+    await mkdir(join(dir, ".git"));
+    const child = join(dir, "packages", "app");
+    await mkdir(child, { recursive: true });
+    const cwd = process.cwd();
+
+    try {
+      process.chdir(child);
+      await init(["--agents", "claude"]);
+    } finally {
+      process.chdir(cwd);
+    }
+
+    expect(existsSync(join(dir, "agents.toml"))).toBe(true);
+    expect(existsSync(join(child, "agents.toml"))).toBe(false);
   });
 
   it("omits bootstrap skill when skills: [] is passed", async () => {

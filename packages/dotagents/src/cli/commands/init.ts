@@ -10,7 +10,7 @@ import { allAgentIds, allAgents } from "../../targets/registry.js";
 import { skillSymlinkTargets } from "../../targets/skill-symlinks.js";
 import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
-import { resolveScope, isInsideGitRepo, findGitDir, type ScopeRoot } from "../../scope.js";
+import { resolveScope, findGitDir, findGitRoot, type ScopeRoot } from "../../scope.js";
 import type { TrustConfig } from "../../config/schema.js";
 import { GitError, TrustError } from "@sentry/dotagents-lib";
 import { formatGitError, formatTrustError } from "../errors.js";
@@ -281,11 +281,12 @@ export default async function init(args: string[], flags?: { user?: boolean }): 
     strict: true,
   });
 
+  const gitRoot = findGitRoot(resolve("."));
   let scope: ScopeRoot;
   if (flags?.user) {
     scope = resolveScope("user");
-  } else if (isInsideGitRepo(resolve("."))) {
-    scope = resolveScope("project", resolve("."));
+  } else if (gitRoot) {
+    scope = resolveScope("project", gitRoot);
   } else {
     console.error("No project found, using user scope (~/.agents/)");
     scope = resolveScope("user");
