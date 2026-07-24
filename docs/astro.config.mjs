@@ -35,6 +35,9 @@ export default defineConfig({
     }),
   ],
   markdown: {
+    // Astro 6.4 left markdown.gfm optional/undefined. MDX still gates
+    // remark-gfm on this flag, so pipe tables render as plain text without it.
+    gfm: true,
     shikiConfig: {
       theme: monochromeCodeTheme,
     },
