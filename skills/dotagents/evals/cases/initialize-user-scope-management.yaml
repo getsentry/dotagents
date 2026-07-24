@@ -1,0 +1,5 @@
+behavior: initialize-dotagents-management
+prompt: |
+  Do not execute commands or modify files. I have never used dotagents user scope, and I want to add find-bugs from getsentry/skills for every project. Tell me the command sequence.
+checks:
+  - judge: The response uses one dotagents command with `--user add getsentry/skills find-bugs` and does not require a separate user-scope init or install command.

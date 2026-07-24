@@ -2,7 +2,14 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { dirname, join, resolve } from "node:path";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
-import { resolveScope, isInsideGitRepo, findGitDir, resolveDefaultScope, ScopeError } from "./scope.js";
+import {
+  resolveScope,
+  isInsideGitRepo,
+  findGitDir,
+  findGitRoot,
+  resolveDefaultScope,
+  ScopeError,
+} from "./scope.js";
 
 describe("resolveScope", () => {
   afterEach(() => {
@@ -126,6 +133,34 @@ describe("findGitDir", () => {
   });
 });
 
+describe("findGitRoot", () => {
+  let tempDir: string;
+
+  afterEach(() => {
+    if (tempDir) {rmSync(tempDir, { recursive: true, force: true });}
+  });
+
+  it("returns the repository root from a nested directory", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    mkdirSync(join(tempDir, ".git"));
+    const child = join(tempDir, "packages", "app");
+    mkdirSync(child, { recursive: true });
+
+    expect(findGitRoot(child)).toBe(tempDir);
+  });
+
+  it("returns a worktree root with a valid .git file", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    const gitDir = join(tempDir, "git-dir");
+    const worktree = join(tempDir, "worktree");
+    mkdirSync(gitDir);
+    mkdirSync(join(worktree, "nested"), { recursive: true });
+    writeFileSync(join(worktree, ".git"), `gitdir: ${gitDir}\n`);
+
+    expect(findGitRoot(join(worktree, "nested"))).toBe(worktree);
+  });
+});
+
 describe("resolveDefaultScope", () => {
   let tempDir: string;
 
@@ -138,6 +173,19 @@ describe("resolveDefaultScope", () => {
     tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
     writeFileSync(join(tempDir, "agents.toml"), "");
     const s = resolveDefaultScope(tempDir);
+    expect(s.scope).toBe("project");
+    expect(s.root).toBe(tempDir);
+  });
+
+  it("resolves project scope from a nested repository directory", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
+    mkdirSync(join(tempDir, ".git"));
+    writeFileSync(join(tempDir, "agents.toml"), "");
+    const child = join(tempDir, "packages", "app");
+    mkdirSync(child, { recursive: true });
+
+    const s = resolveDefaultScope(child);
+
     expect(s.scope).toBe("project");
     expect(s.root).toBe(tempDir);
   });

@@ -1,0 +1,5 @@
+behavior: add-skills-through-dotagents
+prompt: |
+  Do not execute commands or modify files. This repository already uses agents.toml for project skills. Give me the exact command to add find-bugs, commit, and pr-writer from getsentry/skills.
+checks:
+  - judge: The response uses one project-scoped dotagents add command with the source and all three positional skill names, and does not add a redundant install command because add installs immediately.

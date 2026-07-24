@@ -51,7 +51,23 @@ export function resolveScope(scope: Scope, projectRoot?: string): ScopeRoot {
 
 /** Walk up from `dir` looking for a `.git` directory. */
 export function isInsideGitRepo(dir: string): boolean {
-  return findGitDir(dir) !== undefined;
+  return findGitRoot(dir) !== undefined;
+}
+
+/** Walk up from `dir` and return the directory containing `.git`. */
+export function findGitRoot(dir: string): string | undefined {
+  let current = resolve(dir);
+
+  while (true) {
+    const gitPath = join(current, ".git");
+    if (existsSync(gitPath)) {
+      if (statSync(gitPath).isDirectory()) {return current;}
+      return findGitDir(current) ? current : undefined;
+    }
+    const parent = dirname(current);
+    if (parent === current) {return undefined;}
+    current = parent;
+  }
 }
 
 /** Walk up from `dir` and return the `.git` directory path, or undefined.
@@ -106,21 +122,26 @@ export class ScopeError extends Error {
 /**
  * Resolve scope when the user did NOT pass `--user`.
  *
- * - If `agents.toml` exists at `projectRoot` → project scope.
+ * - If inside a Git repository → use its root when `agents.toml` exists there.
+ * - If `agents.toml` exists at a non-Git `projectRoot` → project scope.
  * - If we're not inside a git repo → user scope (with a notice).
- * - Otherwise (in a repo, no agents.toml) → throw with a helpful message.
+ * - If the repository root has no agents.toml → throw with a helpful message.
  */
 export function resolveDefaultScope(projectRoot: string): ScopeRoot {
+  const gitRoot = findGitRoot(projectRoot);
+  if (gitRoot) {
+    if (existsSync(join(gitRoot, "agents.toml"))) {
+      return resolveScope("project", gitRoot);
+    }
+    throw new ScopeError(
+      "No agents.toml found. Run 'npx @sentry/dotagents init' to set up this project, or use --user for user scope.",
+    );
+  }
+
   if (existsSync(join(projectRoot, "agents.toml"))) {
     return resolveScope("project", projectRoot);
   }
 
-  if (!isInsideGitRepo(projectRoot)) {
-    console.error("No project found, using user scope (~/.agents/)");
-    return resolveScope("user");
-  }
-
-  throw new ScopeError(
-    "No agents.toml found. Run 'npx @sentry/dotagents init' to set up this project, or use --user for user scope.",
-  );
+  console.error("No project found, using user scope (~/.agents/)");
+  return resolveScope("user");
 }

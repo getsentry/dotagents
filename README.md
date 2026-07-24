@@ -31,7 +31,7 @@ npx @sentry/dotagents add getsentry/skills find-bugs code-review commit
 npx @sentry/dotagents add getsentry/skills --all
 ```
 
-This creates an `agents.toml` at your project root and an `agents.lock` tracking installed skills and subagents.
+This creates an `agents.toml` at your project root and an `agents.lock` tracking installed skills and subagents. Project commands discover that repository root when run from a subdirectory.
 
 After cloning a project that already has `agents.toml`, run `install` to fetch skills and subagents. Run it again to refresh managed local state:
 

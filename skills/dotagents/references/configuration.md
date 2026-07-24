@@ -1,48 +1,62 @@
-# Configuration (agents.toml)
+# Configuration Workflows
 
-See [config-schema.md](config-schema.md) for the complete schema reference.
+## Scope
 
-## Minimal Example
+Project scope discovers the Git repository root from the current directory, uses its `agents.toml`, and installs managed skills under `.agents/skills/`.
 
-```toml
-version = 1
-agents = ["claude"]
+User scope uses `~/.agents/agents.toml` and `~/.agents/skills/`:
 
-[[skills]]
-name = "find-bugs"
-source = "getsentry/skills"
+```bash
+npx --yes @sentry/dotagents@latest --user add getsentry/skills find-bugs
 ```
 
-## Skills
+User-scope commands create `~/.agents/agents.toml` automatically. Use project scope in a configured repository; use `--user` when the user asks for personal, global, or cross-project management.
 
-Each skill requires `name` and `source`. Optionally pin with `ref` or specify a subdirectory with `path`.
+`DOTAGENTS_HOME` overrides the user-scope directory.
+
+## Skill Sources
+
+| Format | Example |
+|--------|---------|
+| GitHub shorthand | `getsentry/skills` |
+| Pinned shorthand | `getsentry/skills@v1.0.0` |
+| GitHub/GitLab URL | `https://gitlab.com/group/repo` |
+| SSH URL | `git@github.com:owner/repo.git` |
+| Generic Git | `git:https://git.corp.example/team/skills` |
+| Well-known HTTPS catalog | `https://skills.example.com` |
+| Local project path | `path:./local-skills/review` |
+
+Shorthand uses `defaultRepositorySource = "github"` unless configured as `gitlab`.
+
+## Named Skills
+
+Prefer the CLI:
+
+```bash
+npx --yes @sentry/dotagents@latest add getsentry/skills find-bugs
+```
+
+Use direct configuration for an explicit non-standard source path:
 
 ```toml
 [[skills]]
-name = "find-bugs"
-source = "getsentry/skills"
-ref = "v1.0.0"
-path = "plugins/sentry-skills/skills/find-bugs"
+name = "review"
+source = "acme/agent-skills"
+path = "plugins/core/skills/review"
+ref = "v1.2.0"
 ```
 
-**Source formats:**
+Run `install` after direct edits.
 
-| Format | Example | Resolves to |
-|--------|---------|-------------|
-| GitHub shorthand | `getsentry/skills` | `https://github.com/getsentry/skills.git` |
-| GitHub pinned | `getsentry/skills@v1.0.0` | Same, checked out at `v1.0.0` |
-| GitHub HTTPS | `https://github.com/owner/repo` | URL used directly |
-| GitHub SSH | `git@github.com:owner/repo.git` | SSH clone |
-| GitLab HTTPS | `https://gitlab.com/group/repo` | URL used directly |
-| Git URL | `git:https://git.corp.dev/team/skills` | Any non-GitHub git remote |
-| Well-known HTTPS | `https://cli.sentry.dev` | HTTP source using `.well-known/skills/` |
-| Local | `path:./my-skills/custom` | Relative to project root |
+## Wildcard Skills
 
-**Skill name rules:** Must start with alphanumeric, contain only `[a-zA-Z0-9._-]`.
+Track all discovered skills from a source:
 
-### Wildcard Skills
+```bash
+npx --yes @sentry/dotagents@latest add getsentry/skills --all
+```
 
-Add all skills from a source with a single entry:
+Equivalent configuration:
 
 ```toml
 [[skills]]
@@ -51,156 +65,85 @@ source = "getsentry/skills"
 exclude = ["deprecated-skill"]
 ```
 
-During `install`, dotagents discovers all skills in the source and installs each one (except those in `exclude`). Each skill gets its own lockfile entry. Use `npx @sentry/dotagents add <source> --all` to create a wildcard entry from the CLI.
+New skills appearing in the source are discovered by later installs. Removing one wildcard-provided skill adds it to `exclude`.
 
 ## Trust
 
-Restrict which sources are allowed. Without a `[trust]` section, all sources are allowed.
+Without `[trust]`, sources are allowed for backward compatibility. Restricted teams can allow specific sources:
 
 ```toml
-# Allow all sources explicitly
-[trust]
-allow_all = true
-```
-
-```toml
-# Restrict to specific GitHub orgs and repos
 [trust]
 github_orgs = ["getsentry"]
 github_repos = ["external-org/specific-repo"]
-git_domains = ["git.corp.example.com"]
+git_domains = ["git.corp.example/team"]
 ```
 
-- GitHub sources match against `github_orgs` (by owner) or `github_repos` (exact owner/repo)
-- Git URL sources match against `git_domains` (supports domain path prefixes, e.g., `gitlab.com/myorg`)
-- Local `path:` sources are always allowed
-- A source passes if it matches any rule (org OR repo OR domain/path prefix)
+Use `trust add`, `trust remove`, and `trust list` for normal changes. Do not set `allow_all = true` merely to bypass an error.
 
-Trust is validated before any network operations in `add` and `install`.
-
-## MCP Servers
-
-Declare MCP servers that get written to each agent's config.
-
-```toml
-# Stdio transport
-[[mcp]]
-name = "github"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-github"]
-env = ["GITHUB_TOKEN"]
-
-# HTTP transport
-[[mcp]]
-name = "remote-api"
-url = "https://mcp.example.com/sse"
-headers = { Authorization = "Bearer token" }
-```
-
-MCP configs are written per-agent in the appropriate format:
-- Claude: `.mcp.json` (JSON)
-- Cursor: `.cursor/mcp.json` (JSON)
-- Codex: `.codex/config.toml` (TOML, shared with other Codex config)
-- VS Code: `.vscode/mcp.json` (JSON)
-- OpenCode: `.opencode/opencode.jsonc` (JSONC, shared)
-
-For OpenCode, dotagents reuses the first existing config from `.opencode/opencode.jsonc`, `.opencode/opencode.json`, `opencode.jsonc`, or `opencode.json`. If none exists, it creates `.opencode/opencode.jsonc`.
-
-## Hooks
-
-Declare hooks for agent tool events.
-
-```toml
-[[hooks]]
-event = "PreToolUse"
-matcher = "Bash"
-command = "my-lint-check"
-```
-
-**Supported events:** `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop`
-
-Hook configs are written per-agent:
-- Claude: `.claude/settings.json` (merged into existing file)
-- Cursor: `.cursor/hooks.json` (dedicated file, events mapped to Cursor equivalents)
-- VS Code: `.claude/settings.json` (same file as Claude)
-- Codex/OpenCode: not supported (warnings emitted during install/sync)
-
-**Cursor event mapping:**
-- `PreToolUse` -> `beforeShellExecution` + `beforeMCPExecution`
-- `PostToolUse` -> `afterFileEdit`
-- `UserPromptSubmit` -> `beforeSubmitPrompt`
-- `Stop` -> `stop`
-
-## Agents
-
-The `agents` array controls which agent tools get symlinks and configs.
+## Agents and Runtime Projection
 
 ```toml
 agents = ["claude", "cursor", "codex", "vscode", "opencode"]
 ```
 
-Each agent gets:
-- A `<agent-dir>/skills/` symlink pointing to `.agents/skills/` (Claude, Cursor)
-- Or native discovery from `.agents/skills/` (Codex, VS Code, OpenCode)
-- MCP server configs in the agent's config file
-- Hook configs (where supported)
+dotagents installs canonical skills once and writes or links each supported runtime surface. Do not manually copy managed skills into runtime-specific directories.
 
-## Scopes
+## MCP Servers
 
-### Project Scope (default)
-
-Operates on the current project. Requires `agents.toml` at the project root.
-
-### User Scope (`--user`)
-
-Operates on `~/.agents/` for skills shared across all projects. Override with `DOTAGENTS_HOME`.
-
-```bash
-npx @sentry/dotagents --user init
-npx @sentry/dotagents --user add getsentry/skills --all
+```toml
+[[mcp]]
+name = "github"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = ["GITHUB_TOKEN"]
 ```
 
-User-scope symlinks go to `~/.claude/skills/` and `~/.cursor/skills/`.
+```toml
+[[mcp]]
+name = "remote"
+url = "https://mcp.example.com/sse"
+headers = { Authorization = "Bearer ${TOKEN}" }
+env = ["TOKEN"]
+```
 
-When no `agents.toml` exists and you're not inside a git repo, dotagents falls back to user scope automatically.
+Prefer `mcp add`, `mcp remove`, and `mcp list` for normal mutations.
+
+## Hooks
+
+```toml
+[[hooks]]
+event = "PreToolUse"
+matcher = "Bash"
+command = "./scripts/check-command"
+```
+
+Supported events are `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, and `Stop`. Hooks are project-scoped.
+
+## Subagents
+
+```toml
+[[subagents]]
+name = "code-reviewer"
+source = "getsentry/agent-pack"
+path = "agents/code-reviewer.md"
+targets = ["claude", "codex", "opencode"]
+```
+
+`targets` defaults to configured agents. Runtime-specific behavior remains in native source artifacts.
 
 ## Minimum Release Age
-
-Use `minimum_release_age` to require git commits to age before install. The value is in minutes. Local and well-known HTTPS sources are not affected.
 
 ```toml
 minimum_release_age = 60
 minimum_release_age_exclude = ["getsentry/*"]
 ```
 
-Use `minimum_release_age_exclude` for trusted sources that can bypass the age gate.
+The age gate applies to Git commits. Local and well-known HTTPS skills are unaffected.
 
-## Gitignore
+## Generated State
 
-dotagents always manages gitignore. It generates `.agents/.gitignore` listing managed (remote) skills. In-place skills (`path:.agents/skills/...`) are never gitignored since they must be tracked in git.
-
-Two files are added to the root `.gitignore` during `init`:
-- `agents.lock` — tracks managed skills
-- `.agents/.gitignore` — excludes managed skill directories
-
-If these entries are missing, `install` and `sync` warn. Run `npx @sentry/dotagents doctor --fix` to add them.
-
-## Caching
-
-- Cache location: `~/.local/dotagents/` (override with `DOTAGENTS_STATE_DIR`)
-- Git sources use shallow clones and refresh on every install
-- Well-known HTTPS sources refresh after a 24-hour TTL
-
-## Troubleshooting
-
-**Skills not installing:**
-- Check `agents.toml` syntax with `npx @sentry/dotagents list`
-- Verify source is accessible (`git clone` the URL manually)
-- Check trust config if using restricted mode
-- Run `npx @sentry/dotagents doctor` to check project health
-
-**Symlinks broken:**
-- Run `npx @sentry/dotagents sync` to repair
-
-**Configuration issues:**
-- Run `npx @sentry/dotagents doctor --fix` to auto-repair gitignore and legacy config fields
+- `agents.lock` records managed skills and subagents; do not edit it.
+- `.agents/.gitignore` identifies managed local artifacts.
+- Managed skills are gitignored; in-place custom skills remain tracked.
+- `install` fetches and refreshes dependencies.
+- `sync` repairs local state without network resolution.

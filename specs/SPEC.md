@@ -24,7 +24,7 @@ Agent skills, MCP servers, hooks, and subagents are configured differently for e
 
 ## agents.toml
 
-The manifest file. Lives at the project root.
+The manifest file. Lives at the project root. Project commands walk up from the current directory to discover the Git repository root.
 
 ### Schema
 

@@ -411,7 +411,8 @@ Generated files include a dotagents header marker. `install` and `sync` update m
 
 ### Project Scope (default)
 
-Operates on the current project. Requires `agents.toml` at the project root.
+Operates on the current Git repository. Commands run from a subdirectory
+discover the repository root and use its `agents.toml`.
 Skills go to `.agents/skills/` and the lockfile goes to `agents.lock`.
 
 ### User Scope
