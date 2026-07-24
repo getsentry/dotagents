@@ -1,0 +1,5 @@
+behavior: configure-advanced-dependencies
+prompt: |
+  Do not execute commands or modify files. The review skill in acme/agent-skills lives at plugins/core/skills/review instead of a standard discovery location. Show the agents.toml entry and command needed to apply it.
+checks:
+  - judge: The response uses a named agents.toml skill entry with name `review`, source `acme/agent-skills`, and path `plugins/core/skills/review`, then applies it with dotagents install.

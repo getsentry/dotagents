@@ -1,0 +1,5 @@
+behavior: remove-skills-safely
+prompt: |
+  Do not execute commands or modify files. The code-review skill was installed through a wildcard dependency, but I do not want it in this project anymore. Tell me the safe removal workflow.
+checks:
+  - judge: The response uses dotagents remove and the wildcard exclusion flow so future installs do not restore the skill, and does not manually delete the installed directory or edit agents.lock.
