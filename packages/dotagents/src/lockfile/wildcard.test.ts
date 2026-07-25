@@ -28,6 +28,12 @@ describe("wildcardContainsLockedSkill", () => {
     expect(wildcardContainsLockedSkill(wildcard, "review", locked(resolvedPath))).toBe(expected);
   });
 
+  it("matches when wildcard path has a trailing slash", () => {
+    const trailing: WildcardSkillDependency = { ...wildcard, path: "skills/engineering/" };
+
+    expect(wildcardContainsLockedSkill(trailing, "review", locked())).toBe(true);
+  });
+
   it("retains legacy entries without resolved paths", () => {
     const legacy: LockedSkill = { source: "org/repo" };
 

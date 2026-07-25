@@ -300,7 +300,7 @@ Directory name matches take priority over frontmatter matches. Earlier base dire
 
 Additionally, the **marketplace format** is supported: `plugins/*/skills/<name>/SKILL.md` (requires `.claude-plugin/` marker directory).
 
-If discovery fails, the `path` field can be used as an explicit override:
+If named-skill discovery fails, the `path` field can be used as an explicit override:
 
 ```toml
 [[skills]]
@@ -308,6 +308,8 @@ name = "my-skill"
 source = "myorg/monorepo"
 path = "tools/agent-skills/my-skill"
 ```
+
+For wildcard skills (`name = "*"`), `path` instead selects an existing source subdirectory whose complete skill subtree is discovered recursively (not limited to conventional scan locations). Wildcard paths must remain inside the source root; missing paths and non-directories are rejected.
 
 #### `https://<domain>` -- well-known HTTP discovery
 

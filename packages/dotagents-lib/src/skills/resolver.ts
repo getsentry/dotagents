@@ -83,7 +83,7 @@ export interface ResolvedWellKnownSkill {
   source: string;
   /** Resolved HTTP URL */
   resolvedUrl: string;
-  /** Path within the cached source, when available. */
+  /** Path within the cached source, when discovered from a wildcard. */
   resolvedPath?: string;
   /** Absolute path to the cached skill directory */
   skillDir: string;
@@ -473,6 +473,11 @@ function isOutsideRoot(root: string, target: string): boolean {
   return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
 }
 
+/**
+ * Discover skills under an optional contained subdirectory.
+ * Scoped paths force recursive scanDirs ["."], remap results to
+ * source-root-relative paths, and reject lexical or symlink escapes.
+ */
 async function discoverWildcardScope(
   sourceRoot: string,
   path: string | undefined,

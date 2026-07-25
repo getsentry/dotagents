@@ -167,7 +167,7 @@ Subagent names must match `[a-z][a-z0-9-]*`, and duplicate names are rejected.
 | `resolved_ref` | Resolved Git ref |
 | `resolved_commit` | Informational installed commit SHA |
 
-Wildcard-expanded local skills record `resolved_path` for offline scope reconciliation. Subagents use the same Git resolution fields. Never edit the lockfile manually.
+Wildcard-expanded local and well-known skills record `resolved_path` for offline scope reconciliation. Subagents use the same Git resolution fields. Never edit the lockfile manually.
 
 ## Environment Variables
 

@@ -176,7 +176,7 @@ path = "skills/engineering"
 exclude = ["deprecated-skill"]
 ```
 
-When `path` is set, wildcard discovery is limited to that subdirectory and remains recursive. Wildcards are expanded during `install`; each discovered skill gets its source-relative path in the lockfile. `list` and offline `sync` use those paths to enforce the current scope. Legacy lock entries without `resolved_path` are retained until the next successful install refreshes their metadata.
+When `path` is set, it must name an existing contained source subdirectory; discovery walks that complete skill subtree recursively (not limited to conventional scan locations). Missing paths, non-directories, and escapes are rejected. Wildcards are expanded during `install`; each discovered skill gets its source-relative path in the lockfile. `list` and offline `sync` use those paths to enforce the current scope. Legacy lock entries without `resolved_path` are retained until the next successful install refreshes their metadata.
 
 ### MCP Servers
 
@@ -492,7 +492,7 @@ After cloning a repo, dotagents scans these locations for skills:
 
 Single-skill repos with SKILL.md at the root are supported — the skill name is derived from the frontmatter `name` field. Child-directory skills take priority over root-level SKILL.md when names conflict.
 
-For named skills, use `path` as an explicit override when auto-discovery does not find the skill. For wildcard skills, `path` selects the recursive discovery root.
+For named skills, use `path` as an explicit override when auto-discovery does not find the skill. For wildcard skills, `path` selects an existing source subdirectory and discovers its complete skill subtree recursively (not limited to conventional scan locations).
 
 A valid skill directory contains a `SKILL.md` file with YAML frontmatter:
 
@@ -536,7 +536,7 @@ resolved_commit = "fedcba9876543210fedcba9876543210fedcba98"
 | `resolved_ref` | Git sources (optional) | Resolved ref name (omitted for default branch) |
 | `resolved_commit` | Git sources (optional) | Full commit SHA that was installed. Informational only; install does not use it for locking. |
 
-Explicit local `path:` skills have `source` only. Wildcard-expanded local skills also record `resolved_path` so offline sync can enforce the configured path scope. Subagent entries use the same fields under `[subagents.<name>]`; `resolved_path` points to the subagent file inside a git source.
+Explicit local `path:` skills have `source` only. Wildcard-expanded local and well-known skills also record `resolved_path` so offline sync can enforce the configured path scope. Subagent entries use the same fields under `[subagents.<name>]`; `resolved_path` points to the subagent file inside a git source.
 
 ## Caching
 
