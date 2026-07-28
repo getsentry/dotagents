@@ -488,12 +488,13 @@ async function discoverWildcardScope(
   scanDirs: readonly string[] | undefined,
 ): Promise<ScopedDiscoveredSkill[]> {
   const root = resolve(sourceRoot);
-  const scopeDir = path ? resolve(root, path) : root;
+  const canonicalPath = path?.replaceAll("\\", "/");
+  const scopeDir = canonicalPath ? resolve(root, canonicalPath) : root;
   const scopePath = relative(root, scopeDir);
   if (isOutsideRoot(root, scopeDir)) {
     throw new ResolveError(`Wildcard path "${path}" resolves outside source root`);
   }
-  if (path) {
+  if (canonicalPath) {
     let scopeStat;
     try {
       scopeStat = await stat(scopeDir);
@@ -513,7 +514,7 @@ async function discoverWildcardScope(
 
   const pathPrefix = scopePath.split(sep).join("/");
   const discovered = await discoverAllSkills(scopeDir, {
-    scanDirs: path ? ["."] : scanDirs,
+    scanDirs: canonicalPath ? ["."] : scanDirs,
   });
   return discovered.map((skill) => {
     const resolvedPath = pathPrefix

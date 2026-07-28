@@ -1,4 +1,4 @@
-import { posix, sep } from "node:path";
+import { posix } from "node:path";
 import { sourcesMatch, stripTrailingSlashes } from "@sentry/dotagents-lib";
 import type { WildcardSkillDependency } from "../config/schema.js";
 import type { LockedSkill } from "./schema.js";
@@ -19,7 +19,7 @@ export function wildcardContainsLockedSkill(
   const resolvedPath = "resolved_path" in locked ? locked.resolved_path : undefined;
   if (!resolvedPath) {return true;}
 
-  const path = stripTrailingSlashes(posix.normalize(wildcard.path.split(sep).join("/")));
+  const path = stripTrailingSlashes(posix.normalize(wildcard.path.replaceAll("\\", "/")));
   if (path === ".") {return true;}
   return path !== "" && (resolvedPath === path || resolvedPath.startsWith(`${path}/`));
 }

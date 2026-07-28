@@ -381,6 +381,26 @@ describe("resolveWildcardSkills integration", () => {
     }
   });
 
+  it("normalizes backslash separators in wildcard paths", async () => {
+    const localSkills = join(projectRoot, "local-repo");
+    await mkdir(join(localSkills, "engineering", "review"), { recursive: true });
+    await writeFile(
+      join(localSkills, "engineering", "review", "SKILL.md"),
+      `---\nname: review\ndescription: Review skill\n---\n`,
+    );
+
+    const results = await resolveWildcardSkills(
+      { source: "path:local-repo", path: "engineering\\review", exclude: [] },
+      { stateDir, projectRoot },
+    );
+
+    expect(results.map((result) => result.name)).toEqual(["review"]);
+    expect(results[0]!.resolved.type).toBe("local");
+    if (results[0]!.resolved.type === "local") {
+      expect(results[0]!.resolved.resolvedPath).toBe("engineering/review");
+    }
+  });
+
   it("rejects wildcard paths outside the source root", async () => {
     await mkdir(join(projectRoot, "local-repo"), { recursive: true });
 

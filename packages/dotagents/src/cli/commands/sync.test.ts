@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { lstat, mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, sep } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runSync } from "./sync.js";
 import { runInstall } from "./install.js";
@@ -243,7 +243,7 @@ describe("runSync", () => {
     expect(existsSync(reviewDir)).toBe(true);
   });
 
-  it.runIf(sep === "/")("retains POSIX wildcard paths containing backslashes", async () => {
+  it("matches backslash wildcard paths against canonical lock paths", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "*"\nsource = "org/repo"\npath = "skills\\\\engineering"\n`,
@@ -257,7 +257,7 @@ describe("runSync", () => {
         review: {
           source: "org/repo",
           resolved_url: "https://github.com/org/repo.git",
-          resolved_path: "skills\\engineering/review",
+          resolved_path: "skills/engineering/review",
         },
       },
     });
