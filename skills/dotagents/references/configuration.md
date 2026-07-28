@@ -65,7 +65,17 @@ source = "getsentry/skills"
 exclude = ["deprecated-skill"]
 ```
 
-New skills appearing in the source are discovered by later installs. Removing one wildcard-provided skill adds it to `exclude`.
+To scope a Git/local wildcard, edit `agents.toml` directly:
+
+```toml
+[[skills]]
+name = "*"
+source = "getsentry/skills"
+path = "skills/engineering"
+exclude = ["deprecated-skill"]
+```
+
+Set `path` to an existing source subdirectory whose complete skill subtree is discovered recursively, without limiting discovery to conventional scan locations; use `"."` for the complete source root. It cannot escape the source root, and well-known sources do not support it. Each discovered skill records its source-relative path so `list` and offline `sync` can enforce the current scope. Legacy lock entries without path metadata remain selected until `install` refreshes them. New skills appearing in that scope are discovered by later installs. Removing one wildcard-provided skill adds it to `exclude`.
 
 ## Trust
 

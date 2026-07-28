@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import { isAbsolute, join, posix, relative, resolve, sep, win32 } from "node:path";
+import { realpath, stat } from "node:fs/promises";
 import {
   GITHUB_HTTPS_URL,
   GITHUB_SSH_URL,
@@ -19,6 +20,7 @@ import type { TrustPolicy } from "../trust/policy.js";
 export interface WildcardDependencyInput {
   source: string;
   ref?: string;
+  path?: string;
   exclude?: readonly string[];
 }
 
@@ -69,6 +71,8 @@ export interface ResolvedGitSkill {
 export interface ResolvedLocalSkill {
   type: "local";
   source: string;
+  /** Path within the local source root, when discovered from a wildcard. */
+  resolvedPath?: string;
   /** Absolute path to the skill directory */
   skillDir: string;
 }
@@ -458,22 +462,109 @@ export interface NamedResolvedSkill {
   resolved: ResolvedSkill;
 }
 
+interface ScopedDiscoveredSkill extends DiscoveredSkill {
+  skillDir: string;
+}
+
+function isOutsideRoot(root: string, target: string): boolean {
+  const path = relative(root, target);
+  return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
+}
+
+function escapesSourceRoot(path: string): boolean {
+  const posixPath = posix.normalize(path);
+  const windowsPath = win32.normalize(path);
+  return (
+    posixPath === ".." ||
+    posixPath.startsWith("../") ||
+    windowsPath === ".." ||
+    windowsPath.startsWith(`..${win32.sep}`)
+  );
+}
+
+async function discoverWildcardScope(
+  sourceRoot: string,
+  path: string | undefined,
+  scanDirs: readonly string[] | undefined,
+): Promise<ScopedDiscoveredSkill[]> {
+  const root = resolve(sourceRoot);
+  const canonicalPath = path?.replaceAll("\\", "/");
+  const scopeDir = canonicalPath ? resolve(root, canonicalPath) : root;
+  const scopePath = relative(root, scopeDir);
+  if (isOutsideRoot(root, scopeDir)) {
+    throw new ResolveError(`Wildcard path "${path}" resolves outside source root`);
+  }
+  if (canonicalPath) {
+    let scopeStat;
+    try {
+      scopeStat = await stat(scopeDir);
+    } catch (err) {
+      if (!(err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT")) {
+        throw err;
+      }
+      throw new ResolveError(`Wildcard path "${path}" does not exist in source`);
+    }
+    if (!scopeStat.isDirectory()) {
+      throw new ResolveError(`Wildcard path "${path}" is not a directory in source`);
+    }
+    if (isOutsideRoot(await realpath(root), await realpath(scopeDir))) {
+      throw new ResolveError(`Wildcard path "${path}" resolves outside source root`);
+    }
+  }
+
+  const pathPrefix = scopePath.split(sep).join("/");
+  const discovered = await discoverAllSkills(scopeDir, {
+    scanDirs: canonicalPath ? ["."] : scanDirs,
+  });
+  return discovered.map((skill) => {
+    const resolvedPath = pathPrefix
+      ? skill.path === "." ? pathPrefix : `${pathPrefix}/${skill.path}`
+      : skill.path;
+    return {
+      path: resolvedPath,
+      meta: skill.meta,
+      skillDir: join(scopeDir, skill.path),
+    };
+  });
+}
+
 /** Skill names must be safe for use in file paths. */
 export const VALID_SKILL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
 /**
- * Resolve a wildcard dependency: discover all skills from a source and return them.
- * Excludes are filtered out. Skill names are validated to prevent path traversal.
+ * Resolve a wildcard dependency, optionally restricting recursive discovery to
+ * a contained source subdirectory. Excludes are filtered out and skill names
+ * are validated before they are used as install paths.
  */
 export async function resolveWildcardSkills(
   dep: WildcardDependencyInput,
   opts: ResolveOpts,
 ): Promise<NamedResolvedSkill[]> {
+  if (dep.path === "") {
+    throw new ResolveError("Wildcard path must not be empty");
+  }
+  if (dep.path && (posix.isAbsolute(dep.path) || win32.parse(dep.path).root !== "")) {
+    throw new ResolveError("Wildcard path must be relative to the source root");
+  }
+  if (dep.path && escapesSourceRoot(dep.path)) {
+    throw new ResolveError(`Wildcard path "${dep.path}" resolves outside source root`);
+  }
+  if (dep.path) {
+    const source = applyDefaultRepositorySource(dep.source, opts.defaultRepositorySource);
+    if (parseSource(source).type === "well-known") {
+      throw new ResolveError("Wildcard path is not supported for well-known sources");
+    }
+  }
+
   const acquired = await acquireSkillSource(dep, opts);
   const excludeSet = new Set(dep.exclude);
 
   if (acquired.type === "local") {
-    const discovered = await discoverAllSkills(acquired.skillDir, { scanDirs: opts.scanDirs });
+    const discovered = await discoverWildcardScope(
+      acquired.skillDir,
+      dep.path,
+      opts.scanDirs,
+    );
     return discovered
       .filter(
         (d) =>
@@ -484,7 +575,8 @@ export async function resolveWildcardSkills(
         resolved: {
           type: "local" as const,
           source: dep.source,
-          skillDir: join(acquired.skillDir, d.path),
+          resolvedPath: dep.path ? d.path : undefined,
+          skillDir: d.skillDir,
         },
       }));
   }
@@ -494,10 +586,11 @@ export async function resolveWildcardSkills(
       return [];
     }
 
-    const cacheDir = acquired.cacheDir;
-    const discovered = await discoverAllSkills(cacheDir, {
-      scanDirs: opts.scanDirs,
-    });
+    const discovered = await discoverWildcardScope(
+      acquired.cacheDir,
+      dep.path,
+      opts.scanDirs,
+    );
     return discovered
       .filter(
         (d) => !excludeSet.has(d.meta.name) && VALID_SKILL_NAME.test(d.meta.name),
@@ -508,12 +601,16 @@ export async function resolveWildcardSkills(
           type: "well-known" as const,
           source: dep.source,
           resolvedUrl: acquired.resolvedUrl,
-          skillDir: join(cacheDir, d.path),
+          skillDir: d.skillDir,
         },
       }));
   }
 
-  const discovered = await discoverAllSkills(acquired.repoDir, { scanDirs: opts.scanDirs });
+  const discovered = await discoverWildcardScope(
+    acquired.repoDir,
+    dep.path,
+    opts.scanDirs,
+  );
 
   return discovered
     .filter(
@@ -528,7 +625,7 @@ export async function resolveWildcardSkills(
         resolvedPath: d.path,
         resolvedRef: acquired.resolvedRef,
         commit: acquired.commit,
-        skillDir: join(acquired.repoDir, d.path),
+        skillDir: d.skillDir,
       },
     }));
 }

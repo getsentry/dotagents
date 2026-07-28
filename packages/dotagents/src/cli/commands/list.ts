@@ -4,7 +4,7 @@ import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
-import { sourcesMatch } from "@sentry/dotagents-lib";
+import { wildcardContainsLockedSkill } from "../../lockfile/wildcard.js";
 import { existsSync } from "node:fs";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
@@ -43,11 +43,9 @@ export async function runList(opts: ListOptions): Promise<SkillStatus[]> {
   // For wildcard entries, expand from lockfile
   if (lockfile) {
     for (const wDep of wildcardDeps) {
-      const excludeSet = new Set(wDep.exclude);
       for (const [name, locked] of Object.entries(lockfile.skills)) {
-        if (!sourcesMatch(locked.source, wDep.source)) {continue;}
+        if (!wildcardContainsLockedSkill(wDep, name, locked)) {continue;}
         if (explicitNames.has(name)) {continue;}
-        if (excludeSet.has(name)) {continue;}
         if (skillEntries.has(name)) {continue;}
         skillEntries.set(name, { source: wDep.source, wildcard: wDep.source });
       }

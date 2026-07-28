@@ -24,3 +24,14 @@ describe("missing well-known index", () => {
     ).resolves.toEqual([]);
   });
 });
+
+describe("scoped well-known wildcard", () => {
+  it("rejects scoped well-known sources", async () => {
+    await expect(
+      resolveWildcardSkills(
+        { source: SOURCE, path: "engineering", exclude: [] },
+        { stateDir: STATE_DIR },
+      ),
+    ).rejects.toThrow(/not supported for well-known sources/);
+  });
+});

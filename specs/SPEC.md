@@ -153,10 +153,13 @@ Trust is checked before any network work in `dotagents add` for skills and `dota
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | Yes | Skill name. Must start with alphanumeric and contain only `[a-zA-Z0-9._-]`. |
+| `name` | Yes | Skill name. Use `"*"` for a wildcard; named skills must start with alphanumeric and contain only `[a-zA-Z0-9._-]`. |
 | `source` | Yes | Skill source. `owner/repo` (resolved via `defaultRepositorySource`), `owner/repo@ref`, GitHub/GitLab URLs, well-known `https://<domain>` sources, `git:<url>`, or `path:<relative>`. |
 | `ref` | No | Git ref (tag, branch, or SHA). Can also be specified inline as `owner/repo@ref`. Defaults to repo's default branch. |
-| `path` | No | Explicit subdirectory path to the skill within the repo. Only needed when automatic discovery fails. |
+| `path` | No | For named skills, the exact skill directory within a Git source. For Git and local wildcard sources, an existing source subdirectory whose complete skill subtree is discovered. Use `"."` for the complete source root. Wildcard paths must remain inside the source root. Well-known sources do not support `path`. |
+| `exclude` | No | Skill names omitted from wildcard discovery. Wildcard entries only. Defaults to `[]`. |
+
+Git wildcard entries and scoped local wildcard entries record their source-relative paths. `list` and offline `sync` use that metadata to enforce the current wildcard scope. Legacy lock entries without `resolved_path` remain selected until a successful install refreshes them.
 
 #### `[[mcp]]`
 
@@ -298,7 +301,7 @@ Directory name matches take priority over frontmatter matches. Earlier base dire
 
 Additionally, the **marketplace format** is supported: `plugins/*/skills/<name>/SKILL.md` (requires `.claude-plugin/` marker directory).
 
-If discovery fails, the `path` field can be used as an explicit override:
+If named-skill discovery fails, the `path` field can be used as an explicit override:
 
 ```toml
 [[skills]]
@@ -306,6 +309,8 @@ name = "my-skill"
 source = "myorg/monorepo"
 path = "tools/agent-skills/my-skill"
 ```
+
+For wildcard skills (`name = "*"`), `path` instead selects an existing Git or local source subdirectory whose complete skill subtree is discovered recursively (not limited to conventional scan locations). Use `path = "."` to recursively discover the complete source root. Wildcard paths must remain inside the source root; empty paths, missing paths, non-directories, and well-known sources are rejected.
 
 #### `https://<domain>` -- well-known HTTP discovery
 
@@ -393,7 +398,7 @@ source = "path:../shared-agents"
 |-------|-------------|-------------|
 | `source` | All | Original source specifier from agents.toml. |
 | `resolved_url` | Git and well-known sources | Resolved clone URL or HTTP base URL. |
-| `resolved_path` | Git sources | Subdirectory within the repo where the skill was discovered. |
+| `resolved_path` | Discovered skills | Path within the source where the skill was discovered. Recorded for Git sources and scoped wildcard-expanded local sources. |
 | `resolved_ref` | Git sources (optional) | The ref that was resolved (tag/branch name). Omitted when using default branch. |
 | `resolved_commit` | Git sources (optional) | Full 40-char commit SHA that was installed. **Informational only** — not used for resolution. The lockfile is not checked in, so this field must never be relied on for locking behavior. |
 

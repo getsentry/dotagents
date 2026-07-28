@@ -43,12 +43,17 @@ describe("writeLockfile + loadLockfile", () => {
       skills: {
         "my-skill": {
           source: "path:../shared/my-skill",
+          resolved_path: "engineering/my-skill",
         },
       },
     });
 
     const loaded = await loadLockfile(lockPath);
     expect(loaded!.skills["my-skill"]?.source).toBe("path:../shared/my-skill");
+    expect(loaded!.skills["my-skill"]).toEqual({
+      source: "path:../shared/my-skill",
+      resolved_path: "engineering/my-skill",
+    });
   });
 
   it("sorts skills alphabetically", async () => {
@@ -57,10 +62,10 @@ describe("writeLockfile + loadLockfile", () => {
       version: 1,
       skills: {
         "z-skill": {
-          source: "org/z-repo",
+          source: "path:z-skill",
         },
         "a-skill": {
-          source: "org/a-repo",
+          source: "path:a-skill",
         },
       },
     });

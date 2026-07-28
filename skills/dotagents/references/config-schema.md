@@ -53,7 +53,7 @@ path = "plugins/core/skills/find-bugs"
 | `name` | string | yes | Safe skill name matching `[a-zA-Z0-9][a-zA-Z0-9._-]*` |
 | `source` | string | yes | Repository, Git URL, HTTPS catalog, or local path |
 | `ref` | string | no | Git tag, branch, or commit |
-| `path` | string | no | Exact skill directory within the source |
+| `path` | string | no | Exact skill directory within a Git source |
 
 ## Wildcard Skills
 
@@ -62,6 +62,7 @@ path = "plugins/core/skills/find-bugs"
 name = "*"
 source = "getsentry/skills"
 ref = "v1.0.0"
+path = "skills/engineering"
 exclude = ["deprecated-skill"]
 ```
 
@@ -70,6 +71,7 @@ exclude = ["deprecated-skill"]
 | `name` | literal `"*"` | yes | Wildcard marker |
 | `source` | string | yes | Same source formats as named skills |
 | `ref` | string | no | Git tag, branch, or commit |
+| `path` | string | no | Existing contained recursive discovery root for Git/local sources; use `"."` for the complete root. Well-known sources are unsupported. |
 | `exclude` | string[] | no | Skill names to omit; defaults to `[]` |
 
 Only one wildcard entry per source is allowed.
@@ -161,11 +163,11 @@ Subagent names must match `[a-z][a-z0-9-]*`, and duplicate names are rejected.
 |-------|---------|
 | `source` | Original dependency source |
 | `resolved_url` | Resolved Git or HTTP source |
-| `resolved_path` | Skill path within the source |
+| `resolved_path` | Path within the source where the skill was discovered |
 | `resolved_ref` | Resolved Git ref |
 | `resolved_commit` | Informational installed commit SHA |
 
-Subagents use the same Git resolution fields. Never edit the lockfile manually.
+Scoped wildcard-expanded local skills record `resolved_path` for offline scope reconciliation. Subagents use the same Git resolution fields. Never edit the lockfile manually.
 
 ## Environment Variables
 

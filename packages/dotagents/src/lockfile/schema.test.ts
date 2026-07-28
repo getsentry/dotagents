@@ -25,6 +25,116 @@ describe("lockfileSchema", () => {
     }
   });
 
+  it("allows resolved paths for wildcard-expanded local skills", () => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        review: {
+          source: "path:local-skills",
+          resolved_path: "engineering/review",
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects empty resolved paths", () => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: { review: { source: "path:local-skills", resolved_path: "" } },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("does not reclassify malformed lock entries", () => {
+    const gitWithEmptyPath = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        review: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "",
+        },
+      },
+    });
+    const wellKnownWithPath = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        review: {
+          source: "https://skills.example.com",
+          resolved_url: "https://skills.example.com",
+          resolved_path: "review",
+        },
+      },
+    });
+    const localWithGitMetadata = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        review: {
+          source: "path:local-skills",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "review",
+        },
+      },
+    });
+
+    expect(gitWithEmptyPath.success).toBe(false);
+    expect(wellKnownWithPath.success).toBe(false);
+    expect(localWithGitMetadata.success).toBe(false);
+  });
+
+  it("retains legacy Git lock entries with malformed source strings", () => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        review: {
+          source: "org/repo@",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "review",
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("retains legacy well-known lock entries with malformed source strings", () => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        review: {
+          source: "org/repo@",
+          resolved_url: "https://skills.example.com",
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it.each([
+    "/absolute/review",
+    "C:\\absolute\\review",
+    "C:relative\\review",
+    "../outside/review",
+    "scope/../outside/review",
+  ])("rejects non-canonical resolved path %s", (resolvedPath) => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        review: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: resolvedPath,
+        },
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("rejects well-known-style subagent lock entries", () => {
     const result = lockfileSchema.safeParse({
       version: 1,

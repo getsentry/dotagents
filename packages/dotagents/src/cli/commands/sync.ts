@@ -4,9 +4,9 @@ import { readdir, rm } from "node:fs/promises";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
-import { normalizeSource } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
+import { wildcardContainsLockedSkill } from "../../lockfile/wildcard.js";
 import { addSkillToConfig } from "../../config/writer.js";
 import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
@@ -54,12 +54,12 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   );
   if (lockfile) {
     for (const [name, locked] of Object.entries(lockfile.skills)) {
-      const wildcardDep = config.skills.find(
-        (s): s is Extract<typeof s, { name: "*" }> =>
+      const wildcardDep = config.skills.some(
+        (s) =>
           isWildcardDep(s) &&
-          normalizeSource(s.source) === normalizeSource(locked.source),
+          wildcardContainsLockedSkill(s, name, locked),
       );
-      if (wildcardDep && !wildcardDep.exclude.includes(name)) {
+      if (wildcardDep) {
         declaredNames.add(name);
       }
     }

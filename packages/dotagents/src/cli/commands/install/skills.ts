@@ -109,7 +109,10 @@ function lockEntryForSkill(dep: SkillDependency, resolved: ResolvedSkill): Locke
       resolved_url: resolved.resolvedUrl,
     };
   }
-  return { source: dep.source };
+  return {
+    source: dep.source,
+    ...(resolved.resolvedPath ? { resolved_path: resolved.resolvedPath } : {}),
+  };
 }
 
 /** Resolves, copies, and prunes canonical skill directories for install. */
