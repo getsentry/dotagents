@@ -14,7 +14,7 @@ function sourceType(source: string): "git" | "local" | "well-known" | undefined 
 const resolvedPathSchema = z.string().min(1).refine(
   (path) =>
     !posix.isAbsolute(path) &&
-    !win32.isAbsolute(path) &&
+    win32.parse(path).root === "" &&
     posix.normalize(path) === path &&
     path !== ".." &&
     !path.startsWith("../"),
@@ -33,7 +33,13 @@ const lockedGitSkillSchema = z.object({
 const lockedGitSkillEntrySchema = lockedGitSkillSchema.extend({
   resolved_path: resolvedPathSchema,
 }).check(
-  z.refine((skill) => sourceType(skill.source) === "git", "Git lock entry requires a Git source"),
+  z.refine(
+    (skill) => {
+      const type = sourceType(skill.source);
+      return type === "git" || type === undefined;
+    },
+    "Git lock entry cannot use a local or well-known source",
+  ),
 );
 
 const lockedWellKnownSkillSchema = z.object({
@@ -42,8 +48,11 @@ const lockedWellKnownSkillSchema = z.object({
   resolved_path: z.never().optional(),
 }).check(
   z.refine(
-    (skill) => sourceType(skill.source) === "well-known",
-    "Well-known lock entry requires a well-known source",
+    (skill) => {
+      const type = sourceType(skill.source);
+      return type === "well-known" || type === undefined;
+    },
+    "Well-known lock entry cannot use a Git or local source",
   ),
 );
 
@@ -52,7 +61,13 @@ const lockedLocalSkillSchema = z.object({
   resolved_url: z.never().optional(),
   resolved_path: resolvedPathSchema.optional(),
 }).check(
-  z.refine((skill) => sourceType(skill.source) === "local", "Local lock entry requires a local source"),
+  z.refine(
+    (skill) => {
+      const type = sourceType(skill.source);
+      return type === "local" || type === undefined;
+    },
+    "Local lock entry cannot use a Git or well-known source",
+  ),
 );
 
 const lockedSkillSchema = z.union([

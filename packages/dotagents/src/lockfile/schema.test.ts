@@ -85,9 +85,39 @@ describe("lockfileSchema", () => {
     expect(localWithGitMetadata.success).toBe(false);
   });
 
+  it("retains legacy Git lock entries with malformed source strings", () => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        review: {
+          source: "org/repo@",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "review",
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("retains legacy well-known lock entries with malformed source strings", () => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        review: {
+          source: "org/repo@",
+          resolved_url: "https://skills.example.com",
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it.each([
     "/absolute/review",
     "C:\\absolute\\review",
+    "C:relative\\review",
     "../outside/review",
     "scope/../outside/review",
   ])("rejects non-canonical resolved path %s", (resolvedPath) => {

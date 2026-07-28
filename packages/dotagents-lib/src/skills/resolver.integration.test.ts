@@ -392,6 +392,15 @@ describe("resolveWildcardSkills integration", () => {
     ).rejects.toThrow(/resolves outside source root/);
   });
 
+  it("rejects Windows-style wildcard paths outside the source root", async () => {
+    await expect(
+      resolveWildcardSkills(
+        { source: "path:local-repo", path: "..\\outside", exclude: [] },
+        { stateDir, projectRoot },
+      ),
+    ).rejects.toThrow(/resolves outside source root/);
+  });
+
   it("rejects an empty wildcard path at the resolver boundary", async () => {
     await expect(
       resolveWildcardSkills(
@@ -402,7 +411,7 @@ describe("resolveWildcardSkills integration", () => {
   });
 
   it("rejects absolute wildcard paths at the resolver boundary", async () => {
-    for (const path of [join(projectRoot, "local-repo"), "C:\\skills"]) {
+    for (const path of [join(projectRoot, "local-repo"), "C:\\skills", "C:skills"]) {
       await expect(
         resolveWildcardSkills(
           { source: "path:local-repo", path, exclude: [] },

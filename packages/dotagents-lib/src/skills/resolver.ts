@@ -471,6 +471,17 @@ function isOutsideRoot(root: string, target: string): boolean {
   return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
 }
 
+function escapesSourceRoot(path: string): boolean {
+  const posixPath = posix.normalize(path);
+  const windowsPath = win32.normalize(path);
+  return (
+    posixPath === ".." ||
+    posixPath.startsWith("../") ||
+    windowsPath === ".." ||
+    windowsPath.startsWith(`..${win32.sep}`)
+  );
+}
+
 async function discoverWildcardScope(
   sourceRoot: string,
   path: string | undefined,
@@ -531,8 +542,11 @@ export async function resolveWildcardSkills(
   if (dep.path === "") {
     throw new ResolveError("Wildcard path must not be empty");
   }
-  if (dep.path && (posix.isAbsolute(dep.path) || win32.isAbsolute(dep.path))) {
+  if (dep.path && (posix.isAbsolute(dep.path) || win32.parse(dep.path).root !== "")) {
     throw new ResolveError("Wildcard path must be relative to the source root");
+  }
+  if (dep.path && escapesSourceRoot(dep.path)) {
+    throw new ResolveError(`Wildcard path "${dep.path}" resolves outside source root`);
   }
   if (dep.path) {
     const source = applyDefaultRepositorySource(dep.source, opts.defaultRepositorySource);

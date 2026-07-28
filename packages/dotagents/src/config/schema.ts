@@ -56,6 +56,18 @@ const skillSourceSchema = z.string().check(
 
 export type SkillSource = z.infer<typeof skillSourceSchema>;
 
+function isContainedRelativePath(path: string): boolean {
+  if (posix.isAbsolute(path) || win32.parse(path).root !== "") {return false;}
+  const posixPath = posix.normalize(path);
+  const windowsPath = win32.normalize(path);
+  return (
+    posixPath !== ".." &&
+    !posixPath.startsWith("../") &&
+    windowsPath !== ".." &&
+    !windowsPath.startsWith(`..${win32.sep}`)
+  );
+}
+
 /** Skill names must be safe for use in file paths: alphanumeric, dots, hyphens, underscores. */
 const skillNameSchema = z
   .string()
@@ -71,8 +83,8 @@ const wildcardSkillDependencySchema = z.object({
   path: z.string()
     .min(1, "Wildcard path must not be empty")
     .refine(
-      (path) => !posix.isAbsolute(path) && !win32.isAbsolute(path),
-      "Wildcard path must be relative to the source root",
+      isContainedRelativePath,
+      "Wildcard path must be contained within the source root",
     )
     .optional(),
   exclude: z.array(skillNameSchema).default([]),
