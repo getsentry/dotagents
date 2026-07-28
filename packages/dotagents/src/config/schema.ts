@@ -1,4 +1,5 @@
 import { z } from "zod/v4";
+import { posix, win32 } from "node:path";
 import {
   GITHUB_HTTPS_URL,
   GITHUB_SSH_URL,
@@ -67,7 +68,13 @@ const wildcardSkillDependencySchema = z.object({
   name: z.literal("*"),
   source: skillSourceSchema,
   ref: z.string().optional(),
-  path: z.string().optional(),
+  path: z.string()
+    .min(1, "Wildcard path must not be empty")
+    .refine(
+      (path) => !posix.isAbsolute(path) && !win32.isAbsolute(path),
+      "Wildcard path must be relative to the source root",
+    )
+    .optional(),
   exclude: z.array(skillNameSchema).default([]),
 });
 

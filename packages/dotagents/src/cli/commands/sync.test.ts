@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { lstat, mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { runSync } from "./sync.js";
 import { runInstall } from "./install.js";
@@ -187,7 +187,7 @@ describe("runSync", () => {
   it("prunes wildcard skills outside the configured path", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "*"\nsource = "org/repo"\npath = "skills/engineering"\n`,
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "org/repo"\npath = "skills/engineering/"\n`,
     );
     const deployDir = join(projectRoot, ".agents", "skills", "deploy");
     const notesDir = join(projectRoot, ".agents", "skills", "notes");
@@ -240,6 +240,31 @@ describe("runSync", () => {
 
     expect(result.pruned).toEqual([]);
     expect(result.adopted).toEqual([]);
+    expect(existsSync(reviewDir)).toBe(true);
+  });
+
+  it.runIf(sep === "/")("retains POSIX wildcard paths containing backslashes", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "org/repo"\npath = "skills\\\\engineering"\n`,
+    );
+    const reviewDir = join(projectRoot, ".agents", "skills", "review");
+    await mkdir(reviewDir, { recursive: true });
+    await writeFile(join(reviewDir, "SKILL.md"), SKILL_MD("review"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        review: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "skills\\engineering/review",
+        },
+      },
+    });
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.pruned).toEqual([]);
     expect(existsSync(reviewDir)).toBe(true);
   });
 

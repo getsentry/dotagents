@@ -146,14 +146,15 @@ targets = ["claude", "codex", "opencode"]
 
 ### Skills
 
-Each `[[skills]]` entry requires `name` and `source`. Optional fields: `ref` (git ref), `path` (subdirectory override).
+Each `[[skills]]` entry requires `name` and `source`. Optional fields include `ref` (git ref), `path` (Git named-skill override or Git/local wildcard scope), and wildcard-only `exclude`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | Yes | Skill name. Pattern: `^[a-zA-Z0-9][a-zA-Z0-9._-]*$`. Use `"*"` for wildcard. |
 | `source` | string | Yes | `owner/repo` (resolved via `defaultRepositorySource`), `owner/repo@ref`, `https://github.com/owner/repo`, `https://gitlab.com/group/repo`, `https://<domain>` (well-known), `git:<url>`, or `path:<relative>` |
 | `ref` | string | No | Git ref (tag, branch, or SHA). Also supported inline: `owner/repo@ref`. |
-| `path` | string | No | For named skills, the exact skill directory within the source. For wildcard skills, an existing source subdirectory whose complete skill subtree is discovered. Wildcard paths must remain inside the source root. |
+| `path` | string | No | For named skills, the exact skill directory within a Git source. For Git/local wildcards, an existing contained recursive discovery root; use `"."` for the complete source root. Well-known sources do not support `path`. |
+| `exclude` | string[] | No | Skill names omitted from wildcard discovery. Wildcard entries only. |
 
 Source formats:
 - `owner/repo` -- shorthand resolved by `defaultRepositorySource` (defaults to GitHub)
@@ -492,7 +493,7 @@ After cloning a repo, dotagents scans these locations for skills:
 
 Single-skill repos with SKILL.md at the root are supported — the skill name is derived from the frontmatter `name` field. Child-directory skills take priority over root-level SKILL.md when names conflict.
 
-For named skills, use `path` as an explicit override when auto-discovery does not find the skill. For wildcard skills, `path` selects an existing source subdirectory and discovers its complete skill subtree recursively (not limited to conventional scan locations).
+For named Git skills, use `path` as an explicit override when auto-discovery does not find the skill. For Git/local wildcards, `path` selects an existing source subdirectory and discovers its complete skill subtree recursively (not limited to conventional scan locations); use `path = "."` for the complete source root. Well-known sources do not support `path`.
 
 A valid skill directory contains a `SKILL.md` file with YAML frontmatter:
 
@@ -532,11 +533,11 @@ resolved_commit = "fedcba9876543210fedcba9876543210fedcba98"
 |-------|-------------|-------------|
 | `source` | All | Original source from `agents.toml` |
 | `resolved_url` | Git and well-known sources | Resolved git clone URL or HTTP base URL |
-| `resolved_path` | Discovered skills | Path within the source where the skill was found. Recorded for Git sources and wildcard-expanded local or well-known sources. |
+| `resolved_path` | Discovered skills | Path within the source where the skill was found. Recorded for Git sources and scoped wildcard-expanded local sources. |
 | `resolved_ref` | Git sources (optional) | Resolved ref name (omitted for default branch) |
 | `resolved_commit` | Git sources (optional) | Full commit SHA that was installed. Informational only; install does not use it for locking. |
 
-Explicit local `path:` skills have `source` only. Wildcard-expanded local and well-known skills also record `resolved_path` so offline sync can enforce the configured path scope. Subagent entries use the same fields under `[subagents.<name>]`; `resolved_path` points to the subagent file inside a git source.
+Explicit local `path:` skills and unscoped local wildcards have `source` only. Scoped local wildcards record `resolved_path` so offline sync can enforce the configured path scope. Subagent entries use the same fields under `[subagents.<name>]`; `resolved_path` points to the subagent file inside a git source.
 
 ## Caching
 

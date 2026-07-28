@@ -85,6 +85,24 @@ describe("agentsConfigSchema", () => {
     }
   });
 
+  it("rejects an empty wildcard path", () => {
+    const result = agentsConfigSchema.safeParse({
+      version: 1,
+      skills: [{ name: "*", source: "getsentry/skills", path: "" }],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it.each(["/", "C:\\skills"])("rejects absolute wildcard path %s", (path) => {
+    const result = agentsConfigSchema.safeParse({
+      version: 1,
+      skills: [{ name: "*", source: "getsentry/skills", path }],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("rejects invalid version", () => {
     expect(agentsConfigSchema.safeParse({ version: 2 }).success).toBe(false);
   });

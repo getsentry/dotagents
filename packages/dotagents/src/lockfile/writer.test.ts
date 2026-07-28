@@ -50,27 +50,9 @@ describe("writeLockfile + loadLockfile", () => {
 
     const loaded = await loadLockfile(lockPath);
     expect(loaded!.skills["my-skill"]?.source).toBe("path:../shared/my-skill");
-    expect(loaded!.skills["my-skill"]?.resolved_path).toBe("engineering/my-skill");
-  });
-
-  it("round-trips a lockfile with well-known resolved paths", async () => {
-    const lockPath = join(dir, "agents.lock");
-    await writeLockfile(lockPath, {
-      version: 1,
-      skills: {
-        review: {
-          source: "https://skills.example.com",
-          resolved_url: "https://skills.example.com",
-          resolved_path: "engineering/review",
-        },
-      },
-    });
-
-    const loaded = await loadLockfile(lockPath);
-    expect(loaded!.skills["review"]).toEqual({
-      source: "https://skills.example.com",
-      resolved_url: "https://skills.example.com",
-      resolved_path: "engineering/review",
+    expect(loaded!.skills["my-skill"]).toEqual({
+      source: "path:../shared/my-skill",
+      resolved_path: "engineering/my-skill",
     });
   });
 
@@ -80,10 +62,10 @@ describe("writeLockfile + loadLockfile", () => {
       version: 1,
       skills: {
         "z-skill": {
-          source: "org/z-repo",
+          source: "path:z-skill",
         },
         "a-skill": {
-          source: "org/a-repo",
+          source: "path:a-skill",
         },
       },
     });

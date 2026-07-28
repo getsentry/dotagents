@@ -107,7 +107,6 @@ function lockEntryForSkill(dep: SkillDependency, resolved: ResolvedSkill): Locke
     return {
       source: dep.source,
       resolved_url: resolved.resolvedUrl,
-      ...(resolved.resolvedPath ? { resolved_path: resolved.resolvedPath } : {}),
     };
   }
   return {

@@ -1,4 +1,4 @@
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, posix, relative, resolve, sep, win32 } from "node:path";
 import { realpath, stat } from "node:fs/promises";
 import {
   GITHUB_HTTPS_URL,
@@ -83,8 +83,6 @@ export interface ResolvedWellKnownSkill {
   source: string;
   /** Resolved HTTP URL */
   resolvedUrl: string;
-  /** Path within the cached source, when discovered from a wildcard. */
-  resolvedPath?: string;
   /** Absolute path to the cached skill directory */
   skillDir: string;
 }
@@ -473,11 +471,6 @@ function isOutsideRoot(root: string, target: string): boolean {
   return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
 }
 
-/**
- * Discover skills under an optional contained subdirectory.
- * Scoped paths force recursive scanDirs ["."], remap results to
- * source-root-relative paths, and reject lexical or symlink escapes.
- */
 async function discoverWildcardScope(
   sourceRoot: string,
   path: string | undefined,
@@ -493,7 +486,10 @@ async function discoverWildcardScope(
     let scopeStat;
     try {
       scopeStat = await stat(scopeDir);
-    } catch {
+    } catch (err) {
+      if (!(err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT")) {
+        throw err;
+      }
       throw new ResolveError(`Wildcard path "${path}" does not exist in source`);
     }
     if (!scopeStat.isDirectory()) {
@@ -532,6 +528,19 @@ export async function resolveWildcardSkills(
   dep: WildcardDependencyInput,
   opts: ResolveOpts,
 ): Promise<NamedResolvedSkill[]> {
+  if (dep.path === "") {
+    throw new ResolveError("Wildcard path must not be empty");
+  }
+  if (dep.path && (posix.isAbsolute(dep.path) || win32.isAbsolute(dep.path))) {
+    throw new ResolveError("Wildcard path must be relative to the source root");
+  }
+  if (dep.path) {
+    const source = applyDefaultRepositorySource(dep.source, opts.defaultRepositorySource);
+    if (parseSource(source).type === "well-known") {
+      throw new ResolveError("Wildcard path is not supported for well-known sources");
+    }
+  }
+
   const acquired = await acquireSkillSource(dep, opts);
   const excludeSet = new Set(dep.exclude);
 
@@ -551,7 +560,7 @@ export async function resolveWildcardSkills(
         resolved: {
           type: "local" as const,
           source: dep.source,
-          resolvedPath: d.path,
+          resolvedPath: dep.path ? d.path : undefined,
           skillDir: d.skillDir,
         },
       }));
@@ -577,7 +586,6 @@ export async function resolveWildcardSkills(
           type: "well-known" as const,
           source: dep.source,
           resolvedUrl: acquired.resolvedUrl,
-          resolvedPath: d.path,
           skillDir: d.skillDir,
         },
       }));

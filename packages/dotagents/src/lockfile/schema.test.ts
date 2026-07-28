@@ -39,6 +39,72 @@ describe("lockfileSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("rejects empty resolved paths", () => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: { review: { source: "path:local-skills", resolved_path: "" } },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("does not reclassify malformed lock entries", () => {
+    const gitWithEmptyPath = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        review: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "",
+        },
+      },
+    });
+    const wellKnownWithPath = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        review: {
+          source: "https://skills.example.com",
+          resolved_url: "https://skills.example.com",
+          resolved_path: "review",
+        },
+      },
+    });
+    const localWithGitMetadata = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        review: {
+          source: "path:local-skills",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "review",
+        },
+      },
+    });
+
+    expect(gitWithEmptyPath.success).toBe(false);
+    expect(wellKnownWithPath.success).toBe(false);
+    expect(localWithGitMetadata.success).toBe(false);
+  });
+
+  it.each([
+    "/absolute/review",
+    "C:\\absolute\\review",
+    "../outside/review",
+    "scope/../outside/review",
+  ])("rejects non-canonical resolved path %s", (resolvedPath) => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        review: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: resolvedPath,
+        },
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("rejects well-known-style subagent lock entries", () => {
     const result = lockfileSchema.safeParse({
       version: 1,

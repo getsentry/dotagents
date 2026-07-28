@@ -348,6 +348,9 @@ describe("resolveWildcardSkills integration", () => {
     expect(results).toHaveLength(1);
     expect(results[0]!.name).toBe("my-skill");
     expect(results[0]!.resolved.type).toBe("local");
+    if (results[0]!.resolved.type === "local") {
+      expect(results[0]!.resolved.resolvedPath).toBeUndefined();
+    }
   });
 
   it("scopes wildcard discovery within a local source", async () => {
@@ -370,10 +373,12 @@ describe("resolveWildcardSkills integration", () => {
 
     expect(results.map((result) => result.name)).toEqual(["review"]);
     expect(results[0]!.resolved.type).toBe("local");
-    expect(results[0]!.resolved.resolvedPath).toBe("engineering/review");
-    expect(results[0]!.resolved.skillDir).toBe(
-      join(localSkills, "engineering", "review"),
-    );
+    if (results[0]!.resolved.type === "local") {
+      expect(results[0]!.resolved.resolvedPath).toBe("engineering/review");
+      expect(results[0]!.resolved.skillDir).toBe(
+        join(localSkills, "engineering", "review"),
+      );
+    }
   });
 
   it("rejects wildcard paths outside the source root", async () => {
@@ -385,6 +390,26 @@ describe("resolveWildcardSkills integration", () => {
         { stateDir, projectRoot },
       ),
     ).rejects.toThrow(/resolves outside source root/);
+  });
+
+  it("rejects an empty wildcard path at the resolver boundary", async () => {
+    await expect(
+      resolveWildcardSkills(
+        { source: "path:local-repo", path: "", exclude: [] },
+        { stateDir, projectRoot },
+      ),
+    ).rejects.toThrow(/must not be empty/);
+  });
+
+  it("rejects absolute wildcard paths at the resolver boundary", async () => {
+    for (const path of [join(projectRoot, "local-repo"), "C:\\skills"]) {
+      await expect(
+        resolveWildcardSkills(
+          { source: "path:local-repo", path, exclude: [] },
+          { stateDir, projectRoot },
+        ),
+      ).rejects.toThrow(/must be relative/);
+    }
   });
 
   it("rejects a wildcard path that does not exist", async () => {
@@ -408,6 +433,18 @@ describe("resolveWildcardSkills integration", () => {
         { stateDir, projectRoot },
       ),
     ).rejects.toThrow(/is not a directory in source/);
+  });
+
+  it.runIf(process.platform !== "win32")("preserves non-ENOENT path errors", async () => {
+    await mkdir(join(projectRoot, "local-repo"), { recursive: true });
+    await writeFile(join(projectRoot, "local-repo", "skill.txt"), "not a directory");
+
+    await expect(
+      resolveWildcardSkills(
+        { source: "path:local-repo", path: "skill.txt/child", exclude: [] },
+        { stateDir, projectRoot },
+      ),
+    ).rejects.toMatchObject({ code: "ENOTDIR" });
   });
 
   it("rejects a wildcard path symlinked outside the source root", async () => {
