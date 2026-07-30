@@ -49,6 +49,18 @@ export async function ensureSkillsSymlink(
   // Real directory - migrate contents then replace with symlink
   if (stat.isDirectory()) {
     const migrated = await migrateDirectory(skillsLink, skillsSource);
+    // migrateDirectory *moves* every entry it can, so whatever is still here
+    // is what it had to skip: a name already taken under skillsSource. The
+    // recursive rm below would delete it, silently destroying a skill the user
+    // never agreed to lose — stop and let them resolve the collision instead.
+    const conflicts = await readdir(skillsLink);
+    if (conflicts.length > 0) {
+      throw new SymlinkError(
+        `Cannot replace ${skillsLink} with a symlink — these already exist in ` +
+          `${skillsSource}: ${conflicts.join(", ")}. Remove or rename them, ` +
+          `then run install again.`,
+      );
+    }
     await removeFromGitIndex(targetDir, "skills");
     await rm(skillsLink, { recursive: true });
     await symlink(relativeTarget, skillsLink);

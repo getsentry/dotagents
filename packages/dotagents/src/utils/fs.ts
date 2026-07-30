@@ -1,4 +1,5 @@
-import { isAbsolute, relative, resolve } from "node:path";
+import { resolve } from "node:path";
+import { isInsideDir } from "@sentry/dotagents-lib";
 
 const SKILL_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
@@ -12,8 +13,8 @@ export function managedSkillPath(skillsDir: string, name: string): string | null
   if (!SKILL_NAME_RE.test(name)) {return null;}
   const root = resolve(skillsDir);
   const target = resolve(root, name);
-  const rel = relative(root, target);
-  if (rel.length === 0 || rel.startsWith("..") || isAbsolute(rel)) {
+  // The skills root itself is not a managed skill path — only entries beneath it.
+  if (target === root || !isInsideDir(root, target)) {
     return null;
   }
   return target;

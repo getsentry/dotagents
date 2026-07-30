@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { stat } from "node:fs/promises";
+import { isInsideDir } from "../utils/fs.js";
 
 export class LocalSourceError extends Error {
   constructor(message: string) {
@@ -16,11 +17,10 @@ export async function resolveLocalSource(
   projectRoot: string,
   relativePath: string,
 ): Promise<string> {
-  const absRoot = resolve(projectRoot);
   const absPath = resolve(projectRoot, relativePath);
 
-  // Prevent path traversal outside the project root
-  if (!absPath.startsWith(`${absRoot}/`) && absPath !== absRoot) {
+  // Prevent path traversal outside the project root.
+  if (!isInsideDir(projectRoot, absPath)) {
     throw new LocalSourceError(
       `Local source "${relativePath}" resolves outside project root`,
     );

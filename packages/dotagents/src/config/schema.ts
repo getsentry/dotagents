@@ -5,6 +5,7 @@ import {
   GITHUB_SSH_URL,
   GITLAB_HTTPS_URL,
   GITLAB_SSH_URL,
+  isAbsolutePathString,
   type RepositorySource,
 } from "@sentry/dotagents-lib";
 
@@ -25,13 +26,19 @@ export type { RepositorySource };
  *   git:https://...     -- non-GitHub git
  *   path:../relative    -- local filesystem
  */
-const GIT_URL_VALID = /^git:(https:\/\/|git:\/\/|ssh:\/\/|git@|file:\/\/|\/)/;
+// A `git:` value must name a known protocol or an absolute path — never a bare
+// relative path — so a leading `-` can never be forwarded to `git clone` as an
+// argument (injection guard). `isAbsolutePathString` covers POSIX (`/repo`) and
+// Windows drive (`C:\repo`) locals identically on every host, and is the same
+// predicate trust uses to classify a source as local, so what this layer admits
+// and what that layer can classify cannot drift apart.
+const GIT_SCHEME_VALID = /^(https:\/\/|git:\/\/|ssh:\/\/|git@|file:\/\/)/;
 
 const skillSourceSchema = z.string().check(
   z.refine((s) => {
     if (s.startsWith("git:")) {
-      // Require a valid protocol scheme or absolute path to prevent argument injection
-      return GIT_URL_VALID.test(s);
+      const url = s.slice(4);
+      return GIT_SCHEME_VALID.test(url) || isAbsolutePathString(url);
     }
     if (s.startsWith("path:")) {return true;}
     // GitHub HTTPS or SSH URLs
@@ -51,7 +58,7 @@ const skillSourceSchema = z.string().check(
       parts.length === 2 &&
       parts.every((p) => p.length > 0 && !p.startsWith("-"))
     );
-  }, "Must be owner/repo, owner/repo@ref, GitHub/GitLab URL, https://<domain> (well-known), git:<url> (with https/git/ssh protocol), or path:<relative>"),
+  }, "Must be owner/repo, owner/repo@ref, GitHub/GitLab URL, https://<domain> (well-known), git:<url> (https/git/ssh/file protocol or absolute path), or path:<relative>"),
 );
 
 export type SkillSource = z.infer<typeof skillSourceSchema>;

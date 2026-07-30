@@ -162,12 +162,23 @@ describe("agentsConfigSchema", () => {
       expect(parseSkill("git:/tmp/local-repo").success).toBe(true);
     });
 
+    it("accepts git: source with a Windows drive path", () => {
+      expect(parseSkill("git:C:\\Users\\me\\local-repo").success).toBe(true);
+      expect(parseSkill("git:C:/Users/me/local-repo").success).toBe(true);
+    });
+
     it("rejects git: source without protocol", () => {
       expect(parseSkill("git:--upload-pack=evil").success).toBe(false);
     });
 
     it("rejects git: source with bare relative path", () => {
       expect(parseSkill("git:relative/path").success).toBe(false);
+    });
+
+    it("rejects git: source with a drive-relative path (no separator)", () => {
+      // `C:evil` is drive-relative, not absolute — treat it like a bare
+      // relative path so a leading-dash payload can't sneak past the guard.
+      expect(parseSkill("git:C:relative").success).toBe(false);
     });
 
     it("accepts path: source", () => {

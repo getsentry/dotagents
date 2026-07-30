@@ -249,7 +249,10 @@ describe("installPostMergeHook", () => {
     expect(content).toContain("dotagents:post-merge");
   });
 
-  it("makes hook executable", async () => {
+  // Windows has no executable bit — chmod(0o755) is a no-op there and the mode
+  // always reads back 0. Nothing is broken: Git for Windows runs hooks through
+  // sh regardless. The property simply doesn't exist to assert.
+  it.skipIf(process.platform === "win32")("makes hook executable", async () => {
     await installPostMergeHook(gitDir);
 
     const stat = await lstat(join(gitDir, "hooks", "post-merge"));

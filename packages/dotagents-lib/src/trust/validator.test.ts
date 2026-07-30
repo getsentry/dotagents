@@ -141,6 +141,51 @@ describe("validateTrustedSource", () => {
     });
   });
 
+  describe("local filesystem git: sources", () => {
+    // These read files already on the user's disk — the same trust surface as
+    // `path:` — and expose no domain, so gating them on `git_domains` would
+    // make them impossible to allow at all.
+    const trust = makeTrust({ git_domains: ["git.corp.example.com"] });
+
+    it.each([
+      "git:/home/me/local-repo",
+      "git:C:\\Users\\me\\local-repo",
+      "git:C:/Users/me/local-repo",
+      "git:file:///home/me/local-repo",
+    ])("allows %s with no matching domain rule", (source) => {
+      expect(() => validateTrustedSource(source, trust)).not.toThrow();
+    });
+
+    it("still gates a file:// URL that names a host", () => {
+      expect(() =>
+        validateTrustedSource("git:file://evil.com/share/repo", trust),
+      ).toThrow(TrustError);
+    });
+
+    it.each([
+      // UNC is a remote host in absolute-path clothing: `git:` followed by
+      // `//server/...`, any longer run of leading separators, a host-empty
+      // `file:` URL whose path is UNC, and the backslash spelling. Letting any
+      // of these through the local bypass would reach SMB with no git_domains
+      // entry — on Windows, a credential-exposure vector.
+      "git://server/share/repo",
+      "git://///server/share/repo",
+      "git:file:////server/share/repo",
+      "git:\\\\server\\share\\repo",
+    ])("does not treat UNC path %s as local", (source) => {
+      expect(() => validateTrustedSource(source, trust)).toThrow(TrustError);
+    });
+
+    it("still gates remote sources and bare relative paths", () => {
+      expect(() =>
+        validateTrustedSource("git:https://evil.com/repo.git", trust),
+      ).toThrow(TrustError);
+      expect(() =>
+        validateTrustedSource("git:relative/path", trust),
+      ).toThrow(TrustError);
+    });
+  });
+
   describe("git_domains with path prefixes", () => {
     it("allows repos under a trusted domain path (https)", () => {
       const trust = makeTrust({ git_domains: ["gitlab.com/myorg"] });

@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, readFile, readlink, rm, writeFile, lstat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 
 const SKILL_MD = `---
 name: pdf
@@ -14,25 +14,23 @@ description: Test skill pdf
 
 describe("runInstall user scope", () => {
   let tmpDir: string | undefined;
-  const previousHome = process.env["HOME"];
-  const previousDotagentsHome = process.env["DOTAGENTS_HOME"];
-  const previousStateDir = process.env["DOTAGENTS_STATE_DIR"];
+  // USERPROFILE matters as much as HOME: on Windows `os.homedir()` reads
+  // USERPROFILE and ignores HOME, so overriding HOME alone leaves the target
+  // definitions pointing at the developer's real home.
+  const previousEnv = {
+    HOME: process.env["HOME"],
+    USERPROFILE: process.env["USERPROFILE"],
+    DOTAGENTS_HOME: process.env["DOTAGENTS_HOME"],
+    DOTAGENTS_STATE_DIR: process.env["DOTAGENTS_STATE_DIR"],
+  };
 
   afterEach(async () => {
-    if (previousHome === undefined) {
-      delete process.env["HOME"];
-    } else {
-      process.env["HOME"] = previousHome;
-    }
-    if (previousDotagentsHome === undefined) {
-      delete process.env["DOTAGENTS_HOME"];
-    } else {
-      process.env["DOTAGENTS_HOME"] = previousDotagentsHome;
-    }
-    if (previousStateDir === undefined) {
-      delete process.env["DOTAGENTS_STATE_DIR"];
-    } else {
-      process.env["DOTAGENTS_STATE_DIR"] = previousStateDir;
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
     }
     vi.resetModules();
 
@@ -50,8 +48,17 @@ describe("runInstall user scope", () => {
     const sourceDir = join(dotagentsHome, "skill-source", "pdf");
 
     process.env["HOME"] = homeDir;
+    process.env["USERPROFILE"] = homeDir;
     process.env["DOTAGENTS_HOME"] = dotagentsHome;
     process.env["DOTAGENTS_STATE_DIR"] = stateDir;
+
+    // Hard stop before anything touches the filesystem. The agent target
+    // definitions resolve user dirs from `os.homedir()` at module load, and
+    // runInstall *moves* an existing skills directory aside (rename) and then
+    // deletes it. If this sandbox ever fails again, that destroys the real
+    // ~/.claude/skills — fail the test instead of the developer's machine.
+    expect(homedir()).toBe(homeDir);
+
     vi.resetModules();
 
     const [{ runInstall }, { resolveScope }, { loadLockfile }] = await Promise.all([

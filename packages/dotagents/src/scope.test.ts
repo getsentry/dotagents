@@ -17,13 +17,16 @@ describe("resolveScope", () => {
   });
 
   it("project scope uses projectRoot", () => {
-    const s = resolveScope("project", "/tmp/my-project");
+    // Derived paths come from path.join, so build the expectations the same
+    // way — hardcoded "/" literals only hold on POSIX.
+    const root = "/tmp/my-project";
+    const s = resolveScope("project", root);
     expect(s.scope).toBe("project");
-    expect(s.root).toBe("/tmp/my-project");
-    expect(s.agentsDir).toBe("/tmp/my-project/.agents");
-    expect(s.configPath).toBe("/tmp/my-project/agents.toml");
-    expect(s.lockPath).toBe("/tmp/my-project/agents.lock");
-    expect(s.skillsDir).toBe("/tmp/my-project/.agents/skills");
+    expect(s.root).toBe(root);
+    expect(s.agentsDir).toBe(join(root, ".agents"));
+    expect(s.configPath).toBe(join(root, "agents.toml"));
+    expect(s.lockPath).toBe(join(root, "agents.lock"));
+    expect(s.skillsDir).toBe(join(root, ".agents", "skills"));
   });
 
   it("user scope uses ~/.agents by default", () => {
@@ -42,7 +45,7 @@ describe("resolveScope", () => {
     const s = resolveScope("user");
     expect(s.root).toBe("/tmp/fake-home");
     expect(s.agentsDir).toBe("/tmp/fake-home");
-    expect(s.skillsDir).toBe("/tmp/fake-home/skills");
+    expect(s.skillsDir).toBe(join("/tmp/fake-home", "skills"));
   });
 
   it("user scope: agentsDir equals root (flat layout)", () => {

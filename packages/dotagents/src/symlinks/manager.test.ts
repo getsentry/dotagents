@@ -5,6 +5,7 @@ import {
   mkdir,
   symlink,
   writeFile,
+  readFile,
   lstat,
   readlink,
   readdir,
@@ -40,7 +41,10 @@ describe("symlinks", () => {
       expect(stat.isSymbolicLink()).toBe(true);
 
       const linkTarget = await readlink(join(targetDir, "skills"));
-      expect(linkTarget).toBe("../.agents/skills");
+      // The link target comes from path.relative, so it uses the platform
+      // separator — `..\.agents\skills` on Windows, which readlink returns
+      // verbatim. verifySymlinks compares against the same computation.
+      expect(linkTarget).toBe(join("..", ".agents", "skills"));
     });
 
     it("creates symlink when target dir exists but skills/ does not", async () => {
@@ -75,7 +79,10 @@ describe("symlinks", () => {
       expect(result.created).toBe(true);
 
       const linkTarget = await readlink(join(targetDir, "skills"));
-      expect(linkTarget).toBe("../.agents/skills");
+      // The link target comes from path.relative, so it uses the platform
+      // separator — `..\.agents\skills` on Windows, which readlink returns
+      // verbatim. verifySymlinks compares against the same computation.
+      expect(linkTarget).toBe(join("..", ".agents", "skills"));
     });
 
     it("migrates existing real directory", async () => {
@@ -98,6 +105,35 @@ describe("symlinks", () => {
       // Verify symlink is now in place
       const stat = await lstat(join(targetDir, "skills"));
       expect(stat.isSymbolicLink()).toBe(true);
+    });
+
+    it("refuses to delete skills that collide with an existing managed skill", async () => {
+      const targetDir = join(dir, ".claude");
+      const realSkillsDir = join(targetDir, "skills");
+
+      // "pdf" exists on both sides, so it cannot be migrated...
+      await mkdir(join(realSkillsDir, "pdf"), { recursive: true });
+      await writeFile(join(realSkillsDir, "pdf", "SKILL.md"), "local copy\n");
+      await mkdir(join(agentsDir, "skills", "pdf"), { recursive: true });
+      await writeFile(
+        join(agentsDir, "skills", "pdf", "SKILL.md"),
+        "managed copy\n",
+      );
+      // ...while "other" is free to move.
+      await mkdir(join(realSkillsDir, "other"), { recursive: true });
+
+      await expect(
+        ensureSkillsSymlink(agentsDir, targetDir),
+      ).rejects.toThrow(/pdf/);
+
+      // Neither copy may be destroyed: the local one used to be deleted by the
+      // recursive rm after being skipped for migration.
+      expect(await readFile(join(realSkillsDir, "pdf", "SKILL.md"), "utf-8")).toBe(
+        "local copy\n",
+      );
+      expect(
+        await readFile(join(agentsDir, "skills", "pdf", "SKILL.md"), "utf-8"),
+      ).toBe("managed copy\n");
     });
 
     it("removes migrated files from git index", async () => {
