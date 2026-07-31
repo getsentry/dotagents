@@ -329,6 +329,7 @@ Status output:
 | GitLab SSH | `git@gitlab.com:group/repo.git` | GitLab over SSH |
 | Well-known HTTPS | `https://cli.sentry.dev` | HTTP source using .well-known skill discovery |
 | Local | `path:./my-skills/custom` | Local directory, relative to project root |
+| npm package | `npm:@acme/ui-kit/skills/upgrade` | Directory inside an installed npm package, resolved with Node module resolution (works with pnpm/hoisting/PnP; skills refresh whenever the dependency is updated) |
 
 <a id="configuration"></a>
 

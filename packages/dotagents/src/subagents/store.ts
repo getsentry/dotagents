@@ -9,6 +9,7 @@ import {
   loadMarkdownFrontmatter,
   parseSource,
   resolveLocalSource,
+  resolveNpmSource,
   sanitizeCacheKey,
   validateTrustedSource,
   type RepositorySource,
@@ -99,6 +100,12 @@ export async function resolveSubagent(
 
   if (parsed.type === "local") {
     const sourceDir = await resolveLocalSource(opts.projectRoot, parsed.path!);
+    const subagent = await loadSubagentFromSource(sourceDir, config);
+    return { type: "local", source: config.source, subagent };
+  }
+
+  if (parsed.type === "npm") {
+    const sourceDir = await resolveNpmSource(opts.projectRoot, parsed.path!);
     const subagent = await loadSubagentFromSource(sourceDir, config);
     return { type: "local", source: config.source, subagent };
   }

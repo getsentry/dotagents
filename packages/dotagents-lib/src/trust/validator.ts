@@ -120,7 +120,7 @@ function formatAllowed(trust: TrustPolicy): string {
  *
  * - No trust config → allow all (backward compat)
  * - allow_all = true → allow all
- * - Local path: sources → always allowed
+ * - Local path: and npm: sources → always allowed
  * - Otherwise → must match at least one rule (org, repo, or domain)
  */
 export function validateTrustedSource(
@@ -135,8 +135,10 @@ export function validateTrustedSource(
 
   const parsed = parseSource(source);
 
-  // Local sources are always allowed
-  if (parsed.type === "local") {return;}
+  // Local and npm sources are always allowed — both resolve to directories
+  // already on disk (npm packages are vetted by the package manager's own
+  // supply-chain controls at install time).
+  if (parsed.type === "local" || parsed.type === "npm") {return;}
 
   if (parsed.type === "github") {
     const owner = parsed.owner!.toLowerCase();
