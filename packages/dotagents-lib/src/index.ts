@@ -66,6 +66,11 @@ export {
 export type { CacheResult } from "./sources/cache.js";
 export { ensureWellKnownCached } from "./sources/wellknown.js";
 export { resolveLocalSource, LocalSourceError } from "./sources/local.js";
+export {
+  resolveNpmSource,
+  parseNpmSpecifier,
+  NpmSourceError,
+} from "./sources/npm.js";
 
 // Source-host primitives
 export {

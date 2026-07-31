@@ -10,6 +10,7 @@ import {
 import { ensureCached, sanitizeCacheKey } from "../sources/cache.js";
 import { ensureWellKnownCached } from "../sources/wellknown.js";
 import { resolveLocalSource } from "../sources/local.js";
+import { resolveNpmSource } from "../sources/npm.js";
 import { discoverSkill, discoverAllSkills, type DiscoveredSkill } from "./discovery.js";
 import { loadSkillMd } from "./loader.js";
 import { stripTrailingSlashes } from "../utils/fs.js";
@@ -92,6 +93,7 @@ export type ResolvedSkill = ResolvedGitSkill | ResolvedLocalSkill | ResolvedWell
 export function isExplicitSourceSpecifier(specifier: string): boolean {
   return (
     specifier.startsWith("path:") ||
+    specifier.startsWith("npm:") ||
     specifier.startsWith("git:") ||
     specifier.startsWith("http://") ||
     specifier.startsWith("https://") ||
@@ -169,7 +171,7 @@ export function applyDefaultRepositorySource(
  * Parse a source string into its components.
  */
 export function parseSource(source: string): {
-  type: "github" | "git" | "local" | "well-known";
+  type: "github" | "git" | "local" | "npm" | "well-known";
   url?: string;
   /** Original URL to use for cloning (preserves SSH/HTTPS protocol). Undefined for owner/repo shorthand. */
   cloneUrl?: string;
@@ -180,6 +182,10 @@ export function parseSource(source: string): {
 } {
   if (source.startsWith("path:")) {
     return { type: "local", path: source.slice(5) };
+  }
+
+  if (source.startsWith("npm:")) {
+    return { type: "npm", path: source.slice(4) };
   }
 
   if (source.startsWith("git:")) {
@@ -355,6 +361,14 @@ async function acquireSkillSource(
   if (parsed.type === "local") {
     const projectRoot = opts.projectRoot || process.cwd();
     const skillDir = await resolveLocalSource(projectRoot, parsed.path!);
+    return { type: "local", skillDir };
+  }
+
+  // npm packages resolve to an installed directory on disk; from here on they
+  // behave exactly like local sources.
+  if (parsed.type === "npm") {
+    const projectRoot = opts.projectRoot || process.cwd();
+    const skillDir = await resolveNpmSource(projectRoot, parsed.path!);
     return { type: "local", skillDir };
   }
 

@@ -87,6 +87,10 @@ name = "local"
 source = "path:./my-skills/local-skill"  # Local directory
 
 [[skills]]
+name = "ui-kit-upgrade"
+source = "npm:@acme/ui-kit/skills/upgrade" # Inside an installed npm package
+
+[[skills]]
 name = "*"
 source = "getsentry/skills"
 path = "skills/engineering"              # All skills under one subdirectory

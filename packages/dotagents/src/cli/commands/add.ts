@@ -16,6 +16,7 @@ import {
   discoverAllSkills,
   discoverSkill,
   resolveLocalSource,
+  resolveNpmSource,
   loadSkillMd,
   ensureCached,
   ensureWellKnownCached,
@@ -77,6 +78,13 @@ async function acquireSkills(
 ): Promise<AcquiredSkills> {
   if (parsed.type === "local") {
     const rootDir = await resolveLocalSource(scope.root, parsed.path!);
+    if (hasExplicitNames) {return { type: "catalog", rootDir };}
+    const meta = await loadSkillMd(join(rootDir, "SKILL.md"));
+    return { type: "root-skill", name: meta.name };
+  }
+
+  if (parsed.type === "npm") {
+    const rootDir = await resolveNpmSource(scope.root, parsed.path!);
     if (hasExplicitNames) {return { type: "catalog", rootDir };}
     const meta = await loadSkillMd(join(rootDir, "SKILL.md"));
     return { type: "root-skill", name: meta.name };

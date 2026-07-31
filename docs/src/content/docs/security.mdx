@@ -43,7 +43,9 @@ git_domains = ["git.corp.example.com"]
 | `github_repos` | Exact `owner/repo` match | `"external-org/one-approved-repo"` |
 | `git_domains` | Domain extracted from `git:` URLs | `"git.corp.example.com"` matches `git:https://git.corp.example.com/team/repo` |
 
-Local `path:` sources are always allowed regardless of trust configuration.
+Local `path:` and `npm:` sources are always allowed regardless of trust
+configuration — both resolve to directories already on disk (npm packages are
+vetted by your package manager's own supply-chain controls at install time).
 
 You can also manage trusted sources from the CLI instead of editing TOML
 directly:

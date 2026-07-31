@@ -5,7 +5,10 @@ import { parseSource } from "@sentry/dotagents-lib";
 function sourceType(source: string): "git" | "local" | "well-known" | undefined {
   try {
     const type = parseSource(source).type;
-    return type === "github" || type === "git" ? "git" : type;
+    if (type === "github" || type === "git") {return "git";}
+    // npm sources resolve to installed directories and lock like local sources.
+    if (type === "npm") {return "local";}
+    return type;
   } catch {
     return undefined;
   }

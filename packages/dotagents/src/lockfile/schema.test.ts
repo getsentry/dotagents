@@ -39,6 +39,19 @@ describe("lockfileSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("locks npm sources like local sources", () => {
+    const result = lockfileSchema.safeParse({
+      version: 1,
+      skills: {
+        "ui-kit-upgrade": {
+          source: "npm:@acme/ui-kit/skills/ui-kit-upgrade",
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it("rejects empty resolved paths", () => {
     const result = lockfileSchema.safeParse({
       version: 1,
