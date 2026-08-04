@@ -4,8 +4,9 @@ import cursor from "./definitions/cursor.js";
 import codex from "./definitions/codex.js";
 import vscode from "./definitions/vscode.js";
 import opencode from "./definitions/opencode.js";
+import augment from "./definitions/augment.js";
 
-const ALL_AGENTS: AgentDefinition[] = [claude, cursor, codex, vscode, opencode];
+const ALL_AGENTS: AgentDefinition[] = [claude, cursor, codex, vscode, opencode, augment];
 
 const AGENT_REGISTRY = new Map<string, AgentDefinition>(
   ALL_AGENTS.map((a) => [a.id, a]),

@@ -86,13 +86,13 @@ targets = ["claude", "codex", "opencode"]
 |-------|----------|-------------|
 | `version` | Yes | Schema version. Always `1`. |
 | `defaultRepositorySource` | No | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. Defaults to `github`. |
-| `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Defaults to `[]`. When set, dotagents creates skills symlinks and MCP config files for each agent. |
+| `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `vscode`, `opencode`, `augment`. Defaults to `[]`. When set, dotagents creates skills symlinks and MCP config files for each agent. |
 | `project` | No | Project metadata. |
 | `symlinks` | No | Symlink configuration (legacy — prefer `agents` for new projects). |
 | `skills` | No | Skill dependencies (array of tables). |
 | `mcp` | No | MCP server declarations (array of tables). Generates agent-specific config files during install/sync. |
 | `hooks` | No | Hook declarations (array of tables). Generates agent-specific hook config files during install/sync for agents that support hooks. |
-| `subagents` | No | Custom subagent declarations (array of tables). Generates runtime-specific subagent files during install/sync for Claude, Cursor, Codex, and OpenCode. |
+| `subagents` | No | Custom subagent declarations (array of tables). Generates runtime-specific subagent files during install/sync for Claude, Cursor, Codex, OpenCode, and Augment. |
 | `trust` | No | Trusted source restrictions. When absent, all sources allowed. See `[trust]` below. |
 | `minimum_release_age` | No | Minimum age in **minutes** a commit must have before it's eligible for install. Applies to all git skills (pinned and unpinned). For unpinned skills, resolves to the newest qualifying commit. For pinned skills (`ref`), rejects if the pinned commit is too new. Install fails with an error if no qualifying commit exists. When absent, always uses HEAD. |
 | `minimum_release_age_exclude` | No | Sources excluded from the age gate. Accepts org names (`"myorg"` matches all repos), org/repo (`"myorg/skills"` exact match), or org wildcards (`"myorg/*"`). Defaults to `[]`. |
@@ -200,7 +200,7 @@ When hooks are declared, install and sync compare the complete serialized hook r
 
 #### `[[subagents]]`
 
-Custom subagent dependencies. Each entry selects one subagent artifact from a source. dotagents imports the artifact into a portable subagent declaration, installs canonical managed Markdown into `.agents/agents/`, and writes generated runtime files for agents listed in `agents` that support custom subagents: Claude, Cursor, Codex, and OpenCode.
+Custom subagent dependencies. Each entry selects one subagent artifact from a source. dotagents imports the artifact into a portable subagent declaration, installs canonical managed Markdown into `.agents/agents/`, and writes generated runtime files for agents listed in `agents` that support custom subagents: Claude, Cursor, Codex, OpenCode, and Augment.
 
 Subagents are best-effort portable dependencies, not a universal behavior schema. dotagents preserves native artifacts for their matching runtime and converts only from the portable `name`, `description`, and instructions when the target runtime is different.
 
@@ -235,6 +235,7 @@ Generated paths:
 | Cursor | `.cursor/agents/<name>.md` | `~/.cursor/agents/<name>.md` | Markdown with YAML frontmatter |
 | Codex | `.codex/agents/<name>.toml` | `~/.codex/agents/<name>.toml` | TOML |
 | OpenCode | `.opencode/agents/<name>.md` | `~/.config/opencode/agents/<name>.md` | Markdown with YAML frontmatter |
+| Augment | `.augment/agents/<name>.md` | `~/.augment/agents/<name>.md` | Markdown with YAML frontmatter |
 
 #### Supported Agents
 
@@ -245,6 +246,7 @@ Generated paths:
 | `codex` | Codex | `.codex` | `.codex/config.toml` | TOML (shared) | `.codex/agents/*.toml` |
 | `vscode` | VS Code Copilot | `.vscode` | `.vscode/mcp.json` | JSON | Not supported |
 | `opencode` | OpenCode | `.opencode` | `.opencode/opencode.jsonc` | JSONC (shared) | `.opencode/agents/*.md` |
+| `augment` | Augment (Auggie) | `.augment` | `.augment/settings.json` | JSON (shared) | `.augment/agents/*.md` |
 
 OpenCode project MCP config resolution prefers existing files in this order: `.opencode/opencode.jsonc`, `.opencode/opencode.json`, `opencode.jsonc`, and `opencode.json`. If none exists, dotagents creates `.opencode/opencode.jsonc`. JSONC reconciliation preserves comments and trailing commas while updating declared MCP entries.
 

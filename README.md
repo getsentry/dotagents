@@ -10,7 +10,7 @@ Shared tooling for coding agents. Declare skills, MCP servers, hooks, and subage
 
 **Shareable.** Skills are directories with a `SKILL.md`. Host them in any git repo, discover them automatically, install with one command.
 
-**Multi-agent.** Configure Claude, Cursor, Codex, VS Code, and OpenCode from a single `agents.toml` -- skills, MCP servers, hooks, and subagents where supported. Pi reads `.agents/skills/` directly.
+**Multi-agent.** Configure Claude, Cursor, Codex, VS Code, OpenCode, and Augment from a single `agents.toml` -- skills, MCP servers, hooks, and subagents where supported. Pi reads `.agents/skills/` directly.
 
 ## Quick Start
 
@@ -101,7 +101,7 @@ Shorthand (`owner/repo`) resolves to GitHub by default. Set `defaultRepositorySo
 The `agents` field tells dotagents which tools to configure:
 
 ```toml
-agents = ["claude", "cursor", "codex", "opencode"]
+agents = ["claude", "cursor", "codex", "opencode", "augment"]
 ```
 
 | Agent | Config Dir | MCP Config | Hooks | Subagents |
@@ -111,6 +111,7 @@ agents = ["claude", "cursor", "codex", "opencode"]
 | `codex` | `.codex` | `.codex/config.toml` | -- | `.codex/agents/*.toml` |
 | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` | -- |
 | `opencode` | `.opencode` | `.opencode/opencode.jsonc` | -- | `.opencode/agents/*.md` |
+| `augment` | `.augment` | `.augment/settings.json` | -- | `.augment/agents/*.md` |
 
 For OpenCode, dotagents uses an existing config in this order: `.opencode/opencode.jsonc`, `.opencode/opencode.json`, `opencode.jsonc`, then `opencode.json`. New projects use `.opencode/opencode.jsonc`.
 

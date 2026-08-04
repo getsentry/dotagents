@@ -50,6 +50,16 @@ describe("writeSubagentConfigs", () => {
     expect(content).toContain("Review the current diff and return findings.");
   });
 
+  it("writes Augment markdown subagents", async () => {
+    await writeSubagentConfigs(["augment"], [SUBAGENT], projectSubagentResolver(dir));
+
+    const content = await readFile(join(dir, ".augment", "agents", "code-reviewer.md"), "utf-8");
+    expect(content).toContain(DOTAGENTS_SUBAGENT_MARKER);
+    expect(content).toContain('name: "code-reviewer"');
+    expect(content).toContain('description: "Review code for correctness and missing tests."');
+    expect(content).toContain("Review the current diff and return findings.");
+  });
+
   it("writes Cursor markdown subagents", async () => {
     await writeSubagentConfigs(["cursor"], [SUBAGENT], projectSubagentResolver(dir));
 

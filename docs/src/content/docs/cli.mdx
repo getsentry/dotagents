@@ -35,7 +35,7 @@ agents can discover CLI guidance. It then runs `install` best-effort.
 Options:
 
 - `--agents <list>` comma-separated agent targets (`claude`, `cursor`, `codex`,
-  `vscode`, `opencode`).
+  `vscode`, `opencode`, `augment`).
 - `--force` overwrites existing `agents.toml`.
 
 Examples:
@@ -339,8 +339,8 @@ Status output:
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `version` | integer | -- | Schema version. Always `1`. |
-| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `opencode` |
-| `subagents` | table[] | `[]` | Custom subagent declarations for Claude, Cursor, Codex, and OpenCode |
+| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `opencode`, `augment` |
+| `subagents` | table[] | `[]` | Custom subagent declarations for Claude, Cursor, Codex, OpenCode, and Augment |
 | `minimum_release_age` | integer | -- | Minimum commit age, in minutes, before a git skill can install. |
 | `minimum_release_age_exclude` | string[] | `[]` | Sources that bypass the minimum release age gate. Supports org names, `org/repo`, and `org/*`. |
 | `defaultRepositorySource` | string | `github` | Host used for shorthand `owner/repo` sources. Valid values: `github` or `gitlab`. |
@@ -404,6 +404,7 @@ Generated files:
 - Cursor: `.cursor/agents/<name>.md`
 - Codex: `.codex/agents/<name>.toml`
 - OpenCode: `.opencode/agents/<name>.md`
+- Augment: `.augment/agents/<name>.md`
 
 Generated files include a dotagents header marker. `install` and `sync` update managed files and do not overwrite hand-written files without the generated header marker. They also avoid creating duplicate runtime identities when an unmanaged file in the same agent directory already declares the same subagent. The deprecated `--frozen` option does not change this behavior.
 

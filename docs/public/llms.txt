@@ -139,8 +139,8 @@ targets = ["claude", "codex", "opencode"]
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version. Always `1`. |
 | `defaultRepositorySource` | string | No | `github` | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. |
-| `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `vscode`, `opencode`. Creates symlinks and config files for each. |
-| `subagents` | table[] | No | `[]` | Custom subagent declarations. Generates runtime-specific files for Claude, Cursor, Codex, and OpenCode. |
+| `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `vscode`, `opencode`, `augment`. Creates symlinks and config files for each. |
+| `subagents` | table[] | No | `[]` | Custom subagent declarations. Generates runtime-specific files for Claude, Cursor, Codex, OpenCode, and Augment. |
 | `minimum_release_age` | integer | No | -- | Minimum commit age, in minutes, before a git skill can install. |
 | `minimum_release_age_exclude` | string[] | No | `[]` | Sources that bypass the minimum release age gate. Supports org names, `org/repo`, and `org/*`. |
 
@@ -452,8 +452,9 @@ Check project health: gitignore setup, installed skills, symlinks, and legacy co
 | `codex` | Codex | `.codex` | (reads `.agents/skills/` natively) | `.codex/config.toml` | Not supported | `.codex/agents/*.toml` |
 | `vscode` | VS Code Copilot | `.vscode` | (reads `.agents/skills/` natively) | `.vscode/mcp.json` | `.claude/settings.json` | Not supported |
 | `opencode` | OpenCode | `.opencode` | (reads `.agents/skills/` natively) | `.opencode/opencode.jsonc` | Not supported | `.opencode/agents/*.md` |
+| `augment` | Augment (Auggie) | `.augment` | (reads `.agents/skills/` natively) | `.augment/settings.json` | Not supported | `.augment/agents/*.md` |
 
-Claude uses `.claude/skills/`, and Cursor shares the same Claude-compatible skills symlink. Codex, VS Code, OpenCode, and Pi read `.agents/skills/` directly.
+Claude uses `.claude/skills/`, and Cursor shares the same Claude-compatible skills symlink. Codex, VS Code, OpenCode, Augment, and Pi read `.agents/skills/` directly.
 
 [Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively. No agent target or symlink configuration needed.
 

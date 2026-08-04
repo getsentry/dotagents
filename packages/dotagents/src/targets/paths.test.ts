@@ -38,6 +38,13 @@ describe("getUserMcpTarget", () => {
     expect(t.shared).toBe(true);
   });
 
+  it("augment targets ~/.augment/settings.json (shared)", () => {
+    expect(getUserMcpTarget("augment")).toEqual({
+      filePath: join(home, ".augment", "settings.json"),
+      shared: true,
+    });
+  });
+
   it("throws for unknown agent", () => {
     expect(() => getUserMcpTarget("emacs")).toThrow("Unknown agent");
   });
@@ -104,6 +111,12 @@ describe("subagent paths", () => {
     const agent = getAgent("opencode")!;
     expect(agent.subagents?.projectDir).toBe(".opencode/agents");
     expect(agent.subagents?.userDir).toBe(join(home, ".config", "opencode", "agents"));
+  });
+
+  it("augment supports project and user subagents", () => {
+    const agent = getAgent("augment")!;
+    expect(agent.subagents?.projectDir).toBe(".augment/agents");
+    expect(agent.subagents?.userDir).toBe(join(home, ".augment", "agents"));
   });
 
   it("vscode does not support custom subagents", () => {

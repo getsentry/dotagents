@@ -83,6 +83,36 @@ describe("writeMcpConfigs", () => {
     });
   });
 
+  it("writes Augment MCP servers without replacing other settings", async () => {
+    const settingsPath = join(dir, ".augment", "settings.json");
+    await mkdir(dirname(settingsPath), { recursive: true });
+    await writeFile(settingsPath, JSON.stringify({
+      model: "sonnet4.5",
+      mcpServers: { manual: { command: "manual" } },
+    }));
+
+    await writeMcpConfigs(["augment"], [STDIO_SERVER, HTTP_SERVER], projectMcpResolver(dir));
+
+    const content = JSON.parse(await readFile(settingsPath, "utf-8"));
+    expect(content).toEqual({
+      model: "sonnet4.5",
+      mcpServers: {
+        manual: { command: "manual" },
+        github: {
+          type: "stdio",
+          command: "npx",
+          args: ["-y", "@mcp/server-github"],
+          env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
+        },
+        remote: {
+          type: "http",
+          url: "https://mcp.example.com/sse",
+          headers: { Authorization: "Bearer tok" },
+        },
+      },
+    });
+  });
+
   it("writes codex .codex/config.toml", async () => {
     await writeMcpConfigs(["codex"], [STDIO_SERVER], projectMcpResolver(dir));
 
