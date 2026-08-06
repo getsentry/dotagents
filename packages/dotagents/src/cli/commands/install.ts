@@ -33,6 +33,7 @@ export interface InstallOptions {
 
 export interface InstallResult {
   installed: string[];
+  installedPlugins: string[];
   pruned: string[];
   prunedPlugins: string[];
   mcpWarnings: { agent: string; message: string }[];
@@ -91,6 +92,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
 
   return {
     installed: skills.installed,
+    installedPlugins: plugins.plugins.map((plugin) => plugin.name),
     pruned: skills.pruned,
     prunedPlugins: plugins.pruned,
     mcpWarnings,
@@ -126,6 +128,11 @@ export default async function install(args: string[], flags?: { user?: boolean }
     if (result.pruned.length > 0) {
       console.log(
         chalk.yellow(`Pruned ${result.pruned.length} stale skill(s): ${result.pruned.join(", ")}`),
+      );
+    }
+    if (result.installedPlugins.length > 0) {
+      console.log(
+        chalk.green(`Installed ${result.installedPlugins.length} plugin(s): ${result.installedPlugins.join(", ")}`),
       );
     }
     if (result.prunedPlugins.length > 0) {

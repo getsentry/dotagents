@@ -25,7 +25,7 @@ files and repair behavior.
 - Claude validates the generated plugin and marketplace.
 - Codex adds the marketplace, lists the plugin as available, installs it, and
   lists it as enabled.
-- Grok Build runs `plugin list` and `plugin info` when its CLI is installed.
+- Grok Build runs `plugin list` and `plugin details` when its CLI is installed.
 
 Cursor remains covered by the all-target integration contract because its
 desktop CLI has no plugin validation or marketplace command. OpenCode resource

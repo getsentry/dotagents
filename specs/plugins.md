@@ -6,11 +6,11 @@ This document defines the target dotagents plugin model. It aligns the portable
 plugin bundle with the public [Agent Plugins specification](https://agent-plugins.org/)
 Working Draft v1.0.0 as reviewed on August 6, 2026.
 
-The implementation includes the first compatibility stage: it accepts Agent
-Plugins v1 manifests and MCP files, preserves the raw bundle, projects portable
-skills/MCP into generated native manifests, and continues accepting legacy
-generalized manifests and marketplace discovery. The migration section covers
-the remaining adapter work.
+The implementation includes a partial first compatibility stage: it accepts and
+normalizes Agent Plugins v1 manifests, validates MCP files, preserves portable
+source files, projects portable skills/MCP into generated native manifests, and
+continues accepting legacy generalized manifests and marketplace discovery.
+Per-server MCP recovery and client extension adapters remain follow-up work.
 
 ## Design Principle
 
@@ -105,9 +105,9 @@ reverse-domain client namespace. Client-specific files belong under a top-level
 directory with that exact namespace.
 
 dotagents must validate new manifests against the upstream schema instead of a
-Codex-derived union schema. Unknown top-level fields are reported and ignored
+Codex-derived union schema. Unknown top-level fields are ignored
 without invalidating an otherwise valid manifest. Other schema violations are
-fatal. A non-object `extensions` field is reported and ignored. Valid extension
+fatal. A non-object `extensions` field is ignored. Valid extension
 objects are preserved, and only the adapter registered for that namespace may
 interpret them.
 
@@ -361,12 +361,11 @@ review-tools/
         `-- review.mdc
 ```
 
-with `plugin.json` extension entries whose reverse-domain namespaces are
-registered to Claude, Cursor, and OpenCode adapters, an install for
+With the current adapters, an install for
 `targets = ["claude", "cursor", "codex", "opencode", "pi"]` produces:
 
 ```text
-.agents/plugins/review-tools/              # unchanged validated Agent Plugin
+.agents/plugins/review-tools/              # portable source files unchanged; managed adapter dirs added
 .claude-plugin/marketplace.json             # generated registration
 .agents/plugins/review-tools/.claude-plugin/plugin.json
 .cursor-plugin/marketplace.json             # generated registration
@@ -374,9 +373,15 @@ registered to Claude, Cursor, and OpenCode adapters, an install for
 .agents/plugins/marketplace.json             # generated Codex registration
 .agents/plugins/review-tools/.codex-plugin/plugin.json
 .opencode/skills/review                      # managed symlink
-.opencode/agents/reviewer.md                  # only from its registered namespace
-.opencode/opencode.jsonc                     # normalized plugin MCP if needed
 .agents/skills/review                        # managed Pi skill symlink
+```
+
+Future registered extension and flattened-MCP adapters may additionally
+produce client-owned resources such as:
+
+```text
+.opencode/agents/reviewer.md
+.opencode/opencode.jsonc
 ```
 
 Important consequences:
@@ -468,13 +473,15 @@ The current branch still needs follow-up implementation for:
 
 1. normalizing validated `mcp.json` servers into the shared MCP declaration
    model for clients that cannot consume the portable file directly,
-2. registering authoritative client extension namespaces and projecting their
+2. skipping invalid MCP servers independently while retaining valid siblings,
+3. registering authoritative client extension namespaces and projecting their
    client-owned resources,
-3. moving legacy `agents`, `commands`, `rules`, hooks, and other behavior into client
+4. moving legacy `agents`, `commands`, `rules`, hooks, and other behavior into client
    namespaces,
-4. removing canonical marketplace input assumptions from discovery,
-5. adding migration warnings for legacy plugin bundles, and
-6. adding persistent `PLUGIN_DATA` handling for flattened MCP adapters.
+5. removing canonical marketplace input assumptions from discovery,
+6. adding migration warnings for legacy plugin bundles, and
+7. reporting ignored standard manifest fields and malformed extensions, and
+8. adding persistent `PLUGIN_DATA` handling for flattened MCP adapters.
 
 ## Non-goals
 

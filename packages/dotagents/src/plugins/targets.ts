@@ -10,12 +10,10 @@ export function allPluginOnlyAgentIds(): string[] {
   return PLUGIN_ONLY_AGENT_IDS;
 }
 
-/** Returns runtime IDs that plugin declarations may target. */
 function allPluginAgentIds(): string[] {
   return PLUGIN_AGENT_IDS;
 }
 
-/** Filters plugins to those selected by configured agents and plugin targets. */
 export function selectPlugins(agentIds: string[], plugins: PluginDeclaration[]): PluginDeclaration[] {
   return plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).length > 0);
 }

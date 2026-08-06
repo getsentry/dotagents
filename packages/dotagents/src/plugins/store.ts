@@ -18,11 +18,13 @@ import type { LockedPlugin } from "../lockfile/schema.js";
 import {
   parsePluginManifest,
   parsePluginMarketplace,
+  isStandardPluginManifest,
   type MarketplacePluginEntry,
+  type LegacyPluginManifest,
   type PluginManifest,
 } from "./schema.js";
 
-// Owns plugin source discovery and installation into the project cache.
+// Owns plugin source discovery and installation into the canonical project tree.
 // Resolved sources are never allowed to live inside the same project's
 // `.agents/plugins` tree because installs replace managed destination dirs.
 export interface PluginResolveOptions {
@@ -197,14 +199,17 @@ export async function installPluginBundle(
 export async function loadInstalledPlugins(
   pluginsDir: string,
   configs: PluginConfig[],
-): Promise<{ plugins: PluginDeclaration[]; issues: string[] }> {
+): Promise<{ plugins: PluginDeclaration[]; issues: Array<{ name: string; issue: string }> }> {
   const plugins: PluginDeclaration[] = [];
-  const issues: string[] = [];
+  const issues: Array<{ name: string; issue: string }> = [];
 
   for (const config of configs) {
     const pluginDir = join(pluginsDir, config.name);
     if (!existsSync(pluginDir)) {
-      issues.push(`Plugin "${config.name}" is in agents.toml but not installed. Run 'npx @sentry/dotagents install'.`);
+      issues.push({
+        name: config.name,
+        issue: `Plugin "${config.name}" is in agents.toml but not installed. Run 'npx @sentry/dotagents install'.`,
+      });
       continue;
     }
     try {
@@ -220,7 +225,7 @@ export async function loadInstalledPlugins(
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      issues.push(`Failed to load installed plugin "${config.name}": ${message}`);
+      issues.push({ name: config.name, issue: `Failed to load installed plugin "${config.name}": ${message}` });
     }
   }
 
@@ -454,7 +459,7 @@ async function scanPluginDirectories(
 async function loadPluginCandidate(
   sourceRoot: string,
   pluginDir: string,
-  overlay: Partial<PluginManifest> = {},
+  overlay: Partial<LegacyPluginManifest> = {},
 ): Promise<PluginCandidate | null> {
   if (!existsSync(pluginDir)) {return null;}
   await assertInsideSourceRoot(sourceRoot, pluginDir, "Plugin source");
@@ -467,7 +472,9 @@ async function loadPluginCandidate(
     : typeof overlay["name"] === "string"
       ? String(overlay["name"])
       : basename(pluginDir);
-  const combined = normalizeManifest(name, { ...overlay, ...manifest });
+  const combined = manifest && isStandardPluginManifest(manifest)
+    ? manifest
+    : normalizeManifest(name, { ...overlay, ...manifest } as LegacyPluginManifest);
   return {
     dir: pluginDir,
     path: relativePath(sourceRoot, pluginDir),
@@ -477,8 +484,8 @@ async function loadPluginCandidate(
 
 function marketplaceManifestOverlay(
   entry: MarketplacePluginEntry,
-): Partial<PluginManifest> {
-  const overlay: Partial<PluginManifest> = { name: entry.name };
+): Partial<LegacyPluginManifest> {
+  const overlay: Partial<LegacyPluginManifest> = { name: entry.name };
   if (entry.description) {overlay.description = entry.description;}
   if (entry.version) {overlay.version = entry.version;}
   if (entry.category) {overlay.category = entry.category;}

@@ -17,7 +17,7 @@ import { reconcileHookConfigs, toHookDeclarations, projectHookResolver } from ".
 import { projectSubagentResolver, reconcileSubagentConfigs, userSubagentResolver } from "../../subagents/writer.js";
 import { loadInstalledSubagents, pruneInstalledSubagents } from "../../subagents/store.js";
 import { isInPlacePluginSource, isSameProjectPluginConfig, loadInstalledPlugins, pruneInstalledPlugins } from "../../plugins/store.js";
-import { projectedPiSkillNames, prunePluginOutputs, verifyPluginOutputs, writePluginOutputs } from "../../plugins/runtime/writer.js";
+import { projectedPiSkillNames, reconcilePluginOutputs, verifyPluginOutputs } from "../../plugins/runtime/writer.js";
 import { userMcpResolver } from "../../targets/paths.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
@@ -342,8 +342,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   let pluginIssues: Awaited<ReturnType<typeof verifyPluginOutputs>> = [];
 
   if (scope.scope === "project") {
-    const pluginResult = await writePluginOutputs(config.agents, pluginDecls, scope.root);
-    const prunedPluginOutputs = await prunePluginOutputs(
+    const { result: pluginResult, pruned: prunedPluginOutputs } = await reconcilePluginOutputs(
       config.agents,
       pluginDecls,
       scope.root,
@@ -364,8 +363,8 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   for (const issue of installedPluginResult.issues) {
     issues.push({
       type: "plugins",
-      name: "plugin",
-      message: issue,
+      name: issue.name,
+      message: issue.issue,
     });
   }
   for (const issue of pluginIssues) {

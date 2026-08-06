@@ -8,8 +8,7 @@ const agentPluginNameSchema = z.string().min(1).max(64).regex(
   "Agent Plugin names must use lowercase letters, numbers, hyphens, or dots, have alphanumeric ends, and not contain '--' or '..'",
 );
 
-// Canonical plugin wire schemas. Known fields are validated for path safety,
-// while passthrough preserves native runtime and future dotagents extensions.
+// Legacy manifest component paths are validated before runtime projection.
 export const pluginPathSchema = z.string().check(
   z.refine((value) => {
     if (value.length === 0) {return false;}
@@ -53,7 +52,7 @@ const standardPluginManifestSchema = z.object({
   license: z.string().min(1).optional(),
   keywords: z.array(z.string().min(1)).optional(),
   extensions: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
-}).passthrough();
+});
 
 const pluginPathOrPathsSchema = z.union([
   pluginPathSchema,
@@ -61,7 +60,6 @@ const pluginPathOrPathsSchema = z.union([
 ]);
 
 export const pluginManifestSchema = z.object({
-  $schema: z.string().optional(),
   name: z.string().optional(),
   version: z.string().optional(),
   description: z.string().optional(),
@@ -84,16 +82,20 @@ export const pluginManifestSchema = z.object({
   extensions: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
 }).passthrough();
 
-export type PluginManifest = z.infer<typeof pluginManifestSchema>;
+export type StandardPluginManifest = z.infer<typeof standardPluginManifestSchema>;
+export type LegacyPluginManifest = z.infer<typeof pluginManifestSchema> & { $schema?: never };
+export type PluginManifest = StandardPluginManifest | LegacyPluginManifest;
 
-export function isStandardPluginManifest(manifest: PluginManifest): boolean {
-  return manifest.$schema === AGENT_PLUGIN_SCHEMA;
+export function isStandardPluginManifest(manifest: PluginManifest): manifest is StandardPluginManifest {
+  return "$schema" in manifest && manifest.$schema === AGENT_PLUGIN_SCHEMA;
 }
 
 const pluginMcpStdioSchema = z.object({
   type: z.literal("stdio"),
   command: z.string().min(1).refine(
-    (value) => value.startsWith("./") || !/\s/.test(value),
+    (value) => value.startsWith("./")
+      ? pluginPathSchema.safeParse(value).success
+      : !/[\\/\s]/.test(value) && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value),
     "MCP stdio command must be one executable token or a plugin-relative ./ path",
   ),
   args: z.array(z.string()).optional(),
@@ -177,7 +179,22 @@ export function parsePluginManifest(
   filePath: string,
 ): PluginManifest {
   const isStandard = value !== null && typeof value === "object" && !Array.isArray(value) && "$schema" in value;
-  const parsed = (isStandard ? standardPluginManifestSchema : pluginManifestSchema).safeParse(value);
+  let input = value;
+  if (isStandard) {
+    const record = { ...(value as Record<string, unknown>) };
+    const extensions = record["extensions"];
+    if (extensions !== undefined && (extensions === null || typeof extensions !== "object" || Array.isArray(extensions))) {
+      delete record["extensions"];
+    } else if (extensions !== undefined) {
+      record["extensions"] = Object.fromEntries(
+        Object.entries(extensions).filter(([, extension]) => (
+          extension !== null && typeof extension === "object" && !Array.isArray(extension)
+        )),
+      );
+    }
+    input = record;
+  }
+  const parsed = (isStandard ? standardPluginManifestSchema : pluginManifestSchema).safeParse(input);
   if (!parsed.success) {
     throw new Error(`Invalid plugin manifest ${filePath}: ${parsed.error.message}`);
   }

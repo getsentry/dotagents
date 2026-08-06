@@ -1,17 +1,27 @@
-import type { PluginManifest } from "../schema.js";
+import { isStandardPluginManifest, type LegacyPluginManifest, type PluginManifest } from "../schema.js";
 
-/** Reads string-valued manifest fields for generated plugin projections. */
-export function manifestString(manifest: PluginManifest, key: string): string | undefined {
+export function manifestString(
+  manifest: PluginManifest,
+  key: "description" | "version",
+): string | undefined {
   const value = manifest[key];
   return typeof value === "string" ? value : undefined;
 }
 
-/** Normalizes manifest component paths to runtime-relative paths. */
+export function legacyManifestString(
+  manifest: PluginManifest,
+  key: "category",
+): string | undefined {
+  if (isStandardPluginManifest(manifest)) {return undefined;}
+  const value = (manifest as LegacyPluginManifest)[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+/** Formats an already validated plugin-relative component path. */
 export function runtimePath(value: string): string {
   return value.startsWith(".") ? value : `./${value}`;
 }
 
-/** Builds a human-readable display name from a plugin package name. */
 export function titleCase(value: string): string {
   return value
     .split(/[-.]/)

@@ -10,7 +10,7 @@ import {
   reconcileSubagentConfigs,
   userSubagentResolver,
 } from "../../../subagents/writer.js";
-import { prunePluginOutputs, writePluginOutputs } from "../../../plugins/runtime/writer.js";
+import { reconcilePluginOutputs } from "../../../plugins/runtime/writer.js";
 import type { PluginDeclaration } from "../../../plugins/store.js";
 import type { SubagentDeclaration } from "../../../subagents/types.js";
 
@@ -84,7 +84,6 @@ export async function writePluginRuntime(
   extraManagedPluginRoots: string[] = [],
 ): Promise<{ agent: string; name: string; message: string }[]> {
   if (scope.scope !== "project") {return [];}
-  const result = await writePluginOutputs(config.agents, plugins, scope.root);
-  await prunePluginOutputs(config.agents, plugins, scope.root, extraManagedPluginRoots);
+  const { result } = await reconcilePluginOutputs(config.agents, plugins, scope.root, extraManagedPluginRoots);
   return result.warnings;
 }

@@ -10,6 +10,7 @@ import { loadConfig } from "../../config/loader.js";
 vi.mock("./install.js", () => ({
   runInstall: vi.fn().mockResolvedValue({
     installed: [],
+    installedPlugins: [],
     pruned: [],
     prunedPlugins: [],
     mcpWarnings: [],

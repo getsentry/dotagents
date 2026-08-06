@@ -265,7 +265,9 @@ source = "path:plugin-source/portable-tools"
 `,
     );
 
-    await runInstall({ scope: resolveScope("project", projectRoot) });
+    const result = await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.installedPlugins).toEqual(["portable-tools"]);
 
     const installedDir = join(projectRoot, ".agents", "plugins", "portable-tools");
     expect(JSON.parse(await readFile(join(installedDir, "plugin.json"), "utf-8"))).toEqual(sourceManifest);
@@ -800,11 +802,18 @@ source = "path:plugin-source"
     expect(installed["description"]).toBe("Canonical plugin");
   });
 
-  it("does not copy marketplace-only fields into manifest outputs", async () => {
+  it("does not overlay marketplace fields onto standard manifests", async () => {
     const sourceRoot = join(projectRoot, "plugin-source");
     const pluginDir = join(sourceRoot, "plugins", "review-tools");
     await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
     await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    const sourceManifest = {
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+      description: "Source description",
+      version: "2.0.0",
+    };
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify(sourceManifest, null, 2));
     await writeFile(
       join(sourceRoot, "marketplace.json"),
       JSON.stringify({
@@ -843,12 +852,10 @@ source = "path:plugin-source"
       await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"), "utf-8"),
     ) as Record<string, unknown>;
 
-    expect(installedManifest).toMatchObject({
-      name: "review-tools",
-      description: "Marketplace description",
-      version: "1.0.0",
-      category: "Coding",
-    });
+    expect(installedManifest).toEqual(sourceManifest);
+    expect(codexManifest["description"]).toBe("Source description");
+    expect(codexManifest["version"]).toBe("2.0.0");
+    expect(codexManifest["category"]).toBeUndefined();
     expect(installedManifest["source"]).toBeUndefined();
     expect(installedManifest["policy"]).toBeUndefined();
     expect(installedManifest["x-marketplace"]).toBeUndefined();

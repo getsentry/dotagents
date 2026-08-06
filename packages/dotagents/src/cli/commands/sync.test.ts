@@ -390,6 +390,29 @@ source = "path:plugin-source/review-tools"
     ]);
   });
 
+  it("preserves plugin names for malformed installed bundle issues", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), "not json");
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.issues).toContainEqual({
+      type: "plugins",
+      name: "review-tools",
+      message: expect.stringContaining('Failed to load installed plugin "review-tools"'),
+    });
+  });
+
   it("reports no issues when everything is in sync", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -866,6 +889,42 @@ source = "path:plugin-source/review-tools"
     expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(true);
     expect(existsSync(join(projectRoot, ".claude-plugin", "marketplace.json"))).toBe(true);
     expect(existsSync(join(projectRoot, ".cursor-plugin", "marketplace.json"))).toBe(true);
+  });
+
+  it("prunes removed native manifests before refreshing a surviving Grok copy", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }));
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude", "grok"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runSync({ scope });
+    expect(existsSync(join(projectRoot, ".grok", "plugins", "review-tools", ".claude-plugin", "plugin.json"))).toBe(true);
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["grok"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+    await runSync({ scope });
+
+    expect(existsSync(join(pluginDir, ".claude-plugin", "plugin.json"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".grok", "plugins", "review-tools", ".claude-plugin", "plugin.json"))).toBe(false);
   });
 
   it("reports same-project plugins without generating runtime outputs", async () => {

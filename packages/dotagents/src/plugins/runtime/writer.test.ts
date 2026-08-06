@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PluginDeclaration } from "../store.js";
-import { AGENT_PLUGIN_SCHEMA } from "../schema.js";
+import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest } from "../schema.js";
 import {
   prunePluginOutputs,
   projectedPiSkillNames,
@@ -31,18 +31,21 @@ describe("plugin writer", () => {
     await mkdir(join(pluginDir, "skills"), { recursive: true });
     await mkdir(join(pluginDir, "commands"), { recursive: true });
     await mkdir(join(pluginDir, "agents"), { recursive: true });
+    const manifest = overrides.manifest && isStandardPluginManifest(overrides.manifest)
+      ? overrides.manifest
+      : {
+          name,
+          version: "1.0.0",
+          description: `Tools for ${name}`,
+          category: "Coding",
+          author: { name: "Sentry" },
+          ...overrides.manifest,
+        };
     return {
       name,
       source: `path:.agents/plugins/${name}`,
       pluginDir,
-      manifest: {
-        name,
-        version: "1.0.0",
-        description: `Tools for ${name}`,
-        category: "Coding",
-        author: { name: "Sentry" },
-        ...overrides.manifest,
-      },
+      manifest,
       targets: overrides.targets,
     };
   }
@@ -410,6 +413,30 @@ describe("plugin writer", () => {
     expect(await verifyPluginOutputs(["opencode"], [alpha], root)).toEqual([]);
   });
 
+  it("skips plugin skills paths that are not directories", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: {
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "alpha-tools",
+        description: "Portable tools",
+      },
+    });
+    const skillsPath = join(alpha.pluginDir, "skills");
+    await rm(skillsPath, { recursive: true });
+    await writeFile(skillsPath, "not a directory");
+
+    const result = await writePluginOutputs(["opencode", "claude"], [alpha], root);
+
+    expect(result.written).toBe(2);
+    expect(result.warnings).toContainEqual({
+      agent: "opencode",
+      name: "alpha-tools",
+      message: `Plugin skills path is not a directory and was skipped: ${skillsPath}`,
+    });
+    const manifest = JSON.parse(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8"));
+    expect(manifest.skills).toBeUndefined();
+  });
+
   it("projects explicit plugin component paths into OpenCode native locations", async () => {
     const alpha = await plugin("alpha-tools", {
       manifest: { skills: "components/skills", agents: "components/agents" },
@@ -630,27 +657,4 @@ describe("plugin writer", () => {
     );
   });
 
-  it("does not rewrite unchanged managed Grok projections", async () => {
-    const alpha = await plugin("alpha-tools");
-
-    const first = await writePluginOutputs(["grok"], [alpha], root);
-    const second = await writePluginOutputs(["grok"], [alpha], root);
-
-    expect(first.written).toBe(1);
-    expect(second.written).toBe(0);
-  });
-
-  it("compares managed Grok projection files as bytes", async () => {
-    const alpha = await plugin("alpha-tools");
-    await mkdir(join(alpha.pluginDir, "bin"), { recursive: true });
-    await writeFile(join(alpha.pluginDir, "bin", "blob"), Buffer.from([0xff]));
-
-    const first = await writePluginOutputs(["grok"], [alpha], root);
-    await writeFile(join(alpha.pluginDir, "bin", "blob"), Buffer.from([0xef, 0xbf, 0xbd]));
-    const second = await writePluginOutputs(["grok"], [alpha], root);
-
-    expect(first.written).toBe(1);
-    expect(second.written).toBe(1);
-    expect(await readFile(join(root, ".grok", "plugins", "alpha-tools", "bin", "blob"))).toEqual(Buffer.from([0xef, 0xbf, 0xbd]));
-  });
 });

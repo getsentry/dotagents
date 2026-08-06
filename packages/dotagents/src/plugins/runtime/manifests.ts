@@ -1,11 +1,12 @@
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { isStandardPluginManifest, parsePluginMcp, type PluginManifest } from "../schema.js";
+import { isStandardPluginManifest, parsePluginMcp, type LegacyPluginManifest, type PluginManifest } from "../schema.js";
 import type { PluginDeclaration } from "../store.js";
 import { DOTAGENTS_METADATA, isManagedJsonFile, stableJson, writeJsonIfChanged } from "./files.js";
 import {
   manifestString,
+  legacyManifestString,
   runtimePath,
   titleCase,
 } from "./manifest-values.js";
@@ -39,6 +40,16 @@ const COMPONENT_KEYS: ComponentManifestKey[] = [
 
 type ManifestAgent = "claude" | "cursor" | "codex";
 
+export const NATIVE_PLUGIN_MANIFEST_TARGETS: ReadonlyArray<{
+  agent: ManifestAgent;
+  label: string;
+  dir: string;
+}> = [
+  { agent: "claude", label: "Claude", dir: ".claude-plugin" },
+  { agent: "cursor", label: "Cursor", dir: ".cursor-plugin" },
+  { agent: "codex", label: "Codex", dir: ".codex-plugin" },
+];
+
 /** Writes selected native manifests with one shared validation pass. */
 export async function writePluginManifests(
   plugin: PluginDeclaration,
@@ -46,18 +57,9 @@ export async function writePluginManifests(
   warnings: PluginWriteWarning[],
 ): Promise<number> {
   const standardMcp = await validStandardMcp(plugin, warnings);
-  const specs: Array<{
-    agent: ManifestAgent;
-    label: string;
-    dir: string;
-    manifest: () => Record<string, unknown>;
-  }> = [
-    { agent: "claude", label: "Claude", dir: ".claude-plugin", manifest: () => claudeRuntimeManifest(plugin, warnings, standardMcp) },
-    { agent: "cursor", label: "Cursor", dir: ".cursor-plugin", manifest: () => cursorRuntimeManifest(plugin, warnings, standardMcp) },
-    { agent: "codex", label: "Codex", dir: ".codex-plugin", manifest: () => codexRuntimeManifest(plugin, warnings, standardMcp) },
-  ];
+  const standardSkills = isStandardPluginManifest(plugin.manifest) && await isDirectory(join(plugin.pluginDir, "skills"));
   let written = 0;
-  for (const spec of specs) {
+  for (const spec of NATIVE_PLUGIN_MANIFEST_TARGETS) {
     if (!agents.includes(spec.agent)) {continue;}
     const filePath = join(plugin.pluginDir, spec.dir, "plugin.json");
     if (existsSync(filePath) && !await isManagedJsonFile(filePath)) {
@@ -68,13 +70,18 @@ export async function writePluginManifests(
       });
       continue;
     }
-    if (await writeJsonIfChanged(filePath, stableJson(spec.manifest()))) {written++;}
+    const manifest = spec.agent === "claude"
+      ? claudeRuntimeManifest(plugin, warnings, standardMcp, standardSkills)
+      : spec.agent === "cursor"
+        ? cursorRuntimeManifest(plugin, warnings, standardMcp, standardSkills)
+        : codexRuntimeManifest(plugin, warnings, standardMcp, standardSkills);
+    if (await writeJsonIfChanged(filePath, stableJson(manifest))) {written++;}
   }
   return written;
 }
 
 /** Builds the managed Claude manifest projection using Claude-native paths. */
-function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcp: boolean): Record<string, unknown> {
+function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcp: boolean, standardSkills: boolean): Record<string, unknown> {
   const manifest: Record<string, unknown> = {
     name: plugin.name,
   };
@@ -87,8 +94,9 @@ function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
   copyManifestField(plugin.manifest, manifest, "keywords");
 
   const standard = isStandardPluginManifest(plugin.manifest);
+  const legacy = standard ? undefined : plugin.manifest as LegacyPluginManifest;
 
-  if ((standard || !copyRuntimeComponentField(plugin, manifest, "skills", warnings)) && existsSync(join(plugin.pluginDir, "skills"))) {
+  if (standard ? standardSkills : !copyRuntimeComponentField(plugin, manifest, "skills", warnings) && existsSync(join(plugin.pluginDir, "skills"))) {
     manifest["skills"] = "./skills";
   }
   if (!standard && !copyRuntimeComponentField(plugin, manifest, "commands", warnings) && existsSync(join(plugin.pluginDir, "commands"))) {
@@ -107,7 +115,7 @@ function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
     copyRuntimeComponentField(plugin, manifest, "monitors", warnings);
     copyRuntimeComponentField(plugin, manifest, "bin", warnings);
   }
-  const metadata = plugin.manifest["metadata"];
+  const metadata = legacy?.["metadata"];
   manifest["metadata"] = {
     ...(metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {}),
     ...DOTAGENTS_METADATA,
@@ -116,7 +124,7 @@ function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
 }
 
 /** Builds the managed Cursor manifest projection using Cursor-native paths. */
-function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcp: boolean): Record<string, unknown> {
+function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcp: boolean, standardSkills: boolean): Record<string, unknown> {
   const manifest: Record<string, unknown> = {
     name: plugin.name,
   };
@@ -129,8 +137,9 @@ function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
   copyManifestField(plugin.manifest, manifest, "keywords");
 
   const standard = isStandardPluginManifest(plugin.manifest);
+  const legacy = standard ? undefined : plugin.manifest as LegacyPluginManifest;
 
-  if ((standard || !copyRuntimeComponentField(plugin, manifest, "skills", warnings)) && existsSync(join(plugin.pluginDir, "skills"))) {
+  if (standard ? standardSkills : !copyRuntimeComponentField(plugin, manifest, "skills", warnings) && existsSync(join(plugin.pluginDir, "skills"))) {
     manifest["skills"] = "./skills";
   }
   if (!standard && !copyRuntimeComponentField(plugin, manifest, "agents", warnings) && existsSync(join(plugin.pluginDir, "agents"))) {
@@ -154,7 +163,7 @@ function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
     manifest["mcpServers"] = "./mcp.json";
   }
   if (!standard) {copyRuntimeComponentField(plugin, manifest, "bin", warnings);}
-  const metadata = plugin.manifest["metadata"];
+  const metadata = legacy?.["metadata"];
   manifest["metadata"] = {
     ...(metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {}),
     ...DOTAGENTS_METADATA,
@@ -163,8 +172,9 @@ function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
 }
 
 /** Builds the managed Codex manifest projection and stamps dotagents ownership metadata. */
-function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcp: boolean): Record<string, unknown> {
+function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcp: boolean, standardSkills: boolean): Record<string, unknown> {
   const standard = isStandardPluginManifest(plugin.manifest);
+  const legacy = standard ? undefined : plugin.manifest as LegacyPluginManifest;
   const manifest: Record<string, unknown> = standard ? { name: plugin.name } : { ...plugin.manifest, name: plugin.name };
   if (standard) {
     copyManifestField(plugin.manifest, manifest, "version");
@@ -180,27 +190,27 @@ function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWa
     if (!standard) {copyRuntimeComponentField(plugin, manifest, key, warnings);}
   }
 
-  if ((standard || plugin.manifest["skills"] === undefined) && !manifest["skills"] && existsSync(join(plugin.pluginDir, "skills"))) {
+  if ((standard ? standardSkills : legacy?.skills === undefined && existsSync(join(plugin.pluginDir, "skills"))) && !manifest["skills"]) {
     manifest["skills"] = "./skills";
   }
-  if (!standard && plugin.manifest["agents"] === undefined && !manifest["agents"] && existsSync(join(plugin.pluginDir, "agents"))) {
+  if (legacy && legacy.agents === undefined && !manifest["agents"] && existsSync(join(plugin.pluginDir, "agents"))) {
     manifest["agents"] = "./agents";
   }
-  if (!standard && plugin.manifest["commands"] === undefined && !manifest["commands"] && existsSync(join(plugin.pluginDir, "commands"))) {
+  if (legacy && legacy.commands === undefined && !manifest["commands"] && existsSync(join(plugin.pluginDir, "commands"))) {
     manifest["commands"] = "./commands";
   }
-  if (!standard && plugin.manifest["hooks"] === undefined && !manifest["hooks"] && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
+  if (legacy && legacy.hooks === undefined && !manifest["hooks"] && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
     manifest["hooks"] = "./hooks/hooks.json";
   }
   if (standardMcp) {
     manifest["mcpServers"] = "./mcp.json";
-  } else if (plugin.manifest["mcpServers"] === undefined && !manifest["mcpServers"] && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
+  } else if (legacy?.mcpServers === undefined && !manifest["mcpServers"] && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
     manifest["mcpServers"] = "./.mcp.json";
   }
-  if (!standard && plugin.manifest["lspServers"] === undefined && !manifest["lspServers"] && existsSync(join(plugin.pluginDir, ".lsp.json"))) {
+  if (legacy && legacy.lspServers === undefined && !manifest["lspServers"] && existsSync(join(plugin.pluginDir, ".lsp.json"))) {
     manifest["lspServers"] = "./.lsp.json";
   }
-  if (!standard && plugin.manifest["apps"] === undefined && !manifest["apps"] && existsSync(join(plugin.pluginDir, ".app.json"))) {
+  if (legacy && legacy.apps === undefined && !manifest["apps"] && existsSync(join(plugin.pluginDir, ".app.json"))) {
     manifest["apps"] = "./.app.json";
   }
   if (!manifest["interface"]) {
@@ -234,12 +244,20 @@ async function validStandardMcp(
   }
 }
 
+async function isDirectory(filePath: string): Promise<boolean> {
+  try {
+    return (await lstat(filePath)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 function codexInterface(plugin: PluginDeclaration): Record<string, unknown> {
   return {
     displayName: titleCase(plugin.name),
     shortDescription: manifestString(plugin.manifest, "description") ?? "",
     developerName: developerName(plugin.manifest),
-    category: manifestString(plugin.manifest, "category") ?? "Coding",
+    category: legacyManifestString(plugin.manifest, "category") ?? "Coding",
     capabilities: ["Interactive", "Write"],
   };
 }
@@ -262,7 +280,7 @@ function copyRuntimeComponentField(
   key: ComponentManifestKey,
   warnings: PluginWriteWarning[],
 ): boolean {
-  const value = plugin.manifest[key];
+  const value = (plugin.manifest as LegacyPluginManifest)[key];
   if (typeof value === "string") {
     if (isSafeComponentPath(value)) {
       dest[key] = runtimePath(value);

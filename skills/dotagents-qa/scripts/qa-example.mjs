@@ -145,7 +145,6 @@ async function runSyncRepair() {
   rmSync(join(projectDir, ".agents", "plugins", "qa-tools", ".codex-plugin", "plugin.json"), { force: true });
   rmSync(join(projectDir, ".grok", "plugins", "qa-tools"), { force: true, recursive: true });
   rmSync(join(projectDir, ".opencode", "skills", "plugin-qa"), { force: true, recursive: true });
-  rmSync(join(projectDir, ".opencode", "agents", "plugin-reviewer.md"), { force: true });
   rmSync(join(projectDir, ".agents", "skills", "plugin-qa"), { force: true, recursive: true });
   runCli(["sync"]);
   assertFile(".mcp.json");
@@ -200,13 +199,13 @@ async function runGrokPluginProof() {
   if (!list.includes("qa-tools")) {
     throw new Error("Grok plugin list did not include qa-tools");
   }
-  const info = execFileSync("grok", ["plugin", "info", "qa-tools"], {
+  const info = execFileSync("grok", ["plugin", "details", "qa-tools"], {
     cwd: projectDir,
     env: fixtureEnv,
     encoding: "utf-8",
   });
   if (!info.includes("qa-tools")) {
-    throw new Error("Grok plugin info did not describe qa-tools");
+    throw new Error("Grok plugin details did not describe qa-tools");
   }
 }
 

@@ -24,6 +24,35 @@ describe("plugin manifest schema", () => {
     expect(manifest.extensions?.["com.example.client"]).toEqual({ enabled: true });
   });
 
+  it("drops unknown standard fields and malformed extensions", () => {
+    const manifest = parsePluginManifest({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+      metadata: { leaked: true },
+      extensions: "invalid",
+    }, "plugin.json");
+
+    expect(manifest).toEqual({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+    });
+  });
+
+  it("keeps valid standard extensions beside malformed siblings", () => {
+    const manifest = parsePluginManifest({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+      extensions: {
+        "com.example.valid": { enabled: true },
+        "com.example.invalid": "bad",
+      },
+    }, "plugin.json");
+
+    expect(manifest.extensions).toEqual({
+      "com.example.valid": { enabled: true },
+    });
+  });
+
   it("rejects unsupported Agent Plugins schema identifiers", () => {
     expect(() => parsePluginManifest({
       $schema: "https://agent-plugins.org/schemas/2.0.0/plugin.schema.json",
@@ -50,11 +79,11 @@ describe("plugin manifest schema", () => {
     );
 
     expect(manifest.name).toBe("review-tools");
-    expect(manifest["x-runtime"]).toEqual({
+    expect((manifest as Record<string, unknown>)["x-runtime"]).toEqual({
       plugins: ["runtime/plugin.ts"],
       runtime: "bun",
     });
-    expect(manifest["x-dotagents"]).toEqual({ stable: true });
+    expect((manifest as Record<string, unknown>)["x-dotagents"]).toEqual({ stable: true });
   });
 
   it("rejects absolute and traversing component paths", () => {
@@ -89,6 +118,16 @@ describe("plugin MCP schema", () => {
       $schema: AGENT_PLUGIN_MCP_SCHEMA,
       mcpServers: { bad: { type: "http", url: "https://example.com" } },
     }, "mcp.json")).toThrow("Invalid plugin MCP config");
+    for (const command of ["/tmp/server", "../server", "./../server", "bin/server"]) {
+      expect(() => parsePluginMcp({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { bad: { type: "stdio", command } },
+      }, "mcp.json")).toThrow("Invalid plugin MCP config");
+    }
+    expect(parsePluginMcp({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: { good: { type: "stdio", command: "./bin/server" } },
+    }, "mcp.json").mcpServers["good"]?.type).toBe("stdio");
   });
 });
 

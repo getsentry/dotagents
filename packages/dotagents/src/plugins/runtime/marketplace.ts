@@ -2,7 +2,7 @@ import { join, relative } from "node:path";
 import type { PluginDeclaration } from "../store.js";
 import { selectedAgentIds } from "../targets.js";
 import { DOTAGENTS_METADATA, stableJson } from "./files.js";
-import { manifestString } from "./manifest-values.js";
+import { legacyManifestString, manifestString } from "./manifest-values.js";
 import type { RuntimeOutput } from "./types.js";
 
 /** Lists managed plugin marketplace files that may be generated or pruned. */
@@ -116,7 +116,7 @@ function codexMarketplaceEntry(
   plugin: PluginDeclaration,
 ): Record<string, unknown> {
   const entry: Record<string, unknown> = {
-    category: manifestString(plugin.manifest, "category") ?? "Productivity",
+    category: legacyManifestString(plugin.manifest, "category") ?? "Productivity",
     name: plugin.name,
     policy: {
       authentication: "ON_INSTALL",

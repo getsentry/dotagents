@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, rm, rmdir, symlink, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { loadSkillMd } from "@sentry/dotagents-lib";
-import { isStandardPluginManifest, type PluginManifest } from "../schema.js";
+import { isStandardPluginManifest, type LegacyPluginManifest } from "../schema.js";
 import type { PluginDeclaration } from "../store.js";
 import { selectedAgentIds, selectPlugins, targetWarnings } from "../targets.js";
 import { marketplaceOutputPaths, marketplaceOutputs } from "./marketplace.js";
@@ -17,7 +17,7 @@ import {
   isNotFoundError,
   writeJsonIfChanged,
 } from "./files.js";
-import { writePluginManifests } from "./manifests.js";
+import { NATIVE_PLUGIN_MANIFEST_TARGETS, writePluginManifests } from "./manifests.js";
 import { isSafeComponentPath } from "./component-paths.js";
 
 // Owns deterministic runtime plugin projections. Existing runtime artifacts are
@@ -84,6 +84,18 @@ export async function writePluginOutputs(
   written += await writeComponentProjections("pi", agentIds, selected, projectRoot, warnings);
 
   return { warnings, written };
+}
+
+/** Reconciles stale managed outputs before writing current projections. */
+export async function reconcilePluginOutputs(
+  agentIds: string[],
+  plugins: PluginDeclaration[],
+  projectRoot: string,
+  extraManagedPluginRoots: string[] = [],
+): Promise<{ result: PluginWriteResult; pruned: string[] }> {
+  const pruned = await prunePluginOutputs(agentIds, plugins, projectRoot, extraManagedPluginRoots);
+  const result = await writePluginOutputs(agentIds, plugins, projectRoot);
+  return { result, pruned };
 }
 
 /** Verifies that generated plugin runtime artifacts match the current declarations. */
@@ -209,57 +221,22 @@ export async function prunePluginOutputs(
   pruned.push(...await pruneManagedComponentLinks(join(projectRoot, ".agents", "skills"), desiredPiLinks, managedPluginRoots));
 
   const canonicalPluginDir = join(projectRoot, ".agents", "plugins");
-  const desiredClaude = new Set(
-    plugins
-      .filter((plugin) => selectedAgentIds(agentIds, plugin).includes("claude"))
-      .map((plugin) => plugin.name),
-  );
   if (existsSync(canonicalPluginDir)) {
     const entries = await readdir(canonicalPluginDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) {continue;}
-      if (desiredClaude.has(entry.name)) {continue;}
-      const path = join(canonicalPluginDir, entry.name, ".claude-plugin", "plugin.json");
-      if (!existsSync(path) || !await isManagedJsonFile(path)) {continue;}
-      await rm(path, { force: true });
-      await rmdirIfEmpty(dirname(path));
-      pruned.push(path);
-    }
-  }
-
-  const desiredCursor = new Set(
-    plugins
-      .filter((plugin) => selectedAgentIds(agentIds, plugin).includes("cursor"))
-      .map((plugin) => plugin.name),
-  );
-  if (existsSync(canonicalPluginDir)) {
-    const entries = await readdir(canonicalPluginDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) {continue;}
-      if (desiredCursor.has(entry.name)) {continue;}
-      const path = join(canonicalPluginDir, entry.name, ".cursor-plugin", "plugin.json");
-      if (!existsSync(path) || !await isManagedJsonFile(path)) {continue;}
-      await rm(path, { force: true });
-      await rmdirIfEmpty(dirname(path));
-      pruned.push(path);
-    }
-  }
-
-  const desiredCodex = new Set(
-    plugins
-      .filter((plugin) => selectedAgentIds(agentIds, plugin).includes("codex"))
-      .map((plugin) => plugin.name),
-  );
-  if (existsSync(canonicalPluginDir)) {
-    const entries = await readdir(canonicalPluginDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) {continue;}
-      if (desiredCodex.has(entry.name)) {continue;}
-      const path = join(canonicalPluginDir, entry.name, ".codex-plugin", "plugin.json");
-      if (!existsSync(path) || !await isManagedJsonFile(path)) {continue;}
-      await rm(path, { force: true });
-      await rmdirIfEmpty(dirname(path));
-      pruned.push(path);
+    for (const target of NATIVE_PLUGIN_MANIFEST_TARGETS) {
+      const desired = new Set(
+        plugins
+          .filter((plugin) => selectedAgentIds(agentIds, plugin).includes(target.agent))
+          .map((plugin) => plugin.name),
+      );
+      for (const entry of entries) {
+        if (!entry.isDirectory() || desired.has(entry.name)) {continue;}
+        const path = join(canonicalPluginDir, entry.name, target.dir, "plugin.json");
+        if (!existsSync(path) || !await isManagedJsonFile(path)) {continue;}
+        await rm(path, { force: true });
+        await rmdirIfEmpty(dirname(path));
+        pruned.push(path);
+      }
     }
   }
 
@@ -275,9 +252,6 @@ async function writeGrokProjection(
   const dest = join(projectRoot, ".grok", "plugins", plugin.name);
   if (existsSync(dest)) {
     if (await isManagedProjection(dest)) {
-      if (await directoriesMatch(plugin.pluginDir, dest, new Set([".dotagents-managed"]))) {
-        return false;
-      }
       await rm(dest, { recursive: true, force: true });
     } else {
       warnings.push({
@@ -372,6 +346,14 @@ async function skillComponentLinks(
   warnings: PluginWriteWarning[],
 ): Promise<ComponentLink[]> {
   if (!existsSync(skillsDir)) {return [];}
+  if (!await isDirectoryPath(skillsDir)) {
+    warnings.push({
+      agent,
+      name: plugin.name,
+      message: `Plugin skills path is not a directory and was skipped: ${skillsDir}`,
+    });
+    return [];
+  }
   if (!await isContainedPluginPath(plugin.pluginDir, skillsDir)) {
     warnings.push({
       agent,
@@ -444,6 +426,7 @@ async function skillNamesInDir(
   skillsDir: string,
 ): Promise<string[]> {
   if (!existsSync(skillsDir)) {return [];}
+  if (!await isDirectoryPath(skillsDir)) {return [];}
   if (!await isContainedPluginPath(plugin.pluginDir, skillsDir)) {return [];}
 
   const names: string[] = [];
@@ -540,12 +523,14 @@ async function writeManagedComponentLink(
 
 function componentDirs(
   plugin: PluginDeclaration,
-  manifestKey: keyof Pick<PluginManifest, "skills" | "agents">,
+  manifestKey: keyof Pick<LegacyPluginManifest, "skills" | "agents">,
   defaultDir: string,
   agent?: ComponentProjectionAgent,
   warnings: PluginWriteWarning[] = [],
 ): string[] {
-  const explicit = manifestPaths(plugin.manifest[manifestKey], plugin, manifestKey, agent, warnings);
+  const explicit = isStandardPluginManifest(plugin.manifest)
+    ? { present: false, paths: [] }
+    : manifestPaths(plugin.manifest[manifestKey], plugin, manifestKey, agent, warnings);
   const paths = explicit.present ? explicit.paths : [defaultDir];
   return paths.map((path) => join(plugin.pluginDir, path));
 }
@@ -553,7 +538,7 @@ function componentDirs(
 function manifestPaths(
   value: unknown,
   plugin: PluginDeclaration,
-  manifestKey: keyof Pick<PluginManifest, "skills" | "agents">,
+  manifestKey: keyof Pick<LegacyPluginManifest, "skills" | "agents">,
   agent?: ComponentProjectionAgent,
   warnings: PluginWriteWarning[] = [],
 ): { present: boolean; paths: string[] } {
@@ -651,6 +636,15 @@ async function pathExists(filePath: string): Promise<boolean> {
   }
 }
 
+async function isDirectoryPath(filePath: string): Promise<boolean> {
+  try {
+    return (await lstat(filePath)).isDirectory();
+  } catch (err) {
+    if (isNotFoundError(err)) {return false;}
+    throw err;
+  }
+}
+
 async function isManagedComponentLink(filePath: string, managedRoot: string | string[]): Promise<boolean> {
   try {
     const stat = await lstat(filePath);
@@ -672,55 +666,6 @@ function isInside(path: string, root: string): boolean {
 
 function displayName(agent: ComponentProjectionAgent): string {
   return agent === "opencode" ? "OpenCode" : "Pi";
-}
-
-async function directoriesMatch(source: string, dest: string, ignoredNames = new Set<string>()): Promise<boolean> {
-  if (!existsSync(source) || !existsSync(dest)) {return false;}
-
-  const sourceEntries = await comparableEntries(source, ignoredNames);
-  const destEntries = await comparableEntries(dest, ignoredNames);
-  if (sourceEntries.length !== destEntries.length) {return false;}
-
-  for (const entry of sourceEntries) {
-    const destEntry = destEntries.find((item) => item.name === entry.name);
-    if (!destEntry) {return false;}
-
-    const sourcePath = join(source, entry.name);
-    const destPath = join(dest, destEntry.name);
-    if (entry.kind !== destEntry.kind) {return false;}
-    if (entry.kind === "directory") {
-      if (!await directoriesMatch(sourcePath, destPath, ignoredNames)) {return false;}
-      continue;
-    }
-    if (entry.kind === "symlink") {
-      if (await readlink(sourcePath) !== await readlink(destPath)) {return false;}
-      continue;
-    }
-    if (!(await readFile(sourcePath)).equals(await readFile(destPath))) {
-      return false;
-    }
-  }
-  return true;
-}
-
-async function comparableEntries(
-  dir: string,
-  ignoredNames: Set<string>,
-): Promise<Array<{ name: string; kind: "directory" | "file" | "symlink" }>> {
-  const entries = await readdir(dir, { withFileTypes: true });
-  const result: Array<{ name: string; kind: "directory" | "file" | "symlink" }> = [];
-  for (const entry of entries) {
-    if (ignoredNames.has(entry.name)) {continue;}
-    const path = join(dir, entry.name);
-    const stat = await lstat(path);
-    const kind = stat.isSymbolicLink()
-      ? "symlink"
-      : stat.isDirectory()
-        ? "directory"
-        : "file";
-    result.push({ name: entry.name, kind });
-  }
-  return result.toSorted((a, b) => a.name.localeCompare(b.name));
 }
 
 async function rmdirIfEmpty(dir: string): Promise<void> {

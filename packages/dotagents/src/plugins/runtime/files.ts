@@ -3,7 +3,6 @@ import { dirname } from "node:path";
 
 export const DOTAGENTS_METADATA = { managedBy: "dotagents" };
 
-/** Serializes generated plugin output with stable key ordering. */
 export function stableJson(value: unknown): string {
   return `${JSON.stringify(sortJson(value), null, 2)}\n`;
 }
@@ -20,13 +19,11 @@ function sortJson(value: unknown): unknown {
   return result;
 }
 
-/** Writes generated JSON only when the serialized content changed. */
 export async function writeJsonIfChanged(filePath: string, content: string): Promise<boolean> {
   await mkdir(dirname(filePath), { recursive: true });
   return writeTextIfChanged(filePath, content);
 }
 
-/** Writes generated text only when the content changed. */
 async function writeTextIfChanged(filePath: string, content: string): Promise<boolean> {
   try {
     if (await readFile(filePath, "utf-8") === content) {return false;}
