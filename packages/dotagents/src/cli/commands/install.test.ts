@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access, readdir, readlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import install, { runInstall as runInstallCommand, InstallError, type InstallOptions, type InstallResult } from "./install.js";
 import { runSync } from "./sync.js";
@@ -29,6 +29,47 @@ description: Review code for correctness.
 
 Review the current diff.
 `;
+
+type HarnessEntry =
+  | { json: unknown }
+  | { text: string }
+  | { symlink: string };
+
+async function expectHarnessFiles(
+  projectRoot: string,
+  roots: string[],
+  expected: Record<string, HarnessEntry>,
+): Promise<void> {
+  const actual = new Set<string>();
+
+  const collect = async (relativePath: string): Promise<void> => {
+    const filePath = join(projectRoot, relativePath);
+    if (!existsSync(filePath)) {return;}
+    const stat = await lstat(filePath);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      actual.add(relativePath);
+      return;
+    }
+    for (const entry of await readdir(filePath, { withFileTypes: true })) {
+      await collect(join(relativePath, entry.name));
+    }
+  };
+
+  for (const root of roots) {await collect(root);}
+  expect([...actual].toSorted()).toEqual(Object.keys(expected).toSorted());
+
+  for (const [relativePath, entry] of Object.entries(expected)) {
+    const filePath = join(projectRoot, relativePath);
+    if ("symlink" in entry) {
+      expect((await lstat(filePath)).isSymbolicLink()).toBe(true);
+      expect(resolve(dirname(filePath), await readlink(filePath))).toBe(entry.symlink);
+    } else if ("json" in entry) {
+      expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual(entry.json);
+    } else {
+      expect(await readFile(filePath, "utf-8")).toBe(entry.text);
+    }
+  }
+}
 
 async function initTestGitRepo(repoDir: string): Promise<void> {
   await exec("git", ["init"], { cwd: repoDir });
@@ -246,14 +287,17 @@ source = "path:plugin-source/review-tools"
       author: { name: "dotagents" },
       extensions: { "com.example.client": { enabled: true } },
     };
-    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify(sourceManifest, null, 2));
-    await writeFile(join(sourceDir, "mcp.json"), JSON.stringify({
+    const mcpConfig = {
       $schema: AGENT_PLUGIN_MCP_SCHEMA,
       mcpServers: {},
-    }, null, 2));
+    };
+    const legacyAgent = "legacy root agent";
+    const legacyCommand = "legacy root command";
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify(sourceManifest, null, 2));
+    await writeFile(join(sourceDir, "mcp.json"), JSON.stringify(mcpConfig, null, 2));
     await writeFile(join(sourceDir, "skills", "portable-qa", "SKILL.md"), SKILL_MD("portable-qa"));
-    await writeFile(join(sourceDir, "agents", "should-not-project.md"), "legacy root agent");
-    await writeFile(join(sourceDir, "commands", "should-not-project.md"), "legacy root command");
+    await writeFile(join(sourceDir, "agents", "should-not-project.md"), legacyAgent);
+    await writeFile(join(sourceDir, "commands", "should-not-project.md"), legacyCommand);
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1
@@ -270,26 +314,109 @@ source = "path:plugin-source/portable-tools"
     expect(result.installedPlugins).toEqual(["portable-tools"]);
 
     const installedDir = join(projectRoot, ".agents", "plugins", "portable-tools");
-    expect(JSON.parse(await readFile(join(installedDir, "plugin.json"), "utf-8"))).toEqual(sourceManifest);
-    expect(existsSync(join(installedDir, "mcp.json"))).toBe(true);
+    const portableSkillDir = join(installedDir, "skills", "portable-qa");
+    const nativeManifest = {
+      author: { name: "dotagents" },
+      description: "Portable QA tools",
+      mcpServers: "./mcp.json",
+      metadata: { managedBy: "dotagents" },
+      name: "portable-tools",
+      skills: "./skills",
+      version: "1.0.0",
+    };
+    const claudeMarketplace = {
+      metadata: { managedBy: "dotagents" },
+      name: "dotagents",
+      owner: { name: "dotagents" },
+      plugins: [{
+        description: "Portable QA tools",
+        name: "portable-tools",
+        source: "./.agents/plugins/portable-tools",
+        version: "1.0.0",
+      }],
+    };
+    const codexManifest = {
+      author: { name: "dotagents" },
+      description: "Portable QA tools",
+      interface: {
+        capabilities: ["Interactive", "Write"],
+        category: "Coding",
+        developerName: "dotagents",
+        displayName: "Portable Tools",
+        shortDescription: "Portable QA tools",
+      },
+      mcpServers: "./mcp.json",
+      metadata: { managedBy: "dotagents" },
+      name: "portable-tools",
+      skills: "./skills",
+      version: "1.0.0",
+    };
 
-    for (const targetDir of [".claude-plugin", ".cursor-plugin", ".codex-plugin"]) {
-      const manifest = JSON.parse(await readFile(join(installedDir, targetDir, "plugin.json"), "utf-8"));
-      expect(manifest.skills).toBe("./skills");
-      expect(manifest.mcpServers).toBe("./mcp.json");
-      expect(manifest.commands).toBeUndefined();
-      expect(manifest.agents).toBeUndefined();
-      expect(manifest.extensions).toBeUndefined();
-      expect(manifest.$schema).toBeUndefined();
-    }
+    await expectHarnessFiles(projectRoot, [".agents/plugins/portable-tools"], {
+      ".agents/plugins/portable-tools/.claude-plugin/plugin.json": { json: nativeManifest },
+      ".agents/plugins/portable-tools/.codex-plugin/plugin.json": { json: codexManifest },
+      ".agents/plugins/portable-tools/.cursor-plugin/plugin.json": { json: nativeManifest },
+      ".agents/plugins/portable-tools/.dotagents-managed": { text: "managedBy=dotagents\n" },
+      ".agents/plugins/portable-tools/agents/should-not-project.md": { text: legacyAgent },
+      ".agents/plugins/portable-tools/commands/should-not-project.md": { text: legacyCommand },
+      ".agents/plugins/portable-tools/mcp.json": { json: mcpConfig },
+      ".agents/plugins/portable-tools/plugin.json": { json: sourceManifest },
+      ".agents/plugins/portable-tools/skills/portable-qa/SKILL.md": { text: SKILL_MD("portable-qa") },
+    });
 
-    expect(existsSync(join(projectRoot, ".claude-plugin", "marketplace.json"))).toBe(true);
-    expect(existsSync(join(projectRoot, ".cursor-plugin", "marketplace.json"))).toBe(true);
-    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(true);
-    expect(existsSync(join(projectRoot, ".grok", "plugins", "portable-tools", "plugin.json"))).toBe(true);
-    expect((await lstat(join(projectRoot, ".opencode", "skills", "portable-qa"))).isSymbolicLink()).toBe(true);
-    expect(existsSync(join(projectRoot, ".opencode", "agents", "should-not-project.md"))).toBe(false);
-    expect((await lstat(join(projectRoot, ".agents", "skills", "portable-qa"))).isSymbolicLink()).toBe(true);
+    await expectHarnessFiles(projectRoot, [
+      ".claude-plugin",
+      ".agents/plugins/portable-tools/.claude-plugin",
+    ], {
+      ".agents/plugins/portable-tools/.claude-plugin/plugin.json": { json: nativeManifest },
+      ".claude-plugin/marketplace.json": { json: claudeMarketplace },
+    });
+
+    await expectHarnessFiles(projectRoot, [
+      ".cursor-plugin",
+      ".agents/plugins/portable-tools/.cursor-plugin",
+    ], {
+      ".agents/plugins/portable-tools/.cursor-plugin/plugin.json": { json: nativeManifest },
+      ".cursor-plugin/marketplace.json": { json: claudeMarketplace },
+    });
+
+    await expectHarnessFiles(projectRoot, [
+      ".agents/plugins/marketplace.json",
+      ".agents/plugins/portable-tools/.codex-plugin",
+    ], {
+      ".agents/plugins/marketplace.json": { json: {
+        interface: { displayName: "Dotagents Plugins" },
+        metadata: { managedBy: "dotagents" },
+        name: "dotagents-local",
+        owner: { name: "dotagents" },
+        plugins: [{
+          category: "Productivity",
+          description: "Portable QA tools",
+          name: "portable-tools",
+          policy: { authentication: "ON_INSTALL", installation: "AVAILABLE" },
+          source: { path: "./.agents/plugins/portable-tools", source: "local" },
+          version: "1.0.0",
+        }],
+      } },
+      ".agents/plugins/portable-tools/.codex-plugin/plugin.json": { json: codexManifest },
+    });
+
+    await expectHarnessFiles(projectRoot, [".grok/plugins/portable-tools"], {
+      ".grok/plugins/portable-tools/.dotagents-managed": { text: "Generated by dotagents. Do not edit.\n" },
+      ".grok/plugins/portable-tools/agents/should-not-project.md": { text: legacyAgent },
+      ".grok/plugins/portable-tools/commands/should-not-project.md": { text: legacyCommand },
+      ".grok/plugins/portable-tools/mcp.json": { json: mcpConfig },
+      ".grok/plugins/portable-tools/plugin.json": { json: sourceManifest },
+      ".grok/plugins/portable-tools/skills/portable-qa/SKILL.md": { text: SKILL_MD("portable-qa") },
+    });
+
+    await expectHarnessFiles(projectRoot, [".opencode/skills", ".opencode/agents"], {
+      ".opencode/skills/portable-qa": { symlink: portableSkillDir },
+    });
+
+    await expectHarnessFiles(projectRoot, [".agents/skills"], {
+      ".agents/skills/portable-qa": { symlink: portableSkillDir },
+    });
   });
 
   it("does not overwrite an existing unmanaged plugin install destination", async () => {

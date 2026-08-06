@@ -909,7 +909,8 @@ source = "path:plugin-source/review-tools"
 
     const scope = resolveScope("project", projectRoot);
     await runSync({ scope });
-    expect(existsSync(join(projectRoot, ".grok", "plugins", "review-tools", ".claude-plugin", "plugin.json"))).toBe(true);
+    expect(existsSync(join(pluginDir, ".claude-plugin", "plugin.json"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".grok", "plugins", "review-tools", ".claude-plugin", "plugin.json"))).toBe(false);
 
     await writeFile(
       join(projectRoot, "agents.toml"),
