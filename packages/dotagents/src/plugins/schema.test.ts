@@ -5,6 +5,7 @@ import {
   parsePluginManifest,
   parsePluginMcp,
   parsePluginMarketplace,
+  isStandardPluginManifest,
   pluginManifestSchema,
   pluginMarketplaceSchema,
 } from "./schema.js";
@@ -58,6 +59,18 @@ describe("plugin manifest schema", () => {
       $schema: "https://agent-plugins.org/schemas/2.0.0/plugin.schema.json",
       name: "review-tools",
     }, "plugin.json")).toThrow("Invalid plugin manifest");
+  });
+
+  it("treats non-Agent schema metadata as legacy input", () => {
+    const manifest = parsePluginManifest({
+      $schema: "https://example.com/claude-plugin.schema.json",
+      name: "review-tools",
+      commands: "./commands",
+    }, "plugin.json");
+
+    expect(manifest.name).toBe("review-tools");
+    expect("$schema" in manifest).toBe(false);
+    expect(isStandardPluginManifest(manifest)).toBe(false);
   });
 
   it("accepts known fields and preserves extension fields", () => {

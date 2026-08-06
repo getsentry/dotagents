@@ -178,7 +178,18 @@ export function parsePluginManifest(
   value: unknown,
   filePath: string,
 ): PluginManifest {
-  const isStandard = value !== null && typeof value === "object" && !Array.isArray(value) && "$schema" in value;
+  const recordValue = value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+  const schemaValue = recordValue?.["$schema"];
+  const isStandard = schemaValue === AGENT_PLUGIN_SCHEMA;
+  if (
+    typeof schemaValue === "string" &&
+    schemaValue.startsWith("https://agent-plugins.org/schemas/") &&
+    !isStandard
+  ) {
+    throw new Error(`Invalid plugin manifest ${filePath}: unsupported Agent Plugins schema ${schemaValue}`);
+  }
   let input = value;
   if (isStandard) {
     const record = { ...(value as Record<string, unknown>) };
@@ -192,6 +203,10 @@ export function parsePluginManifest(
         )),
       );
     }
+    input = record;
+  } else if (recordValue && "$schema" in recordValue) {
+    const record = { ...recordValue };
+    delete record["$schema"];
     input = record;
   }
   const parsed = (isStandard ? standardPluginManifestSchema : pluginManifestSchema).safeParse(input);

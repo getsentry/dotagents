@@ -649,11 +649,25 @@ async function isManagedComponentLink(filePath: string, managedRoot: string | st
   try {
     const stat = await lstat(filePath);
     if (!stat.isSymbolicLink()) {return false;}
-    const target = resolve(dirname(filePath), await readlink(filePath));
+    const lexicalTarget = resolve(dirname(filePath), await readlink(filePath));
     const roots = Array.isArray(managedRoot)
       ? managedRoot
       : [join(managedRoot, ".agents", "plugins")];
-    return roots.some((root) => isInside(target, root));
+    try {
+      const target = await realpath(filePath);
+      const canonicalRoots = await Promise.all(roots.map(async (root) => {
+        try {
+          return await realpath(root);
+        } catch (err) {
+          if (isNotFoundError(err)) {return resolve(root);}
+          throw err;
+        }
+      }));
+      return canonicalRoots.some((root) => isInside(target, root));
+    } catch (err) {
+      if (!isNotFoundError(err)) {return false;}
+      return roots.some((root) => isInside(lexicalTarget, root));
+    }
   } catch {
     return false;
   }

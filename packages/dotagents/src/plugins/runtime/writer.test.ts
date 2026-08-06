@@ -192,11 +192,14 @@ describe("plugin writer", () => {
       $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
       mcpServers: { bad: { type: "stdio", command: "node server.js" } },
     }));
+    await writeFile(join(alpha.pluginDir, ".mcp.json"), JSON.stringify({ mcpServers: { legacy: {} } }));
 
-    const result = await writePluginOutputs(["claude"], [alpha], root);
-    const manifest = JSON.parse(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8"));
-    expect(manifest.skills).toBe("./skills");
-    expect(manifest.mcpServers).toBeUndefined();
+    const result = await writePluginOutputs(["claude", "cursor", "codex"], [alpha], root);
+    for (const dir of [".claude-plugin", ".cursor-plugin", ".codex-plugin"]) {
+      const manifest = JSON.parse(await readFile(join(alpha.pluginDir, dir, "plugin.json"), "utf-8"));
+      expect(manifest.skills).toBe("./skills");
+      expect(manifest.mcpServers).toBeUndefined();
+    }
     expect(result.warnings.some((warning) => warning.message.includes("Invalid plugin MCP config"))).toBe(true);
   });
 
@@ -582,6 +585,24 @@ describe("plugin writer", () => {
       join(root, ".opencode", "skills", "plugin-qa"),
       join(alpha.pluginDir, "skills", "plugin-qa"),
     );
+  });
+
+  it("does not prune user links that resolve outside managed plugin roots", async () => {
+    const outside = join(root, "outside", "plugin-qa");
+    await mkdir(outside, { recursive: true });
+    await mkdir(join(root, ".agents", "plugins"), { recursive: true });
+    await symlink(join(root, "outside"), join(root, ".agents", "plugins", "redirect"));
+    await mkdir(join(root, ".opencode", "skills"), { recursive: true });
+    const linkPath = join(root, ".opencode", "skills", "plugin-qa");
+    await symlink(
+      relative(dirname(linkPath), join(root, ".agents", "plugins", "redirect", "plugin-qa")),
+      linkPath,
+    );
+
+    const pruned = await prunePluginOutputs([], [], root);
+
+    expect(pruned).not.toContain(linkPath);
+    expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
   });
 
   it("warns and skips invalid OpenCode plugin skill names", async () => {

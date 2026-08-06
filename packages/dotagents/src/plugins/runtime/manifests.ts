@@ -157,9 +157,9 @@ function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
   const hasExplicitMcpServers = !standard && copyRuntimeComponentField(plugin, manifest, "mcpServers", warnings);
   if (standardMcp) {
     manifest["mcpServers"] = "./mcp.json";
-  } else if (!hasExplicitMcpServers && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
+  } else if (!standard && !hasExplicitMcpServers && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
     manifest["mcpServers"] = "./.mcp.json";
-  } else if (!hasExplicitMcpServers && existsSync(join(plugin.pluginDir, "mcp.json"))) {
+  } else if (!standard && !hasExplicitMcpServers && existsSync(join(plugin.pluginDir, "mcp.json"))) {
     manifest["mcpServers"] = "./mcp.json";
   }
   if (!standard) {copyRuntimeComponentField(plugin, manifest, "bin", warnings);}
@@ -204,7 +204,7 @@ function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWa
   }
   if (standardMcp) {
     manifest["mcpServers"] = "./mcp.json";
-  } else if (legacy?.mcpServers === undefined && !manifest["mcpServers"] && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
+  } else if (legacy && legacy.mcpServers === undefined && !manifest["mcpServers"] && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
     manifest["mcpServers"] = "./.mcp.json";
   }
   if (legacy && legacy.lspServers === undefined && !manifest["lspServers"] && existsSync(join(plugin.pluginDir, ".lsp.json"))) {
