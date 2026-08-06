@@ -159,6 +159,17 @@ asserts:
 Use `node skills/dotagents-qa/scripts/qa-example.mjs all --keep` when you need
 to inspect the temp project; the script prints the retained path.
 
+For automatic real-client plugin proof, run:
+
+```bash
+pnpm qa:plugins
+```
+
+This runs every installed no-auth client proof: Claude validates the generated
+plugin and marketplace, Codex adds the generated marketplace and installs/lists
+the plugin, and OpenCode confirms projected skill discovery. Missing client
+CLIs are reported and skipped; the command fails if none are installed.
+
 For paid Codex runtime proof of generated custom agents, run the runtime proof
 outside Docker only when the branch affects Codex custom agents or when
 reporting that Codex itself works:

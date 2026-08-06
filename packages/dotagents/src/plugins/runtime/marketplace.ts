@@ -1,8 +1,8 @@
-import { dirname, join } from "node:path";
+import { join, relative } from "node:path";
 import type { PluginDeclaration } from "../store.js";
 import { selectedAgentIds } from "../targets.js";
 import { DOTAGENTS_METADATA, stableJson } from "./files.js";
-import { manifestString, relativePath } from "./manifest-values.js";
+import { manifestString } from "./manifest-values.js";
 import type { RuntimeOutput } from "./types.js";
 
 /** Lists managed plugin marketplace files that may be generated or pruned. */
@@ -32,7 +32,7 @@ export function marketplaceOutputs(
     outputs.push({
       agent: "claude",
       filePath,
-      content: stableJson(pathMarketplace(filePath, "dotagents", claudePlugins)),
+      content: stableJson(pathMarketplace(projectRoot, "dotagents", claudePlugins)),
     });
   }
   if (cursorPlugins.length > 0) {
@@ -40,7 +40,7 @@ export function marketplaceOutputs(
     outputs.push({
       agent: "cursor",
       filePath,
-      content: stableJson(pathMarketplace(filePath, "dotagents", cursorPlugins)),
+      content: stableJson(pathMarketplace(projectRoot, "dotagents", cursorPlugins)),
     });
   }
   if (codexPlugins.length > 0) {
@@ -48,7 +48,7 @@ export function marketplaceOutputs(
     outputs.push({
       agent: "codex",
       filePath,
-      content: stableJson(codexMarketplace(filePath, "dotagents-local", codexPlugins)),
+      content: stableJson(codexMarketplace(projectRoot, "dotagents-local", codexPlugins)),
     });
   }
 
@@ -56,7 +56,7 @@ export function marketplaceOutputs(
 }
 
 function pathMarketplace(
-  marketplaceFile: string,
+  projectRoot: string,
   name: string,
   plugins: PluginDeclaration[],
 ): Record<string, unknown> {
@@ -68,7 +68,7 @@ function pathMarketplace(
     metadata: DOTAGENTS_METADATA,
     plugins: plugins
       .toSorted((a, b) => a.name.localeCompare(b.name))
-      .map((plugin) => pathMarketplaceEntry(marketplaceFile, plugin)),
+      .map((plugin) => pathMarketplaceEntry(projectRoot, plugin)),
   };
 }
 
@@ -77,12 +77,12 @@ function pathMarketplace(
  * structured local source objects, so keep this projection format separate.
  */
 function pathMarketplaceEntry(
-  marketplaceFile: string,
+  projectRoot: string,
   plugin: PluginDeclaration,
 ): Record<string, unknown> {
   const entry: Record<string, unknown> = {
     name: plugin.name,
-    source: relativePath(dirname(marketplaceFile), plugin.pluginDir),
+    source: `./${relative(projectRoot, plugin.pluginDir).split("\\").join("/")}`,
   };
   const description = manifestString(plugin.manifest, "description");
   if (description) {entry["description"] = description;}
@@ -92,7 +92,7 @@ function pathMarketplaceEntry(
 }
 
 function codexMarketplace(
-  marketplaceFile: string,
+  projectRoot: string,
   name: string,
   plugins: PluginDeclaration[],
 ): Record<string, unknown> {
@@ -107,19 +107,23 @@ function codexMarketplace(
     },
     plugins: plugins
       .toSorted((a, b) => a.name.localeCompare(b.name))
-      .map((plugin) => codexMarketplaceEntry(marketplaceFile, plugin)),
+      .map((plugin) => codexMarketplaceEntry(projectRoot, plugin)),
   };
 }
 
 function codexMarketplaceEntry(
-  marketplaceFile: string,
+  projectRoot: string,
   plugin: PluginDeclaration,
 ): Record<string, unknown> {
   const entry: Record<string, unknown> = {
     category: manifestString(plugin.manifest, "category") ?? "Productivity",
     name: plugin.name,
+    policy: {
+      authentication: "ON_INSTALL",
+      installation: "AVAILABLE",
+    },
     source: {
-      path: relativePath(dirname(marketplaceFile), plugin.pluginDir),
+      path: `./${relative(projectRoot, plugin.pluginDir).split("\\").join("/")}`,
       source: "local",
     },
   };

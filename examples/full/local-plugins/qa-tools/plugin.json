@@ -1,10 +1,15 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "qa-tools",
   "version": "1.0.0",
   "description": "Portable plugin fixture for dotagents QA.",
-  "category": "Testing",
   "author": {
     "name": "dotagents"
   },
-  "keywords": ["qa", "plugins"]
+  "keywords": ["qa", "plugins"],
+  "extensions": {
+    "com.example.client": {
+      "fixture": true
+    }
+  }
 }

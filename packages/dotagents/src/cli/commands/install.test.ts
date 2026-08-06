@@ -12,6 +12,7 @@ import type { Lockfile } from "../../lockfile/schema.js";
 import { resolveScope } from "../../scope.js";
 import { DOTAGENTS_SUBAGENT_MARKER } from "../../subagents/format.js";
 import { DOTAGENTS_MANAGED_PLUGIN_MARKER } from "../../plugins/store.js";
+import { AGENT_PLUGIN_MCP_SCHEMA, AGENT_PLUGIN_SCHEMA } from "../../plugins/schema.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -172,8 +173,12 @@ source = "path:plugin-source/review-tools"
           category: "Coding",
           description: "Review workflow helpers",
           name: "review-tools",
+          policy: {
+            authentication: "ON_INSTALL",
+            installation: "AVAILABLE",
+          },
           source: {
-            path: "./review-tools",
+            path: "./.agents/plugins/review-tools",
             source: "local",
           },
           version: "1.0.0",
@@ -181,7 +186,7 @@ source = "path:plugin-source/review-tools"
       ],
     });
     const codexPlugin = (codexMarketplace["plugins"] as Array<{ source: { path: string } }>)[0]!;
-    expect(resolve(join(projectRoot, ".agents", "plugins"), codexPlugin["source"].path)).toBe(
+    expect(resolve(projectRoot, codexPlugin["source"].path)).toBe(
       join(projectRoot, ".agents", "plugins", "review-tools"),
     );
 
@@ -198,14 +203,14 @@ source = "path:plugin-source/review-tools"
     {
       "description": "Review workflow helpers",
       "name": "review-tools",
-      "source": "../.agents/plugins/review-tools",
+      "source": "./.agents/plugins/review-tools",
       "version": "1.0.0"
     }
   ]
 }
 `);
     const claudeMarketplace = JSON.parse(claudeMarketplaceJson) as { plugins: Array<{ source: string }> };
-    expect(resolve(join(projectRoot, ".claude-plugin"), claudeMarketplace["plugins"][0]!["source"])).toBe(
+    expect(resolve(projectRoot, claudeMarketplace["plugins"][0]!["source"])).toBe(
       join(projectRoot, ".agents", "plugins", "review-tools"),
     );
     expect(await readFile(join(projectRoot, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(claudeMarketplaceJson);
@@ -226,6 +231,63 @@ source = "path:plugin-source/review-tools"
 
     const agentsGitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
     expect(agentsGitignore).toContain("/plugins/review-tools/");
+  });
+
+  it("transforms an Agent Plugins v1 bundle into every documented target output", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "portable-tools");
+    await mkdir(join(sourceDir, "skills", "portable-qa"), { recursive: true });
+    await mkdir(join(sourceDir, "agents"), { recursive: true });
+    await mkdir(join(sourceDir, "commands"), { recursive: true });
+    const sourceManifest = {
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "portable-tools",
+      description: "Portable QA tools",
+      version: "1.0.0",
+      author: { name: "dotagents" },
+      extensions: { "com.example.client": { enabled: true } },
+    };
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify(sourceManifest, null, 2));
+    await writeFile(join(sourceDir, "mcp.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: {},
+    }, null, 2));
+    await writeFile(join(sourceDir, "skills", "portable-qa", "SKILL.md"), SKILL_MD("portable-qa"));
+    await writeFile(join(sourceDir, "agents", "should-not-project.md"), "legacy root agent");
+    await writeFile(join(sourceDir, "commands", "should-not-project.md"), "legacy root command");
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+
+[[plugins]]
+name = "portable-tools"
+source = "path:plugin-source/portable-tools"
+`,
+    );
+
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    const installedDir = join(projectRoot, ".agents", "plugins", "portable-tools");
+    expect(JSON.parse(await readFile(join(installedDir, "plugin.json"), "utf-8"))).toEqual(sourceManifest);
+    expect(existsSync(join(installedDir, "mcp.json"))).toBe(true);
+
+    for (const targetDir of [".claude-plugin", ".cursor-plugin", ".codex-plugin"]) {
+      const manifest = JSON.parse(await readFile(join(installedDir, targetDir, "plugin.json"), "utf-8"));
+      expect(manifest.skills).toBe("./skills");
+      expect(manifest.mcpServers).toBe("./mcp.json");
+      expect(manifest.commands).toBeUndefined();
+      expect(manifest.agents).toBeUndefined();
+      expect(manifest.extensions).toBeUndefined();
+      expect(manifest.$schema).toBeUndefined();
+    }
+
+    expect(existsSync(join(projectRoot, ".claude-plugin", "marketplace.json"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".cursor-plugin", "marketplace.json"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".grok", "plugins", "portable-tools", "plugin.json"))).toBe(true);
+    expect((await lstat(join(projectRoot, ".opencode", "skills", "portable-qa"))).isSymbolicLink()).toBe(true);
+    expect(existsSync(join(projectRoot, ".opencode", "agents", "should-not-project.md"))).toBe(false);
+    expect((await lstat(join(projectRoot, ".agents", "skills", "portable-qa"))).isSymbolicLink()).toBe(true);
   });
 
   it("does not overwrite an existing unmanaged plugin install destination", async () => {
