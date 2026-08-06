@@ -237,4 +237,55 @@ source = "org/plugins"
       ],
     });
   });
+
+  it("wildcard path scope is respected in list", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "org/repo"\npath = "skills/engineering"\n`,
+    );
+    for (const name of ["deploy", "notes"]) {
+      const skillDir = join(projectRoot, ".agents", "skills", name);
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(join(skillDir, "SKILL.md"), SKILL_MD(name));
+    }
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        deploy: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "skills/engineering/deploy",
+        },
+        notes: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "skills/productivity/notes",
+        },
+      },
+    });
+
+    const results = await runList({ scope: resolveScope("project", projectRoot) });
+
+    expect(results.map((result) => result.name)).toEqual(["deploy"]);
+  });
+
+  it("retains legacy wildcard entries without resolved paths in list", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "path:local-skills"\npath = "engineering"\n`,
+    );
+    const skillDir = join(projectRoot, ".agents", "skills", "review");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("review"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        review: { source: "path:local-skills" },
+      },
+    });
+
+    const results = await runList({ scope: resolveScope("project", projectRoot) });
+
+    expect(results.map((result) => result.name)).toEqual(["review"]);
+  });
 });

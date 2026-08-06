@@ -4,11 +4,19 @@ import { mkdtemp, mkdir, rm, writeFile, readFile, lstat, readdir } from "node:fs
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
-import { runInit, InitError, installPostMergeHook } from "./init.js";
+import init, { runInit, InitError, installPostMergeHook } from "./init.js";
 import { loadConfig } from "../../config/loader.js";
 
 vi.mock("./install.js", () => ({
-  runInstall: vi.fn().mockResolvedValue({ installed: [], skipped: [], hookWarnings: [] }),
+  runInstall: vi.fn().mockResolvedValue({
+    installed: [],
+    pruned: [],
+    prunedPlugins: [],
+    mcpWarnings: [],
+    hookWarnings: [],
+    subagentWarnings: [],
+    pluginWarnings: [],
+  }),
 }));
 
 describe("runInit", () => {
@@ -22,21 +30,35 @@ describe("runInit", () => {
     await rm(dir, { recursive: true });
   });
 
-  it("creates agents.toml in project root", async () => {
+  it("creates a complete default project", async () => {
     await runInit({ scope: resolveScope("project", dir) });
 
     const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.version).toBe(1);
-  });
-
-  it("includes bootstrap dotagents skill by default", async () => {
-    await runInit({ scope: resolveScope("project", dir) });
-
-    const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.skills).toHaveLength(1);
     const skill = config.skills[0]!;
     expect(skill.name).toBe("dotagents");
     expect(skill.source).toBe("getsentry/dotagents");
+    expect(existsSync(join(dir, ".agents", "skills"))).toBe(true);
+    expect(existsSync(join(dir, ".agents", ".gitignore"))).toBe(true);
+    expect(existsSync(join(dir, ".claude"))).toBe(false);
+  });
+
+  it("initializes the repository root when run from a subdirectory", async () => {
+    await mkdir(join(dir, ".git"));
+    const child = join(dir, "packages", "app");
+    await mkdir(child, { recursive: true });
+    const cwd = process.cwd();
+
+    try {
+      process.chdir(child);
+      await init(["--agents", "claude"]);
+    } finally {
+      process.chdir(cwd);
+    }
+
+    expect(existsSync(join(dir, "agents.toml"))).toBe(true);
+    expect(existsSync(join(child, "agents.toml"))).toBe(false);
   });
 
   it("omits bootstrap skill when skills: [] is passed", async () => {
@@ -44,19 +66,6 @@ describe("runInit", () => {
 
     const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.skills).toEqual([]);
-  });
-
-  it("creates .agents/skills/ directory", async () => {
-    await runInit({ scope: resolveScope("project", dir) });
-
-    const stat = await lstat(join(dir, ".agents", "skills"));
-    expect(stat.isDirectory()).toBe(true);
-  });
-
-  it("always creates .agents/.gitignore", async () => {
-    await runInit({ scope: resolveScope("project", dir) });
-
-    expect(existsSync(join(dir, ".agents", ".gitignore"))).toBe(true);
   });
 
   it("throws InitError if agents.toml exists without --force", async () => {
@@ -84,22 +93,6 @@ describe("runInit", () => {
     const config = await loadConfig(join(dir, "agents.toml"));
     expect(config.version).toBe(1);
     expect(existsSync(join(dir, ".agents", "skills"))).toBe(true);
-  });
-
-  it("does not create symlinks with default config", async () => {
-    await runInit({ scope: resolveScope("project", dir) });
-
-    // Default config has no symlinks configured, so .claude should not exist
-    expect(existsSync(join(dir, ".claude"))).toBe(false);
-  });
-
-  it("creates all expected files and directories", async () => {
-    await runInit({ scope: resolveScope("project", dir) });
-
-    expect(existsSync(join(dir, "agents.toml"))).toBe(true);
-    expect(existsSync(join(dir, ".agents"))).toBe(true);
-    expect(existsSync(join(dir, ".agents", "skills"))).toBe(true);
-    expect(existsSync(join(dir, ".agents", ".gitignore"))).toBe(true);
   });
 
   it("preserves existing .agents/skills/ contents", async () => {

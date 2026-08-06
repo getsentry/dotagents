@@ -105,7 +105,9 @@ targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
     | `cursor` | `.cursor` | `.cursor/mcp.json` | `.cursor/hooks.json` | `.cursor/agents/*.md` |
     | `codex` | `.codex` | `.codex/config.toml` | None | `.codex/agents/*.toml` |
     | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` | None |
-    | `opencode` | `.opencode` | `opencode.json` | None | `.opencode/agents/*.md` |
+    | `opencode` | `.opencode` | `.opencode/opencode.jsonc` | None | `.opencode/agents/*.md` |
+
+    OpenCode reuses existing project config from `.opencode/opencode.jsonc`, `.opencode/opencode.json`, `opencode.jsonc`, or `opencode.json`, in that order. New projects use `.opencode/opencode.jsonc`.
   </section>
 
   <section className="dotagents-section">

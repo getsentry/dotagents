@@ -228,7 +228,7 @@ Review the current diff and return findings with file references.
 
 dotagents intentionally does not standardize runtime-specific subagent behavior such as model routing, tool permissions, read-only modes, background execution, or reasoning effort. Those controls differ across runtimes and should stay in each tool's native config until there is a maintainable common contract.
 
-Installed and generated files are marked as dotagents-managed with a generated header marker. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the generated header marker. In `--frozen` mode, `install` loads subagents from existing installed files, preserves managed subagent files and lock entries instead of pruning removed subagents, and does not resolve subagent sources.
+Installed and generated files are marked as dotagents-managed with a generated header marker. `install` and `sync` overwrite stale managed files and prune removed managed files, but they do not overwrite hand-written files without the generated header marker. The deprecated `--frozen` flag is accepted as a warned compatibility no-op and does not change this behavior.
 
 Generated paths:
 
@@ -509,7 +509,6 @@ dotagents install
 3. Resolve configured subagents
 4. Resolve and install configured project-scope plugins into `.agents/plugins/<name>/`; reject user-scope plugin declarations
 5. Write `agents.lock` with the current configured skills, subagents, and plugins
-   - In `--frozen` mode, require configured dependencies to already be present in `agents.lock`, load subagents and plugins from installed files, do not update the lockfile, and do not prune existing managed subagent or plugin files
 6. Install configured subagents into `.agents/agents/`
 7. Regenerate `.agents/.gitignore`
 8. Warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
@@ -519,6 +518,8 @@ dotagents install
 12. Write generated subagent files for each declared agent that supports custom subagents
 13. Write generated plugin runtime projections for each declared agent that supports plugins
 14. Print summary
+
+The deprecated `--frozen` option is accepted for compatibility, prints a warning, and follows this normal install flow. Use explicit `ref` values to pin sources.
 
 ### `dotagents add <specifier>`
 

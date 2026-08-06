@@ -9,8 +9,6 @@ import {
   isInPlacePluginSource,
   isManagedPluginInstall,
   isProjectPluginSource,
-  isSameProjectPluginConfig,
-  loadInstalledPlugins,
   lockEntryForPlugin,
   type PluginDeclaration,
   pruneInstalledPlugins,
@@ -24,24 +22,6 @@ export interface InstallPluginsResult {
   plugins: PluginDeclaration[];
   pruned: string[];
   lockEntries: Lockfile["plugins"];
-}
-
-function validateFrozenPlugins(
-  plugins: PluginConfig[],
-  lockfile: Lockfile | null,
-): void {
-  if (plugins.length === 0) {return;}
-  if (!lockfile) {
-    throw new InstallError("--frozen requires agents.lock to exist.");
-  }
-
-  for (const plugin of plugins) {
-    if (!lockfile.plugins[plugin.name]) {
-      throw new InstallError(
-        `--frozen: plugin "${plugin.name}" is in agents.toml but missing from agents.lock.`,
-      );
-    }
-  }
 }
 
 function staleManagedPluginNames(
@@ -78,32 +58,10 @@ export async function installPlugins(
   config: AgentsConfig,
   lockfile: Lockfile | null,
   scope: ScopeRoot,
-  frozen?: boolean,
 ): Promise<InstallPluginsResult> {
   const plugins: PluginDeclaration[] = [];
   const pruned: string[] = [];
   const lockEntries: Lockfile["plugins"] = {};
-
-  if (frozen) {
-    validateFrozenPlugins(config.plugins, lockfile);
-    const sameProjectPlugin = config.plugins.find((plugin) =>
-      isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root)
-    );
-    if (sameProjectPlugin) {
-      throw new InstallError(
-        `Plugin "${sameProjectPlugin.name}" source resolves inside this project's .agents/plugins/ tree. ` +
-          "Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.",
-      );
-    }
-    if (config.plugins.length > 0) {
-      const loaded = await loadInstalledPlugins(scope.pluginsDir, config.plugins);
-      if (loaded.issues.length > 0) {
-        throw new InstallError(loaded.issues.join("\n"));
-      }
-      plugins.push(...loaded.plugins);
-    }
-    return { plugins, pruned, lockEntries };
-  }
 
   if (config.plugins.length > 0) {
     await mkdir(scope.pluginsDir, { recursive: true });

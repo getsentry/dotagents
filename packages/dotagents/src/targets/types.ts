@@ -17,19 +17,40 @@ export interface McpDeclaration {
   env?: string[];
 }
 
+interface McpDeclarationBase {
+  name: string;
+  env?: string[];
+}
+
+interface StdioMcpDeclaration extends McpDeclarationBase {
+  command: string;
+  args?: string[];
+}
+
+interface HttpMcpDeclaration extends McpDeclarationBase {
+  url: string;
+  headers?: Record<string, string>;
+}
+
+/** Validated internal form used while rendering MCP target configs. */
+export type NormalizedMcpDeclaration = StdioMcpDeclaration | HttpMcpDeclaration;
+
 /**
  * Describes how an agent tool writes its MCP config file.
  */
 export interface McpConfigSpec {
-  /** Path to the config file, relative to project root */
+  /** Preferred path to the config file, relative to project root */
   filePath: string;
+  /** Existing legacy paths to use before creating the preferred path */
+  fallbackFilePaths?: string[];
   /** Top-level key in the config file under which servers live */
   rootKey: string;
   /** File format */
-  format: "json" | "toml";
+  format: "json" | "jsonc" | "toml";
   /**
    * If true, the config file is shared with other content and must be
-   * read-merge-written. If false, dotagents owns the entire file.
+   * read-merge-written. This describes file shape, not dotagents ownership;
+   * undeclared MCP servers are preserved for every target.
    */
   shared: boolean;
 }

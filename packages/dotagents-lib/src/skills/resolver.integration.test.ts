@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { resolveSkill, resolveWildcardSkills } from "./resolver.js";
@@ -67,6 +67,7 @@ description: Code review skill
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await rm(tmpDir, { recursive: true });
   });
 
@@ -132,6 +133,61 @@ description: A local skill
     if (result.type === "git") {
       expect(result.resolvedPath).toBe("pdf");
     }
+  });
+
+  it("prefers an explicit ref over an inline ref for single and wildcard resolution", async () => {
+    await exec("git", ["branch", "inline-ref"], { cwd: repoDir });
+    await exec("git", ["checkout", "-b", "explicit-ref"], { cwd: repoDir });
+    await mkdir(join(repoDir, "explicit-only"), { recursive: true });
+    await writeFile(
+      join(repoDir, "explicit-only", "SKILL.md"),
+      `---
+name: explicit-only
+description: Only available from the explicit ref
+---
+`,
+    );
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "add explicit-only skill"], {
+      cwd: repoDir,
+    });
+
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv(
+      "GIT_CONFIG_KEY_0",
+      `url.file://${repoDir}.insteadOf`,
+    );
+    vi.stubEnv(
+      "GIT_CONFIG_VALUE_0",
+      "https://github.com/example/skills",
+    );
+
+    const source = "https://github.com/example/skills@inline-ref";
+    const [single, wildcard] = await Promise.all([
+      resolveSkill(
+        "explicit-only",
+        { source, ref: "explicit-ref" },
+        { stateDir: join(stateDir, "single") },
+      ),
+      resolveWildcardSkills(
+        { source, ref: "explicit-ref" },
+        { stateDir: join(stateDir, "wildcard") },
+      ),
+    ]);
+
+    expect(single).toMatchObject({
+      type: "git",
+      resolvedRef: "explicit-ref",
+      resolvedPath: "explicit-only",
+    });
+    expect(wildcard).toContainEqual({
+      name: "explicit-only",
+      resolved: expect.objectContaining({
+        type: "git",
+        resolvedRef: "explicit-ref",
+        resolvedPath: "explicit-only",
+      }),
+    });
   });
 
   it("throws ResolveError when skill not found in repo", async () => {
@@ -227,6 +283,45 @@ describe("resolveWildcardSkills integration", () => {
     expect(results[0]!.name).toBe("pdf");
   });
 
+  it("scopes wildcard discovery to path and preserves repo-relative paths", async () => {
+    await mkdir(join(repoDir, "skills", "engineering", "deploy"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "engineering", "deploy", "SKILL.md"),
+      `---\nname: deploy\ndescription: Deploy skill\n---\n`,
+    );
+    await mkdir(join(repoDir, "skills", "engineering", "platform", "observe"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(repoDir, "skills", "engineering", "platform", "observe", "SKILL.md"),
+      `---\nname: observe\ndescription: Observe skill\n---\n`,
+    );
+    await mkdir(join(repoDir, "skills", "productivity", "notes"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "productivity", "notes", "SKILL.md"),
+      `---\nname: notes\ndescription: Notes skill\n---\n`,
+    );
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "add categorized skills"], { cwd: repoDir });
+
+    const results = await resolveWildcardSkills(
+      {
+        source: `git:${repoDir}`,
+        path: "skills/engineering",
+        exclude: ["deploy"],
+      },
+      { stateDir, projectRoot },
+    );
+
+    expect(results.map((result) => result.name)).toEqual(["observe"]);
+    expect(results[0]!.resolved.type).toBe("git");
+    if (results[0]!.resolved.type === "git") {
+      expect(results[0]!.resolved.resolvedPath).toBe(
+        "skills/engineering/platform/observe",
+      );
+    }
+  });
+
   it("returns empty array when all skills excluded", async () => {
     const results = await resolveWildcardSkills(
       { source: `git:${repoDir}`, exclude: ["pdf", "review"] },
@@ -253,6 +348,155 @@ describe("resolveWildcardSkills integration", () => {
     expect(results).toHaveLength(1);
     expect(results[0]!.name).toBe("my-skill");
     expect(results[0]!.resolved.type).toBe("local");
+    if (results[0]!.resolved.type === "local") {
+      expect(results[0]!.resolved.resolvedPath).toBeUndefined();
+    }
+  });
+
+  it("scopes wildcard discovery within a local source", async () => {
+    const localSkills = join(projectRoot, "local-repo");
+    await mkdir(join(localSkills, "engineering", "review"), { recursive: true });
+    await writeFile(
+      join(localSkills, "engineering", "review", "SKILL.md"),
+      `---\nname: review\ndescription: Review skill\n---\n`,
+    );
+    await mkdir(join(localSkills, "productivity", "notes"), { recursive: true });
+    await writeFile(
+      join(localSkills, "productivity", "notes", "SKILL.md"),
+      `---\nname: notes\ndescription: Notes skill\n---\n`,
+    );
+
+    const results = await resolveWildcardSkills(
+      { source: "path:local-repo", path: "engineering", exclude: [] },
+      { stateDir, projectRoot },
+    );
+
+    expect(results.map((result) => result.name)).toEqual(["review"]);
+    expect(results[0]!.resolved.type).toBe("local");
+    if (results[0]!.resolved.type === "local") {
+      expect(results[0]!.resolved.resolvedPath).toBe("engineering/review");
+      expect(results[0]!.resolved.skillDir).toBe(
+        join(localSkills, "engineering", "review"),
+      );
+    }
+  });
+
+  it("normalizes backslash separators in wildcard paths", async () => {
+    const localSkills = join(projectRoot, "local-repo");
+    await mkdir(join(localSkills, "engineering", "review"), { recursive: true });
+    await writeFile(
+      join(localSkills, "engineering", "review", "SKILL.md"),
+      `---\nname: review\ndescription: Review skill\n---\n`,
+    );
+
+    const results = await resolveWildcardSkills(
+      { source: "path:local-repo", path: "engineering\\review", exclude: [] },
+      { stateDir, projectRoot },
+    );
+
+    expect(results.map((result) => result.name)).toEqual(["review"]);
+    expect(results[0]!.resolved.type).toBe("local");
+    if (results[0]!.resolved.type === "local") {
+      expect(results[0]!.resolved.resolvedPath).toBe("engineering/review");
+    }
+  });
+
+  it("rejects wildcard paths outside the source root", async () => {
+    await mkdir(join(projectRoot, "local-repo"), { recursive: true });
+
+    await expect(
+      resolveWildcardSkills(
+        { source: "path:local-repo", path: "../outside", exclude: [] },
+        { stateDir, projectRoot },
+      ),
+    ).rejects.toThrow(/resolves outside source root/);
+  });
+
+  it("rejects Windows-style wildcard paths outside the source root", async () => {
+    await expect(
+      resolveWildcardSkills(
+        { source: "path:local-repo", path: "..\\outside", exclude: [] },
+        { stateDir, projectRoot },
+      ),
+    ).rejects.toThrow(/resolves outside source root/);
+  });
+
+  it("rejects an empty wildcard path at the resolver boundary", async () => {
+    await expect(
+      resolveWildcardSkills(
+        { source: "path:local-repo", path: "", exclude: [] },
+        { stateDir, projectRoot },
+      ),
+    ).rejects.toThrow(/must not be empty/);
+  });
+
+  it("rejects absolute wildcard paths at the resolver boundary", async () => {
+    for (const path of [join(projectRoot, "local-repo"), "C:\\skills", "C:skills"]) {
+      await expect(
+        resolveWildcardSkills(
+          { source: "path:local-repo", path, exclude: [] },
+          { stateDir, projectRoot },
+        ),
+      ).rejects.toThrow(/must be relative/);
+    }
+  });
+
+  it("rejects a wildcard path that does not exist", async () => {
+    await mkdir(join(projectRoot, "local-repo"), { recursive: true });
+
+    await expect(
+      resolveWildcardSkills(
+        { source: "path:local-repo", path: "missing", exclude: [] },
+        { stateDir, projectRoot },
+      ),
+    ).rejects.toThrow(/does not exist in source/);
+  });
+
+  it("rejects a wildcard path that is not a directory", async () => {
+    await mkdir(join(projectRoot, "local-repo"), { recursive: true });
+    await writeFile(join(projectRoot, "local-repo", "skill.txt"), "not a directory");
+
+    await expect(
+      resolveWildcardSkills(
+        { source: "path:local-repo", path: "skill.txt", exclude: [] },
+        { stateDir, projectRoot },
+      ),
+    ).rejects.toThrow(/is not a directory in source/);
+  });
+
+  it.runIf(process.platform !== "win32")("preserves non-ENOENT path errors", async () => {
+    await mkdir(join(projectRoot, "local-repo"), { recursive: true });
+    await writeFile(join(projectRoot, "local-repo", "skill.txt"), "not a directory");
+
+    await expect(
+      resolveWildcardSkills(
+        { source: "path:local-repo", path: "skill.txt/child", exclude: [] },
+        { stateDir, projectRoot },
+      ),
+    ).rejects.toMatchObject({ code: "ENOTDIR" });
+  });
+
+  it("rejects a wildcard path symlinked outside the source root", async () => {
+    const localRoot = join(projectRoot, "local-repo");
+    const outside = join(projectRoot, "outside");
+    await mkdir(localRoot, { recursive: true });
+    await mkdir(join(outside, "review"), { recursive: true });
+    await writeFile(
+      join(outside, "review", "SKILL.md"),
+      `---\nname: review\ndescription: Review skill\n---\n`,
+    );
+    await symlink(
+      outside,
+      join(localRoot, "escaped"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    await expect(
+      resolveWildcardSkills(
+        { source: "path:local-repo", path: "escaped", exclude: [] },
+        { stateDir, projectRoot },
+      ),
+    ).rejects.toThrow(/resolves outside source root/);
   });
 
   it("each resolved skill has correct commit and path", async () => {

@@ -4,17 +4,17 @@ import { readdir, rm } from "node:fs/promises";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
-import { normalizeSource } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
+import { wildcardContainsLockedSkill } from "../../lockfile/wildcard.js";
 import { addSkillToConfig } from "../../config/writer.js";
 import { filterManagedPluginSkillNames } from "../../gitignore/skills.js";
 import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
-import { getAgent } from "../../targets/registry.js";
-import { verifyMcpConfigs, writeMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../targets/mcp-writer.js";
-import { verifyHookConfigs, writeHookConfigs, toHookDeclarations, projectHookResolver } from "../../targets/hook-writer.js";
-import { pruneSubagentConfigs, verifySubagentConfigs, writeSubagentConfigs, projectSubagentResolver, userSubagentResolver } from "../../subagents/writer.js";
+import { skillSymlinkTargets } from "../../targets/skill-symlinks.js";
+import { reconcileMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../targets/mcp-writer.js";
+import { reconcileHookConfigs, toHookDeclarations, projectHookResolver } from "../../targets/hook-writer.js";
+import { projectSubagentResolver, reconcileSubagentConfigs, userSubagentResolver } from "../../subagents/writer.js";
 import { loadInstalledSubagents, pruneInstalledSubagents } from "../../subagents/store.js";
 import { isInPlacePluginSource, isSameProjectPluginConfig, loadInstalledPlugins, pruneInstalledPlugins } from "../../plugins/store.js";
 import { projectedPiSkillNames, prunePluginOutputs, verifyPluginOutputs, writePluginOutputs } from "../../plugins/runtime/writer.js";
@@ -58,12 +58,12 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   );
   if (lockfile) {
     for (const [name, locked] of Object.entries(lockfile.skills)) {
-      const wildcardDep = config.skills.find(
-        (s): s is Extract<typeof s, { name: "*" }> =>
+      const wildcardDep = config.skills.some(
+        (s) =>
           isWildcardDep(s) &&
-          normalizeSource(s.source) === normalizeSource(locked.source),
+          wildcardContainsLockedSkill(s, name, locked),
       );
-      if (wildcardDep && !wildcardDep.exclude.includes(name)) {
+      if (wildcardDep) {
         declaredNames.add(name);
       }
     }
@@ -244,51 +244,15 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 
   // 4. Verify and repair symlinks
   let symlinksRepaired = 0;
-
-  if (scope.scope === "user") {
-    const seen = new Set<string>();
-    const targets: string[] = [];
-    for (const agentId of config.agents) {
-      const agent = getAgent(agentId);
-      if (!agent?.userSkillsParentDirs) {continue;}
-      for (const dir of agent.userSkillsParentDirs) {
-        if (seen.has(dir)) {continue;}
-        seen.add(dir);
-        targets.push(dir);
-      }
-    }
-
-    const symlinkIssues = await verifySymlinks(agentsDir, targets);
-    for (const issue of symlinkIssues) {
-      await ensureSkillsSymlink(agentsDir, issue.target);
-      symlinksRepaired++;
-    }
-  } else {
-    const legacyTargets = config.symlinks?.targets ?? [];
-    const legacyIssues = await verifySymlinks(
-      agentsDir,
-      legacyTargets.map((t) => join(scope.root, t)),
-    );
-    for (const issue of legacyIssues) {
-      await ensureSkillsSymlink(agentsDir, join(scope.root, issue.target));
-      symlinksRepaired++;
-    }
-
-    const seenParentDirs = new Set(legacyTargets);
-    const agentTargets: string[] = [];
-    for (const agentId of config.agents) {
-      const agent = getAgent(agentId);
-      if (!agent?.skillsParentDir) {continue;}
-      if (seenParentDirs.has(agent.skillsParentDir)) {continue;}
-      seenParentDirs.add(agent.skillsParentDir);
-      agentTargets.push(join(scope.root, agent.skillsParentDir));
-    }
-
-    const agentSymlinkIssues = await verifySymlinks(agentsDir, agentTargets);
-    for (const issue of agentSymlinkIssues) {
-      await ensureSkillsSymlink(agentsDir, issue.target);
-      symlinksRepaired++;
-    }
+  const symlinkTargets = skillSymlinkTargets(
+    scope,
+    config.agents,
+    config.symlinks?.targets,
+  );
+  const symlinkIssues = await verifySymlinks(agentsDir, symlinkTargets);
+  for (const issue of symlinkIssues) {
+    await ensureSkillsSymlink(agentsDir, issue.target);
+    symlinksRepaired++;
   }
 
   // 5. Verify and repair MCP configs
@@ -296,11 +260,10 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const mcpServers = toMcpDeclarations(config.mcp);
   const mcpResolver = scope.scope === "user" ? userMcpResolver() : projectMcpResolver(scope.root);
 
-  const mcpIssues = await verifyMcpConfigs(config.agents, mcpServers, mcpResolver);
-  if (mcpIssues.length > 0) {
-    await writeMcpConfigs(config.agents, mcpServers, mcpResolver);
-    mcpRepaired = mcpIssues.length;
-    for (const issue of mcpIssues) {
+  const mcpResult = await reconcileMcpConfigs(config.agents, mcpServers, mcpResolver, "apply");
+  mcpRepaired = mcpResult.written.length;
+  if (mcpResult.unresolved.length > 0) {
+    for (const issue of mcpResult.unresolved) {
       issues.push({
         type: "mcp",
         name: issue.agent,
@@ -315,18 +278,13 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     const hookDecls = toHookDeclarations(config.hooks);
     const hookResolver = projectHookResolver(scope.root);
 
-    const hookIssues = await verifyHookConfigs(config.agents, hookDecls, hookResolver);
-    if (hookIssues.length > 0) {
-      await writeHookConfigs(config.agents, hookDecls, hookResolver);
-      hooksRepaired = hookIssues.length;
-      for (const issue of hookIssues) {
-        issues.push({
-          type: "hooks",
-          name: issue.agent,
-          message: issue.issue,
-        });
-      }
-    }
+    const hookResult = await reconcileHookConfigs(
+      config.agents,
+      hookDecls,
+      hookResolver,
+      "apply",
+    );
+    hooksRepaired = hookResult.written.length + hookResult.removed.length;
   }
 
   // 7. Verify and repair custom subagent files
@@ -337,23 +295,16 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const subagentResolver = scope.scope === "user"
     ? userSubagentResolver()
     : projectSubagentResolver(scope.root);
-  const subagentIssues = await verifySubagentConfigs(
+  const subagentResult = await reconcileSubagentConfigs(
     config.agents,
     subagentDecls,
     subagentResolver,
+    {
+      mode: "apply",
+      retainedSubagents: config.subagents,
+    },
   );
-
-  const subagentResult = await writeSubagentConfigs(
-    config.agents,
-    subagentDecls,
-    subagentResolver,
-  );
-  const prunedSubagentConfigs = await pruneSubagentConfigs(
-    config.agents,
-    config.subagents,
-    subagentResolver,
-  );
-  subagentsRepaired = subagentResult.written + prunedSubagentConfigs.length + prunedInstalledSubagents.length;
+  subagentsRepaired = subagentResult.written + subagentResult.pruned.length + prunedInstalledSubagents.length;
 
   for (const issue of installedSubagentResult.issues) {
     issues.push({
@@ -362,7 +313,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       message: issue.issue,
     });
   }
-  for (const issue of subagentIssues) {
+  for (const issue of subagentResult.issues) {
     issues.push({
       type: "subagents",
       name: issue.name,
@@ -424,7 +375,6 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       message: issue.issue,
     });
   }
-
   return {
     issues,
     adopted,

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -184,6 +184,90 @@ describe("runSync", () => {
     expect(existsSync(reviewDir)).toBe(false);
   });
 
+  it("prunes wildcard skills outside the configured path", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "org/repo"\npath = "skills/engineering/"\n`,
+    );
+    const deployDir = join(projectRoot, ".agents", "skills", "deploy");
+    const notesDir = join(projectRoot, ".agents", "skills", "notes");
+    await mkdir(deployDir, { recursive: true });
+    await mkdir(notesDir, { recursive: true });
+    await writeFile(join(deployDir, "SKILL.md"), SKILL_MD("deploy"));
+    await writeFile(join(notesDir, "SKILL.md"), SKILL_MD("notes"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        deploy: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "skills/engineering/deploy",
+        },
+        notes: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "skills/productivity/notes",
+        },
+      },
+    });
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.pruned).toEqual(["notes"]);
+    expect(existsSync(deployDir)).toBe(true);
+    expect(existsSync(notesDir)).toBe(false);
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills["deploy"]).toBeDefined();
+    expect(lockfile!.skills["notes"]).toBeUndefined();
+  });
+
+  it("retains legacy wildcard entries without resolved paths", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "path:local-skills"\npath = "engineering"\n`,
+    );
+    const reviewDir = join(projectRoot, ".agents", "skills", "review");
+    await mkdir(reviewDir, { recursive: true });
+    await writeFile(join(reviewDir, "SKILL.md"), SKILL_MD("review"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        review: { source: "path:local-skills" },
+      },
+    });
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.pruned).toEqual([]);
+    expect(result.adopted).toEqual([]);
+    expect(existsSync(reviewDir)).toBe(true);
+  });
+
+  it("matches backslash wildcard paths against canonical lock paths", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "org/repo"\npath = "skills\\\\engineering"\n`,
+    );
+    const reviewDir = join(projectRoot, ".agents", "skills", "review");
+    await mkdir(reviewDir, { recursive: true });
+    await writeFile(join(reviewDir, "SKILL.md"), SKILL_MD("review"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        review: {
+          source: "org/repo",
+          resolved_url: "https://github.com/org/repo.git",
+          resolved_path: "skills/engineering/review",
+        },
+      },
+    });
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.pruned).toEqual([]);
+    expect(existsSync(reviewDir)).toBe(true);
+  });
+
   it("prunes stale managed skills after a collaborator removes the dependency and another collaborator pulls", async () => {
     const skillRepo = join(tmpDir, "skill-repo");
     const projectOrigin = join(tmpDir, "project-origin.git");
@@ -365,6 +449,7 @@ source = "path:plugin-source/review-tools"
 
     const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.symlinksRepaired).toBe(1);
+    expect((await lstat(join(projectRoot, ".claude", "skills"))).isSymbolicLink()).toBe(true);
   });
 
   it("regenerates gitignore", async () => {
@@ -421,6 +506,75 @@ source = "path:plugin-source/review-tools"
     expect(existsSync(join(projectRoot, ".mcp.json"))).toBe(true);
   });
 
+  it("repairs MCP transport drift under unchanged server names", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude"]
+
+[[mcp]]
+name = "github"
+command = "npx"
+args = ["-y", "@mcp/server-github"]
+env = ["GITHUB_TOKEN"]
+
+[[mcp]]
+name = "remote"
+url = "https://mcp.example.com/sse"
+headers = { Authorization = "Bearer tok" }
+`,
+    );
+    const configPath = join(projectRoot, "agents.toml");
+    const mcpPath = join(projectRoot, ".mcp.json");
+    await writeFile(mcpPath, JSON.stringify({
+      editor: "manual",
+      mcpServers: {
+        manual: { command: "manual" },
+        github: { command: "old", args: ["old"], env: { GITHUB_TOKEN: "old" } },
+        remote: { type: "http", url: "https://old.example.com", headers: { Authorization: "old" } },
+      },
+    }));
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.mcpRepaired).toBe(1);
+    expect(result.issues.filter(({ type }) => type === "mcp")).toEqual([]);
+    expect(JSON.parse(await readFile(mcpPath, "utf-8"))).toEqual({
+      editor: "manual",
+      mcpServers: {
+        manual: { command: "manual" },
+        github: {
+          command: "npx",
+          args: ["-y", "@mcp/server-github"],
+          env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
+        },
+        remote: {
+          type: "http",
+          url: "https://mcp.example.com/sse",
+          headers: { Authorization: "Bearer tok" },
+        },
+      },
+    });
+
+    await writeFile(configPath, `version = 1\nagents = ["claude"]\n`);
+    const beforeEmptySync = await readFile(mcpPath, "utf-8");
+    const emptyResult = await runSync({ scope: resolveScope("project", projectRoot) });
+    expect(emptyResult.mcpRepaired).toBe(0);
+    expect(await readFile(mcpPath, "utf-8")).toBe(beforeEmptySync);
+
+    await writeFile(configPath, `version = 1\nagents = ["claude"]\n\n[[mcp]]\nname = "github"\ncommand = "npx"\n`);
+    const incompatible = '{"mcpServers":[]}\n';
+    await writeFile(mcpPath, incompatible);
+    const incompatibleResult = await runSync({ scope: resolveScope("project", projectRoot) });
+    expect(incompatibleResult.mcpRepaired).toBe(0);
+    expect(incompatibleResult.issues).toEqual([{
+      type: "mcp",
+      name: "claude",
+      message: `Failed to read MCP config: ${mcpPath}`,
+    }]);
+    expect(await readFile(mcpPath, "utf-8")).toBe(incompatible);
+  });
+
   it("repairs agent-specific symlinks", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -432,37 +586,52 @@ source = "path:plugin-source/review-tools"
 
     const result = await runSync({ scope: resolveScope("project", projectRoot) });
     expect(result.symlinksRepaired).toBe(1);
+    expect((await lstat(join(projectRoot, ".claude", "skills"))).isSymbolicLink()).toBe(true);
   });
 
-  it("repairs missing hook configs", async () => {
+  it("reconciles missing and drifted hook configs without removing empty declarations", async () => {
+    const configPath = join(projectRoot, "agents.toml");
+    const settingsPath = join(projectRoot, ".claude", "settings.json");
     await writeFile(
-      join(projectRoot, "agents.toml"),
+      configPath,
       `version = 1\nagents = ["claude"]\n\n[[hooks]]\nevent = "PreToolUse"\nmatcher = "Bash"\ncommand = ".agents/hooks/block-rm.sh"\n`,
     );
 
-    const result = await runSync({ scope: resolveScope("project", projectRoot) });
-    expect(result.hooksRepaired).toBeGreaterThan(0);
-
-    // Verify config was created
-    expect(existsSync(join(projectRoot, ".claude", "settings.json"))).toBe(true);
-
-    const settings = JSON.parse(await readFile(join(projectRoot, ".claude", "settings.json"), "utf-8"));
+    const scope = resolveScope("project", projectRoot);
+    const missing = await runSync({ scope });
+    expect(missing.hooksRepaired).toBe(1);
+    const settings = JSON.parse(await readFile(settingsPath, "utf-8"));
     expect(settings.hooks.PreToolUse).toBeDefined();
-  });
 
-  it("reports no hook issues when configs are present", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\nagents = ["claude"]\n\n[[hooks]]\nevent = "Stop"\ncommand = "check.sh"\n`,
-    );
+    await writeFile(settingsPath, JSON.stringify({
+      permissions: { allow: ["Read"] },
+      hooks: { PreToolUse: [{ matcher: "Write", hooks: [{ type: "command", command: "old.sh" }] }] },
+    }));
+    const drifted = await runSync({ scope });
+    expect(drifted.hooksRepaired).toBe(1);
+    expect(drifted.issues.filter((issue) => issue.type === "hooks")).toEqual([]);
+    expect(JSON.parse(await readFile(settingsPath, "utf-8"))).toEqual({
+      permissions: { allow: ["Read"] },
+      hooks: {
+        PreToolUse: [{
+          matcher: "Bash",
+          hooks: [{ type: "command", command: ".agents/hooks/block-rm.sh" }],
+        }],
+      },
+    });
 
-    // First sync to create the config
-    await runSync({ scope: resolveScope("project", projectRoot) });
-
-    // Second sync should find everything in order
-    const result = await runSync({ scope: resolveScope("project", projectRoot) });
-    expect(result.hooksRepaired).toBe(0);
-    expect(result.issues.filter((i) => i.type === "hooks")).toHaveLength(0);
+    await writeFile(configPath, `version = 1\nagents = ["claude"]\n`);
+    const unchanged = await runSync({ scope });
+    expect(unchanged.hooksRepaired).toBe(0);
+    expect(JSON.parse(await readFile(settingsPath, "utf-8"))).toEqual({
+      permissions: { allow: ["Read"] },
+      hooks: {
+        PreToolUse: [{
+          matcher: "Bash",
+          hooks: [{ type: "command", command: ".agents/hooks/block-rm.sh" }],
+        }],
+      },
+    });
   });
 
   it("repairs missing subagent configs", async () => {

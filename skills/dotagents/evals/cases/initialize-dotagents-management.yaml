@@ -1,0 +1,5 @@
+behavior: initialize-dotagents-management
+prompt: |
+  Do not execute commands or modify files. This is a new repository with no agent setup yet. I want Claude and Codex to share project skills managed by dotagents. Tell me the setup sequence.
+checks:
+  - judge: The response initializes dotagents before adding skills, uses the project-scoped dotagents init command, and does not recommend manually copying skills into Claude or Codex directories.

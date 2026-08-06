@@ -7,6 +7,7 @@ import { parse as parseTOML } from "smol-toml";
 import {
   projectSubagentResolver,
   pruneSubagentConfigs,
+  reconcileSubagentConfigs,
   verifySubagentConfigs,
   writeSubagentConfigs,
 } from "./writer.js";
@@ -17,6 +18,12 @@ const SUBAGENT: SubagentDeclaration = {
   name: "code-reviewer",
   description: "Review code for correctness and missing tests.",
   instructions: "Review the current diff and return findings.",
+};
+
+const OTHER_SUBAGENT: SubagentDeclaration = {
+  name: "test-writer",
+  description: "Write focused tests.",
+  instructions: "Add regression coverage for the current change.",
 };
 
 describe("writeSubagentConfigs", () => {
@@ -557,5 +564,130 @@ Hand-written instructions.
 
     expect(issues).toHaveLength(1);
     expect(issues[0]!.issue).toContain("identity conflicts with unmanaged file");
+  });
+});
+
+describe("reconcileSubagentConfigs", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "dotagents-subagents-reconcile-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true });
+  });
+
+  it("inspects missing and conflicting configs without mutation", async () => {
+    const targetDir = join(dir, ".claude", "agents");
+    await mkdir(targetDir, { recursive: true });
+    const unmanagedPath = join(targetDir, "reviewer.md");
+    await writeFile(
+      unmanagedPath,
+      `---\nname: code-reviewer\ndescription: Hand-written reviewer.\n---\n`,
+      "utf-8",
+    );
+
+    const result = await reconcileSubagentConfigs(
+      ["claude"],
+      [SUBAGENT, OTHER_SUBAGENT],
+      projectSubagentResolver(dir),
+      { mode: "inspect" },
+    );
+
+    expect(result.issues.map(({ issue }) => issue)).toEqual([
+      `Subagent config identity conflicts with unmanaged file: ${unmanagedPath}`,
+      `Subagent config missing: ${join(targetDir, "test-writer.md")}`,
+    ]);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.written).toBe(0);
+    expect(result.pruned).toEqual([]);
+    expect(existsSync(join(targetDir, "test-writer.md"))).toBe(false);
+    expect(await readFile(unmanagedPath, "utf-8")).toContain("Hand-written reviewer");
+  });
+
+  it("applies desired writes and prunes while protecting declared unloaded files", async () => {
+    const targetDir = join(dir, ".claude", "agents");
+    await mkdir(targetDir, { recursive: true });
+    const declaredPath = join(targetDir, "failed-reviewer.md");
+    const stalePath = join(targetDir, "old-reviewer.md");
+    const managed = (name: string) =>
+      `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "${name}"\n---\n`;
+    await writeFile(declaredPath, managed("failed-reviewer"), "utf-8");
+    await writeFile(stalePath, managed("old-reviewer"), "utf-8");
+
+    const result = await reconcileSubagentConfigs(
+      ["claude"],
+      [SUBAGENT],
+      projectSubagentResolver(dir),
+      {
+        mode: "apply",
+        retainedSubagents: [SUBAGENT, { name: "failed-reviewer" }],
+      },
+    );
+
+    expect(result.written).toBe(1);
+    expect(result.pruned).toEqual([stalePath]);
+    expect(existsSync(join(targetDir, "code-reviewer.md"))).toBe(true);
+    expect(existsSync(declaredPath)).toBe(true);
+    expect(existsSync(stalePath)).toBe(false);
+  });
+
+  it("reports unsupported targets without creating runtime state", async () => {
+    const result = await reconcileSubagentConfigs(
+      ["vscode"],
+      [SUBAGENT],
+      projectSubagentResolver(dir),
+      { mode: "apply" },
+    );
+
+    expect(result.issues).toHaveLength(1);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]!.message).toContain("does not support custom subagents");
+    expect(result.written).toBe(0);
+    expect(result.pruned).toEqual([]);
+    expect(existsSync(join(dir, ".vscode"))).toBe(false);
+  });
+
+  it("finishes inspection before writing any runtime files", async () => {
+    const resolver = (agentId: string, spec: { projectDir: string }) => {
+      if (agentId === "codex") {throw new Error("failed to resolve codex target");}
+      return { dirPath: join(dir, spec.projectDir) };
+    };
+
+    await expect(reconcileSubagentConfigs(
+      ["claude", "codex"],
+      [{ ...SUBAGENT, targets: ["claude", "codex"] }],
+      resolver,
+      { mode: "apply" },
+    )).rejects.toThrow("failed to resolve codex target");
+
+    expect(existsSync(join(dir, ".claude", "agents", "code-reviewer.md"))).toBe(false);
+  });
+
+  it("reports unreadable configs during inspection and fails during apply", async () => {
+    const filePath = join(dir, ".claude", "agents", "code-reviewer.md");
+    await mkdir(join(dir, ".claude", "agents"), { recursive: true });
+    await writeFile(filePath, `# ${DOTAGENTS_SUBAGENT_MARKER}\n`, "utf-8");
+    await chmod(filePath, 0o000);
+
+    try {
+      const inspected = await reconcileSubagentConfigs(
+        ["claude"],
+        [SUBAGENT],
+        projectSubagentResolver(dir),
+        { mode: "inspect" },
+      );
+      expect(inspected.issues[0]!.issue).toContain("Failed to read");
+
+      await expect(reconcileSubagentConfigs(
+        ["claude"],
+        [SUBAGENT],
+        projectSubagentResolver(dir),
+        { mode: "apply" },
+      )).rejects.toThrow();
+    } finally {
+      await chmod(filePath, 0o600);
+    }
   });
 });

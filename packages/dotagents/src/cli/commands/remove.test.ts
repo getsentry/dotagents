@@ -382,6 +382,21 @@ source = "path:plugins/review-tools"
     await expect(runRemove({ scope, name: "pdf" })).rejects.toThrow(WildcardSkillRemoveError);
   });
 
+  it("does not treat skills outside wildcard path scope as wildcard-owned", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
+    );
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\npath = "skills"\n`,
+    );
+
+    await expect(runRemove({ scope, name: "pdf" })).rejects.toThrow(RemoveError);
+  });
+
   it("WildcardSkillRemoveError carries the source", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),

@@ -78,3 +78,7 @@ pnpm check
 ```
 
 Or individually: `pnpm lint && pnpm typecheck && pnpm test`
+
+- Changes affecting install, sync, doctor, skill placement, agent symlinks,
+  generated configs, user scope, or package/runtime behavior should use
+  `skills/dotagents-qa/SKILL.md` for proportionate Docker QA.

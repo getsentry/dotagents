@@ -169,6 +169,7 @@ export async function installPluginBundle(
 
   try {
     await copyDir(resolved.plugin.pluginDir, tempDir);
+    await assertPluginBundleSymlinksContained(tempDir);
     const staged = { ...resolved.plugin, pluginDir: tempDir };
     await ensureCanonicalManifest(staged);
     await writeManagedMarker(tempDir);
@@ -207,6 +208,7 @@ export async function loadInstalledPlugins(
       continue;
     }
     try {
+      await assertPluginBundleSymlinksContained(pluginDir);
       const manifest = await loadManifest(pluginDir) ?? { name: config.name };
       assertPluginName(config.name, manifest, pluginDir);
       plugins.push({
@@ -223,6 +225,39 @@ export async function loadInstalledPlugins(
   }
 
   return { plugins, issues };
+}
+
+async function assertPluginBundleSymlinksContained(pluginDir: string): Promise<void> {
+  const rootRealPath = await realpath(pluginDir);
+
+  const visit = async (dirPath: string): Promise<void> => {
+    for (const entry of await readdir(dirPath, { withFileTypes: true })) {
+      const entryPath = join(dirPath, entry.name);
+      if (entry.isSymbolicLink()) {
+        let targetRealPath: string;
+        try {
+          targetRealPath = await realpath(entryPath);
+        } catch (err) {
+          throw new Error(
+            `Plugin bundle contains an invalid symlink: ${relativePath(pluginDir, entryPath)}`,
+            { cause: err },
+          );
+        }
+        const targetRelativePath = relative(rootRealPath, targetRealPath);
+        if (targetRelativePath.startsWith("..") || isAbsolute(targetRelativePath)) {
+          throw new Error(
+            `Plugin bundle symlink resolves outside the plugin directory: ${relativePath(pluginDir, entryPath)}`,
+          );
+        }
+        continue;
+      }
+      if (entry.isDirectory()) {
+        await visit(entryPath);
+      }
+    }
+  };
+
+  await visit(pluginDir);
 }
 
 /** Removes installed plugin bundles by lockfile name using path-safe names only. */

@@ -1,6 +1,5 @@
 import chalk from "chalk";
 import { isWildcardDep, type AgentsConfig } from "../../../config/schema.js";
-import type { Lockfile } from "../../../lockfile/schema.js";
 import type { ScopeRoot } from "../../../scope.js";
 import { filterManagedPluginSkillNames } from "../../../gitignore/skills.js";
 import { checkRootGitignoreEntries, writeAgentsGitignore } from "../../../gitignore/writer.js";
@@ -26,37 +25,19 @@ function managedSkillNames(
   });
 }
 
-function managedSubagentNames(
-  lockfile: Lockfile | null,
-  subagents: SubagentDeclaration[],
-  frozen?: boolean,
-): string[] {
-  return frozen
-    ? Object.keys(lockfile?.subagents ?? {})
-    : subagents.map((subagent) => subagent.name);
-}
-
 function managedPluginNames(
-  lockfile: Lockfile | null,
   plugins: PluginDeclaration[],
-  frozen?: boolean,
 ): string[] {
-  return frozen
-    ? Object.entries(lockfile?.plugins ?? {})
-      .filter(([, locked]) => !isInPlacePluginSource(locked.source))
-      .map(([name]) => name)
-    : plugins
-      .filter((plugin) => !isInPlacePluginSource(plugin.source))
-      .map((plugin) => plugin.name);
+  return plugins
+    .filter((plugin) => !isInPlacePluginSource(plugin.source))
+    .map((plugin) => plugin.name);
 }
 
-/** Regenerates project `.agents/.gitignore` from install results and lockfile state. */
+/** Regenerates project `.agents/.gitignore` from installed canonical artifacts. */
 export async function writeInstallGitignore(
   config: AgentsConfig,
-  lockfile: Lockfile | null,
   scope: ScopeRoot,
   artifacts: InstallGitignoreArtifacts,
-  frozen?: boolean,
 ): Promise<void> {
   if (scope.scope !== "project") {return;}
 
@@ -73,8 +54,8 @@ export async function writeInstallGitignore(
   await writeAgentsGitignore(
     scope.agentsDir,
     managedSkills,
-    managedSubagentNames(lockfile, artifacts.subagents, frozen),
-    managedPluginNames(lockfile, artifacts.plugins, frozen),
+    artifacts.subagents.map((subagent) => subagent.name),
+    managedPluginNames(artifacts.plugins),
   );
 
   const missing = await checkRootGitignoreEntries(scope.root);

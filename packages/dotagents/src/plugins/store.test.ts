@@ -43,6 +43,33 @@ describe("plugin store", () => {
     });
   });
 
+  it("rejects plugin bundle symlinks that escape the installed plugin", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    const sourceDir = join(projectRoot, "source", "review-tools");
+    const pluginsDir = join(projectRoot, ".agents", "plugins");
+    const outsideFile = join(projectRoot, "secret.txt");
+    await mkdir(join(sourceDir, "agents"), { recursive: true });
+    await mkdir(pluginsDir, { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({ name: "review-tools" }));
+    await writeFile(outsideFile, "secret");
+    await symlink(outsideFile, join(sourceDir, "agents", "evil.md"));
+
+    try {
+      await expect(installPluginBundle(pluginsDir, {
+        type: "local",
+        plugin: {
+          name: "review-tools",
+          source: "path:source/review-tools",
+          pluginDir: sourceDir,
+          manifest: { name: "review-tools" },
+        },
+      })).rejects.toThrow("Plugin bundle symlink resolves outside the plugin directory");
+      expect(existsSync(join(pluginsDir, "review-tools"))).toBe(false);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("does not treat missing canonical plugin dirs as same-project plugins", async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
     const pluginsDir = join(projectRoot, ".agents", "plugins");

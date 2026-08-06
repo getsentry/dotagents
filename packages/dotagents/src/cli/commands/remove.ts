@@ -16,6 +16,7 @@ import {
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { filterManagedPluginSkillNames } from "../../gitignore/skills.js";
+import { wildcardContainsLockedSkill } from "../../lockfile/wildcard.js";
 import { writeAgentsGitignore } from "../../gitignore/writer.js";
 import { sourcesMatch, parseOwnerRepoShorthand, isExplicitSourceSpecifier } from "@sentry/dotagents-lib";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
@@ -99,7 +100,7 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
     const wildcardDep = config.skills.find(
       (s) =>
         isWildcardDep(s) &&
-        sourcesMatch(s.source, locked.source),
+        wildcardContainsLockedSkill(s, name, locked),
     );
     if (wildcardDep) {
       throw new WildcardSkillRemoveError(name, locked.source);

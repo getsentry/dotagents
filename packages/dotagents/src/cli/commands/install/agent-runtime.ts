@@ -1,16 +1,14 @@
-import { join } from "node:path";
 import type { AgentsConfig } from "../../../config/schema.js";
 import type { ScopeRoot } from "../../../scope.js";
-import { getAgent } from "../../../targets/registry.js";
 import { ensureSkillsSymlink } from "../../../symlinks/manager.js";
-import { projectMcpResolver, toMcpDeclarations, writeMcpConfigs } from "../../../targets/mcp-writer.js";
-import { projectHookResolver, toHookDeclarations, writeHookConfigs } from "../../../targets/hook-writer.js";
+import { skillSymlinkTargets } from "../../../targets/skill-symlinks.js";
+import { projectMcpResolver, reconcileMcpConfigs, toMcpDeclarations } from "../../../targets/mcp-writer.js";
+import { projectHookResolver, reconcileHookConfigs, toHookDeclarations } from "../../../targets/hook-writer.js";
 import { userMcpResolver } from "../../../targets/paths.js";
 import {
-  pruneSubagentConfigs,
   projectSubagentResolver,
+  reconcileSubagentConfigs,
   userSubagentResolver,
-  writeSubagentConfigs,
 } from "../../../subagents/writer.js";
 import { prunePluginOutputs, writePluginOutputs } from "../../../plugins/runtime/writer.js";
 import type { PluginDeclaration } from "../../../plugins/store.js";
@@ -21,32 +19,13 @@ export async function writeSkillSymlinks(
   config: AgentsConfig,
   scope: ScopeRoot,
 ): Promise<void> {
-  if (scope.scope === "user") {
-    const seen = new Set<string>();
-    for (const agentId of config.agents) {
-      const agent = getAgent(agentId);
-      if (!agent?.userSkillsParentDirs) {continue;}
-      for (const dir of agent.userSkillsParentDirs) {
-        if (seen.has(dir)) {continue;}
-        seen.add(dir);
-        await ensureSkillsSymlink(scope.agentsDir, dir);
-      }
-    }
-    return;
-  }
-
-  const targets = config.symlinks?.targets ?? [];
+  const targets = skillSymlinkTargets(
+    scope,
+    config.agents,
+    config.symlinks?.targets,
+  );
   for (const target of targets) {
-    await ensureSkillsSymlink(scope.agentsDir, join(scope.root, target));
-  }
-
-  const seenParentDirs = new Set(targets);
-  for (const agentId of config.agents) {
-    const agent = getAgent(agentId);
-    if (!agent?.skillsParentDir) {continue;}
-    if (seenParentDirs.has(agent.skillsParentDir)) {continue;}
-    seenParentDirs.add(agent.skillsParentDir);
-    await ensureSkillsSymlink(scope.agentsDir, join(scope.root, agent.skillsParentDir));
+    await ensureSkillsSymlink(scope.agentsDir, target);
   }
 }
 
@@ -54,11 +33,17 @@ export async function writeSkillSymlinks(
 export async function writeMcpRuntime(
   config: AgentsConfig,
   scope: ScopeRoot,
-): Promise<void> {
+): Promise<{ agent: string; message: string }[]> {
   const resolver = scope.scope === "user"
     ? userMcpResolver()
     : projectMcpResolver(scope.root);
-  await writeMcpConfigs(config.agents, toMcpDeclarations(config.mcp), resolver);
+  const result = await reconcileMcpConfigs(
+    config.agents,
+    toMcpDeclarations(config.mcp),
+    resolver,
+    "apply",
+  );
+  return result.unresolved.map(({ agent, issue }) => ({ agent, message: issue }));
 }
 
 /** Writes project-scoped hook runtime config for configured agents. */
@@ -67,11 +52,13 @@ export async function writeHookRuntime(
   scope: ScopeRoot,
 ): Promise<{ agent: string; message: string }[]> {
   if (scope.scope !== "project") {return [];}
-  return writeHookConfigs(
+  const result = await reconcileHookConfigs(
     config.agents,
     toHookDeclarations(config.hooks),
     projectHookResolver(scope.root),
+    "apply",
   );
+  return result.warnings;
 }
 
 /** Writes agent-specific subagent runtime projections. */
@@ -79,15 +66,13 @@ export async function writeSubagentRuntime(
   config: AgentsConfig,
   scope: ScopeRoot,
   subagents: SubagentDeclaration[],
-  frozen?: boolean,
 ): Promise<{ agent: string; name: string; message: string }[]> {
   const resolver = scope.scope === "user"
     ? userSubagentResolver()
     : projectSubagentResolver(scope.root);
-  const result = await writeSubagentConfigs(config.agents, subagents, resolver);
-  if (!frozen) {
-    await pruneSubagentConfigs(config.agents, subagents, resolver);
-  }
+  const result = await reconcileSubagentConfigs(config.agents, subagents, resolver, {
+    mode: "apply",
+  });
   return result.warnings;
 }
 
@@ -96,13 +81,10 @@ export async function writePluginRuntime(
   config: AgentsConfig,
   scope: ScopeRoot,
   plugins: PluginDeclaration[],
-  frozen?: boolean,
   extraManagedPluginRoots: string[] = [],
 ): Promise<{ agent: string; name: string; message: string }[]> {
   if (scope.scope !== "project") {return [];}
   const result = await writePluginOutputs(config.agents, plugins, scope.root);
-  if (!frozen) {
-    await prunePluginOutputs(config.agents, plugins, scope.root, extraManagedPluginRoots);
-  }
+  await prunePluginOutputs(config.agents, plugins, scope.root, extraManagedPluginRoots);
   return result.warnings;
 }

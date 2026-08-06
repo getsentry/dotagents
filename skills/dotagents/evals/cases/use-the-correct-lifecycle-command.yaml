@@ -1,0 +1,5 @@
+behavior: use-the-correct-lifecycle-command
+prompt: |
+  Do not execute anything. Which dotagents command should fetch newer versions of my skills, and which command should I use offline only to repair broken symlinks and generated config?
+checks:
+  - judge: The response clearly assigns `install` to fetching or refreshing dependency contents and `sync` to offline local-state repair, without describing sync as an update command.

@@ -48,10 +48,11 @@ Add all skills from a source with a single entry:
 [[skills]]
 name = "*"
 source = "getsentry/skills"
+path = "skills/engineering"
 exclude = ["deprecated-skill"]
 ```
 
-During `install`, dotagents discovers all skills in the source and installs each one (except those in `exclude`). Each skill gets its own lockfile entry. Use `npx @sentry/dotagents add <source> --all` to create a wildcard entry from the CLI.
+During `install`, dotagents recursively discovers skills under `path` and installs each one except those in `exclude`. Use `path = "."` for the complete source root. The path cannot escape the source root, and well-known HTTPS sources do not support wildcard path scoping. Each skill gets its own lockfile entry. Use `npx @sentry/dotagents add <source> --all` to create a wildcard entry from the CLI.
 
 ## Trust
 

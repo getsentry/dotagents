@@ -167,6 +167,22 @@ describe("plugin writer", () => {
     expect(await verifyPluginOutputs(["cursor", "codex", "claude"], [beta, alpha], root)).toEqual([]);
   });
 
+  it("skips component symlinks that escape the plugin bundle", async () => {
+    const alpha = await plugin("alpha-tools");
+    const outsideFile = join(root, "outside.md");
+    await writeFile(outsideFile, "secret");
+    await symlink(outsideFile, join(alpha.pluginDir, "agents", "evil.md"));
+
+    const result = await writePluginOutputs(["opencode"], [alpha], root);
+
+    expect(existsSync(join(root, ".opencode", "agents", "evil.md"))).toBe(false);
+    expect(result.warnings).toContainEqual({
+      agent: "opencode",
+      name: "alpha-tools",
+      message: `Plugin agent resolves outside the plugin bundle and was skipped: ${join(alpha.pluginDir, "agents", "evil.md")}`,
+    });
+  });
+
   it("projects explicit runtime component paths before conventional discovery", async () => {
     const alpha = await plugin("alpha-tools", {
       manifest: {

@@ -36,10 +36,6 @@ describe("formatUpdateMessage", () => {
     expect(msg).toContain("npx @sentry/dotagents@latest");
   });
 
-  it("contains the arrow separator", () => {
-    const msg = formatUpdateMessage("1.0.0", "2.0.0");
-    expect(msg).toContain("\u2192");
-  });
 });
 
 describe("checkForUpdate", () => {

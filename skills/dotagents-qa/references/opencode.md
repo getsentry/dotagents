@@ -1,20 +1,22 @@
 # OpenCode QA
 
 Use this reference when changes affect OpenCode config generation,
-`opencode.json`, `.opencode/agents/*.md`, `.opencode/skills/*`, or
+`.opencode/opencode.jsonc`, `.opencode/agents/*.md`, `.opencode/skills/*`, or
 OpenCode user-scope paths.
 
 ## File-Level Checks
 
 The core agentic QA asserts:
 
-- `opencode.json` exists for OpenCode MCP config
+- `.opencode/opencode.jsonc` exists for OpenCode MCP config
 - `.opencode/agents/code-reviewer.md` exists
 - generated Markdown contains the dotagents managed marker
 - plugin skills selected for OpenCode are symlinked into `.opencode/skills/`
 - plugin Markdown agents selected for OpenCode are symlinked into `.opencode/agents/`
 
 OpenCode does not support dotagents hooks in the current agent definition, so hook warnings for OpenCode are expected when the fixture includes hooks.
+
+For compatibility fixtures, pre-create a legacy root `opencode.json` and verify install and sync update that file instead of creating the nested default. JSONC fixtures should keep comments and trailing commas after reconciliation.
 
 For user scope, isolate `HOME` and `DOTAGENTS_HOME`, then assert generated OpenCode subagents under `$HOME/.config/opencode/agents/`.
 

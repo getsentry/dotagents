@@ -12,8 +12,8 @@
     "@astrojs/starlight": "^0.39.2",
     "@fontsource-variable/rubik": "^5.2.8",
     "@fontsource/ibm-plex-mono": "^5.2.7",
-    "@sentry/starlight-theme": "^0.7.0",
-    "astro": "^6.3.5"
+    "@sentry/starlight-theme": "^0.8.0",
+    "astro": "^6.4.8"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
@@ -22,5 +22,12 @@
   "engines": {
     "node": "22.x"
   },
-  "packageManager": "pnpm@10.28.2"
+  "packageManager": "pnpm@10.28.2",
+  "pnpm": {
+    "overrides": {
+      "esbuild": "^0.28.1",
+      "js-yaml": "^4.2.0",
+      "yaml": "^2.8.3"
+    }
+  }
 }

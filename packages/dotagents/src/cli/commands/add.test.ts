@@ -1,10 +1,22 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import add, { runAdd, AddError } from "./add.js";
+import * as clack from "@clack/prompts";
+import add, { runAdd, AddCancelledError, AddError } from "./add.js";
+import * as installModule from "./install.js";
 import { TrustError, exec } from "@sentry/dotagents-lib";
 import { resolveScope } from "../../scope.js";
+
+vi.mock("@clack/prompts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@clack/prompts")>();
+  return {
+    ...actual,
+    select: vi.fn(),
+    multiselect: vi.fn(),
+    isCancel: vi.fn(actual.isCancel),
+  };
+});
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -62,6 +74,8 @@ describe("runAdd", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     delete process.env["DOTAGENTS_STATE_DIR"];
     await rm(tmpDir, { recursive: true });
   });
@@ -105,7 +119,7 @@ describe("runAdd", () => {
     ).rejects.toThrow(AddError);
   });
 
-  it("throws when one of multiple skills is not found (fails fast)", async () => {
+  it("validates every requested git skill before writing", async () => {
     const scope = resolveScope("project", projectRoot);
     await expect(
       runAdd({
@@ -120,7 +134,7 @@ describe("runAdd", () => {
     expect(toml).not.toContain('name = "pdf"');
   });
 
-  it("throws when a skill already exists in config", async () => {
+  it("preserves the single-name duplicate error", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
@@ -136,7 +150,7 @@ describe("runAdd", () => {
     ).rejects.toThrow(AddError);
   });
 
-  it("skips existing skills and adds the rest when adding multiple", async () => {
+  it("skips existing skills only for a multi-name request", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
@@ -177,10 +191,10 @@ describe("runAdd", () => {
       runAdd({
         scope,
         specifier: `git:${repoDir}`,
-        names: ["pdf"],
+        names: ["invalid/name"],
         all: true,
       }),
-    ).rejects.toThrow(AddError);
+    ).rejects.toThrow("Cannot use --all with --name. Use one or the other.");
   });
 
   it("treats shorthand and expanded GitLab sources as the same wildcard", async () => {
@@ -227,6 +241,70 @@ describe("runAdd", () => {
     ).rejects.toThrow(TrustError);
   });
 
+  it("stores the original source spelling and installs once", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\ndefaultRepositorySource = "gitlab"\n`,
+    );
+    const installSpy = vi.spyOn(installModule, "runInstall").mockResolvedValue({
+      installed: [],
+      pruned: [],
+      prunedPlugins: [],
+      mcpWarnings: [],
+      hookWarnings: [],
+      subagentWarnings: [],
+      pluginWarnings: [],
+    });
+
+    const result = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "getsentry/skills",
+      all: true,
+    });
+
+    expect(result).toBe("*");
+    expect(installSpy).toHaveBeenCalledOnce();
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml).toContain('source = "getsentry/skills"');
+    expect(toml).not.toContain('source = "https://gitlab.com/getsentry/skills"');
+  });
+
+  it("selects explicit well-known names like git catalog names", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.endsWith("index.json")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+              skills: ["pdf", "review"].map((name) => ({
+                name,
+                description: `Test skill ${name}`,
+                files: ["SKILL.md"],
+              })),
+            }),
+          });
+        }
+        const name = url.includes("/pdf/") ? "pdf" : "review";
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(SKILL_MD(name)),
+        });
+      }),
+    );
+
+    const result = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "https://skills.example.com",
+      names: ["pdf", "review"],
+    });
+
+    expect(result).toEqual(["pdf", "review"]);
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml).toContain('name = "pdf"');
+    expect(toml).toContain('name = "review"');
+  });
+
   it("auto-selects when repo has a single skill", async () => {
     // Create a repo with only one skill
     const singleRepo = join(tmpDir, "single-repo");
@@ -264,6 +342,76 @@ describe("runAdd", () => {
         interactive: false,
       }),
     ).rejects.toThrow(/Multiple skills found/);
+  });
+
+  it("cancels interactive catalog selection before writing", async () => {
+    vi.mocked(clack.select).mockResolvedValue("pick");
+    vi.mocked(clack.isCancel).mockReturnValue(true);
+
+    await expect(
+      runAdd({
+        scope: resolveScope("project", projectRoot),
+        specifier: `git:${repoDir}`,
+        interactive: true,
+      }),
+    ).rejects.toBeInstanceOf(AddCancelledError);
+
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe(
+      "version = 1\n",
+    );
+  });
+
+  it("persists an interactive all selection and installs once", async () => {
+    vi.mocked(clack.select).mockResolvedValue("all");
+    vi.mocked(clack.isCancel).mockReturnValue(false);
+    const install = vi.spyOn(installModule, "runInstall").mockResolvedValue({
+      installed: [],
+      pruned: [],
+      prunedPlugins: [],
+      mcpWarnings: [],
+      hookWarnings: [],
+      subagentWarnings: [],
+      pluginWarnings: [],
+    });
+
+    const result = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: `git:${repoDir}`,
+      interactive: true,
+    });
+
+    expect(result).toBe("*");
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toContain(
+      'name = "*"',
+    );
+    expect(install).toHaveBeenCalledOnce();
+  });
+
+  it("persists interactive skill selections and installs once", async () => {
+    vi.mocked(clack.select).mockResolvedValue("pick");
+    vi.mocked(clack.multiselect).mockResolvedValue(["pdf", "review"]);
+    vi.mocked(clack.isCancel).mockReturnValue(false);
+    const install = vi.spyOn(installModule, "runInstall").mockResolvedValue({
+      installed: [],
+      pruned: [],
+      prunedPlugins: [],
+      mcpWarnings: [],
+      hookWarnings: [],
+      subagentWarnings: [],
+      pluginWarnings: [],
+    });
+
+    const result = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: `git:${repoDir}`,
+      interactive: true,
+    });
+
+    expect(result).toEqual(["pdf", "review"]);
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml).toContain('name = "pdf"');
+    expect(toml).toContain('name = "review"');
+    expect(install).toHaveBeenCalledOnce();
   });
 });
 
@@ -337,81 +485,6 @@ describe("runAdd (local sources)", () => {
     expect(toml).toContain('name = "pdf"');
   });
 
-  it("adds multiple local skills via names", async () => {
-    const scope = resolveScope("project", projectRoot);
-    const result = await runAdd({
-      scope,
-      specifier: "path:local-skills",
-      names: ["pdf", "review"],
-    });
-
-    expect(result).toEqual(["pdf", "review"]);
-
-    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
-    expect(toml).toContain('name = "pdf"');
-    expect(toml).toContain('name = "review"');
-  });
-
-  it("throws when a local skill is not found", async () => {
-    const scope = resolveScope("project", projectRoot);
-    await expect(
-      runAdd({
-        scope,
-        specifier: "path:local-skills",
-        names: ["nonexistent"],
-      }),
-    ).rejects.toThrow(AddError);
-  });
-
-  it("throws when one of multiple local skills is not found (fails fast)", async () => {
-    const scope = resolveScope("project", projectRoot);
-    await expect(
-      runAdd({
-        scope,
-        specifier: "path:local-skills",
-        names: ["pdf", "nonexistent"],
-      }),
-    ).rejects.toThrow(AddError);
-
-    // "pdf" should NOT have been partially added
-    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
-    expect(toml).not.toContain('name = "pdf"');
-  });
-
-  it("skips existing local skills and adds the rest when adding multiple", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "path:local-skills"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    const result = await runAdd({
-      scope,
-      specifier: "path:local-skills",
-      names: ["review", "pdf"],
-    });
-
-    // Only "review" should be added; "pdf" was skipped
-    expect(result).toEqual(["review"]);
-    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
-    expect(toml).toContain('name = "review"');
-  });
-
-  it("throws when all specified local skills already exist", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "path:local-skills"\n\n[[skills]]\nname = "review"\nsource = "path:local-skills"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    await expect(
-      runAdd({
-        scope,
-        specifier: "path:local-skills",
-        names: ["pdf", "review"],
-      }),
-    ).rejects.toThrow(AddError);
-  });
 });
 
 describe("add() CLI parsing", () => {

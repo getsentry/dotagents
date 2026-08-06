@@ -64,6 +64,58 @@ describe("agentsConfigSchema", () => {
     }
   });
 
+  it("preserves path on wildcard skill dependencies", () => {
+    const result = agentsConfigSchema.safeParse({
+      version: 1,
+      skills: [{
+        name: "*",
+        source: "getsentry/skills",
+        path: "skills/engineering",
+        exclude: ["deprecated"],
+      }],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.skills[0]).toEqual({
+        name: "*",
+        source: "getsentry/skills",
+        path: "skills/engineering",
+        exclude: ["deprecated"],
+      });
+    }
+  });
+
+  it("rejects an empty wildcard path", () => {
+    const result = agentsConfigSchema.safeParse({
+      version: 1,
+      skills: [{ name: "*", source: "getsentry/skills", path: "" }],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it.each(["/", "C:\\skills", "C:skills"])("rejects rooted wildcard path %s", (path) => {
+    const result = agentsConfigSchema.safeParse({
+      version: 1,
+      skills: [{ name: "*", source: "getsentry/skills", path }],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it.each(["..", "../outside", "..\\outside"])(
+    "rejects escaping wildcard path %s",
+    (path) => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        skills: [{ name: "*", source: "getsentry/skills", path }],
+      });
+
+      expect(result.success).toBe(false);
+    },
+  );
+
   it("rejects invalid version", () => {
     expect(agentsConfigSchema.safeParse({ version: 2 }).success).toBe(false);
   });

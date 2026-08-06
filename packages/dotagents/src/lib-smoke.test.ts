@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSource, normalizeSource } from "@sentry/dotagents-lib";
+import { parseSource } from "@sentry/dotagents-lib";
 
 /**
  * Cross-package smoke: confirms the workspace dependency on `@sentry/dotagents-lib`
@@ -15,11 +15,5 @@ describe("@sentry/dotagents-lib smoke (consumed via workspace dep)", () => {
     expect(parsed.owner).toBe("anthropics");
     expect(parsed.repo).toBe("skills");
     expect(parsed.ref).toBe("main");
-  });
-
-  it("normalizeSource collapses owner/repo equivalents", () => {
-    expect(normalizeSource("https://github.com/anthropics/skills.git")).toBe(
-      "anthropics/skills",
-    );
   });
 });

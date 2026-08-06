@@ -29,20 +29,20 @@ export { InstallError };
 // writes have succeeded, then writes runtime projections and CLI output.
 export interface InstallOptions {
   scope: ScopeRoot;
-  frozen?: boolean;
 }
 
 export interface InstallResult {
   installed: string[];
   pruned: string[];
   prunedPlugins: string[];
+  mcpWarnings: { agent: string; message: string }[];
   hookWarnings: { agent: string; message: string }[];
   subagentWarnings: { agent: string; name: string; message: string }[];
   pluginWarnings: { agent: string; name: string; message: string }[];
 }
 
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
-  const { scope, frozen } = opts;
+  const { scope } = opts;
   const config = await loadConfig(scope.configPath);
   if (scope.scope === "user" && config.plugins.length > 0) {
     throw new InstallError(
@@ -52,9 +52,9 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   }
 
   const lockfile = await loadLockfile(scope.lockPath);
-  const skills = await installSkills(config, lockfile, scope, frozen);
-  const subagents = await installSubagents(config, lockfile, scope, frozen);
-  const plugins = await installPlugins(config, lockfile, scope, frozen);
+  const skills = await installSkills(config, lockfile, scope);
+  const subagents = await installSubagents(config, scope);
+  const plugins = await installPlugins(config, lockfile, scope);
   const newLock: Lockfile = {
     version: 1,
     skills: skills.lockEntries,
@@ -62,31 +62,30 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     plugins: plugins.lockEntries,
   };
 
-  const writeLock = !frozen && (
+  await writeCanonicalSubagents(config, scope, subagents.subagents);
+  const writeLock = (
     !!lockfile ||
     config.skills.length > 0 ||
     config.subagents.length > 0 ||
     config.plugins.length > 0
   );
-  await writeCanonicalSubagents(config, scope, subagents.subagents, frozen);
   if (writeLock) {
     await writeLockfile(scope.lockPath, newLock);
   }
 
-  await writeInstallGitignore(config, lockfile, scope, {
+  await writeInstallGitignore(config, scope, {
     installedSkillNames: skills.installed,
     subagents: subagents.subagents,
     plugins: plugins.plugins,
-  }, frozen);
+  });
   await writeSkillSymlinks(config, scope);
-  await writeMcpRuntime(config, scope);
+  const mcpWarnings = await writeMcpRuntime(config, scope);
   const hookWarnings = await writeHookRuntime(config, scope);
-  const subagentWarnings = await writeSubagentRuntime(config, scope, subagents.subagents, frozen);
+  const subagentWarnings = await writeSubagentRuntime(config, scope, subagents.subagents);
   const pluginWarnings = await writePluginRuntime(
     config,
     scope,
     plugins.plugins,
-    frozen,
     plugins.pruned.map((name) => join(scope.pluginsDir, name)),
   );
 
@@ -94,6 +93,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     installed: skills.installed,
     pruned: skills.pruned,
     prunedPlugins: plugins.pruned,
+    mcpWarnings,
     hookWarnings,
     subagentWarnings,
     pluginWarnings,
@@ -113,13 +113,10 @@ export default async function install(args: string[], flags?: { user?: boolean }
     const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
     await ensureUserScopeBootstrapped(scope);
     if (values["frozen"]) {
-      console.log(chalk.yellow("Warning: --frozen is deprecated and will be removed in a future release. Pinning is now managed via agents.toml refs."));
+      console.log(chalk.yellow("Warning: --frozen is ignored and will be removed in the next major release. Install now follows normal agents.toml resolution; use explicit refs to pin sources."));
     }
 
-    const result = await runInstall({
-      scope,
-      frozen: values["frozen"],
-    });
+    const result = await runInstall({ scope });
 
     if (result.installed.length > 0) {
       console.log(
@@ -135,6 +132,9 @@ export default async function install(args: string[], flags?: { user?: boolean }
       console.log(
         chalk.yellow(`Pruned ${result.prunedPlugins.length} stale plugin(s): ${result.prunedPlugins.join(", ")}`),
       );
+    }
+    for (const w of result.mcpWarnings) {
+      console.log(chalk.yellow(`  warn: ${w.message}`));
     }
     for (const w of result.hookWarnings) {
       console.log(chalk.yellow(`  warn: ${w.message}`));

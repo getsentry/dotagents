@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import { isAbsolute, join, posix, relative, resolve, sep, win32 } from "node:path";
+import { realpath, stat } from "node:fs/promises";
 import {
   GITHUB_HTTPS_URL,
   GITHUB_SSH_URL,
@@ -19,6 +20,7 @@ import type { TrustPolicy } from "../trust/policy.js";
 export interface WildcardDependencyInput {
   source: string;
   ref?: string;
+  path?: string;
   exclude?: readonly string[];
 }
 
@@ -69,6 +71,8 @@ export interface ResolvedGitSkill {
 export interface ResolvedLocalSkill {
   type: "local";
   source: string;
+  /** Path within the local source root, when discovered from a wildcard. */
+  resolvedPath?: string;
   /** Absolute path to the skill directory */
   skillDir: string;
 }
@@ -325,44 +329,93 @@ export interface ResolveOpts {
   trust?: TrustPolicy;
 }
 
+type AcquiredSkillSource =
+  | { type: "local"; skillDir: string }
+  | { type: "well-known"; cacheDir: string | null; resolvedUrl: string }
+  | {
+      type: "git";
+      repoDir: string;
+      resolvedUrl: string;
+      resolvedRef?: string;
+      commit: string;
+    };
+
+async function acquireSkillSource(
+  dep: { source: string; ref?: string },
+  opts: ResolveOpts,
+): Promise<AcquiredSkillSource> {
+  const sourceForResolve = applyDefaultRepositorySource(
+    dep.source,
+    opts.defaultRepositorySource,
+  );
+  // Trust the expanded source before any local or network acquisition.
+  if (opts.trust) {validateTrustedSource(sourceForResolve, opts.trust);}
+
+  const parsed = parseSource(sourceForResolve);
+  if (parsed.type === "local") {
+    const projectRoot = opts.projectRoot || process.cwd();
+    const skillDir = await resolveLocalSource(projectRoot, parsed.path!);
+    return { type: "local", skillDir };
+  }
+
+  if (parsed.type === "well-known") {
+    const resolvedUrl = parsed.url!;
+    const cached = await ensureWellKnownCached({
+      stateDir: opts.stateDir,
+      url: resolvedUrl,
+      cacheKey: wellKnownCacheKey(resolvedUrl),
+      ttlMs: opts.ttlMs,
+    });
+    return {
+      type: "well-known",
+      cacheDir: cached?.cacheDir ?? null,
+      resolvedUrl,
+    };
+  }
+
+  const url = parsed.url!;
+  const resolvedUrl = parsed.cloneUrl ?? url;
+  const resolvedRef = dep.ref ?? parsed.ref;
+  const cacheKey = parsed.type === "github"
+    ? `${parsed.owner}/${parsed.repo}`
+    : sanitizeCacheKey(url);
+  const excluded = isSourceExcluded(dep.source, opts.minimumReleaseAgeExclude);
+  const cached = await ensureCached({
+    stateDir: opts.stateDir,
+    url: resolvedUrl,
+    cacheKey,
+    ref: resolvedRef,
+    minimumReleaseAge: excluded ? undefined : opts.minimumReleaseAge,
+  });
+
+  return {
+    type: "git",
+    repoDir: cached.repoDir,
+    resolvedUrl,
+    resolvedRef,
+    commit: cached.commit,
+  };
+}
+
 export async function resolveSkill(
   skillName: string,
   dep: { source: string; ref?: string; path?: string },
   opts: ResolveOpts,
 ): Promise<ResolvedSkill> {
-  const sourceForResolve = applyDefaultRepositorySource(
-    dep.source,
-    opts.defaultRepositorySource,
-  );
-  // Validate the EXPANDED source so that owner/repo shorthand under a non-default
-  // host (e.g. defaultRepositorySource: "gitlab") is checked against the actual
-  // clone URL, not the shorthand's implicit github.com mapping.
-  if (opts.trust) {validateTrustedSource(sourceForResolve, opts.trust);}
+  const acquired = await acquireSkillSource(dep, opts);
 
-  const parsed = parseSource(sourceForResolve);
-
-  if (parsed.type === "local") {
-    const projectRoot = opts.projectRoot || process.cwd();
-    const skillDir = await resolveLocalSource(projectRoot, parsed.path!);
-    return { type: "local", source: dep.source, skillDir };
+  if (acquired.type === "local") {
+    return { type: "local", source: dep.source, skillDir: acquired.skillDir };
   }
 
-  if (parsed.type === "well-known") {
-    const baseUrl = parsed.url!;
-    const cached = await ensureWellKnownCached({
-      stateDir: opts.stateDir,
-      url: baseUrl,
-      cacheKey: wellKnownCacheKey(baseUrl),
-      ttlMs: opts.ttlMs,
-    });
-
-    if (!cached) {
+  if (acquired.type === "well-known") {
+    if (!acquired.cacheDir) {
       throw new ResolveError(
-        `No skills found at ${baseUrl}. If this is a git repository, use the git: prefix: git:${baseUrl}`,
+        `No skills found at ${acquired.resolvedUrl}. If this is a git repository, use the git: prefix: git:${acquired.resolvedUrl}`,
       );
     }
 
-    const discovered = await discoverSkill(cached.cacheDir, skillName, { scanDirs: opts.scanDirs });
+    const discovered = await discoverSkill(acquired.cacheDir, skillName, { scanDirs: opts.scanDirs });
     if (!discovered) {
       throw new ResolveError(
         `Skill "${skillName}" not found in ${dep.source}. ` +
@@ -373,37 +426,17 @@ export async function resolveSkill(
     return {
       type: "well-known",
       source: dep.source,
-      resolvedUrl: baseUrl,
-      skillDir: join(cached.cacheDir, discovered.path),
+      resolvedUrl: acquired.resolvedUrl,
+      skillDir: join(acquired.cacheDir, discovered.path),
     };
   }
 
-  // Git source (GitHub or generic git)
-  const url = parsed.url!;
-  const cloneUrl = parsed.cloneUrl ?? url;
-  const ref = dep.ref ?? parsed.ref;
-  const cacheKey =
-    parsed.type === "github"
-      ? `${parsed.owner}/${parsed.repo}`
-      : sanitizeCacheKey(url);
-
-  const excluded = isSourceExcluded(dep.source, opts.minimumReleaseAgeExclude);
-  const cached = await ensureCached({
-    stateDir: opts.stateDir,
-    url: cloneUrl,
-    cacheKey,
-    ref,
-    minimumReleaseAge: excluded ? undefined : opts.minimumReleaseAge,
-  });
-
-  // Discover the skill within the repo
   let discovered: DiscoveredSkill | null;
   if (dep.path) {
-    // Explicit path override — load directly
-    const meta = await loadSkillMd(join(cached.repoDir, dep.path, "SKILL.md"));
+    const meta = await loadSkillMd(join(acquired.repoDir, dep.path, "SKILL.md"));
     discovered = { path: dep.path, meta };
   } else {
-    discovered = await discoverSkill(cached.repoDir, skillName, { scanDirs: opts.scanDirs });
+    discovered = await discoverSkill(acquired.repoDir, skillName, { scanDirs: opts.scanDirs });
   }
 
   if (!discovered) {
@@ -416,11 +449,11 @@ export async function resolveSkill(
   return {
     type: "git",
     source: dep.source,
-    resolvedUrl: cloneUrl,
+    resolvedUrl: acquired.resolvedUrl,
     resolvedPath: discovered.path,
-    resolvedRef: ref,
-    commit: cached.commit,
-    skillDir: join(cached.repoDir, discovered.path),
+    resolvedRef: acquired.resolvedRef,
+    commit: acquired.commit,
+    skillDir: join(acquired.repoDir, discovered.path),
   };
 }
 
@@ -429,32 +462,109 @@ export interface NamedResolvedSkill {
   resolved: ResolvedSkill;
 }
 
+interface ScopedDiscoveredSkill extends DiscoveredSkill {
+  skillDir: string;
+}
+
+function isOutsideRoot(root: string, target: string): boolean {
+  const path = relative(root, target);
+  return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
+}
+
+function escapesSourceRoot(path: string): boolean {
+  const posixPath = posix.normalize(path);
+  const windowsPath = win32.normalize(path);
+  return (
+    posixPath === ".." ||
+    posixPath.startsWith("../") ||
+    windowsPath === ".." ||
+    windowsPath.startsWith(`..${win32.sep}`)
+  );
+}
+
+async function discoverWildcardScope(
+  sourceRoot: string,
+  path: string | undefined,
+  scanDirs: readonly string[] | undefined,
+): Promise<ScopedDiscoveredSkill[]> {
+  const root = resolve(sourceRoot);
+  const canonicalPath = path?.replaceAll("\\", "/");
+  const scopeDir = canonicalPath ? resolve(root, canonicalPath) : root;
+  const scopePath = relative(root, scopeDir);
+  if (isOutsideRoot(root, scopeDir)) {
+    throw new ResolveError(`Wildcard path "${path}" resolves outside source root`);
+  }
+  if (canonicalPath) {
+    let scopeStat;
+    try {
+      scopeStat = await stat(scopeDir);
+    } catch (err) {
+      if (!(err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT")) {
+        throw err;
+      }
+      throw new ResolveError(`Wildcard path "${path}" does not exist in source`);
+    }
+    if (!scopeStat.isDirectory()) {
+      throw new ResolveError(`Wildcard path "${path}" is not a directory in source`);
+    }
+    if (isOutsideRoot(await realpath(root), await realpath(scopeDir))) {
+      throw new ResolveError(`Wildcard path "${path}" resolves outside source root`);
+    }
+  }
+
+  const pathPrefix = scopePath.split(sep).join("/");
+  const discovered = await discoverAllSkills(scopeDir, {
+    scanDirs: canonicalPath ? ["."] : scanDirs,
+  });
+  return discovered.map((skill) => {
+    const resolvedPath = pathPrefix
+      ? skill.path === "." ? pathPrefix : `${pathPrefix}/${skill.path}`
+      : skill.path;
+    return {
+      path: resolvedPath,
+      meta: skill.meta,
+      skillDir: join(scopeDir, skill.path),
+    };
+  });
+}
+
 /** Skill names must be safe for use in file paths. */
 export const VALID_SKILL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
 /**
- * Resolve a wildcard dependency: discover all skills from a source and return them.
- * Excludes are filtered out. Skill names are validated to prevent path traversal.
+ * Resolve a wildcard dependency, optionally restricting recursive discovery to
+ * a contained source subdirectory. Excludes are filtered out and skill names
+ * are validated before they are used as install paths.
  */
 export async function resolveWildcardSkills(
   dep: WildcardDependencyInput,
   opts: ResolveOpts,
 ): Promise<NamedResolvedSkill[]> {
-  const sourceForResolve = applyDefaultRepositorySource(
-    dep.source,
-    opts.defaultRepositorySource,
-  );
-  // See note on resolveSkill: validate the expanded source so shorthand under a
-  // non-default host can't bypass the policy.
-  if (opts.trust) {validateTrustedSource(sourceForResolve, opts.trust);}
+  if (dep.path === "") {
+    throw new ResolveError("Wildcard path must not be empty");
+  }
+  if (dep.path && (posix.isAbsolute(dep.path) || win32.parse(dep.path).root !== "")) {
+    throw new ResolveError("Wildcard path must be relative to the source root");
+  }
+  if (dep.path && escapesSourceRoot(dep.path)) {
+    throw new ResolveError(`Wildcard path "${dep.path}" resolves outside source root`);
+  }
+  if (dep.path) {
+    const source = applyDefaultRepositorySource(dep.source, opts.defaultRepositorySource);
+    if (parseSource(source).type === "well-known") {
+      throw new ResolveError("Wildcard path is not supported for well-known sources");
+    }
+  }
 
-  const parsed = parseSource(sourceForResolve);
+  const acquired = await acquireSkillSource(dep, opts);
   const excludeSet = new Set(dep.exclude);
 
-  if (parsed.type === "local") {
-    const projectRoot = opts.projectRoot || process.cwd();
-    const skillDir = await resolveLocalSource(projectRoot, parsed.path!);
-    const discovered = await discoverAllSkills(skillDir, { scanDirs: opts.scanDirs });
+  if (acquired.type === "local") {
+    const discovered = await discoverWildcardScope(
+      acquired.skillDir,
+      dep.path,
+      opts.scanDirs,
+    );
     return discovered
       .filter(
         (d) =>
@@ -465,25 +575,22 @@ export async function resolveWildcardSkills(
         resolved: {
           type: "local" as const,
           source: dep.source,
-          skillDir: join(skillDir, d.path),
+          resolvedPath: dep.path ? d.path : undefined,
+          skillDir: d.skillDir,
         },
       }));
   }
 
-  if (parsed.type === "well-known") {
-    const baseUrl = parsed.url!;
-    const cached = await ensureWellKnownCached({
-      stateDir: opts.stateDir,
-      url: baseUrl,
-      cacheKey: wellKnownCacheKey(baseUrl),
-      ttlMs: opts.ttlMs,
-    });
-
-    if (!cached) {
+  if (acquired.type === "well-known") {
+    if (!acquired.cacheDir) {
       return [];
     }
 
-    const discovered = await discoverAllSkills(cached.cacheDir, { scanDirs: opts.scanDirs });
+    const discovered = await discoverWildcardScope(
+      acquired.cacheDir,
+      dep.path,
+      opts.scanDirs,
+    );
     return discovered
       .filter(
         (d) => !excludeSet.has(d.meta.name) && VALID_SKILL_NAME.test(d.meta.name),
@@ -493,31 +600,17 @@ export async function resolveWildcardSkills(
         resolved: {
           type: "well-known" as const,
           source: dep.source,
-          resolvedUrl: baseUrl,
-          skillDir: join(cached.cacheDir, d.path),
+          resolvedUrl: acquired.resolvedUrl,
+          skillDir: d.skillDir,
         },
       }));
   }
 
-  // Git source
-  const url = parsed.url!;
-  const cloneUrl = parsed.cloneUrl ?? url;
-  const ref = dep.ref ?? parsed.ref;
-  const cacheKey =
-    parsed.type === "github"
-      ? `${parsed.owner}/${parsed.repo}`
-      : sanitizeCacheKey(url);
-
-  const excluded = isSourceExcluded(dep.source, opts.minimumReleaseAgeExclude);
-  const cached = await ensureCached({
-    stateDir: opts.stateDir,
-    url: cloneUrl,
-    cacheKey,
-    ref,
-    minimumReleaseAge: excluded ? undefined : opts.minimumReleaseAge,
-  });
-
-  const discovered = await discoverAllSkills(cached.repoDir, { scanDirs: opts.scanDirs });
+  const discovered = await discoverWildcardScope(
+    acquired.repoDir,
+    dep.path,
+    opts.scanDirs,
+  );
 
   return discovered
     .filter(
@@ -528,11 +621,11 @@ export async function resolveWildcardSkills(
       resolved: {
         type: "git" as const,
         source: dep.source,
-        resolvedUrl: cloneUrl,
+        resolvedUrl: acquired.resolvedUrl,
         resolvedPath: d.path,
-        resolvedRef: ref,
-        commit: cached.commit,
-        skillDir: join(cached.repoDir, d.path),
+        resolvedRef: acquired.resolvedRef,
+        commit: acquired.commit,
+        skillDir: d.skillDir,
       },
     }));
 }

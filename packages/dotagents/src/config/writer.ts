@@ -84,34 +84,11 @@ async function removeBlocksBySource(
 ): Promise<void> {
   const content = await readFile(filePath, "utf-8");
   const lines = content.split("\n");
-  const result: string[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    if (lines[i]!.trim() === header) {
-      const headerLine = lines[i]!;
-      i++;
-      const { blockLines, nextIndex } = collectBlockLines(lines, i);
-      i = nextIndex;
-
-      const sourceValue = blockLines.map((l) => extractTomlStringValue(l, "source")).find(Boolean);
-
-      if (sourceValue && sourcesMatch(sourceValue, source)) {
-        while (result.length > 0 && result.at(-1)?.trim() === "") {
-          result.pop();
-        }
-        continue;
-      }
-
-      result.push(headerLine, ...blockLines);
-      continue;
-    }
-
-    result.push(lines[i]!);
-    i++;
-  }
-
-  await writeFile(filePath, result.join("\n"), "utf-8");
+  const result = removeArrayTables(lines, header, (span) => {
+    const value = getStringField(lines, span, "source");
+    return value !== undefined && sourcesMatch(value, source);
+  });
+  await writeFile(filePath, result, "utf-8");
 }
 
 /**
@@ -145,55 +122,27 @@ export async function addExcludeToWildcard(
 ): Promise<void> {
   const content = await readFile(filePath, "utf-8");
   const lines = content.split("\n");
-  const result: string[] = [];
-  let i = 0;
-  let found = false;
+  const span = findArrayTables(lines, "[[skills]]").find((candidate) => {
+    const name = getStringField(lines, candidate, "name");
+    const candidateSource = getStringField(lines, candidate, "source");
+    return name === "*" && candidateSource !== undefined && sourcesMatch(candidateSource, source);
+  });
 
-  while (i < lines.length) {
-    if (lines[i]!.trim() === "[[skills]]") {
-      const headerLine = lines[i]!;
-      i++;
-      const { blockLines, nextIndex } = collectBlockLines(lines, i);
-      i = nextIndex;
-
-      const nameValue = blockLines.map((l) => extractTomlStringValue(l, "name")).find(Boolean);
-      const sourceValue = blockLines.map((l) => extractTomlStringValue(l, "source")).find(Boolean);
-
-      if (
-        nameValue === "*" &&
-        sourceValue &&
-        sourcesMatch(sourceValue, source) &&
-        !found
-      ) {
-        found = true;
-        const excludeIdx = blockLines.findIndex((l) => l.trim().startsWith("exclude"));
-        if (excludeIdx >= 0) {
-          const excludeLine = blockLines[excludeIdx]!;
-          const match = excludeLine.trim().match(/^(exclude\s*=\s*)\[([^\]]*)\]/);
-          if (match) {
-            const existing = match[2]!.trim();
-            const newValue = existing
-              ? `${match[1]}[${existing}, ${stringify({ v: skillName }).replace("v = ", "")}]`
-              : `${match[1]}[${stringify({ v: skillName }).replace("v = ", "")}]`;
-            blockLines[excludeIdx] = newValue;
-          }
-        } else {
-          const excludeValue = stringify({ v: [skillName] }).replace("v = ", "");
-          blockLines.push(`exclude = ${excludeValue}`);
-        }
-        result.push(headerLine, ...blockLines);
-        continue;
+  if (span) {
+    const excludeIdx = findFieldLine(lines, span, "exclude");
+    if (excludeIdx === undefined) {
+      lines.splice(span.end, 0, `exclude = ${tomlValue([skillName])}`);
+    } else {
+      const match = lines[excludeIdx]!.match(/^(\s*exclude\s*=\s*)\[([^\]]*)\](.*)$/);
+      if (match) {
+        const existing = match[2]!.trim();
+        const values = existing ? `${existing}, ${tomlValue(skillName)}` : tomlValue(skillName);
+        lines[excludeIdx] = `${match[1]}[${values}]${match[3]}`;
       }
-
-      result.push(headerLine, ...blockLines);
-      continue;
     }
-
-    result.push(lines[i]!);
-    i++;
   }
 
-  await writeFile(filePath, result.join("\n"), "utf-8");
+  await writeFile(filePath, lines.join("\n"), "utf-8");
 }
 
 /**
@@ -241,62 +190,80 @@ function extractTomlStringValue(line: string, key: string): string | undefined {
   return match?.[1] ?? match?.[2];
 }
 
-/**
- * Collect a TOML array-of-tables block starting after the header.
- * Includes blank lines within the block; stops at the next `[` header or EOF.
- */
-function collectBlockLines(lines: string[], start: number): { blockLines: string[]; nextIndex: number } {
-  const blockLines: string[] = [];
-  let i = start;
-  while (i < lines.length && !lines[i]!.trim().startsWith("[")) {
-    blockLines.push(lines[i]!);
+/** Half-open table range ending before its separator blank lines or the next header. */
+interface ArrayTableSpan {
+  start: number;
+  end: number;
+}
+
+function findArrayTables(lines: string[], header: string): ArrayTableSpan[] {
+  const spans: ArrayTableSpan[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i]!.trim() !== header) {
+      i++;
+      continue;
+    }
+
+    const start = i;
     i++;
+    while (i < lines.length && !lines[i]!.trim().startsWith("[")) {i++;}
+    let end = i;
+    while (end > start + 1 && lines[end - 1]!.trim() === "") {end--;}
+    spans.push({ start, end });
   }
-  // Trim trailing blank lines from the block (they belong between blocks, not inside)
-  while (blockLines.length > 0 && blockLines.at(-1)!.trim() === "") {
-    blockLines.pop();
-    i--;
+  return spans;
+}
+
+function findFieldLine(
+  lines: string[],
+  span: ArrayTableSpan,
+  key: string,
+): number | undefined {
+  const assignment = new RegExp(`^${key}\\s*=`);
+  for (let i = span.start + 1; i < span.end; i++) {
+    const trimmed = lines[i]!.trim();
+    if (assignment.test(trimmed)) {return i;}
   }
-  return { blockLines, nextIndex: i };
+  return undefined;
+}
+
+function getStringField(
+  lines: string[],
+  span: ArrayTableSpan,
+  key: string,
+): string | undefined {
+  const fieldLine = findFieldLine(lines, span, key);
+  return fieldLine === undefined
+    ? undefined
+    : extractTomlStringValue(lines[fieldLine]!, key);
+}
+
+function removeArrayTables(
+  lines: string[],
+  header: string,
+  shouldRemove: (span: ArrayTableSpan) => boolean,
+): string {
+  const spans = findArrayTables(lines, header).filter(shouldRemove);
+  for (const span of spans.toReversed()) {
+    let start = span.start;
+    while (start > 0 && lines[start - 1]!.trim() === "") {start--;}
+    lines.splice(start, span.end - start);
+  }
+  return lines.join("\n");
 }
 
 function removeBlockByHeader(content: string, header: string, name: string): string {
   const lines = content.split("\n");
-  const result: string[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    if (lines[i]!.trim() === header) {
-      const headerLine = lines[i]!;
-      i++;
-      const { blockLines, nextIndex } = collectBlockLines(lines, i);
-      i = nextIndex;
-
-      // Check if this block's name matches
-      const nameValue = blockLines.map((l) => extractTomlStringValue(l, "name")).find(Boolean);
-      if (nameValue === name) {
-        // Remove blank lines before the block
-        while (result.length > 0 && result.at(-1)?.trim() === "") {
-          result.pop();
-        }
-        // Skip this block
-        continue;
-      }
-
-      // Not the target — keep the block
-      result.push(headerLine, ...blockLines);
-      continue;
-    }
-
-    result.push(lines[i]!);
-    i++;
-  }
-
-  return result.join("\n");
+  return removeArrayTables(
+    lines,
+    header,
+    (span) => getStringField(lines, span, "name") === name,
+  );
 }
 
-function tomlArray(values: string[]): string {
-  return stringify({ v: values }).replace("v = ", "");
+function tomlValue(value: unknown): string {
+  return stringify({ v: value }).replace("v = ", "").trimEnd();
 }
 
 /**
@@ -334,7 +301,7 @@ export async function addTrustSource(
     const match = trimmedLine.match(new RegExp(`^(${field}\\s*=\\s*)\\[([^\\]]*)\\]`));
     if (match) {
       const existing = match[2]!.trim();
-      const newVal = stringify({ v: value }).replace("v = ", "");
+      const newVal = tomlValue(value);
       const updated = existing
         ? `${match[1]}[${existing}, ${newVal}]`
         : `${match[1]}[${newVal}]`;
@@ -353,7 +320,7 @@ export async function addTrustSource(
       if (trimmed === "" && insertIdx + 1 < lines.length && lines[insertIdx + 1]!.trim().startsWith("[")) {break;}
       insertIdx++;
     }
-    lines.splice(insertIdx, 0, `${field} = ${tomlArray([value])}`);
+    lines.splice(insertIdx, 0, `${field} = ${tomlValue([value])}`);
     await writeFile(filePath, lines.join("\n"), "utf-8");
     return;
   }
@@ -365,12 +332,12 @@ export async function addTrustSource(
   });
 
   if (arrayTableIdx >= 0) {
-    lines.splice(arrayTableIdx, 0, `[trust]`, `${field} = ${tomlArray([value])}`, "");
+    lines.splice(arrayTableIdx, 0, `[trust]`, `${field} = ${tomlValue([value])}`, "");
     await writeFile(filePath, lines.join("\n"), "utf-8");
     return;
   }
 
-  const newContent = `${content.trimEnd()}\n\n[trust]\n${field} = ${tomlArray([value])}\n`;
+  const newContent = `${content.trimEnd()}\n\n[trust]\n${field} = ${tomlValue([value])}\n`;
   await writeFile(filePath, newContent, "utf-8");
 }
 
@@ -473,7 +440,7 @@ export function generateDefaultConfig(opts?: DefaultConfigOptions | string[]): s
       if (fields.length > 0) {
         config += `\n[trust]\n`;
         for (const key of fields) {
-          config += `${key} = ${tomlArray(t[key])}\n`;
+          config += `${key} = ${tomlValue(t[key])}\n`;
         }
       }
     }

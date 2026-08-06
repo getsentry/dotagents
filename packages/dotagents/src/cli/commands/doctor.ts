@@ -11,7 +11,7 @@ import { isWildcardDep } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { verifySymlinks } from "../../symlinks/manager.js";
-import { getAgent } from "../../targets/registry.js";
+import { skillSymlinkTargets } from "../../targets/skill-symlinks.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { exec } from "@sentry/dotagents-lib";
 import { isInPlaceSkill } from "../../utils/fs.js";
@@ -253,19 +253,11 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
 
   // 10. Symlinks (project scope only)
   if (scope.scope === "project" && existsSync(scope.agentsDir)) {
-    const targets: string[] = [];
-    const seenDirs = new Set<string>();
-
-    for (const target of config.symlinks?.targets ?? []) {
-      seenDirs.add(target);
-      targets.push(`${scope.root}/${target}`);
-    }
-    for (const agentId of config.agents) {
-      const agent = getAgent(agentId);
-      if (!agent?.skillsParentDir || seenDirs.has(agent.skillsParentDir)) {continue;}
-      seenDirs.add(agent.skillsParentDir);
-      targets.push(`${scope.root}/${agent.skillsParentDir}`);
-    }
+    const targets = skillSymlinkTargets(
+      scope,
+      config.agents,
+      config.symlinks?.targets,
+    );
 
     if (targets.length > 0) {
       const issues = await verifySymlinks(scope.agentsDir, targets);

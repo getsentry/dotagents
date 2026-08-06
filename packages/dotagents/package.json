@@ -1,6 +1,6 @@
 {
   "name": "@sentry/dotagents",
-  "version": "1.17.0",
+  "version": "1.19.0",
   "description": "Shared tooling for coding agents",
   "type": "module",
   "main": "dist/index.js",
@@ -29,6 +29,7 @@
     "@clack/prompts": "^1.0.1",
     "@sentry/dotagents-lib": "workspace:^",
     "chalk": "^5.6.2",
+    "jsonc-parser": "^3.3.1",
     "smol-toml": "^1.6.0",
     "zod": "^4.3.6"
   }

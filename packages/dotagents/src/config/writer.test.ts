@@ -7,6 +7,7 @@ import {
   addWildcardToConfig,
   addExcludeToWildcard,
   removeSkillFromConfig,
+  removeSkillBlocksBySource,
   addMcpToConfig,
   removeMcpFromConfig,
   generateDefaultConfig,
@@ -143,138 +144,99 @@ describe("writer", () => {
   });
 
   describe("addSkillToConfig", () => {
-    it("adds a skill with source only", async () => {
-      await addSkillToConfig(configPath, "pdf", {
-        source: "anthropics/skills",
-      });
-
-      const config = await loadConfig(configPath);
-      const pdf = config.skills.find((s) => s.name === "pdf");
-      expect(pdf?.source).toBe("anthropics/skills");
-    });
-
-    it("adds a skill with source and ref", async () => {
+    it("round-trips multiple skill shapes", async () => {
       await addSkillToConfig(configPath, "pdf", {
         source: "anthropics/skills",
         ref: "v1.0.0",
       });
-
-      const config = await loadConfig(configPath);
-      const pdf = config.skills.find((s) => s.name === "pdf");
-      expect(pdf?.ref).toBe("v1.0.0");
-    });
-
-    it("adds a skill with source, ref, and path", async () => {
       await addSkillToConfig(configPath, "review", {
         source: "git:https://example.com/repo.git",
         ref: "main",
         path: "skills/review",
       });
-
-      const config = await loadConfig(configPath);
-      const review = config.skills.find((s) => s.name === "review");
-      expect(review?.source).toBe("git:https://example.com/repo.git");
-      expect(review && "path" in review ? review.path : undefined).toBe("skills/review");
-    });
-
-    it("adds multiple skills", async () => {
-      await addSkillToConfig(configPath, "a", {
-        source: "org/repo-a",
-      });
-      await addSkillToConfig(configPath, "b", {
-        source: "org/repo-b",
-      });
-
-      const config = await loadConfig(configPath);
-      expect(config.skills).toHaveLength(2);
-    });
-
-    it("adds in-place skill with path source", async () => {
       await addSkillToConfig(configPath, "my-skill", {
         source: "path:.agents/skills/my-skill",
       });
 
       const config = await loadConfig(configPath);
-      const skill = config.skills.find((s) => s.name === "my-skill");
-      expect(skill).toBeDefined();
-      expect(skill!.source).toBe("path:.agents/skills/my-skill");
+      expect(config.skills).toHaveLength(3);
+      expect(config.skills.find((skill) => skill.name === "pdf")).toMatchObject({
+        source: "anthropics/skills",
+        ref: "v1.0.0",
+      });
+      expect(config.skills.find((skill) => skill.name === "review")).toMatchObject({
+        source: "git:https://example.com/repo.git",
+        ref: "main",
+        path: "skills/review",
+      });
+      expect(config.skills.find((skill) => skill.name === "my-skill")).toMatchObject({
+        source: "path:.agents/skills/my-skill",
+      });
     });
   });
 
   describe("removeSkillFromConfig", () => {
-    it("removes an existing skill", async () => {
-      await addSkillToConfig(configPath, "pdf", {
-        source: "anthropics/skills",
-        ref: "v1.0.0",
-      });
-      await removeSkillFromConfig(configPath, "pdf");
-
-      const config = await loadConfig(configPath);
-      expect(config.skills.find((s) => s.name === "pdf")).toBeUndefined();
-    });
-
-    it("preserves other skills when removing one", async () => {
-      await addSkillToConfig(configPath, "a", {
-        source: "org/repo-a",
-      });
-      await addSkillToConfig(configPath, "b", {
-        source: "org/repo-b",
-      });
-      await removeSkillFromConfig(configPath, "a");
-
-      const config = await loadConfig(configPath);
-      expect(config.skills.find((s) => s.name === "a")).toBeUndefined();
-      expect(config.skills.find((s) => s.name === "b")?.source).toBe("org/repo-b");
-    });
-
     it("is a no-op for non-existent skill", async () => {
       const before = await readFile(configPath, "utf-8");
       await removeSkillFromConfig(configPath, "nope");
       const after = await readFile(configPath, "utf-8");
       expect(after).toBe(before);
     });
+
+    it.each([
+      {
+        operation: "named skill",
+        input: `version = 1\n# keep this comment\n\n  [[skills]]\n  name\t=\t'remove-me' # target\n  source\t=\t'org/remove'\n\n[[skills]]\nname = 'keep-me'\nsource = 'org/keep'\n\n[misc]\nvalue = 'unchanged'\n`,
+        expected: `version = 1\n# keep this comment\n\n[[skills]]\nname = 'keep-me'\nsource = 'org/keep'\n\n[misc]\nvalue = 'unchanged'\n`,
+        expectedNames: ["keep-me"],
+        mutate: () => removeSkillFromConfig(configPath, "remove-me"),
+      },
+      {
+        operation: "matching source",
+        input: `version = 1\n\n[[skills]]\nname = 'remove-a'\nsource = 'org/remove'\n\n[[skills]]\nname = "keep"\nsource = "org/keep"\n\n[[skills]]\nname = 'remove-b'\nsource = 'https://github.com/org/remove.git'\n\n[[mcp]]\nname = 'manual'\ncommand = 'keep-this'\n`,
+        expected: `version = 1\n\n[[skills]]\nname = "keep"\nsource = "org/keep"\n\n[[mcp]]\nname = 'manual'\ncommand = 'keep-this'\n`,
+        expectedNames: ["keep"],
+        mutate: () => removeSkillBlocksBySource(configPath, "org/remove"),
+      },
+    ])("preserves unrelated text when removing a $operation", async ({ input, expected, expectedNames, mutate }) => {
+      await writeFile(configPath, input);
+
+      await mutate();
+
+      expect(await readFile(configPath, "utf-8")).toBe(expected);
+      const config = await loadConfig(configPath);
+      expect(config.skills.map((skill) => skill.name)).toEqual(expectedNames);
+    });
+
+    it("leaves source-based removal text unchanged when no source matches", async () => {
+      const input = `version = 1\n\n[[skills]]\n  name = 'keep'\n  source = 'org/keep' # comment\n`;
+      await writeFile(configPath, input);
+
+      await removeSkillBlocksBySource(configPath, "org/missing");
+
+      expect(await readFile(configPath, "utf-8")).toBe(input);
+    });
   });
 
   describe("addWildcardToConfig", () => {
-    it("adds a wildcard entry", async () => {
-      await addWildcardToConfig(configPath, "getsentry/skills");
-
-      const config = await loadConfig(configPath);
-      expect(config.skills).toHaveLength(1);
-      const dep = config.skills[0]!;
-      expect(dep.name).toBe("*");
-      expect(dep.source).toBe("getsentry/skills");
-    });
-
-    it("adds wildcard with ref", async () => {
-      await addWildcardToConfig(configPath, "getsentry/skills", { ref: "v1.0.0", exclude: [] });
-
-      const config = await loadConfig(configPath);
-      const dep = config.skills[0]!;
-      expect(dep.ref).toBe("v1.0.0");
-    });
-
-    it("adds wildcard with exclude list", async () => {
+    it("round-trips a wildcard alongside an explicit skill", async () => {
       await addWildcardToConfig(configPath, "getsentry/skills", {
+        ref: "v1.0.0",
         exclude: ["deprecated-skill"],
       });
-
-      const config = await loadConfig(configPath);
-      const dep = config.skills[0]!;
-      expect(isWildcardDep(dep)).toBe(true);
-      if (isWildcardDep(dep)) {
-        expect(dep.exclude).toEqual(["deprecated-skill"]);
-      }
-    });
-
-    it("round-trips with loadConfig", async () => {
-      await addWildcardToConfig(configPath, "getsentry/skills");
       await addSkillToConfig(configPath, "pdf", { source: "anthropics/skills" });
 
       const config = await loadConfig(configPath);
       expect(config.skills).toHaveLength(2);
-      expect(config.skills.some((s) => s.name === "*")).toBe(true);
-      expect(config.skills.some((s) => s.name === "pdf")).toBe(true);
+      const wildcard = config.skills.find(isWildcardDep)!;
+      expect(wildcard).toMatchObject({
+        source: "getsentry/skills",
+        ref: "v1.0.0",
+        exclude: ["deprecated-skill"],
+      });
+      expect(config.skills.find((skill) => skill.name === "pdf")).toMatchObject({
+        source: "anthropics/skills",
+      });
     });
   });
 
@@ -291,21 +253,6 @@ describe("writer", () => {
       }
     });
 
-    it("appends to existing exclude list", async () => {
-      await addWildcardToConfig(configPath, "getsentry/skills", {
-        exclude: ["old-skill"],
-      });
-      await addExcludeToWildcard(configPath, "getsentry/skills", "another-skill");
-
-      const config = await loadConfig(configPath);
-      const dep = config.skills[0]!;
-      expect(isWildcardDep(dep)).toBe(true);
-      if (isWildcardDep(dep)) {
-        expect(dep.exclude).toContain("old-skill");
-        expect(dep.exclude).toContain("another-skill");
-      }
-    });
-
     it("only modifies the matching wildcard source", async () => {
       await addWildcardToConfig(configPath, "getsentry/skills");
       await addWildcardToConfig(configPath, "anthropics/skills");
@@ -318,27 +265,30 @@ describe("writer", () => {
       expect(isWildcardDep(getsentry!) && getsentry!.exclude).toContain("my-skill");
       expect(isWildcardDep(anthropics!) && anthropics!.exclude).toEqual([]);
     });
+
+    it("preserves indentation and comments around an existing exclude list", async () => {
+      const input = `version = 1\n\n  [[skills]]\n  name = '*'\n  source = 'getsentry/skills'\n  exclude = ['old'] # keep this\n\n[misc]\nvalue = 'unchanged'\n`;
+      await writeFile(configPath, input);
+
+      await addExcludeToWildcard(configPath, "getsentry/skills", "new");
+
+      expect(await readFile(configPath, "utf-8")).toBe(
+        `version = 1\n\n  [[skills]]\n  name = '*'\n  source = 'getsentry/skills'\n  exclude = ['old', "new"] # keep this\n\n[misc]\nvalue = 'unchanged'\n`,
+      );
+      const config = await loadConfig(configPath);
+      const wildcard = config.skills[0]!;
+      expect(isWildcardDep(wildcard) && wildcard.exclude).toEqual(["old", "new"]);
+    });
   });
 
   describe("addMcpToConfig", () => {
-    it("adds a stdio server", async () => {
+    it("round-trips stdio and HTTP servers", async () => {
       await addMcpToConfig(configPath, {
         name: "github",
         command: "npx",
         args: ["-y", "@modelcontextprotocol/server-github"],
         env: ["GITHUB_TOKEN"],
       });
-
-      const config = await loadConfig(configPath);
-      expect(config.mcp).toHaveLength(1);
-      const mcp = config.mcp[0]!;
-      expect(mcp.name).toBe("github");
-      expect(mcp.command).toBe("npx");
-      expect(mcp.args).toEqual(["-y", "@modelcontextprotocol/server-github"]);
-      expect(mcp.env).toEqual(["GITHUB_TOKEN"]);
-    });
-
-    it("adds an http server with headers", async () => {
       await addMcpToConfig(configPath, {
         name: "remote",
         url: "https://mcp.example.com/sse",
@@ -347,61 +297,20 @@ describe("writer", () => {
       });
 
       const config = await loadConfig(configPath);
-      expect(config.mcp).toHaveLength(1);
-      const mcp = config.mcp[0]!;
-      expect(mcp.name).toBe("remote");
-      expect(mcp.url).toBe("https://mcp.example.com/sse");
-      expect(mcp.headers).toEqual({ Authorization: "Bearer tok" });
-    });
-
-    it("adds multiple servers", async () => {
-      await addMcpToConfig(configPath, {
-        name: "a",
-        command: "cmd-a",
-        env: [],
-      });
-      await addMcpToConfig(configPath, {
-        name: "b",
-        url: "https://b.example.com",
-        env: [],
-      });
-
-      const config = await loadConfig(configPath);
       expect(config.mcp).toHaveLength(2);
+      expect(config.mcp.find((server) => server.name === "github")).toMatchObject({
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-github"],
+        env: ["GITHUB_TOKEN"],
+      });
+      expect(config.mcp.find((server) => server.name === "remote")).toMatchObject({
+        url: "https://mcp.example.com/sse",
+        headers: { Authorization: "Bearer tok" },
+      });
     });
   });
 
   describe("removeMcpFromConfig", () => {
-    it("removes an existing server", async () => {
-      await addMcpToConfig(configPath, {
-        name: "github",
-        command: "npx",
-        env: [],
-      });
-      await removeMcpFromConfig(configPath, "github");
-
-      const config = await loadConfig(configPath);
-      expect(config.mcp).toHaveLength(0);
-    });
-
-    it("preserves other servers when removing one", async () => {
-      await addMcpToConfig(configPath, {
-        name: "a",
-        command: "cmd-a",
-        env: [],
-      });
-      await addMcpToConfig(configPath, {
-        name: "b",
-        command: "cmd-b",
-        env: [],
-      });
-      await removeMcpFromConfig(configPath, "a");
-
-      const config = await loadConfig(configPath);
-      expect(config.mcp).toHaveLength(1);
-      expect(config.mcp[0]!.name).toBe("b");
-    });
-
     it("is a no-op for non-existent server", async () => {
       const before = await readFile(configPath, "utf-8");
       await removeMcpFromConfig(configPath, "nope");
@@ -423,6 +332,19 @@ describe("writer", () => {
       const config = await loadConfig(configPath);
       expect(config.mcp).toHaveLength(0);
       expect(config.skills.find((s) => s.name === "github")).toBeDefined();
+    });
+
+    it("preserves comments, quoting, indentation, and adjacent sections", async () => {
+      const input = `version = 1\n# retained\n\n  [[mcp]]\n  name = 'remove-me'\n  command = 'old-command'\n[[mcp]]\nname = 'keep-me'\ncommand = 'keep-command' # retained inline\n\n[trust]\ngithub_orgs = ['example']\n`;
+      const expected = `version = 1\n# retained\n[[mcp]]\nname = 'keep-me'\ncommand = 'keep-command' # retained inline\n\n[trust]\ngithub_orgs = ['example']\n`;
+      await writeFile(configPath, input);
+
+      await removeMcpFromConfig(configPath, "remove-me");
+
+      expect(await readFile(configPath, "utf-8")).toBe(expected);
+      const config = await loadConfig(configPath);
+      expect(config.mcp.map((server) => server.name)).toEqual(["keep-me"]);
+      expect(config.trust?.github_orgs).toEqual(["example"]);
     });
   });
 });

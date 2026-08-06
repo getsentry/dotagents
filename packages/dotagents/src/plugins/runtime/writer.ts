@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { cp, lstat, mkdir, readdir, readFile, readlink, rm, rmdir, symlink, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, rm, rmdir, symlink, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { loadSkillMd } from "@sentry/dotagents-lib";
 import type { PluginManifest } from "../schema.js";
@@ -46,7 +46,7 @@ export async function projectedPiSkillNames(
   const selected = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes("pi"));
   for (const plugin of selected) {
     for (const skillsDir of componentDirs(plugin, "skills", "skills")) {
-      for (const name of await skillNamesInDir(skillsDir)) {
+      for (const name of await skillNamesInDir(plugin, skillsDir)) {
         if (SKILL_NAME_PATTERN.test(name)) {names.add(name);}
       }
     }
@@ -359,7 +359,13 @@ async function componentLinks(
 
   if (agent === "opencode") {
     for (const agentsDir of componentDirs(plugin, "agents", "agents", agent, warnings)) {
-      links.push(...await markdownComponentLinks(agent, plugin, agentsDir, join(projectRoot, ".opencode", "agents")));
+      links.push(...await markdownComponentLinks(
+        agent,
+        plugin,
+        agentsDir,
+        join(projectRoot, ".opencode", "agents"),
+        warnings,
+      ));
     }
   }
 
@@ -374,6 +380,14 @@ async function skillComponentLinks(
   warnings: PluginWriteWarning[],
 ): Promise<ComponentLink[]> {
   if (!existsSync(skillsDir)) {return [];}
+  if (!await isContainedPluginPath(plugin.pluginDir, skillsDir)) {
+    warnings.push({
+      agent,
+      name: plugin.name,
+      message: `Plugin skills directory resolves outside the plugin bundle and was skipped: ${skillsDir}`,
+    });
+    return [];
+  }
 
   const links: ComponentLink[] = [];
   for (const entry of await readdir(skillsDir, { withFileTypes: true })) {
@@ -381,6 +395,17 @@ async function skillComponentLinks(
     const sourcePath = join(skillsDir, entry.name);
     const skillMd = join(sourcePath, "SKILL.md");
     if (!existsSync(skillMd)) {continue;}
+    if (
+      !await isContainedPluginPath(plugin.pluginDir, sourcePath) ||
+      !await isContainedPluginPath(plugin.pluginDir, skillMd)
+    ) {
+      warnings.push({
+        agent,
+        name: plugin.name,
+        message: `Plugin skill resolves outside the plugin bundle and was skipped: ${sourcePath}`,
+      });
+      continue;
+    }
 
     let skillName: string;
     try {
@@ -422,14 +447,19 @@ async function skillComponentLinks(
   return links;
 }
 
-async function skillNamesInDir(skillsDir: string): Promise<string[]> {
+async function skillNamesInDir(
+  plugin: PluginDeclaration,
+  skillsDir: string,
+): Promise<string[]> {
   if (!existsSync(skillsDir)) {return [];}
+  if (!await isContainedPluginPath(plugin.pluginDir, skillsDir)) {return [];}
 
   const names: string[] = [];
   for (const entry of await readdir(skillsDir, { withFileTypes: true })) {
     if (!entry.isDirectory() && !entry.isSymbolicLink()) {continue;}
     const skillMd = join(skillsDir, entry.name, "SKILL.md");
     if (!existsSync(skillMd)) {continue;}
+    if (!await isContainedPluginPath(plugin.pluginDir, skillMd)) {continue;}
     try {
       names.push((await loadSkillMd(skillMd)).name);
     } catch {
@@ -444,22 +474,53 @@ async function markdownComponentLinks(
   plugin: PluginDeclaration,
   agentsDir: string,
   destRoot: string,
+  warnings: PluginWriteWarning[],
 ): Promise<ComponentLink[]> {
   if (!existsSync(agentsDir)) {return [];}
+  if (!await isContainedPluginPath(plugin.pluginDir, agentsDir)) {
+    warnings.push({
+      agent,
+      name: plugin.name,
+      message: `Plugin agents directory resolves outside the plugin bundle and was skipped: ${agentsDir}`,
+    });
+    return [];
+  }
 
   const links: ComponentLink[] = [];
   for (const entry of await readdir(agentsDir, { withFileTypes: true })) {
     if ((!entry.isFile() && !entry.isSymbolicLink()) || extname(entry.name) !== ".md") {continue;}
+    const sourcePath = join(agentsDir, entry.name);
+    if (!await isContainedPluginPath(plugin.pluginDir, sourcePath)) {
+      warnings.push({
+        agent,
+        name: plugin.name,
+        message: `Plugin agent resolves outside the plugin bundle and was skipped: ${sourcePath}`,
+      });
+      continue;
+    }
     links.push({
       agent,
       kind: "agent",
       name: plugin.name,
-      sourcePath: join(agentsDir, entry.name),
+      sourcePath,
       destPath: join(destRoot, entry.name),
     });
   }
 
   return links;
+}
+
+async function isContainedPluginPath(pluginDir: string, filePath: string): Promise<boolean> {
+  try {
+    const [pluginRealPath, fileRealPath] = await Promise.all([
+      realpath(pluginDir),
+      realpath(filePath),
+    ]);
+    const relativePath = relative(pluginRealPath, fileRealPath);
+    return !relativePath.startsWith("..") && !isAbsolute(relativePath);
+  } catch {
+    return false;
+  }
 }
 
 async function writeManagedComponentLink(

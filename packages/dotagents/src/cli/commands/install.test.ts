@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { runInstall as runInstallCommand, InstallError, type InstallOptions, type InstallResult } from "./install.js";
+import install, { runInstall as runInstallCommand, InstallError, type InstallOptions, type InstallResult } from "./install.js";
 import { runSync } from "./sync.js";
 import { exec } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
@@ -88,37 +88,32 @@ describe("runInstall", () => {
     await rm(tmpDir, { recursive: true });
   });
 
-  it("installs a skill from a git source", async () => {
+  it("installs configured skills and records their durable state", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "review"\nsource = "git:${repoDir}"\n`,
     );
 
     const scope = resolveScope("project", projectRoot);
     const result = await runInstall({ scope });
-    expect(result.installed).toContain("pdf");
+    expect(result.installed.toSorted()).toEqual(["pdf", "review"]);
 
-    // Skill directory should exist
     expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
     expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "prompt.md"))).toBe(true);
-  });
-
-  it("creates agents.lock after install", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
+    expect(existsSync(join(projectRoot, ".agents", "skills", "review", "SKILL.md"))).toBe(true);
 
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile).not.toBeNull();
-    expect(lockfile!.skills["pdf"]).toBeDefined();
-    expect(lockfile!.skills["pdf"]!.source).toBeDefined();
-    // resolved_commit is informational, should be present for git skills
-    expect("resolved_commit" in lockfile!.skills["pdf"]!).toBe(true);
-    expect("integrity" in lockfile!.skills["pdf"]!).toBe(false);
+    expect(Object.keys(lockfile!.skills).toSorted()).toEqual(["pdf", "review"]);
+    for (const entry of Object.values(lockfile!.skills)) {
+      expect(entry.source).toBeDefined();
+      expect("resolved_commit" in entry).toBe(true);
+      expect("integrity" in entry).toBe(false);
+    }
+
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).toContain("/skills/pdf");
+    expect(gitignore).toContain("/skills/review");
   });
 
   it("installs a local plugin and writes deterministic runtime artifacts", async () => {
@@ -666,60 +661,6 @@ source = "path:./.agents/plugins/local-tools/source"
     expect(existsSync(sourceDir)).toBe(true);
   });
 
-  it("rejects same-project plugins in frozen mode", async () => {
-    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
-    await mkdir(pluginDir, { recursive: true });
-    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }));
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1
-agents = ["codex"]
-
-[[plugins]]
-name = "local-tools"
-source = "path:.agents/plugins/local-tools"
-`,
-    );
-    await writeLockfile(join(projectRoot, "agents.lock"), {
-      version: 1,
-      skills: {},
-      subagents: {},
-      plugins: {
-        "local-tools": { source: "path:.agents/plugins/local-tools" },
-      },
-    });
-
-    const scope = resolveScope("project", projectRoot);
-    await expect(runInstall({ scope, frozen: true })).rejects.toThrow(/Same-project plugins cannot be installed into the same project/);
-  });
-
-  it("rejects same-project canonical plugin discovery in frozen mode", async () => {
-    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
-    await mkdir(pluginDir, { recursive: true });
-    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }));
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1
-agents = ["codex"]
-
-[[plugins]]
-name = "local-tools"
-source = "path:."
-`,
-    );
-    await writeLockfile(join(projectRoot, "agents.lock"), {
-      version: 1,
-      skills: {},
-      subagents: {},
-      plugins: {
-        "local-tools": { source: "path:." },
-      },
-    });
-
-    const scope = resolveScope("project", projectRoot);
-    await expect(runInstall({ scope, frozen: true })).rejects.toThrow(/Same-project plugins cannot be installed into the same project/);
-  });
-
   it("rejects user-scope plugin declarations", async () => {
     const previousHome = process.env["DOTAGENTS_HOME"];
     const dotagentsHome = join(tmpDir, "user-agents");
@@ -1043,74 +984,6 @@ source = "path:plugin-source"
     );
   });
 
-  it("generates plugin runtime outputs in frozen mode from installed bundles", async () => {
-    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
-    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
-    await writeFile(
-      join(pluginDir, "plugin.json"),
-      JSON.stringify({
-        name: "review-tools",
-        description: "Review workflow helpers",
-      }, null, 2),
-    );
-    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1
-agents = ["codex"]
-
-[[plugins]]
-name = "review-tools"
-source = "path:external-source"
-`,
-    );
-    await writeLockfile(join(projectRoot, "agents.lock"), {
-      version: 1,
-      skills: {},
-      subagents: {},
-      plugins: {
-        "review-tools": {
-          source: "path:external-source",
-        },
-      },
-    });
-
-    const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope, frozen: true });
-
-    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(true);
-    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"))).toBe(true);
-  });
-
-  it("installs multiple skills", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "review"\nsource = "git:${repoDir}"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    const result = await runInstall({ scope });
-    expect(result.installed).toHaveLength(2);
-    expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
-    expect(existsSync(join(projectRoot, ".agents", "skills", "review", "SKILL.md"))).toBe(true);
-  });
-
-  it("regenerates .agents/.gitignore", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
-
-    const gitignore = await readFile(
-      join(projectRoot, ".agents", ".gitignore"),
-      "utf-8",
-    );
-    expect(gitignore).toContain("/skills/pdf");
-  });
-
   it("handles empty skills list", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -1129,42 +1002,77 @@ source = "path:external-source"
     );
 
     const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
+    const result = await runInstall({ scope });
 
     const mcp = JSON.parse(await readFile(join(projectRoot, ".mcp.json"), "utf-8"));
     expect(mcp.mcpServers.github).toBeDefined();
+    expect(result.mcpWarnings).toEqual([]);
 
     // Agent symlinks should also be created
     const stat = await lstat(join(projectRoot, ".claude", "skills"));
     expect(stat.isSymbolicLink()).toBe(true);
   });
 
-  it("fails with --frozen when no lockfile exists", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
-    );
+  it("preserves a pre-existing MCP config when no servers are declared", async () => {
+    const configPath = join(projectRoot, "agents.toml");
+    const mcpPath = join(projectRoot, ".mcp.json");
+    const content = JSON.stringify({
+      editor: "manual",
+      mcpServers: { manual: { command: "manual" } },
+    });
+    await writeFile(configPath, `version = 1\nagents = ["claude"]\n`);
+    await writeFile(mcpPath, content);
 
     const scope = resolveScope("project", projectRoot);
-    await expect(
-      runInstall({ scope, frozen: true }),
-    ).rejects.toThrow(InstallError);
-  });
-
-  it("frozen mode passes when lockfile matches", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-
-    // First install to create lockfile
     await runInstall({ scope });
 
-    // Second install with --frozen
-    const result = await runInstall({ scope, frozen: true });
-    expect(result.installed).toContain("pdf");
+    expect(await readFile(mcpPath, "utf-8")).toBe(content);
+  });
+
+  it("warns without changing an incompatible MCP config", async () => {
+    const configPath = join(projectRoot, "agents.toml");
+    const mcpPath = join(projectRoot, ".mcp.json");
+    const content = '{"mcpServers":[]}\n';
+    await writeFile(
+      configPath,
+      `version = 1\nagents = ["claude"]\n\n[[mcp]]\nname = "github"\ncommand = "github-mcp"\n`,
+    );
+    await writeFile(mcpPath, content);
+
+    const result = await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.mcpWarnings).toEqual([{
+      agent: "claude",
+      message: `Failed to read MCP config: ${mcpPath}`,
+    }]);
+    expect(await readFile(mcpPath, "utf-8")).toBe(content);
+  });
+
+  it("accepts --frozen as a warned normal install", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+    await ensureGitRepo();
+
+    const previousCwd = process.cwd();
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    let output = "";
+    try {
+      process.chdir(projectRoot);
+      await install(["--frozen"]);
+    } finally {
+      output = log.mock.calls.flat().join("\n");
+      process.chdir(previousCwd);
+      log.mockRestore();
+    }
+
+    expect(output).toContain(
+      "--frozen is ignored and will be removed in the next major release",
+    );
+    expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile?.skills["pdf"]).toBeDefined();
   });
 
   it("creates agent-specific symlinks (cursor shares .claude)", async () => {
@@ -1210,6 +1118,75 @@ source = "path:external-source"
     expect(settings.hooks.PreToolUse).toEqual([
       { matcher: "Bash", hooks: [{ type: "command", command: ".agents/hooks/block-rm.sh" }] },
     ]);
+  });
+
+  it("leaves project-owned Claude hooks unchanged when no hooks are declared", async () => {
+    const settingsDir = join(projectRoot, ".claude");
+    const settingsPath = join(settingsDir, "settings.json");
+    await mkdir(settingsDir, { recursive: true });
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\nagents = ["claude", "codex"]\n`,
+    );
+    const content = JSON.stringify({
+      hooks: {
+        SessionStart: [{
+          matcher: "startup",
+          hooks: [{
+            type: "command",
+            command: '"$CLAUDE_PROJECT_DIR"/.claude/worktree-setup.sh',
+            timeout: 900,
+          }],
+        }],
+      },
+    }, null, 2);
+    await writeFile(settingsPath, content);
+
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    expect(await readFile(settingsPath, "utf-8")).toBe(content);
+  });
+
+  it("reconciles hook drift and preserves generated hook state when declarations are removed", async () => {
+    const configPath = join(projectRoot, "agents.toml");
+    const claudePath = join(projectRoot, ".claude", "settings.json");
+    const cursorPath = join(projectRoot, ".cursor", "hooks.json");
+    await mkdir(join(projectRoot, ".claude"), { recursive: true });
+    await mkdir(join(projectRoot, ".cursor"), { recursive: true });
+    await writeFile(
+      configPath,
+      `version = 1\nagents = ["claude", "cursor"]\n\n[[hooks]]\nevent = "Stop"\ncommand = "check.sh"\n`,
+    );
+    await writeFile(claudePath, JSON.stringify({
+      permissions: { allow: ["Read"] },
+      hooks: { Stop: [{ hooks: [{ type: "command", command: "old.sh" }] }] },
+    }));
+    await writeFile(cursorPath, JSON.stringify({
+      version: 2,
+      hooks: { stop: [{ command: "old.sh" }] },
+    }));
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+    expect(JSON.parse(await readFile(claudePath, "utf-8"))).toEqual({
+      permissions: { allow: ["Read"] },
+      hooks: { Stop: [{ hooks: [{ type: "command", command: "check.sh" }] }] },
+    });
+    expect(JSON.parse(await readFile(cursorPath, "utf-8"))).toEqual({
+      version: 1,
+      hooks: { stop: [{ command: "check.sh" }] },
+    });
+
+    await writeFile(configPath, `version = 1\nagents = ["claude", "cursor"]\n`);
+    await runInstall({ scope });
+    expect(JSON.parse(await readFile(claudePath, "utf-8"))).toEqual({
+      permissions: { allow: ["Read"] },
+      hooks: { Stop: [{ hooks: [{ type: "command", command: "check.sh" }] }] },
+    });
+    expect(JSON.parse(await readFile(cursorPath, "utf-8"))).toEqual({
+      version: 1,
+      hooks: { stop: [{ command: "check.sh" }] },
+    });
   });
 
   it("returns hook warnings for unsupported agents", async () => {
@@ -1291,57 +1268,6 @@ path = "code-reviewer.md"
       "Subagent file exists and is not managed by dotagents",
     );
     expect(await readFile(installedPath, "utf-8")).toBe("hand-written subagent\n");
-  });
-
-  it("frozen mode fails when a subagent is missing from the lockfile", async () => {
-    const scope = resolveScope("project", projectRoot);
-    await writeLockfile(join(projectRoot, "agents.lock"), {
-      version: 1,
-      skills: {},
-      subagents: {},
-    });
-
-    const sourceDir = join(projectRoot, "agents");
-    await mkdir(sourceDir, { recursive: true });
-    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
-
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1
-[[subagents]]
-name = "code-reviewer"
-source = "path:agents"
-path = "code-reviewer.md"
-`,
-    );
-
-    await expect(runInstall({ scope, frozen: true })).rejects.toThrow(
-      '--frozen: subagent "code-reviewer" is in agents.toml but missing from agents.lock.',
-    );
-  });
-
-  it("frozen mode passes when subagent lockfile entries match", async () => {
-    const sourceDir = join(projectRoot, "agents");
-    await mkdir(sourceDir, { recursive: true });
-    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
-
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1
-[[subagents]]
-name = "code-reviewer"
-source = "path:agents"
-path = "code-reviewer.md"
-`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
-
-    await rm(sourceDir, { recursive: true });
-
-    const result = await runInstall({ scope, frozen: true });
-    expect(result.subagentWarnings).toEqual([]);
   });
 
   it("clears removed skills from the lockfile when installing subagents", async () => {
@@ -1801,6 +1727,58 @@ path = "reviewer.md"
     expect(existsSync(join(projectRoot, ".agents", "skills", "review", "SKILL.md"))).toBe(true);
   });
 
+  it("installs only wildcard skills under path", async () => {
+    await ensureGitRepo();
+    await mkdir(join(repoDir, "skills", "engineering", "deploy"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "engineering", "deploy", "SKILL.md"),
+      SKILL_MD("deploy"),
+    );
+    await mkdir(join(repoDir, "skills", "productivity", "notes"), { recursive: true });
+    await writeFile(
+      join(repoDir, "skills", "productivity", "notes", "SKILL.md"),
+      SKILL_MD("notes"),
+    );
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "add categorized skills"], { cwd: repoDir });
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\npath = "skills/engineering"\n`,
+    );
+
+    const result = await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.installed).toContain("deploy");
+    expect(result.installed).not.toContain("pdf");
+    expect(result.installed).not.toContain("notes");
+    expect(existsSync(join(projectRoot, ".agents", "skills", "deploy", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "skills", "pdf"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".agents", "skills", "notes"))).toBe(false);
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills["deploy"]).toEqual(expect.objectContaining({
+      resolved_path: "skills/engineering/deploy",
+    }));
+  });
+
+  it("records resolved paths for scoped local wildcards", async () => {
+    const localSkillDir = join(projectRoot, "local-skills", "engineering", "review");
+    await mkdir(localSkillDir, { recursive: true });
+    await writeFile(join(localSkillDir, "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "path:local-skills"\npath = "engineering"\n`,
+    );
+
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills["review"]).toEqual({
+      source: "path:local-skills",
+      resolved_path: "engineering/review",
+    });
+  });
+
   it("wildcard respects exclude list", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -1841,51 +1819,6 @@ path = "reviewer.md"
     expect(lockfile).not.toBeNull();
     expect(lockfile!.skills["pdf"]).toBeDefined();
     expect(lockfile!.skills["review"]).toBeDefined();
-  });
-
-  it("frozen mode works with wildcard lockfile", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    // First install to create lockfile
-    await runInstall({ scope });
-
-    // Second install with --frozen
-    const result = await runInstall({ scope, frozen: true });
-    expect(result.installed).toContain("pdf");
-    expect(result.installed).toContain("review");
-  });
-
-  it("rejects unsafe skill names from frozen wildcard lockfiles", async () => {
-    await mkdir(repoDir, { recursive: true });
-    await initTestGitRepo(repoDir);
-    await mkdir(join(repoDir, "evil"), { recursive: true });
-    await writeFile(join(repoDir, "evil", "SKILL.md"), SKILL_MD("../outside"));
-    await exec("git", ["add", "."], { cwd: repoDir });
-    await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
-    repoInitialized = true;
-
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
-    );
-    await writeLockfile(join(projectRoot, "agents.lock"), {
-      version: 1,
-      skills: {
-        "../outside": {
-          source: `git:${repoDir}`,
-        },
-      },
-      subagents: {},
-      plugins: {},
-    });
-
-    const scope = resolveScope("project", projectRoot);
-    await expect(runInstall({ scope, frozen: true })).rejects.toThrow(/Invalid skill name/);
-    expect(existsSync(join(projectRoot, ".agents", "outside"))).toBe(false);
   });
 
   it("wildcard-expanded skills are gitignored", async () => {
@@ -2023,68 +1956,6 @@ path = "reviewer.md"
     expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
   });
 
-  it("does not prune in frozen mode", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-
-    // First install — gets both "pdf" and "review"
-    await runInstall({ scope });
-
-    // Add "review" to the exclude list
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\nexclude = ["review"]\n`,
-    );
-
-    // Frozen install should NOT prune (would create disk/lockfile inconsistency)
-    const result = await runInstall({ scope, frozen: true });
-    expect(result.pruned).toHaveLength(0);
-    // Directory should still exist
-    expect(existsSync(join(projectRoot, ".agents", "skills", "review", "SKILL.md"))).toBe(true);
-  });
-
-  it("does not prune installed subagents in frozen mode", async () => {
-    const sourceDir = join(projectRoot, "agents");
-    await mkdir(sourceDir, { recursive: true });
-    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
-
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1
-agents = ["claude"]
-
-[[subagents]]
-name = "code-reviewer"
-source = "path:agents"
-path = "code-reviewer.md"
-`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
-
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1
-agents = ["claude"]
-`,
-    );
-
-    const result = await runInstall({ scope, frozen: true });
-
-    expect(result.pruned).toEqual([]);
-    expect(existsSync(join(projectRoot, ".agents", "agents", "code-reviewer.md"))).toBe(true);
-    expect(existsSync(join(projectRoot, ".claude", "agents", "code-reviewer.md"))).toBe(true);
-    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
-    expect(gitignore).toContain("/agents/code-reviewer.md");
-    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
-    expect(lockfile!.subagents["code-reviewer"]).toBeDefined();
-  });
-
   it("wildcard with all skills excluded installs nothing from that source", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -2094,23 +1965,6 @@ agents = ["claude"]
     const scope = resolveScope("project", projectRoot);
     const result = await runInstall({ scope });
     expect(result.installed).toHaveLength(0);
-  });
-
-  it("frozen mode fails when skill missing from lockfile", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
-    );
-    const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
-
-    // Add review to config but lockfile still has only pdf
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "review"\nsource = "git:${repoDir}"\n`,
-    );
-
-    await expect(runInstall({ scope, frozen: true })).rejects.toThrow(InstallError);
   });
 
   it("does not auto-create root .gitignore", async () => {

@@ -1,15 +1,16 @@
 import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import chalk from "chalk";
 import { generateDefaultConfig } from "../../config/writer.js";
 import { writeAgentsGitignore, ensureRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { loadConfig } from "../../config/loader.js";
-import { getAgent, allAgentIds, allAgents } from "../../targets/registry.js";
+import { allAgentIds, allAgents } from "../../targets/registry.js";
+import { skillSymlinkTargets } from "../../targets/skill-symlinks.js";
 import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
-import { resolveScope, isInsideGitRepo, findGitDir, type ScopeRoot } from "../../scope.js";
+import { resolveScope, findGitDir, findGitRoot, type ScopeRoot } from "../../scope.js";
 import type { TrustConfig } from "../../config/schema.js";
 import { GitError, TrustError } from "@sentry/dotagents-lib";
 import { formatGitError, formatTrustError } from "../errors.js";
@@ -71,36 +72,17 @@ export async function runInit(opts: InitOptions): Promise<void> {
   // Symlinks — create per-agent symlinks so each agent discovers skills
   const symlinkResults: { target: string; created: boolean; migrated: string[] }[] = [];
 
-  if (scope.scope === "user") {
-    const seen = new Set<string>();
-    for (const agentId of config.agents) {
-      const agent = getAgent(agentId);
-      if (!agent?.userSkillsParentDirs) {continue;}
-      for (const dir of agent.userSkillsParentDirs) {
-        if (seen.has(dir)) {continue;}
-        seen.add(dir);
-        const result = await ensureSkillsSymlink(agentsDir, dir);
-        symlinkResults.push({ target: dir, ...result });
-      }
-    }
-  } else {
-    const targets = config.symlinks?.targets ?? [];
-    for (const target of targets) {
-      const targetDir = join(scope.root, target);
-      const result = await ensureSkillsSymlink(agentsDir, targetDir);
-      symlinkResults.push({ target, ...result });
-    }
-
-    const seenParentDirs = new Set(targets);
-    for (const agentId of config.agents) {
-      const agent = getAgent(agentId);
-      if (!agent?.skillsParentDir) {continue;}
-      if (seenParentDirs.has(agent.skillsParentDir)) {continue;}
-      seenParentDirs.add(agent.skillsParentDir);
-      const targetDir = join(scope.root, agent.skillsParentDir);
-      const result = await ensureSkillsSymlink(agentsDir, targetDir);
-      symlinkResults.push({ target: agent.skillsParentDir, ...result });
-    }
+  const symlinkTargets = skillSymlinkTargets(
+    scope,
+    config.agents,
+    config.symlinks?.targets,
+  );
+  for (const target of symlinkTargets) {
+    const result = await ensureSkillsSymlink(agentsDir, target);
+    const displayTarget = scope.scope === "project"
+      ? relative(scope.root, target)
+      : target;
+    symlinkResults.push({ target: displayTarget, ...result });
   }
 
   // Auto-install declared skills (best-effort — may fail offline)
@@ -299,11 +281,12 @@ export default async function init(args: string[], flags?: { user?: boolean }): 
     strict: true,
   });
 
+  const gitRoot = findGitRoot(resolve("."));
   let scope: ScopeRoot;
   if (flags?.user) {
     scope = resolveScope("user");
-  } else if (isInsideGitRepo(resolve("."))) {
-    scope = resolveScope("project", resolve("."));
+  } else if (gitRoot) {
+    scope = resolveScope("project", gitRoot);
   } else {
     console.error("No project found, using user scope (~/.agents/)");
     scope = resolveScope("user");

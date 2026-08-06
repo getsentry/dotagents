@@ -70,6 +70,7 @@ path = "tools/my-skill"         # Optional, subdirectory within repo
 name = "*"                      # Wildcard: install all skills from source
 source = "getsentry/skills"     # Required
 ref = "v1.0.0"                  # Optional
+path = "skills/engineering"     # Optional, recursive discovery scope
 exclude = ["deprecated-skill"]  # Optional, skills to skip
 ```
 
@@ -78,6 +79,7 @@ exclude = ["deprecated-skill"]  # Optional, skills to skip
 | `name` | literal `"*"` | Yes | Wildcard marker |
 | `source` | string | Yes | Same formats as regular skills |
 | `ref` | string | No | Tag, branch, or commit SHA to pin |
+| `path` | string | No | Source subdirectory to discover recursively; `.` means the source root |
 | `exclude` | string[] | No | Skill names to skip. Default: `[]` |
 
 ## Trust Section

@@ -175,6 +175,20 @@ source = "path:external-review-tools"
     expect(check?.message).toContain("Run 'npx @sentry/dotagents install'");
   });
 
+  it("detects a missing agent skill symlink", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\nagents = ["claude", "cursor", "codex"]\n`,
+    );
+    await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+    await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");
+
+    const result = await runDoctor({ scope: resolveScope("project", projectRoot) });
+    const check = result.checks.find((c) => c.name === "symlinks");
+    expect(check?.status).toBe("warn");
+    expect(check?.message).toContain("1 symlink(s)");
+  });
+
   it("reports user-scope plugins as unsupported", async () => {
     const previousHome = process.env["DOTAGENTS_HOME"];
     const userRoot = join(tmpDir, "user-agents");
