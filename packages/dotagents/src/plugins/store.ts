@@ -170,7 +170,7 @@ export async function installPluginBundle(
   );
 
   try {
-    await copyDir(resolved.plugin.pluginDir, tempDir);
+    await copyDir(resolved.plugin.pluginDir, tempDir, { verbatimSymlinks: true });
     await assertPluginBundleSymlinksContained(tempDir);
     const staged = { ...resolved.plugin, pluginDir: tempDir };
     await ensureCanonicalManifest(staged);

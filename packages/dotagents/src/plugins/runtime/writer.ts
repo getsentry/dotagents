@@ -267,6 +267,7 @@ async function writeGrokProjection(
   await mkdir(dirname(dest), { recursive: true });
   await cp(plugin.pluginDir, dest, {
     recursive: true,
+    verbatimSymlinks: true,
     filter: (source) => {
       const relPath = relative(plugin.pluginDir, source).split("\\").join("/");
       const rootEntry = relPath.split("/")[0];
