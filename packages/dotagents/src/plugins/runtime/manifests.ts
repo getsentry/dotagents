@@ -86,6 +86,9 @@ export async function writePluginManifests(
     } else if (await isManagedJsonFile(adapterMcpPath)) {
       await removeManagedJsonFile(adapterMcpPath);
     }
+    if (!mcpPath && await isManagedJsonFile(adapterMcpPath)) {
+      await removeManagedJsonFile(adapterMcpPath);
+    }
     const manifest = spec.agent === "claude"
       ? claudeRuntimeManifest(plugin, warnings, mcpPath, portableSkills)
       : spec.agent === "cursor"

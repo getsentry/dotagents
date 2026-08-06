@@ -206,6 +206,18 @@ describe("plugin writer", () => {
       expect(existsSync(join(alpha.pluginDir, dir, "mcp.json.dotagents-managed"))).toBe(true);
     }
     expect(result.warnings.some((warning) => warning.message.includes('Invalid plugin MCP server "bad"'))).toBe(true);
+
+    await writeFile(join(alpha.pluginDir, "mcp.json"), JSON.stringify({
+      $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+      mcpServers: { bad: { type: "stdio", command: "node server.js" } },
+    }));
+    await writePluginOutputs(["claude", "cursor", "codex"], [alpha], root);
+    for (const dir of [".claude-plugin", ".cursor-plugin", ".codex-plugin"]) {
+      expect(existsSync(join(alpha.pluginDir, dir, "mcp.json"))).toBe(false);
+      expect(existsSync(join(alpha.pluginDir, dir, "mcp.json.dotagents-managed"))).toBe(false);
+      const manifest = JSON.parse(await readFile(join(alpha.pluginDir, dir, "plugin.json"), "utf-8"));
+      expect(manifest.mcpServers).toBeUndefined();
+    }
   });
 
   it("skips component symlinks that escape the plugin bundle", async () => {

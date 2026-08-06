@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, rm, rmdir, stat, symlink, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { loadSkillMd } from "@sentry/dotagents-lib";
-import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest, type LegacyPluginManifest } from "../schema.js";
+import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest, parsePluginMcp, type LegacyPluginManifest } from "../schema.js";
 import type { PluginDeclaration } from "../store.js";
 import { selectedAgentIds, selectPlugins, targetWarnings, usesLegacyPluginComponents } from "../targets.js";
 import { marketplaceOutputPaths, marketplaceOutputs } from "./marketplace.js";
@@ -47,7 +47,7 @@ export async function projectedPiSkillNames(
   const names = new Set<string>();
   const selected = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes("pi"));
   for (const plugin of selected) {
-    for (const skillsDir of componentDirs(plugin, "skills", "skills")) {
+    for (const skillsDir of componentDirs(plugin, "skills", "skills", "pi")) {
       for (const name of await skillNamesInDir(plugin, skillsDir)) {
         if (SKILL_NAME_PATTERN.test(name)) {names.add(name);}
       }
@@ -277,6 +277,9 @@ async function writeGrokProjection(
     for (const path of ["agents", "commands", "rules", "hooks", "monitors", ".mcp.json", ".lsp.json", ".app.json"]) {
       excluded.add(path);
     }
+    for (const root of nativeComponentRoots(plugin)) {excluded.add(root);}
+    if (await hasPortableMcp(plugin)) {excluded.delete("mcp.json");}
+    else {excluded.add("mcp.json");}
   }
   await mkdir(dirname(dest), { recursive: true });
   await cp(plugin.pluginDir, dest, {
@@ -318,6 +321,34 @@ function portableCoreManifest(plugin: PluginDeclaration): Record<string, unknown
     manifest["keywords"] = plugin.manifest.keywords;
   }
   return manifest;
+}
+
+function nativeComponentRoots(plugin: PluginDeclaration): string[] {
+  if (!plugin.nativeSource || isStandardPluginManifest(plugin.manifest)) {return [];}
+  const roots = new Set<string>();
+  const manifest = plugin.manifest as LegacyPluginManifest;
+  for (const key of ["skills", "agents", "commands", "rules", "hooks", "mcpServers", "lspServers", "apps", "monitors", "bin"] as const) {
+    const value = manifest[key];
+    const paths = typeof value === "string" ? [value] : Array.isArray(value) ? value : [];
+    for (const path of paths) {
+      if (!isSafeComponentPath(path)) {continue;}
+      const root = path.replace(/^\.\//, "").split("/")[0];
+      if (key === "skills" && root === "skills") {continue;}
+      if (root) {roots.add(root);}
+    }
+  }
+  return [...roots];
+}
+
+async function hasPortableMcp(plugin: PluginDeclaration): Promise<boolean> {
+  const filePath = join(plugin.pluginDir, "mcp.json");
+  if (!existsSync(filePath)) {return false;}
+  try {
+    parsePluginMcp(JSON.parse(await readFile(filePath, "utf-8")), filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function writeComponentProjections(
@@ -579,7 +610,7 @@ function componentDirs(
   agent?: ComponentProjectionAgent,
   warnings: PluginWriteWarning[] = [],
 ): string[] {
-  const explicit = isStandardPluginManifest(plugin.manifest)
+  const explicit = isStandardPluginManifest(plugin.manifest) || plugin.nativeSource !== undefined
     ? { present: false, paths: [] }
     : manifestPaths(plugin.manifest[manifestKey], plugin, manifestKey, agent, warnings);
   const paths = explicit.present ? explicit.paths : [defaultDir];

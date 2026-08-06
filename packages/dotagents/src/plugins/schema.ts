@@ -111,16 +111,21 @@ const pluginMcpStdioSchema = z.object({
     ),
   ).optional(),
   cwd: z.string().refine(
-    (value) => (
-      value === "${PLUGIN_ROOT}" ||
-      value.startsWith("${PLUGIN_ROOT}/") ||
-      value === "${PLUGIN_DATA}" ||
-      value.startsWith("${PLUGIN_DATA}/") ||
-      (value.startsWith("./") && pluginPathSchema.safeParse(value).success)
-    ),
+    isPortableMcpCwd,
     "MCP cwd must be plugin-relative or rooted at PLUGIN_ROOT or PLUGIN_DATA",
   ).optional(),
 }).strict();
+
+function isPortableMcpCwd(value: string): boolean {
+  if (value.startsWith("./")) {return pluginPathSchema.safeParse(value).success;}
+  for (const placeholder of ["${PLUGIN_ROOT}", "${PLUGIN_DATA}"]) {
+    if (value === placeholder) {return true;}
+    if (!value.startsWith(`${placeholder}/`)) {continue;}
+    const suffix = value.slice(placeholder.length + 1);
+    return suffix.length > 0 && pluginPathSchema.safeParse(`./${suffix}`).success;
+  }
+  return false;
+}
 
 const pluginMcpRemoteSchema = z.object({
   type: z.enum(["streamable-http", "sse"]),

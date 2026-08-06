@@ -175,7 +175,13 @@ describe("plugin MCP schema", () => {
   });
 
   it("rejects unsafe cwd and reserved portable environment overrides", () => {
-    for (const cwd of ["/tmp", "../outside", "${HOME}/plugin"]) {
+    for (const cwd of [
+      "/tmp",
+      "../outside",
+      "${HOME}/plugin",
+      "${PLUGIN_ROOT}/../outside",
+      "${PLUGIN_DATA}/cache/../../outside",
+    ]) {
       expect(() => parsePluginMcp({
         $schema: AGENT_PLUGIN_MCP_SCHEMA,
         mcpServers: { bad: { type: "stdio", command: "node", cwd } },

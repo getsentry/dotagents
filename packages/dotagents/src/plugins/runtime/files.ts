@@ -1,7 +1,8 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 const MANAGED_MARKER_SUFFIX = ".dotagents-managed";
+let markerCounter = 0;
 
 export function stableJson(value: unknown): string {
   return `${JSON.stringify(sortJson(value), null, 2)}\n`;
@@ -25,8 +26,8 @@ export async function writeJsonIfChanged(filePath: string, content: string): Pro
 }
 
 export async function writeManagedJsonIfChanged(filePath: string, content: string): Promise<boolean> {
+  const markerWritten = await writeManagedMarker(managedJsonMarkerPath(filePath));
   const written = await writeJsonIfChanged(filePath, content);
-  const markerWritten = await writeTextIfChanged(managedJsonMarkerPath(filePath), "managedBy=dotagents\n");
   return written || markerWritten;
 }
 
@@ -50,6 +51,7 @@ async function writeTextIfChanged(filePath: string, content: string): Promise<bo
 /** Checks the JSON ownership marker used for managed plugin outputs. */
 export async function isManagedJsonFile(filePath: string): Promise<boolean> {
   try {
+    if (!(await lstat(managedJsonMarkerPath(filePath))).isFile()) {return false;}
     if (await readFile(managedJsonMarkerPath(filePath), "utf-8") === "managedBy=dotagents\n") {
       return true;
     }
@@ -63,6 +65,35 @@ export async function isManagedJsonFile(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function writeManagedMarker(filePath: string): Promise<boolean> {
+  try {
+    const stat = await lstat(filePath);
+    if (stat.isFile() && await readFile(filePath, "utf-8") === "managedBy=dotagents\n") {
+      return false;
+    }
+  } catch (err) {
+    if (!isNotFoundError(err)) {throw err;}
+  }
+
+  await mkdir(dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${markerCounter++}`;
+  try {
+    await writeFile(tempPath, "managedBy=dotagents\n", "utf-8");
+    try {
+      await rename(tempPath, filePath);
+    } catch (err) {
+      if (!(err instanceof Error && "code" in err && ["EEXIST", "EPERM"].includes(String((err as NodeJS.ErrnoException).code)))) {
+        throw err;
+      }
+      await rm(filePath, { force: true });
+      await rename(tempPath, filePath);
+    }
+  } finally {
+    await rm(tempPath, { force: true });
+  }
+  return true;
 }
 
 export function managedJsonMarkerPath(filePath: string): string {
