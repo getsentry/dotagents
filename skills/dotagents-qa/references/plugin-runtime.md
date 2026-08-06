@@ -22,12 +22,13 @@ files and repair behavior.
 
 `pnpm qa:plugins` runs installed no-auth client proofs:
 
-- Claude validates the generated plugin and marketplace.
+- Claude validates, adds, installs, and lists the generated plugin, then checks
+  the skill and MCP component inventory.
 - Codex adds the marketplace, lists the plugin as available, installs it, and
   lists it as enabled.
 - Grok Build runs `plugin list` and `plugin details` when its CLI is installed.
 
-Cursor remains covered by the all-target integration contract because its
+Cursor remains covered by the isolated per-harness integration contract because its
 desktop CLI has no plugin validation or marketplace command. OpenCode resource
 projection has a separate task, but it is not plugin E2E evidence.
 
@@ -39,9 +40,10 @@ Automated proof:
 node skills/dotagents-qa/scripts/qa-example.mjs plugin-claude
 ```
 
-This runs `claude plugin validate` against the generated native manifest and
-marketplace. Validation warnings about dotagents ownership metadata are allowed;
-validation errors fail the task. It does not install or invoke the plugin.
+This runs `claude plugin validate`, marketplace add, available-list, install,
+installed-list, and details against a fresh Claude-only fixture. The proof
+requires clean validation, one plugin skill, no leaked client-extension agents,
+and both non-empty portable MCP servers. It does not invoke a model.
 
 ## Codex
 

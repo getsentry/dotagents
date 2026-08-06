@@ -165,14 +165,15 @@ For automatic real-client plugin proof, run:
 pnpm qa:plugins
 ```
 
-This runs every installed no-auth client proof: Claude validates the generated
-plugin and marketplace, Codex adds the generated marketplace and installs/lists
-the plugin, and Grok Build runs `plugin list` and `plugin details` against the
-generated project plugin. Missing client CLIs are reported and skipped; the
-command fails if none are installed.
+This runs every installed no-auth client proof in a fresh single-target fixture:
+Claude validates, adds, installs, and lists the plugin, then verifies one skill,
+zero leaked client-extension agents, and both portable MCP servers. Codex adds
+the generated marketplace and installs/lists the plugin. Grok Build runs
+`plugin list` and `plugin details` when available. Missing client CLIs are
+reported and skipped; the command fails if none are installed.
 
 Cursor currently has no plugin validation or marketplace command in its desktop
-CLI, so Cursor remains covered by the all-target integration contract rather
+CLI, so Cursor remains covered by the isolated per-harness integration contract rather
 than being mislabeled as client-level E2E. The OpenCode proof remains available
 as an explicit task but is not part of the automatic client set.
 

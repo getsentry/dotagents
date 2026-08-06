@@ -138,9 +138,11 @@ path = "plugins/review-tools"
 targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 ```
 
-The canonical portable format is an [Agent Plugins](https://agent-plugins.org/) v1 bundle: required `plugin.json`, optional `skills/`, optional `mcp.json`, and reverse-domain client extensions. dotagents preserves that raw bundle under `.agents/plugins/<name>/` and generates target registration or native manifests from it. Legacy generalized plugin manifests and marketplace discovery remain supported during migration. Standard bundles expose portable skills and valid `mcp.json` without projecting legacy root `agents/`, `commands/`, or `rules/` across clients. Generated outputs are deterministic, and plugin sources cannot install onto their own `.agents/plugins/<name>/` destination.
+The canonical portable format is an [Agent Plugins](https://agent-plugins.org/) v1 bundle: required `plugin.json`, optional `skills/`, optional `mcp.json`, and reverse-domain client extensions. dotagents preserves those portable source files under `.agents/plugins/<name>/` and generates isolated target harnesses with adjacent ownership sidecars instead of adding dotagents fields to client JSON. Legacy generalized and native Claude/Cursor/Codex manifests remain discoverable during migration; native imports preserve their owning manifest and expose only core metadata and Agent Skills to other clients. Standard bundles reject legacy root components so client-specific behavior cannot leak across harnesses.
 
 Plugin declarations are project-scope only for now. `dotagents --user install` rejects `[[plugins]]` entries because user-scope runtime plugin projections are not generated yet.
+
+Pi plugin targets are global skill projections rather than isolated plugin installs: a Pi-targeted plugin skill is added to `.agents/skills/` and is therefore visible to other clients that consume that shared directory.
 
 [Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively. Normal skills need no Pi-specific configuration; plugin bundles can target `pi` when their `skills/` components should be exposed there.
 

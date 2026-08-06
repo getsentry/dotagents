@@ -1,5 +1,6 @@
 import type { PluginDeclaration } from "./store.js";
 import type { PluginWriteWarning } from "./runtime/types.js";
+import { isStandardPluginManifest } from "./schema.js";
 
 const PLUGIN_ONLY_AGENT_IDS = ["grok", "pi"];
 const PLUGIN_AGENT_IDS = ["claude", "cursor", "codex", "grok", "opencode", "pi"];
@@ -30,6 +31,14 @@ export function selectedAgentIds(
   return [...new Set(targets)]
     .filter((target) => configured.has(target))
     .filter((target) => SUPPORTED_PLUGIN_AGENT_IDS.has(target));
+}
+
+export function usesLegacyPluginComponents(
+  plugin: Pick<PluginDeclaration, "manifest" | "nativeSource">,
+  target: string,
+): boolean {
+  if (isStandardPluginManifest(plugin.manifest)) {return false;}
+  return plugin.nativeSource === undefined || plugin.nativeSource === target;
 }
 
 /** Reports plugin target declarations that cannot produce runtime outputs. */

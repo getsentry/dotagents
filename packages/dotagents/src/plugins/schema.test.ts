@@ -4,6 +4,7 @@ import {
   AGENT_PLUGIN_MCP_SCHEMA,
   parsePluginManifest,
   parsePluginMcp,
+  parsePluginMcpBestEffort,
   parsePluginMarketplace,
   isStandardPluginManifest,
   pluginManifestSchema,
@@ -23,6 +24,26 @@ describe("plugin manifest schema", () => {
 
     expect(manifest.$schema).toBe(AGENT_PLUGIN_SCHEMA);
     expect(manifest.extensions?.["com.example.client"]).toEqual({ enabled: true });
+  });
+
+  it("preserves nonstandard author and homepage strings", () => {
+    const manifest = parsePluginManifest({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+      author: {
+        name: "Review Team",
+        email: "team at example dot com",
+        url: "internal-review-home",
+      },
+      homepage: "internal-homepage",
+    }, "plugin.json");
+
+    expect(manifest.author).toEqual({
+      name: "Review Team",
+      email: "team at example dot com",
+      url: "internal-review-home",
+    });
+    expect(manifest.homepage).toBe("internal-homepage");
   });
 
   it("drops unknown standard fields and malformed extensions", () => {
@@ -52,6 +73,16 @@ describe("plugin manifest schema", () => {
     expect(manifest.extensions).toEqual({
       "com.example.valid": { enabled: true },
     });
+  });
+
+  it("rejects non-namespaced standard extensions", () => {
+    expect(() => parsePluginManifest({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+      extensions: {
+        claude: { enabled: true },
+      },
+    }, "plugin.json")).toThrow(/reverse-domain identifier/);
   });
 
   it("rejects unsupported Agent Plugins schema identifiers", () => {
@@ -126,21 +157,50 @@ describe("plugin MCP schema", () => {
     expect(() => parsePluginMcp({
       $schema: AGENT_PLUGIN_MCP_SCHEMA,
       mcpServers: { bad: { type: "stdio", command: "node server.js" } },
-    }, "mcp.json")).toThrow("Invalid plugin MCP config");
+    }, "mcp.json")).toThrow('Invalid plugin MCP server "bad"');
     expect(() => parsePluginMcp({
       $schema: AGENT_PLUGIN_MCP_SCHEMA,
       mcpServers: { bad: { type: "http", url: "https://example.com" } },
-    }, "mcp.json")).toThrow("Invalid plugin MCP config");
+    }, "mcp.json")).toThrow('Invalid plugin MCP server "bad"');
     for (const command of ["/tmp/server", "../server", "./../server", "bin/server"]) {
       expect(() => parsePluginMcp({
         $schema: AGENT_PLUGIN_MCP_SCHEMA,
         mcpServers: { bad: { type: "stdio", command } },
-      }, "mcp.json")).toThrow("Invalid plugin MCP config");
+      }, "mcp.json")).toThrow('Invalid plugin MCP server "bad"');
     }
     expect(parsePluginMcp({
       $schema: AGENT_PLUGIN_MCP_SCHEMA,
       mcpServers: { good: { type: "stdio", command: "./bin/server" } },
     }, "mcp.json").mcpServers["good"]?.type).toBe("stdio");
+  });
+
+  it("rejects unsafe cwd and reserved portable environment overrides", () => {
+    for (const cwd of ["/tmp", "../outside", "${HOME}/plugin"]) {
+      expect(() => parsePluginMcp({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { bad: { type: "stdio", command: "node", cwd } },
+      }, "mcp.json")).toThrow('Invalid plugin MCP server "bad"');
+    }
+    for (const key of ["PLUGIN_ROOT", "PLUGIN_DATA"]) {
+      expect(() => parsePluginMcp({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { bad: { type: "stdio", command: "node", env: { [key]: "override" } } },
+      }, "mcp.json")).toThrow('Invalid plugin MCP server "bad"');
+    }
+  });
+
+  it("retains valid MCP servers beside invalid siblings", () => {
+    const parsed = parsePluginMcpBestEffort({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: {
+        good: { type: "stdio", command: "node" },
+        bad: { type: "stdio", command: "node server.js" },
+      },
+    }, "mcp.json");
+
+    expect(Object.keys(parsed.config.mcpServers)).toEqual(["good"]);
+    expect(parsed.issues).toHaveLength(1);
+    expect(parsed.issues[0]).toContain('Invalid plugin MCP server "bad"');
   });
 });
 

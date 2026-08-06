@@ -10,7 +10,7 @@ The implementation includes a partial first compatibility stage: it accepts and
 normalizes Agent Plugins v1 manifests, validates MCP files, preserves portable
 source files, projects portable skills/MCP into generated native manifests, and
 continues accepting legacy generalized manifests and marketplace discovery.
-Per-server MCP recovery and client extension adapters remain follow-up work.
+Client extension adapters and native MCP import remain follow-up work.
 
 ## Design Principle
 
@@ -30,6 +30,58 @@ The portable source bundle is an Agent Plugin. dotagents is responsible for:
 Marketplaces, source repositories, lockfiles, target selection, trust policy,
 and generated runtime files remain dotagents concerns. They are not part of the
 portable Agent Plugins bundle format.
+
+## Bidirectional Contract
+
+dotagents has two different operations. They must not be conflated.
+
+### Forward compilation
+
+An Agent Plugins bundle is compiled into one selected client harness at a time:
+
+```text
+portable bundle -> normalized portable core -> target adapter -> exact target files
+```
+
+Each adapter owns a complete filesystem contract: every generated file,
+symlink, path, and serialized field. Integration tests run each harness in an
+isolated project so Pi's global skill projection or another client's managed
+files cannot make a different harness appear correct.
+
+Where a real client exposes a no-auth validator or install/list command, QA must
+also prove the generated harness is consumed by that client. A successful JSON
+write or schema parse is not client proof.
+
+### Reverse import
+
+A client-native bundle may also be imported, but only conservatively:
+
+```text
+native bundle -> preserve native files -> extract portable intersection -> record native provenance
+```
+
+The portable intersection is core metadata and valid Agent Skills, plus MCP
+only when the native transport can be converted without guessing. Client-owned
+commands, agents, rules, hooks, apps, and other components remain native data.
+They may be reused by the same client, but must not be translated into another
+client's format.
+
+Reverse import is intentionally not a claim that arbitrary Claude, Cursor, or
+Codex plugins can be converted losslessly into Agent Plugins. When dotagents
+cannot represent a native field or does not have an authoritative extension
+namespace, it preserves the original file and records the limitation instead
+of inventing portable meaning.
+
+### Round-trip invariants
+
+1. Portable source files survive forward compilation unchanged.
+2. Native imports preserve the original native manifest and resources.
+3. Portable -> target -> portable preserves the portable core, not generated
+   ownership files or target presentation metadata.
+4. Native -> portable -> the same native client preserves the original native
+   files; generated metadata may differ.
+5. Cross-client output contains only the portable intersection and the target's
+   own registered extension data.
 
 ## Canonical Bundle
 
@@ -254,6 +306,22 @@ target artifacts should live in target-specific directories or in clearly
 managed adapter directories inside the bundle. Adapters must not rewrite the
 portable `plugin.json`, `skills/`, or `mcp.json` source files.
 
+### Native bundle import
+
+When no root `plugin.json` exists, discovery may load a native
+`.claude-plugin`, `.cursor-plugin`, or `.codex-plugin` manifest. Installation
+copies the native bundle unchanged, records its owning client in an internal
+marker, and creates the existing canonical compatibility manifest when needed.
+
+The owning client's native manifest remains authoritative and is never
+overwritten by a generated adapter. Other selected clients receive only core
+metadata and convention-based Agent Skills. Native commands, agents, rules,
+hooks, and MCP references are not translated across clients.
+
+This is a conservative reverse import, not lossless conversion to Agent Plugins.
+Native MCP conversion and registered extension normalization require explicit
+client importers and remain future work.
+
 ## Internal Normalization
 
 Adapters should consume one normalized structure rather than each reparsing
@@ -267,6 +335,7 @@ interface NormalizedPlugin {
   skills: AgentSkill[];
   mcpServers: McpDeclaration[];
   extensions: Record<string, Record<string, unknown>>;
+  nativeSource?: "claude" | "cursor" | "codex";
   targets: string[];
 }
 ```
@@ -296,12 +365,16 @@ Agent Plugin bundle
 | OpenCode | Project plugin skills and merge normalized MCP servers into OpenCode config when needed | Read only namespaces registered to the OpenCode adapter | Symlink skills into `.opencode/skills/`; project explicitly declared OpenCode resources such as agents; do not generate JavaScript or TypeScript plugin modules. |
 | Pi | Project supported skills | Read only namespaces registered to the Pi adapter | Symlink skills into `.agents/skills/`; ignore unsupported MCP or extension components with warnings. |
 
+Pi is an explicit isolation exception. Its plugin surface is the shared
+`.agents/skills/` directory, so targeting Pi makes those plugin skills visible
+to every configured client that also reads or links that directory. Per-client
+tests isolate Pi so this global projection cannot make another harness pass.
+
 ### Metadata
 
 Core metadata is copied into generated native manifests only when the target
-requires a separate manifest. Adapter ownership metadata such as
-`metadata.managedBy = "dotagents"` belongs only in generated files, never in
-the portable `plugin.json`.
+requires a separate manifest. Dotagents ownership is stored in adjacent
+`.dotagents-managed` sidecar files, not inside client-owned JSON schemas.
 
 ### Skills
 
@@ -403,9 +476,11 @@ Generated state is deterministic and dotagents-managed:
 1. JSON keys and plugin entries are sorted.
 2. Generated files end in one newline.
 3. Existing unmanaged files are never overwritten.
-4. Managed registration, manifests, copies, links, and MCP entries are pruned
+4. Generated JSON ownership uses adjacent `.dotagents-managed` sidecars;
+   legacy `metadata.managedBy` files remain recognized for migration.
+5. Managed registration, manifests, copies, links, and MCP entries are pruned
    when a plugin or target is removed.
-5. `.agents/.gitignore` lists copied managed bundles and generated links without
+6. `.agents/.gitignore` lists copied managed bundles and generated links without
    hiding project-authored plugin sources.
 
 ## Lockfile
@@ -473,14 +548,14 @@ The current branch still needs follow-up implementation for:
 
 1. normalizing validated `mcp.json` servers into the shared MCP declaration
    model for clients that cannot consume the portable file directly,
-2. skipping invalid MCP servers independently while retaining valid siblings,
-3. registering authoritative client extension namespaces and projecting their
+2. registering authoritative client extension namespaces and projecting their
    client-owned resources,
-4. moving legacy `agents`, `commands`, `rules`, hooks, and other behavior into client
+3. moving legacy `agents`, `commands`, `rules`, hooks, and other behavior into client
    namespaces,
-5. removing canonical marketplace input assumptions from discovery,
-6. adding migration warnings for legacy plugin bundles, and
-7. reporting ignored standard manifest fields and malformed extensions, and
+4. removing canonical marketplace input assumptions from discovery,
+5. adding migration warnings for legacy plugin bundles,
+6. reporting ignored standard manifest fields and malformed extensions,
+7. adding explicit native MCP-to-portable importers, and
 8. adding persistent `PLUGIN_DATA` handling for flattened MCP adapters.
 
 ## Non-goals

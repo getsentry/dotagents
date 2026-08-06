@@ -18,7 +18,7 @@ For user scope, isolate `HOME` and `DOTAGENTS_HOME`, then assert generated Curso
 
 ## Runtime Proof
 
-The all-target install integration test proves the Agent Plugins input bundle
+The isolated Cursor harness integration test proves the Agent Plugins input bundle
 produces the documented Cursor marketplace and native manifest, including
 portable skills/MCP and exclusion of unrelated legacy root components.
 

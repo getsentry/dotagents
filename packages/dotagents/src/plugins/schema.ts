@@ -37,9 +37,14 @@ const pluginAuthorSchema = z.object({
 
 const standardPluginAuthorSchema = z.object({
   name: z.string().min(1),
-  email: z.email().optional(),
-  url: z.url().optional(),
+  email: z.string().min(1).optional(),
+  url: z.string().min(1).optional(),
 }).strict();
+
+const extensionNamespaceSchema = z.string().regex(
+  /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/,
+  "Agent Plugin extension namespaces must use a lowercase reverse-domain identifier",
+);
 
 const standardPluginManifestSchema = z.object({
   $schema: z.literal(AGENT_PLUGIN_SCHEMA),
@@ -47,11 +52,11 @@ const standardPluginManifestSchema = z.object({
   description: z.string().min(1).optional(),
   version: z.string().min(1).optional(),
   author: standardPluginAuthorSchema.optional(),
-  homepage: z.url().optional(),
+  homepage: z.string().min(1).optional(),
   repository: z.string().min(1).optional(),
   license: z.string().min(1).optional(),
   keywords: z.array(z.string().min(1)).optional(),
-  extensions: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+  extensions: z.record(extensionNamespaceSchema, z.record(z.string(), z.unknown())).optional(),
 });
 
 const pluginPathOrPathsSchema = z.union([
@@ -99,8 +104,22 @@ const pluginMcpStdioSchema = z.object({
     "MCP stdio command must be one executable token or a plugin-relative ./ path",
   ),
   args: z.array(z.string()).optional(),
-  env: z.record(z.string(), z.string()).optional(),
-  cwd: z.string().optional(),
+  env: z.record(z.string(), z.string()).check(
+    z.refine(
+      (value) => !("PLUGIN_ROOT" in value) && !("PLUGIN_DATA" in value),
+      "MCP env must not override PLUGIN_ROOT or PLUGIN_DATA",
+    ),
+  ).optional(),
+  cwd: z.string().refine(
+    (value) => (
+      value === "${PLUGIN_ROOT}" ||
+      value.startsWith("${PLUGIN_ROOT}/") ||
+      value === "${PLUGIN_DATA}" ||
+      value.startsWith("${PLUGIN_DATA}/") ||
+      (value.startsWith("./") && pluginPathSchema.safeParse(value).success)
+    ),
+    "MCP cwd must be plugin-relative or rooted at PLUGIN_ROOT or PLUGIN_DATA",
+  ).optional(),
 }).strict();
 
 const pluginMcpRemoteSchema = z.object({
@@ -109,19 +128,52 @@ const pluginMcpRemoteSchema = z.object({
   headers: z.record(z.string(), z.string()).optional(),
 }).strict();
 
-const pluginMcpSchema = z.object({
+const pluginMcpServerSchema = z.union([pluginMcpStdioSchema, pluginMcpRemoteSchema]);
+
+const pluginMcpEnvelopeSchema = z.object({
   $schema: z.literal(AGENT_PLUGIN_MCP_SCHEMA),
-  mcpServers: z.record(z.string().min(1), z.union([pluginMcpStdioSchema, pluginMcpRemoteSchema])),
+  mcpServers: z.record(z.string(), z.unknown()),
 }).strict();
 
-type PluginMcpConfig = z.infer<typeof pluginMcpSchema>;
+export interface PluginMcpConfig {
+  $schema: typeof AGENT_PLUGIN_MCP_SCHEMA;
+  mcpServers: Record<string, z.infer<typeof pluginMcpServerSchema>>;
+}
+
+export function parsePluginMcpBestEffort(
+  value: unknown,
+  filePath: string,
+): { config: PluginMcpConfig; issues: string[] } {
+  const envelope = pluginMcpEnvelopeSchema.safeParse(value);
+  if (!envelope.success) {
+    throw new Error(`Invalid plugin MCP config ${filePath}: ${envelope.error.message}`);
+  }
+  const mcpServers: PluginMcpConfig["mcpServers"] = {};
+  const issues: string[] = [];
+  for (const [name, server] of Object.entries(envelope.data.mcpServers)) {
+    if (!name) {
+      issues.push(`Invalid plugin MCP server name in ${filePath}: server names must not be empty`);
+      continue;
+    }
+    const parsed = pluginMcpServerSchema.safeParse(server);
+    if (!parsed.success) {
+      issues.push(`Invalid plugin MCP server "${name}" in ${filePath}: ${parsed.error.message}`);
+      continue;
+    }
+    mcpServers[name] = parsed.data;
+  }
+  return {
+    config: { $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers },
+    issues,
+  };
+}
 
 export function parsePluginMcp(value: unknown, filePath: string): PluginMcpConfig {
-  const parsed = pluginMcpSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new Error(`Invalid plugin MCP config ${filePath}: ${parsed.error.message}`);
+  const parsed = parsePluginMcpBestEffort(value, filePath);
+  if (parsed.issues.length > 0) {
+    throw new Error(parsed.issues.join("\n"));
   }
-  return parsed.data;
+  return parsed.config;
 }
 
 const localMarketplaceSourceSchema = z.object({

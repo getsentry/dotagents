@@ -31,19 +31,17 @@ the Docker QA container, against a retained QA project:
 node skills/dotagents-qa/scripts/qa-example.mjs plugin-claude --keep
 ```
 
-The task installs the full example, asserts the generated files, then runs
-`claude plugin validate` against the generated plugin bundle and marketplace.
-The first validation proves the generated native plugin manifest is acceptable
-to Claude Code. The second proves the generated marketplace points at a valid
-plugin bundle.
+The task creates a fresh Claude-only fixture, validates the generated plugin and
+marketplace, adds the marketplace, installs the plugin, and inspects the
+installed plugin. It requires one plugin skill, zero leaked client-extension
+agents, and both non-empty portable MCP servers.
 
 Claude Code 2.1.x rejects an `agents` field in plugin manifests. dotagents
 therefore omits plugin agents from the generated Claude manifest even when the
 canonical bundle contains an `agents/` directory for other runtimes.
 
-Expected warning today: Claude Code accepts the files but warns that
-`metadata.managedBy` is unknown. That warning is acceptable because dotagents
-uses the marker for overwrite protection and Claude ignores unknown metadata.
+Validation should complete without warnings. Dotagents ownership is stored in
+adjacent sidecar files rather than client-owned JSON fields.
 
 If Claude reports `No manifest found in directory`, verify the plugin bundle
 contains `.claude-plugin/plugin.json`; the marketplace alone is not enough. If

@@ -174,6 +174,25 @@ describe("plugin store", () => {
     }
   });
 
+  it("rejects legacy root components in standard bundles", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const pluginDir = join(projectRoot, "source", "plugins", "review-tools");
+      await mkdir(join(pluginDir, "agents"), { recursive: true });
+      await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+        name: "review-tools",
+      }));
+
+      await expect(resolvePlugin(
+        { name: "review-tools", source: "path:source", path: "plugins/review-tools" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      )).rejects.toThrow(/contains legacy root components: agents/);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("reports a controlled error when the plugin source root disappears during realpath checks", async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
     try {

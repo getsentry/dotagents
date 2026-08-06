@@ -23,6 +23,7 @@ import {
   type LegacyPluginManifest,
   type PluginManifest,
 } from "./schema.js";
+import { isManagedJsonFile } from "./runtime/files.js";
 
 // Owns plugin source discovery and installation into the canonical project tree.
 // Resolved sources are never allowed to live inside the same project's
@@ -41,8 +42,11 @@ export interface PluginDeclaration {
   source: string;
   pluginDir: string;
   manifest: PluginManifest;
+  nativeSource?: NativePluginSource;
   targets?: string[];
 }
+
+export type NativePluginSource = "claude" | "cursor" | "codex";
 
 interface ResolvedLocalPlugin {
   type: "local";
@@ -64,6 +68,7 @@ interface PluginCandidate {
   dir: string;
   path: string;
   manifest: PluginManifest;
+  nativeSource?: NativePluginSource;
 }
 
 const MARKETPLACE_PATHS = [
@@ -75,15 +80,16 @@ const MARKETPLACE_PATHS = [
   ".plugin/marketplace.json",
 ] as const;
 
-const NATIVE_MANIFEST_PATHS = [
-  "plugin.json",
-  ".codex-plugin/plugin.json",
-  ".claude-plugin/plugin.json",
-  ".cursor-plugin/plugin.json",
-  ".plugin/plugin.json",
+const MANIFEST_PATHS: ReadonlyArray<{ path: string; nativeSource?: NativePluginSource }> = [
+  { path: "plugin.json" },
+  { path: ".codex-plugin/plugin.json", nativeSource: "codex" },
+  { path: ".claude-plugin/plugin.json", nativeSource: "claude" },
+  { path: ".cursor-plugin/plugin.json", nativeSource: "cursor" },
+  { path: ".plugin/plugin.json" },
 ] as const;
 
 export const DOTAGENTS_MANAGED_PLUGIN_MARKER = ".dotagents-managed";
+const DOTAGENTS_NATIVE_SOURCE_MARKER = ".dotagents-native-source";
 
 let tempInstallCounter = 0;
 
@@ -171,9 +177,11 @@ export async function installPluginBundle(
 
   try {
     await copyDir(resolved.plugin.pluginDir, tempDir, { verbatimSymlinks: true });
+    await removeSourceOwnershipMarkers(tempDir);
     await assertPluginBundleSymlinksContained(tempDir);
     const staged = { ...resolved.plugin, pluginDir: tempDir };
     await ensureCanonicalManifest(staged);
+    await writeNativeSourceMarker(staged);
     await writeManagedMarker(tempDir);
 
     if (existsSync(destDir)) {
@@ -214,13 +222,16 @@ export async function loadInstalledPlugins(
     }
     try {
       await assertPluginBundleSymlinksContained(pluginDir);
-      const manifest = await loadManifest(pluginDir) ?? { name: config.name };
+      const loaded = await loadManifest(pluginDir);
+      const manifest = loaded?.manifest ?? { name: config.name };
+      await validateStandardBundleLayout(pluginDir, manifest, true);
       assertPluginName(config.name, manifest, pluginDir);
       plugins.push({
         name: config.name,
         source: config.source,
         pluginDir,
         manifest: normalizeManifest(config.name, manifest),
+        nativeSource: await readNativeSourceMarker(pluginDir) ?? loaded?.nativeSource,
         targets: config.targets,
       });
     } catch (err) {
@@ -464,8 +475,10 @@ async function loadPluginCandidate(
   if (!existsSync(pluginDir)) {return null;}
   await assertInsideSourceRoot(sourceRoot, pluginDir, "Plugin source");
 
-  const manifest = await loadManifest(pluginDir);
+  const loaded = await loadManifest(pluginDir);
+  const manifest = loaded?.manifest;
   if (!manifest && !await hasPluginComponents(pluginDir)) {return null;}
+  if (manifest) {await validateStandardBundleLayout(pluginDir, manifest, false);}
 
   const name = manifest && typeof manifest["name"] === "string"
     ? String(manifest["name"])
@@ -479,6 +492,7 @@ async function loadPluginCandidate(
     dir: pluginDir,
     path: relativePath(sourceRoot, pluginDir),
     manifest: combined,
+    nativeSource: loaded?.nativeSource,
   };
 }
 
@@ -492,11 +506,16 @@ function marketplaceManifestOverlay(
   return overlay;
 }
 
-async function loadManifest(pluginDir: string): Promise<PluginManifest | null> {
-  for (const manifestPath of NATIVE_MANIFEST_PATHS) {
-    const filePath = join(pluginDir, manifestPath);
+async function loadManifest(
+  pluginDir: string,
+): Promise<{ manifest: PluginManifest; nativeSource?: NativePluginSource } | null> {
+  for (const candidate of MANIFEST_PATHS) {
+    const filePath = join(pluginDir, candidate.path);
     if (!existsSync(filePath)) {continue;}
-    return parsePluginManifest(await readJson(filePath), filePath);
+    return {
+      manifest: parsePluginManifest(await readJson(filePath), filePath),
+      nativeSource: candidate.nativeSource,
+    };
   }
   return null;
 }
@@ -519,6 +538,51 @@ async function hasPluginComponents(pluginDir: string): Promise<boolean> {
   return paths.some((path) => existsSync(join(pluginDir, path)));
 }
 
+async function validateStandardBundleLayout(
+  pluginDir: string,
+  manifest: PluginManifest,
+  allowManagedAdapters: boolean,
+): Promise<void> {
+  if (!isStandardPluginManifest(manifest)) {return;}
+  const legacyRoots = [
+    "agents",
+    "commands",
+    "rules",
+    "hooks",
+    "monitors",
+    ".mcp.json",
+    ".lsp.json",
+    ".app.json",
+  ];
+  const found = legacyRoots.filter((path) => existsSync(join(pluginDir, path)));
+  for (const dir of [".claude-plugin", ".cursor-plugin", ".codex-plugin"]) {
+    if (!existsSync(join(pluginDir, dir))) {continue;}
+    const manifestPath = join(pluginDir, dir, "plugin.json");
+    if (allowManagedAdapters && await isManagedJsonFile(manifestPath)) {continue;}
+    found.push(dir);
+  }
+  if (found.length > 0) {
+    throw new Error(
+      `Agent Plugins v1 bundle contains legacy root components: ${found.join(", ")}. Move client-specific resources into reverse-domain extension directories.`,
+    );
+  }
+}
+
+async function removeSourceOwnershipMarkers(dir: string): Promise<void> {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const filePath = join(dir, entry.name);
+    if (
+      entry.name === DOTAGENTS_MANAGED_PLUGIN_MARKER ||
+      entry.name === DOTAGENTS_NATIVE_SOURCE_MARKER ||
+      entry.name.endsWith(".dotagents-managed")
+    ) {
+      await rm(filePath, { recursive: true, force: true });
+      continue;
+    }
+    if (entry.isDirectory()) {await removeSourceOwnershipMarkers(filePath);}
+  }
+}
+
 async function ensureCanonicalManifest(plugin: PluginDeclaration): Promise<void> {
   const filePath = join(plugin.pluginDir, "plugin.json");
   if (existsSync(filePath)) {return;}
@@ -527,6 +591,25 @@ async function ensureCanonicalManifest(plugin: PluginDeclaration): Promise<void>
 
 async function writeManagedMarker(pluginDir: string): Promise<void> {
   await writeFile(join(pluginDir, DOTAGENTS_MANAGED_PLUGIN_MARKER), "managedBy=dotagents\n", "utf-8");
+}
+
+async function writeNativeSourceMarker(plugin: PluginDeclaration): Promise<void> {
+  const filePath = join(plugin.pluginDir, DOTAGENTS_NATIVE_SOURCE_MARKER);
+  if (plugin.nativeSource) {
+    await writeFile(filePath, `${plugin.nativeSource}\n`, "utf-8");
+  } else {
+    await rm(filePath, { force: true });
+  }
+}
+
+async function readNativeSourceMarker(pluginDir: string): Promise<NativePluginSource | undefined> {
+  try {
+    const value = (await readFile(join(pluginDir, DOTAGENTS_NATIVE_SOURCE_MARKER), "utf-8")).trim();
+    return value === "claude" || value === "cursor" || value === "codex" ? value : undefined;
+  } catch (err) {
+    if (isNotFoundError(err)) {return undefined;}
+    throw err;
+  }
 }
 
 function toDeclaration(
@@ -539,6 +622,7 @@ function toDeclaration(
     source: config.source,
     pluginDir: candidate.dir,
     manifest: normalizeManifest(config.name, candidate.manifest),
+    nativeSource: candidate.nativeSource,
     targets: config.targets,
   };
 }

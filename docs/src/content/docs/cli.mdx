@@ -423,9 +423,12 @@ sources; HTTPS well-known sources are not supported for plugins.
 
 New plugin bundles follow Agent Plugins v1 with a required `plugin.json` and
 optional `skills/` and `mcp.json`. dotagents preserves the raw bundle and
-generates target adapters from the portable core. Legacy generalized manifests
-remain supported during migration. Client-specific extension namespaces are
-preserved but are never translated into other clients' formats.
+generates isolated target adapters from the portable core. Generated JSON uses
+adjacent ownership sidecars, not dotagents-only fields inside client schemas.
+Legacy generalized and native Claude/Cursor/Codex manifests remain supported
+during migration. Native imports preserve the owning manifest and expose only
+core metadata and Agent Skills to other clients; native components are never
+translated into unrelated clients' formats.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |

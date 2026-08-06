@@ -278,7 +278,7 @@ Generated files include a dotagents header marker. `install` and `sync` overwrit
 
 Each `[[plugins]]` entry requires `name` and `source`. Optional: `ref`, `path`, and `targets`. When `targets` is absent or empty, dotagents targets every agent listed in `agents`.
 
-dotagents installs canonical plugin bundles under `.agents/plugins/<name>/`. New bundles use Agent Plugins v1: required `plugin.json`, optional `skills/`, optional `mcp.json`, and reverse-domain client extensions. The raw bundle is preserved, portable skills are projected where needed, and valid portable MCP is referenced by generated native manifests. Standard bundles do not leak legacy root `agents/`, `commands/`, or `rules/` into unrelated clients. Legacy generalized manifests and marketplace discovery remain supported during migration.
+dotagents installs canonical plugin bundles under `.agents/plugins/<name>/`. New bundles use Agent Plugins v1: required `plugin.json`, optional `skills/`, optional `mcp.json`, and reverse-domain client extensions. Portable source files are preserved, target JSON remains client-native, and dotagents ownership uses adjacent sidecar markers. Standard bundles reject legacy root components so client-specific behavior cannot leak across harnesses. Native Claude/Cursor/Codex bundles may be imported conservatively: the owning native manifest is preserved, while other clients receive only core metadata and Agent Skills. Native MCP and client-specific components are not guessed or cross-translated.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -296,7 +296,7 @@ Generated project-scope plugin outputs:
 - OpenCode: plugin `skills/` symlinked into `.opencode/skills/`; plugin Markdown `agents/` symlinked into `.opencode/agents/`
 - Pi: plugin `skills/` symlinked into `.agents/skills/` when `pi` is a configured plugin target
 
-Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated runtime marketplaces and generated Claude/Cursor/Codex plugin manifests are overwritten or pruned only when they carry `metadata.managedBy = "dotagents"`. Managed Grok copies and OpenCode/Pi component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when `agents.lock` proves they are managed by dotagents.
+Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated marketplaces and Claude/Cursor/Codex manifests use adjacent `.dotagents-managed` sidecars so client-owned JSON remains schema-native; legacy `metadata.managedBy` output remains recognizable during migration. Managed Grok copies and OpenCode/Pi component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when their on-disk `.dotagents-managed` marker proves ownership.
 
 Plugin declarations are project-scope only for now. `install --user` rejects `[[plugins]]` entries and `sync --user` reports them as unsupported because user-scope runtime plugin projections are not generated yet.
 
