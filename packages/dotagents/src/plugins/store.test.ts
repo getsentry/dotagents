@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { lstat, mkdtemp, mkdir, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installPluginBundle, isSameProjectPluginConfig, lockEntryForPlugin, resolvePlugin, type ResolvedPlugin } from "./store.js";
@@ -169,6 +169,34 @@ describe("plugin store", () => {
         { name: "review-tools", source: "path:source" },
         { stateDir: join(projectRoot, "state"), projectRoot },
       )).rejects.toThrow(/Canonical plugin source resolves outside source/);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("installs contained plugin directory symlinks from their canonical root", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const actualDir = join(sourceRoot, "actual", "review-tools");
+      const aliasDir = join(sourceRoot, "plugins", "review-tools");
+      const pluginsDir = join(projectRoot, ".agents", "plugins");
+      await mkdir(join(actualDir, "skills", "review"), { recursive: true });
+      await mkdir(dirname(aliasDir), { recursive: true });
+      await mkdir(pluginsDir, { recursive: true });
+      await writeFile(join(actualDir, "plugin.json"), JSON.stringify({ name: "review-tools" }));
+      await writeFile(join(actualDir, "skills", "review", "SKILL.md"), "---\nname: review\ndescription: Review\n---\n");
+      await symlink(relative(dirname(aliasDir), actualDir), aliasDir);
+
+      const resolved = await resolvePlugin(
+        { name: "review-tools", source: "path:source", path: "plugins/review-tools" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+      const installed = await installPluginBundle(pluginsDir, resolved);
+
+      expect((await lstat(installed.pluginDir)).isDirectory()).toBe(true);
+      expect(existsSync(join(installed.pluginDir, "plugin.json"))).toBe(true);
+      expect(existsSync(join(installed.pluginDir, "skills", "review", "SKILL.md"))).toBe(true);
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }

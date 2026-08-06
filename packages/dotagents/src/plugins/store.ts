@@ -176,7 +176,8 @@ export async function installPluginBundle(
   );
 
   try {
-    await copyDir(resolved.plugin.pluginDir, tempDir, { verbatimSymlinks: true });
+    const sourceDir = await realpath(resolved.plugin.pluginDir);
+    await copyDir(sourceDir, tempDir, { verbatimSymlinks: true });
     await removeSourceOwnershipMarkers(tempDir);
     await assertPluginBundleSymlinksContained(tempDir);
     const staged = { ...resolved.plugin, pluginDir: tempDir };
