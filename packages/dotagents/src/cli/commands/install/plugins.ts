@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { AgentsConfig, PluginConfig } from "../../../config/schema.js";
+import type { AgentsConfig } from "../../../config/schema.js";
 import type { Lockfile } from "../../../lockfile/schema.js";
 import type { ScopeRoot } from "../../../scope.js";
 import {
@@ -37,15 +37,9 @@ function staleManagedPluginNames(
 /** Ensures installs only replace plugin destinations already owned by dotagents. */
 function assertPluginDestinationIsManaged(
   pluginsDir: string,
-  plugin: PluginConfig,
-  lockfile: Lockfile | null,
+  name: string,
 ): void {
-  const { name } = plugin;
   if (!existsSync(join(pluginsDir, name))) {return;}
-
-  const locked = lockfile?.plugins[name];
-  if (locked && !isInPlacePluginSource(locked.source)) {return;}
-  if (locked && !isInPlacePluginSource(plugin.source)) {return;}
   if (isManagedPluginInstall(join(pluginsDir, name))) {return;}
 
   throw new InstallError(
@@ -87,7 +81,7 @@ export async function installPlugins(
             "Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.",
         );
       }
-      assertPluginDestinationIsManaged(scope.pluginsDir, pluginConfig, lockfile);
+      assertPluginDestinationIsManaged(scope.pluginsDir, pluginConfig.name);
       plugins.push(await installPluginBundle(scope.pluginsDir, resolved));
       lockEntries[resolved.plugin.name] = lockEntryForPlugin(resolved);
     }

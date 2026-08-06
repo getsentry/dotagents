@@ -428,6 +428,14 @@ source = "path:plugin-source/portable-tools"
     const existingDir = join(projectRoot, ".agents", "plugins", "review-tools");
     await mkdir(existingDir, { recursive: true });
     await writeFile(join(existingDir, "plugin.json"), JSON.stringify({ name: "review-tools", description: "Hand written" }, null, 2));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {
+        "review-tools": { source: "path:plugin-source/review-tools" },
+      },
+    });
 
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -462,6 +470,7 @@ source = "path:plugin-source/review-tools"
       join(existingDir, "plugin.json"),
       JSON.stringify({ name: "review-tools", description: "Old managed plugin" }, null, 2),
     );
+    await writeFile(join(existingDir, DOTAGENTS_MANAGED_PLUGIN_MARKER), "managedBy=dotagents\n", "utf-8");
     await writeFile(join(existingDir, "skills", "old-review", "SKILL.md"), SKILL_MD("old-review"));
     await writeLockfile(join(projectRoot, "agents.lock"), {
       version: 1,
@@ -526,7 +535,7 @@ source = "path:plugin-source/review-tools"
     expect(existsSync(join(existingDir, "skills", "partial", "SKILL.md"))).toBe(false);
   });
 
-  it("allows an in-place plugin lock entry to move to an external source", async () => {
+  it("does not overwrite an unmarked in-place plugin when its source moves external", async () => {
     const sourceDir = join(projectRoot, "plugin-source", "review-tools");
     await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
     await writeFile(
@@ -559,13 +568,13 @@ source = "path:plugin-source/review-tools"
     );
 
     const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
+    await expect(runInstall({ scope })).rejects.toThrow(/install destination already exists and is not managed/);
 
     const installedManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as Record<string, unknown>;
-    expect(installedManifest["description"]).toBe("External plugin");
+    expect(installedManifest["description"]).toBe("In-place plugin");
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile!.plugins["review-tools"]).toEqual({
-      source: "path:plugin-source/review-tools",
+      source: "path:.agents/plugins/review-tools",
     });
   });
 
