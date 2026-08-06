@@ -1,12 +1,36 @@
 import { describe, expect, it } from "vitest";
 import {
+  AGENT_PLUGIN_SCHEMA,
+  AGENT_PLUGIN_MCP_SCHEMA,
   parsePluginManifest,
+  parsePluginMcp,
   parsePluginMarketplace,
   pluginManifestSchema,
   pluginMarketplaceSchema,
 } from "./schema.js";
 
 describe("plugin manifest schema", () => {
+  it("accepts Agent Plugins v1 manifests", () => {
+    const manifest = parsePluginManifest({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+      description: "Review tools",
+      extensions: {
+        "com.example.client": { enabled: true },
+      },
+    }, "plugin.json");
+
+    expect(manifest.$schema).toBe(AGENT_PLUGIN_SCHEMA);
+    expect(manifest.extensions?.["com.example.client"]).toEqual({ enabled: true });
+  });
+
+  it("rejects unsupported Agent Plugins schema identifiers", () => {
+    expect(() => parsePluginManifest({
+      $schema: "https://agent-plugins.org/schemas/2.0.0/plugin.schema.json",
+      name: "review-tools",
+    }, "plugin.json")).toThrow("Invalid plugin manifest");
+  });
+
   it("accepts known fields and preserves extension fields", () => {
     const manifest = parsePluginManifest(
       {
@@ -37,6 +61,34 @@ describe("plugin manifest schema", () => {
     expect(pluginManifestSchema.safeParse({ skills: "/tmp/skills" }).success).toBe(false);
     expect(pluginManifestSchema.safeParse({ commands: ["../commands"] }).success).toBe(false);
     expect(pluginManifestSchema.safeParse({ skills: "https://example.com/skills" }).success).toBe(false);
+  });
+});
+
+describe("plugin MCP schema", () => {
+  it("accepts Agent Plugins v1 MCP declarations", () => {
+    const config = parsePluginMcp({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: {
+        review: {
+          type: "stdio",
+          command: "node",
+          args: ["${PLUGIN_ROOT}/server.js"],
+          env: { CACHE_DIR: "${PLUGIN_DATA}/cache" },
+        },
+      },
+    }, "mcp.json");
+    expect(config.mcpServers["review"]?.type).toBe("stdio");
+  });
+
+  it("rejects shell commands and unsupported transports", () => {
+    expect(() => parsePluginMcp({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: { bad: { type: "stdio", command: "node server.js" } },
+    }, "mcp.json")).toThrow("Invalid plugin MCP config");
+    expect(() => parsePluginMcp({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: { bad: { type: "http", url: "https://example.com" } },
+    }, "mcp.json")).toThrow("Invalid plugin MCP config");
   });
 });
 

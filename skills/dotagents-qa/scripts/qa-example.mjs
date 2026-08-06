@@ -377,13 +377,13 @@ function assertPluginOutputs() {
   assertFile(".agents/plugins/marketplace.json");
   assertFileIncludes(".agents/plugins/marketplace.json", '"name": "dotagents-local"');
   assertFileIncludes(".agents/plugins/marketplace.json", '"managedBy": "dotagents"');
-  assertFileIncludes(".agents/plugins/marketplace.json", '"path": "./.agents/plugins/qa-tools"');
+  assertFileIncludes(".agents/plugins/marketplace.json", '"path": "./qa-tools"');
   assertFileIncludes(".agents/plugins/marketplace.json", '"source": "local"');
 
   assertFile(".claude-plugin/marketplace.json");
   assertFileIncludes(".claude-plugin/marketplace.json", '"managedBy": "dotagents"');
   assertFileIncludes(".claude-plugin/marketplace.json", '"name": "qa-tools"');
-  assertFileIncludes(".claude-plugin/marketplace.json", '"source": "./.agents/plugins/qa-tools"');
+  assertFileIncludes(".claude-plugin/marketplace.json", '"source": "../.agents/plugins/qa-tools"');
   assertFile(".cursor-plugin/marketplace.json");
   assertSameFile(".cursor-plugin/marketplace.json", ".claude-plugin/marketplace.json");
 

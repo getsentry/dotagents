@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { PluginManifest } from "../schema.js";
+import { isStandardPluginManifest, parsePluginMcp, type PluginManifest } from "../schema.js";
 import type { PluginDeclaration } from "../store.js";
 import { DOTAGENTS_METADATA, isManagedJsonFile, stableJson, writeJsonIfChanged } from "./files.js";
 import {
@@ -50,7 +51,7 @@ export async function writeClaudeManifest(
     });
     return false;
   }
-  const manifest = claudeRuntimeManifest(plugin, warnings);
+  const manifest = claudeRuntimeManifest(plugin, warnings, await validStandardMcp(plugin, warnings, "claude"));
   return writeJsonIfChanged(filePath, stableJson(manifest));
 }
 
@@ -68,7 +69,7 @@ export async function writeCursorManifest(
     });
     return false;
   }
-  const manifest = cursorRuntimeManifest(plugin, warnings);
+  const manifest = cursorRuntimeManifest(plugin, warnings, await validStandardMcp(plugin, warnings, "cursor"));
   return writeJsonIfChanged(filePath, stableJson(manifest));
 }
 
@@ -86,12 +87,12 @@ export async function writeCodexManifest(
     });
     return false;
   }
-  const manifest = codexRuntimeManifest(plugin, warnings);
+  const manifest = codexRuntimeManifest(plugin, warnings, await validStandardMcp(plugin, warnings, "codex"));
   return writeJsonIfChanged(filePath, stableJson(manifest));
 }
 
 /** Builds the managed Claude manifest projection using Claude-native paths. */
-function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[]): Record<string, unknown> {
+function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcp: boolean): Record<string, unknown> {
   const manifest: Record<string, unknown> = {
     name: plugin.name,
   };
@@ -103,21 +104,27 @@ function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
   copyManifestField(plugin.manifest, manifest, "license");
   copyManifestField(plugin.manifest, manifest, "keywords");
 
-  if (!copyRuntimeComponentField(plugin, manifest, "skills", warnings) && existsSync(join(plugin.pluginDir, "skills"))) {
+  const standard = isStandardPluginManifest(plugin.manifest);
+
+  if ((standard || !copyRuntimeComponentField(plugin, manifest, "skills", warnings)) && existsSync(join(plugin.pluginDir, "skills"))) {
     manifest["skills"] = "./skills";
   }
-  if (!copyRuntimeComponentField(plugin, manifest, "commands", warnings) && existsSync(join(plugin.pluginDir, "commands"))) {
+  if (!standard && !copyRuntimeComponentField(plugin, manifest, "commands", warnings) && existsSync(join(plugin.pluginDir, "commands"))) {
     manifest["commands"] = "./commands";
   }
-  if (!copyRuntimeComponentField(plugin, manifest, "hooks", warnings) && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
+  if (!standard && !copyRuntimeComponentField(plugin, manifest, "hooks", warnings) && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
     manifest["hooks"] = "./hooks/hooks.json";
   }
-  if (!copyRuntimeComponentField(plugin, manifest, "mcpServers", warnings) && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
+  if (standardMcp) {
+    manifest["mcpServers"] = "./mcp.json";
+  } else if (!standard && !copyRuntimeComponentField(plugin, manifest, "mcpServers", warnings) && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
     manifest["mcpServers"] = "./.mcp.json";
   }
-  copyRuntimeComponentField(plugin, manifest, "lspServers", warnings);
-  copyRuntimeComponentField(plugin, manifest, "monitors", warnings);
-  copyRuntimeComponentField(plugin, manifest, "bin", warnings);
+  if (!standard) {
+    copyRuntimeComponentField(plugin, manifest, "lspServers", warnings);
+    copyRuntimeComponentField(plugin, manifest, "monitors", warnings);
+    copyRuntimeComponentField(plugin, manifest, "bin", warnings);
+  }
   const metadata = plugin.manifest["metadata"];
   manifest["metadata"] = {
     ...(metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {}),
@@ -127,7 +134,7 @@ function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
 }
 
 /** Builds the managed Cursor manifest projection using Cursor-native paths. */
-function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[]): Record<string, unknown> {
+function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcp: boolean): Record<string, unknown> {
   const manifest: Record<string, unknown> = {
     name: plugin.name,
   };
@@ -139,28 +146,32 @@ function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
   copyManifestField(plugin.manifest, manifest, "license");
   copyManifestField(plugin.manifest, manifest, "keywords");
 
-  if (!copyRuntimeComponentField(plugin, manifest, "skills", warnings) && existsSync(join(plugin.pluginDir, "skills"))) {
+  const standard = isStandardPluginManifest(plugin.manifest);
+
+  if ((standard || !copyRuntimeComponentField(plugin, manifest, "skills", warnings)) && existsSync(join(plugin.pluginDir, "skills"))) {
     manifest["skills"] = "./skills";
   }
-  if (!copyRuntimeComponentField(plugin, manifest, "agents", warnings) && existsSync(join(plugin.pluginDir, "agents"))) {
+  if (!standard && !copyRuntimeComponentField(plugin, manifest, "agents", warnings) && existsSync(join(plugin.pluginDir, "agents"))) {
     manifest["agents"] = "./agents";
   }
-  if (!copyRuntimeComponentField(plugin, manifest, "commands", warnings) && existsSync(join(plugin.pluginDir, "commands"))) {
+  if (!standard && !copyRuntimeComponentField(plugin, manifest, "commands", warnings) && existsSync(join(plugin.pluginDir, "commands"))) {
     manifest["commands"] = "./commands";
   }
-  if (!copyRuntimeComponentField(plugin, manifest, "rules", warnings) && existsSync(join(plugin.pluginDir, "rules"))) {
+  if (!standard && !copyRuntimeComponentField(plugin, manifest, "rules", warnings) && existsSync(join(plugin.pluginDir, "rules"))) {
     manifest["rules"] = "./rules";
   }
-  if (!copyRuntimeComponentField(plugin, manifest, "hooks", warnings) && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
+  if (!standard && !copyRuntimeComponentField(plugin, manifest, "hooks", warnings) && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
     manifest["hooks"] = "./hooks/hooks.json";
   }
-  const hasExplicitMcpServers = copyRuntimeComponentField(plugin, manifest, "mcpServers", warnings);
-  if (!hasExplicitMcpServers && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
+  const hasExplicitMcpServers = !standard && copyRuntimeComponentField(plugin, manifest, "mcpServers", warnings);
+  if (standardMcp) {
+    manifest["mcpServers"] = "./mcp.json";
+  } else if (!hasExplicitMcpServers && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
     manifest["mcpServers"] = "./.mcp.json";
   } else if (!hasExplicitMcpServers && existsSync(join(plugin.pluginDir, "mcp.json"))) {
     manifest["mcpServers"] = "./mcp.json";
   }
-  copyRuntimeComponentField(plugin, manifest, "bin", warnings);
+  if (!standard) {copyRuntimeComponentField(plugin, manifest, "bin", warnings);}
   const metadata = plugin.manifest["metadata"];
   manifest["metadata"] = {
     ...(metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {}),
@@ -170,35 +181,44 @@ function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
 }
 
 /** Builds the managed Codex manifest projection and stamps dotagents ownership metadata. */
-function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[]): Record<string, unknown> {
-  const manifest: Record<string, unknown> = {
-    ...plugin.manifest,
-    name: plugin.name,
-  };
+function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcp: boolean): Record<string, unknown> {
+  const standard = isStandardPluginManifest(plugin.manifest);
+  const manifest: Record<string, unknown> = standard ? { name: plugin.name } : { ...plugin.manifest, name: plugin.name };
+  if (standard) {
+    copyManifestField(plugin.manifest, manifest, "version");
+    copyManifestField(plugin.manifest, manifest, "description");
+    copyManifestField(plugin.manifest, manifest, "author");
+    copyManifestField(plugin.manifest, manifest, "homepage");
+    copyManifestField(plugin.manifest, manifest, "repository");
+    copyManifestField(plugin.manifest, manifest, "license");
+    copyManifestField(plugin.manifest, manifest, "keywords");
+  }
   for (const key of COMPONENT_KEYS) {
     delete manifest[key];
-    copyRuntimeComponentField(plugin, manifest, key, warnings);
+    if (!standard) {copyRuntimeComponentField(plugin, manifest, key, warnings);}
   }
 
-  if (plugin.manifest["skills"] === undefined && !manifest["skills"] && existsSync(join(plugin.pluginDir, "skills"))) {
+  if ((standard || plugin.manifest["skills"] === undefined) && !manifest["skills"] && existsSync(join(plugin.pluginDir, "skills"))) {
     manifest["skills"] = "./skills";
   }
-  if (plugin.manifest["agents"] === undefined && !manifest["agents"] && existsSync(join(plugin.pluginDir, "agents"))) {
+  if (!standard && plugin.manifest["agents"] === undefined && !manifest["agents"] && existsSync(join(plugin.pluginDir, "agents"))) {
     manifest["agents"] = "./agents";
   }
-  if (plugin.manifest["commands"] === undefined && !manifest["commands"] && existsSync(join(plugin.pluginDir, "commands"))) {
+  if (!standard && plugin.manifest["commands"] === undefined && !manifest["commands"] && existsSync(join(plugin.pluginDir, "commands"))) {
     manifest["commands"] = "./commands";
   }
-  if (plugin.manifest["hooks"] === undefined && !manifest["hooks"] && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
+  if (!standard && plugin.manifest["hooks"] === undefined && !manifest["hooks"] && existsSync(join(plugin.pluginDir, "hooks", "hooks.json"))) {
     manifest["hooks"] = "./hooks/hooks.json";
   }
-  if (plugin.manifest["mcpServers"] === undefined && !manifest["mcpServers"] && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
+  if (standardMcp) {
+    manifest["mcpServers"] = "./mcp.json";
+  } else if (plugin.manifest["mcpServers"] === undefined && !manifest["mcpServers"] && existsSync(join(plugin.pluginDir, ".mcp.json"))) {
     manifest["mcpServers"] = "./.mcp.json";
   }
-  if (plugin.manifest["lspServers"] === undefined && !manifest["lspServers"] && existsSync(join(plugin.pluginDir, ".lsp.json"))) {
+  if (!standard && plugin.manifest["lspServers"] === undefined && !manifest["lspServers"] && existsSync(join(plugin.pluginDir, ".lsp.json"))) {
     manifest["lspServers"] = "./.lsp.json";
   }
-  if (plugin.manifest["apps"] === undefined && !manifest["apps"] && existsSync(join(plugin.pluginDir, ".app.json"))) {
+  if (!standard && plugin.manifest["apps"] === undefined && !manifest["apps"] && existsSync(join(plugin.pluginDir, ".app.json"))) {
     manifest["apps"] = "./.app.json";
   }
   if (!manifest["interface"]) {
@@ -210,6 +230,27 @@ function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWa
     ...DOTAGENTS_METADATA,
   };
   return manifest;
+}
+
+async function validStandardMcp(
+  plugin: PluginDeclaration,
+  warnings: PluginWriteWarning[],
+  agent: string,
+): Promise<boolean> {
+  if (!isStandardPluginManifest(plugin.manifest)) {return false;}
+  const filePath = join(plugin.pluginDir, "mcp.json");
+  if (!existsSync(filePath)) {return false;}
+  try {
+    parsePluginMcp(JSON.parse(await readFile(filePath, "utf-8")), filePath);
+    return true;
+  } catch (err) {
+    warnings.push({
+      agent,
+      name: plugin.name,
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
 }
 
 function codexInterface(plugin: PluginDeclaration): Record<string, unknown> {

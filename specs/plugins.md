@@ -6,10 +6,11 @@ This document defines the target dotagents plugin model. It aligns the portable
 plugin bundle with the public [Agent Plugins specification](https://agent-plugins.org/)
 Working Draft v1.0.0 as reviewed on August 6, 2026.
 
-The current implementation predates this design and still accepts a generalized
-Codex-style manifest and marketplace as canonical input. The migration section
-describes how to move from that implementation without breaking existing
-projects.
+The implementation includes the first compatibility stage: it accepts Agent
+Plugins v1 manifests and MCP files, preserves the raw bundle, projects portable
+skills/MCP into generated native manifests, and continues accepting legacy
+generalized manifests and marketplace discovery. The migration section covers
+the remaining adapter work.
 
 ## Design Principle
 
@@ -465,14 +466,15 @@ Migration should happen in compatibility stages:
 
 The current branch still needs follow-up implementation for:
 
-1. replacing the generalized manifest schema with the upstream Agent Plugins
-   schemas,
-2. parsing `mcp.json` into the shared MCP declaration model,
-3. moving `agents`, `commands`, `rules`, hooks, and other behavior into client
+1. normalizing validated `mcp.json` servers into the shared MCP declaration
+   model for clients that cannot consume the portable file directly,
+2. registering authoritative client extension namespaces and projecting their
+   client-owned resources,
+3. moving legacy `agents`, `commands`, `rules`, hooks, and other behavior into client
    namespaces,
-4. removing canonical marketplace input assumptions,
-5. teaching adapters to prefer direct portable-core consumption, and
-6. adding migration warnings and fixtures for legacy plugin bundles.
+4. removing canonical marketplace input assumptions from discovery,
+5. adding migration warnings for legacy plugin bundles, and
+6. adding persistent `PLUGIN_DATA` handling for flattened MCP adapters.
 
 ## Non-goals
 

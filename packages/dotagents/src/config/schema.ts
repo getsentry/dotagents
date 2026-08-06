@@ -189,13 +189,13 @@ const subagentSchema = z.object({
 
 export type SubagentConfig = z.infer<typeof subagentSchema>;
 
-export const PLUGIN_NAME_PATTERN = /^[a-z][a-z0-9.-]*[a-z0-9]$|^[a-z]$/;
+export const PLUGIN_NAME_PATTERN = /^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$/;
 
 const pluginNameSchema = z
   .string()
   .regex(
     PLUGIN_NAME_PATTERN,
-    "Plugin names must start with lowercase a-z, end with lowercase a-z or 0-9, and contain only lowercase letters, numbers, hyphens, and dots",
+    "Plugin names must be 1-64 lowercase letters, numbers, hyphens, or dots, have alphanumeric ends, and not contain '--' or '..'",
   );
 
 const pluginTargetSchema = z.string().min(1);

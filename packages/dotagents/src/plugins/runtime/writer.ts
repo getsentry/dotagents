@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, rm, rmdir, symlink, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { loadSkillMd } from "@sentry/dotagents-lib";
-import type { PluginManifest } from "../schema.js";
+import { isStandardPluginManifest, type PluginManifest } from "../schema.js";
 import type { PluginDeclaration } from "../store.js";
 import { selectedAgentIds, selectPlugins, targetWarnings } from "../targets.js";
 import { marketplaceOutputPaths, marketplaceOutputs } from "./marketplace.js";
@@ -357,7 +357,7 @@ async function componentLinks(
     links.push(...await skillComponentLinks(agent, plugin, skillsDir, skillDestRoot, warnings));
   }
 
-  if (agent === "opencode") {
+  if (agent === "opencode" && !isStandardPluginManifest(plugin.manifest)) {
     for (const agentsDir of componentDirs(plugin, "agents", "agents", agent, warnings)) {
       links.push(...await markdownComponentLinks(
         agent,

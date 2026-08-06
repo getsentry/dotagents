@@ -421,6 +421,12 @@ Generated files include a dotagents header marker. `install` and `sync` update m
 agents. Plugin sources support GitHub/GitLab shorthands, git URLs, and `path:`
 sources; HTTPS well-known sources are not supported for plugins.
 
+New plugin bundles follow Agent Plugins v1 with a required `plugin.json` and
+optional `skills/` and `mcp.json`. dotagents preserves the raw bundle and
+generates target adapters from the portable core. Legacy generalized manifests
+remain supported during migration. Client-specific extension namespaces are
+preserved but are never translated into other clients' formats.
+
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `name` | string | Yes | Plugin identifier. Lowercase letters, numbers, hyphens, and dots. |

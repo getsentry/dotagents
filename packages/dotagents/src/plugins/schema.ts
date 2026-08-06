@@ -1,5 +1,13 @@
 import { z } from "zod/v4";
 
+export const AGENT_PLUGIN_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
+export const AGENT_PLUGIN_MCP_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json";
+
+const agentPluginNameSchema = z.string().min(1).max(64).regex(
+  /^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/,
+  "Agent Plugin names must use lowercase letters, numbers, hyphens, or dots, have alphanumeric ends, and not contain '--' or '..'",
+);
+
 // Canonical plugin wire schemas. Known fields are validated for path safety,
 // while passthrough preserves native runtime and future dotagents extensions.
 export const pluginPathSchema = z.string().check(
@@ -28,12 +36,32 @@ const pluginAuthorSchema = z.object({
   url: z.string().optional(),
 }).passthrough();
 
+const standardPluginAuthorSchema = z.object({
+  name: z.string().min(1),
+  email: z.email().optional(),
+  url: z.url().optional(),
+}).strict();
+
+const standardPluginManifestSchema = z.object({
+  $schema: z.literal(AGENT_PLUGIN_SCHEMA),
+  name: agentPluginNameSchema,
+  description: z.string().min(1).optional(),
+  version: z.string().min(1).optional(),
+  author: standardPluginAuthorSchema.optional(),
+  homepage: z.url().optional(),
+  repository: z.string().min(1).optional(),
+  license: z.string().min(1).optional(),
+  keywords: z.array(z.string().min(1)).optional(),
+  extensions: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+}).passthrough();
+
 const pluginPathOrPathsSchema = z.union([
   pluginPathSchema,
   z.array(pluginPathSchema),
 ]);
 
 export const pluginManifestSchema = z.object({
+  $schema: z.string().optional(),
   name: z.string().optional(),
   version: z.string().optional(),
   description: z.string().optional(),
@@ -53,9 +81,46 @@ export const pluginManifestSchema = z.object({
   apps: pluginPathSchema.optional(),
   monitors: pluginPathSchema.optional(),
   bin: pluginPathOrPathsSchema.optional(),
+  extensions: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
 }).passthrough();
 
 export type PluginManifest = z.infer<typeof pluginManifestSchema>;
+
+export function isStandardPluginManifest(manifest: PluginManifest): boolean {
+  return manifest.$schema === AGENT_PLUGIN_SCHEMA;
+}
+
+const pluginMcpStdioSchema = z.object({
+  type: z.literal("stdio"),
+  command: z.string().min(1).refine(
+    (value) => value.startsWith("./") || !/\s/.test(value),
+    "MCP stdio command must be one executable token or a plugin-relative ./ path",
+  ),
+  args: z.array(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
+  cwd: z.string().optional(),
+}).strict();
+
+const pluginMcpRemoteSchema = z.object({
+  type: z.enum(["streamable-http", "sse"]),
+  url: z.url(),
+  headers: z.record(z.string(), z.string()).optional(),
+}).strict();
+
+export const pluginMcpSchema = z.object({
+  $schema: z.literal(AGENT_PLUGIN_MCP_SCHEMA),
+  mcpServers: z.record(z.string().min(1), z.union([pluginMcpStdioSchema, pluginMcpRemoteSchema])),
+}).strict();
+
+export type PluginMcpConfig = z.infer<typeof pluginMcpSchema>;
+
+export function parsePluginMcp(value: unknown, filePath: string): PluginMcpConfig {
+  const parsed = pluginMcpSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(`Invalid plugin MCP config ${filePath}: ${parsed.error.message}`);
+  }
+  return parsed.data;
+}
 
 const localMarketplaceSourceSchema = z.object({
   source: z.literal("local"),
@@ -111,7 +176,8 @@ export function parsePluginManifest(
   value: unknown,
   filePath: string,
 ): PluginManifest {
-  const parsed = pluginManifestSchema.safeParse(value);
+  const isStandard = value !== null && typeof value === "object" && !Array.isArray(value) && "$schema" in value;
+  const parsed = (isStandard ? standardPluginManifestSchema : pluginManifestSchema).safeParse(value);
   if (!parsed.success) {
     throw new Error(`Invalid plugin manifest ${filePath}: ${parsed.error.message}`);
   }

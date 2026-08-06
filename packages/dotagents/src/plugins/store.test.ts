@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installPluginBundle, isSameProjectPluginConfig, lockEntryForPlugin, resolvePlugin, type ResolvedPlugin } from "./store.js";
+import { AGENT_PLUGIN_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA } from "./schema.js";
 
 vi.mock("node:fs/promises", async () => {
   const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
@@ -41,6 +42,43 @@ describe("plugin store", () => {
       resolved_path: "",
       resolved_commit: "abc123",
     });
+  });
+
+  it("preserves a standard Agent Plugin bundle during install", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    const sourceDir = join(projectRoot, "source", "review-tools");
+    const pluginsDir = join(projectRoot, ".agents", "plugins");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await mkdir(pluginsDir, { recursive: true });
+    const manifest = {
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+      description: "Review tools",
+      extensions: { "com.example.client": { enabled: true } },
+    };
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify(manifest, null, 2));
+    await writeFile(join(sourceDir, "mcp.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: {},
+    }, null, 2));
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), "---\nname: review\ndescription: Review\n---\n");
+
+    try {
+      const installed = await installPluginBundle(pluginsDir, {
+        type: "local",
+        plugin: {
+          name: "review-tools",
+          source: "path:source/review-tools",
+          pluginDir: sourceDir,
+          manifest,
+        },
+      });
+      expect(installed.manifest.$schema).toBe(AGENT_PLUGIN_SCHEMA);
+      expect(JSON.parse(await readFile(join(installed.pluginDir, "plugin.json"), "utf-8"))).toEqual(manifest);
+      expect(existsSync(join(installed.pluginDir, "mcp.json"))).toBe(true);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
   });
 
   it("rejects plugin bundle symlinks that escape the installed plugin", async () => {
