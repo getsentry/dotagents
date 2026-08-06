@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, rm, rmdir, symlink, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, rm, rmdir, stat, symlink, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { loadSkillMd } from "@sentry/dotagents-lib";
 import { isStandardPluginManifest, type LegacyPluginManifest } from "../schema.js";
@@ -646,7 +646,7 @@ async function pathExists(filePath: string): Promise<boolean> {
 
 async function isDirectoryPath(filePath: string): Promise<boolean> {
   try {
-    return (await lstat(filePath)).isDirectory();
+    return (await stat(filePath)).isDirectory();
   } catch (err) {
     if (isNotFoundError(err)) {return false;}
     throw err;

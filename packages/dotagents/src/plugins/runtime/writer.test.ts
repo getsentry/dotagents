@@ -440,6 +440,33 @@ describe("plugin writer", () => {
     expect(manifest.skills).toBeUndefined();
   });
 
+  it("projects contained plugin skills directory symlinks", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: {
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "alpha-tools",
+        description: "Portable tools",
+      },
+    });
+    const skillsPath = join(alpha.pluginDir, "skills");
+    const linkedSkillsPath = join(alpha.pluginDir, "linked-skills");
+    await rm(skillsPath, { recursive: true });
+    await mkdir(join(linkedSkillsPath, "plugin-qa"), { recursive: true });
+    await writeFile(
+      join(linkedSkillsPath, "plugin-qa", "SKILL.md"),
+      "---\nname: plugin-qa\ndescription: Linked skill\n---\n",
+    );
+    await symlink(relative(alpha.pluginDir, linkedSkillsPath), skillsPath);
+
+    const result = await writePluginOutputs(["claude", "opencode", "pi"], [alpha], root);
+
+    expect(result.warnings).toEqual([]);
+    const manifest = JSON.parse(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8"));
+    expect(manifest.skills).toBe("./skills");
+    await expectSymlinkTarget(join(root, ".opencode", "skills", "plugin-qa"), join(skillsPath, "plugin-qa"));
+    await expectSymlinkTarget(join(root, ".agents", "skills", "plugin-qa"), join(skillsPath, "plugin-qa"));
+  });
+
   it("projects explicit plugin component paths into OpenCode native locations", async () => {
     const alpha = await plugin("alpha-tools", {
       manifest: { skills: "components/skills", agents: "components/agents" },

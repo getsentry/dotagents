@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { lstat, readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { isStandardPluginManifest, parsePluginMcp, type LegacyPluginManifest, type PluginManifest } from "../schema.js";
 import type { PluginDeclaration } from "../store.js";
@@ -246,7 +246,7 @@ async function validStandardMcp(
 
 async function isDirectory(filePath: string): Promise<boolean> {
   try {
-    return (await lstat(filePath)).isDirectory();
+    return (await stat(filePath)).isDirectory();
   } catch {
     return false;
   }

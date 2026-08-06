@@ -654,7 +654,15 @@ async function assertInsideSourceRoot(
     }
     throw err;
   }
-  const fileRealPath = await realpath(filePath);
+  let fileRealPath: string;
+  try {
+    fileRealPath = await realpath(filePath);
+  } catch (err) {
+    if (isNotFoundError(err)) {
+      throw new Error(`${label} source path does not exist: ${displayPath}`, { cause: err });
+    }
+    throw err;
+  }
   const realRelPath = relative(rootRealPath, fileRealPath);
   if (realRelPath.startsWith("..") || isAbsolute(realRelPath)) {
     throw new Error(`${label} resolves outside source: ${displayPath}`);
