@@ -16,13 +16,22 @@ prove Grok loaded the plugin.
 
 ## Runtime Proof
 
-This QA skill does not currently include an automated Grok runtime proof, and
-the QA Docker image does not install `grok` yet. Do not claim Grok runtime
-discovery from file-level checks alone.
+When the `grok` CLI is installed, run:
 
-For authenticated runtime proof, use a temp Grok config and run `grok inspect`
-before any paid prompt to prove Grok discovered the temp project config, skills,
-plugins, hooks, and MCP servers.
+```bash
+node skills/dotagents-qa/scripts/qa-example.mjs plugin-grok
+```
+
+The task runs `grok plugin list` and `grok plugin info qa-tools` from the
+isolated fixture project. This proves Grok discovered the generated project
+plugin metadata. It does not invoke a plugin skill or start a model session.
+
+The QA Docker image and this development machine do not currently include the
+`grok` CLI, so automated client discovery is skipped here rather than claimed
+from file-level checks.
+
+For authenticated runtime proof, use a temp Grok config after the no-auth
+`plugin list/info` proof, then invoke the fixture skill and check its sentinel.
 
 If a branch specifically requires Grok runtime proof, install or make `grok`
 available inside the Docker container and report:

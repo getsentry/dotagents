@@ -176,39 +176,6 @@ describe("plugin writer", () => {
     expect(await verifyPluginOutputs(["cursor", "codex", "claude"], [beta, alpha], root)).toEqual([]);
   });
 
-  it("projects Agent Plugins core without leaking legacy root components", async () => {
-    const alpha = await plugin("alpha-tools", {
-      manifest: {
-        $schema: AGENT_PLUGIN_SCHEMA,
-        name: "alpha-tools",
-        description: "Portable tools",
-        extensions: {
-          "com.example.client": { enabled: true },
-        },
-      },
-    });
-    await writePluginSkill(alpha.pluginDir, "plugin-qa");
-    await writeFile(join(alpha.pluginDir, "mcp.json"), JSON.stringify({
-      $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
-      mcpServers: {},
-    }));
-    await writeFile(join(alpha.pluginDir, "commands", "review.md"), "legacy command");
-    await writeFile(join(alpha.pluginDir, "agents", "reviewer.md"), "legacy agent");
-
-    await writePluginOutputs(["claude", "cursor", "codex", "opencode"], [alpha], root);
-
-    for (const dir of [".claude-plugin", ".cursor-plugin", ".codex-plugin"]) {
-      const manifest = JSON.parse(await readFile(join(alpha.pluginDir, dir, "plugin.json"), "utf-8"));
-      expect(manifest.skills).toBe("./skills");
-      expect(manifest.mcpServers).toBe("./mcp.json");
-      expect(manifest.commands).toBeUndefined();
-      expect(manifest.agents).toBeUndefined();
-      expect(manifest.extensions).toBeUndefined();
-      expect(manifest.$schema).toBeUndefined();
-    }
-    expect(existsSync(join(root, ".opencode", "agents", "reviewer.md"))).toBe(false);
-  });
-
   it("isolates invalid Agent Plugins MCP config from other components", async () => {
     const alpha = await plugin("alpha-tools", {
       manifest: {

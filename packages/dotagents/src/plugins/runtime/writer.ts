@@ -17,7 +17,7 @@ import {
   isNotFoundError,
   writeJsonIfChanged,
 } from "./files.js";
-import { writeClaudeManifest, writeCodexManifest, writeCursorManifest } from "./manifests.js";
+import { writePluginManifests } from "./manifests.js";
 import { isSafeComponentPath } from "./component-paths.js";
 
 // Owns deterministic runtime plugin projections. Existing runtime artifacts are
@@ -74,15 +74,7 @@ export async function writePluginOutputs(
 
   for (const plugin of selected) {
     const agents = selectedAgentIds(agentIds, plugin);
-    if (agents.includes("claude") && await writeClaudeManifest(plugin, warnings)) {
-      written++;
-    }
-    if (agents.includes("cursor") && await writeCursorManifest(plugin, warnings)) {
-      written++;
-    }
-    if (agents.includes("codex") && await writeCodexManifest(plugin, warnings)) {
-      written++;
-    }
+    written += await writePluginManifests(plugin, agents, warnings);
     if (agents.includes("grok") && await writeGrokProjection(projectRoot, plugin, warnings)) {
       written++;
     }
@@ -618,7 +610,6 @@ async function isManagedProjection(path: string): Promise<boolean> {
   return existsSync(join(path, ".dotagents-managed"));
 }
 
-/** Checks legacy OpenCode JS projections from earlier dotagents plugin support. */
 /** Prunes stale component symlinks whose targets resolve under managed plugin roots. */
 async function pruneManagedComponentLinks(
   dir: string,

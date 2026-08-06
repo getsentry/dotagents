@@ -27,7 +27,7 @@ export async function writeJsonIfChanged(filePath: string, content: string): Pro
 }
 
 /** Writes generated text only when the content changed. */
-export async function writeTextIfChanged(filePath: string, content: string): Promise<boolean> {
+async function writeTextIfChanged(filePath: string, content: string): Promise<boolean> {
   try {
     if (await readFile(filePath, "utf-8") === content) {return false;}
   } catch (err) {

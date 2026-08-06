@@ -1,4 +1,3 @@
-import { relative } from "node:path";
 import type { PluginManifest } from "../schema.js";
 
 /** Reads string-valued manifest fields for generated plugin projections. */
@@ -19,10 +18,4 @@ export function titleCase(value: string): string {
     .filter(Boolean)
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
     .join(" ");
-}
-
-/** Formats generated plugin paths with POSIX separators. */
-export function relativePath(from: string, to: string): string {
-  const path = relative(from, to).split("\\").join("/");
-  return path.startsWith(".") ? path : `./${path}`;
 }

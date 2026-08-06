@@ -38,7 +38,8 @@ const tasks = {
   "sync-repair": runSyncRepair,
   "plugin-claude": runClaudePluginProof,
   "plugin-codex": runCodexPluginProof,
-  "plugin-opencode": runOpenCodePluginProof,
+  "plugin-grok": runGrokPluginProof,
+  "opencode-projections": runOpenCodePluginProof,
   "plugin-clients": runAvailablePluginClientProofs,
   "codex-runtime": runCodexRuntimeProof,
 };
@@ -116,7 +117,8 @@ Tasks:
   sync-repair      Delete representative generated files and assert sync repairs them
   plugin-claude    Validate generated Claude plugin and marketplace with Claude Code
   plugin-codex     Add/list/install generated Codex marketplace with Codex CLI
-  plugin-opencode  Assert generated OpenCode plugin skill and agent projections
+  plugin-grok      Confirm Grok Build discovers the generated project plugin
+  opencode-projections  Assert generated OpenCode resource projections
   plugin-clients   Run every installed no-auth plugin client proof
   codex-runtime    Paid proof that Codex can spawn the generated custom agent
 
@@ -171,7 +173,7 @@ async function runAvailablePluginClientProofs() {
   const proofs = [
     ["claude", runClaudePluginProof],
     ["codex", runCodexPluginProof],
-    ["opencode", runOpenCodePluginProof],
+    ["grok", runGrokPluginProof],
   ];
   let ran = 0;
   for (const [command, proof] of proofs) {
@@ -185,6 +187,26 @@ async function runAvailablePluginClientProofs() {
   }
   if (ran === 0) {
     throw new Error("No supported plugin client CLI is installed");
+  }
+}
+
+async function runGrokPluginProof() {
+  await installAndAssert();
+  const list = execFileSync("grok", ["plugin", "list"], {
+    cwd: projectDir,
+    env: fixtureEnv,
+    encoding: "utf-8",
+  });
+  if (!list.includes("qa-tools")) {
+    throw new Error("Grok plugin list did not include qa-tools");
+  }
+  const info = execFileSync("grok", ["plugin", "info", "qa-tools"], {
+    cwd: projectDir,
+    env: fixtureEnv,
+    encoding: "utf-8",
+  });
+  if (!info.includes("qa-tools")) {
+    throw new Error("Grok plugin info did not describe qa-tools");
   }
 }
 

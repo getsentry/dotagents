@@ -107,12 +107,12 @@ const pluginMcpRemoteSchema = z.object({
   headers: z.record(z.string(), z.string()).optional(),
 }).strict();
 
-export const pluginMcpSchema = z.object({
+const pluginMcpSchema = z.object({
   $schema: z.literal(AGENT_PLUGIN_MCP_SCHEMA),
   mcpServers: z.record(z.string().min(1), z.union([pluginMcpStdioSchema, pluginMcpRemoteSchema])),
 }).strict();
 
-export type PluginMcpConfig = z.infer<typeof pluginMcpSchema>;
+type PluginMcpConfig = z.infer<typeof pluginMcpSchema>;
 
 export function parsePluginMcp(value: unknown, filePath: string): PluginMcpConfig {
   const parsed = pluginMcpSchema.safeParse(value);

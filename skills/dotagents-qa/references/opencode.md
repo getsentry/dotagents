@@ -12,7 +12,6 @@ The core agentic QA asserts:
 - `.opencode/agents/code-reviewer.md` exists
 - generated Markdown contains the dotagents managed marker
 - plugin skills selected for OpenCode are symlinked into `.opencode/skills/`
-- plugin Markdown agents selected for OpenCode are symlinked into `.opencode/agents/`
 
 OpenCode does not support dotagents hooks in the current agent definition, so hook warnings for OpenCode are expected when the fixture includes hooks.
 
@@ -25,14 +24,13 @@ For user scope, isolate `HOME` and `DOTAGENTS_HOME`, then assert generated OpenC
 For generated plugin component projections, the QA skill has a cheap Docker proof:
 
 ```bash
-node skills/dotagents-qa/scripts/qa-example.mjs plugin-opencode --keep
+node skills/dotagents-qa/scripts/qa-example.mjs opencode-projections --keep
 ```
 
 This installs the checked-in example, asserts the generated
-`.opencode/skills/plugin-qa` and `.opencode/agents/plugin-reviewer.md`
-symlinks, runs `opencode debug skill`, and checks for the fixture skill
-sentinel. It also runs `opencode agent list` and checks for the projected
-plugin agent. It does not prove model-backed invocation.
+`.opencode/skills/plugin-qa` symlink, runs `opencode debug skill`, and checks
+for the fixture skill sentinel. This is resource-discovery evidence, not
+Agent Plugins installation or model-backed invocation.
 
 ## Runtime Proof
 

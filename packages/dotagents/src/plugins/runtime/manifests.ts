@@ -37,58 +37,40 @@ const COMPONENT_KEYS: ComponentManifestKey[] = [
   "bin",
 ];
 
-/** Writes the managed Claude plugin manifest projection when safe to overwrite. */
-export async function writeClaudeManifest(
-  plugin: PluginDeclaration,
-  warnings: PluginWriteWarning[],
-): Promise<boolean> {
-  const filePath = join(plugin.pluginDir, ".claude-plugin", "plugin.json");
-  if (existsSync(filePath) && !await isManagedJsonFile(filePath)) {
-    warnings.push({
-      agent: "claude",
-      name: plugin.name,
-      message: `Claude plugin manifest exists and is not managed by dotagents: ${filePath}`,
-    });
-    return false;
-  }
-  const manifest = claudeRuntimeManifest(plugin, warnings, await validStandardMcp(plugin, warnings, "claude"));
-  return writeJsonIfChanged(filePath, stableJson(manifest));
-}
+type ManifestAgent = "claude" | "cursor" | "codex";
 
-/** Writes the managed Cursor plugin manifest projection when safe to overwrite. */
-export async function writeCursorManifest(
+/** Writes selected native manifests with one shared validation pass. */
+export async function writePluginManifests(
   plugin: PluginDeclaration,
+  agents: string[],
   warnings: PluginWriteWarning[],
-): Promise<boolean> {
-  const filePath = join(plugin.pluginDir, ".cursor-plugin", "plugin.json");
-  if (existsSync(filePath) && !await isManagedJsonFile(filePath)) {
-    warnings.push({
-      agent: "cursor",
-      name: plugin.name,
-      message: `Cursor plugin manifest exists and is not managed by dotagents: ${filePath}`,
-    });
-    return false;
+): Promise<number> {
+  const standardMcp = await validStandardMcp(plugin, warnings);
+  const specs: Array<{
+    agent: ManifestAgent;
+    label: string;
+    dir: string;
+    manifest: () => Record<string, unknown>;
+  }> = [
+    { agent: "claude", label: "Claude", dir: ".claude-plugin", manifest: () => claudeRuntimeManifest(plugin, warnings, standardMcp) },
+    { agent: "cursor", label: "Cursor", dir: ".cursor-plugin", manifest: () => cursorRuntimeManifest(plugin, warnings, standardMcp) },
+    { agent: "codex", label: "Codex", dir: ".codex-plugin", manifest: () => codexRuntimeManifest(plugin, warnings, standardMcp) },
+  ];
+  let written = 0;
+  for (const spec of specs) {
+    if (!agents.includes(spec.agent)) {continue;}
+    const filePath = join(plugin.pluginDir, spec.dir, "plugin.json");
+    if (existsSync(filePath) && !await isManagedJsonFile(filePath)) {
+      warnings.push({
+        agent: spec.agent,
+        name: plugin.name,
+        message: `${spec.label} plugin manifest exists and is not managed by dotagents: ${filePath}`,
+      });
+      continue;
+    }
+    if (await writeJsonIfChanged(filePath, stableJson(spec.manifest()))) {written++;}
   }
-  const manifest = cursorRuntimeManifest(plugin, warnings, await validStandardMcp(plugin, warnings, "cursor"));
-  return writeJsonIfChanged(filePath, stableJson(manifest));
-}
-
-/** Writes the managed Codex plugin manifest projection when safe to overwrite. */
-export async function writeCodexManifest(
-  plugin: PluginDeclaration,
-  warnings: PluginWriteWarning[],
-): Promise<boolean> {
-  const filePath = join(plugin.pluginDir, ".codex-plugin", "plugin.json");
-  if (existsSync(filePath) && !await isManagedJsonFile(filePath)) {
-    warnings.push({
-      agent: "codex",
-      name: plugin.name,
-      message: `Codex plugin manifest exists and is not managed by dotagents: ${filePath}`,
-    });
-    return false;
-  }
-  const manifest = codexRuntimeManifest(plugin, warnings, await validStandardMcp(plugin, warnings, "codex"));
-  return writeJsonIfChanged(filePath, stableJson(manifest));
+  return written;
 }
 
 /** Builds the managed Claude manifest projection using Claude-native paths. */
@@ -235,7 +217,6 @@ function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWa
 async function validStandardMcp(
   plugin: PluginDeclaration,
   warnings: PluginWriteWarning[],
-  agent: string,
 ): Promise<boolean> {
   if (!isStandardPluginManifest(plugin.manifest)) {return false;}
   const filePath = join(plugin.pluginDir, "mcp.json");
@@ -245,7 +226,7 @@ async function validStandardMcp(
     return true;
   } catch (err) {
     warnings.push({
-      agent,
+      agent: "plugin",
       name: plugin.name,
       message: err instanceof Error ? err.message : String(err),
     });

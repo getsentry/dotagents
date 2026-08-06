@@ -11,7 +11,7 @@ export function allPluginOnlyAgentIds(): string[] {
 }
 
 /** Returns runtime IDs that plugin declarations may target. */
-export function allPluginAgentIds(): string[] {
+function allPluginAgentIds(): string[] {
   return PLUGIN_AGENT_IDS;
 }
 
