@@ -1,312 +1,479 @@
 # Plugin Support Specification
 
-Plugin support lets teams declare reusable agent extensions once, preserve native plugin artifacts where they already exist, and generate deterministic runtime outputs for supported tools.
+## Status
 
-This is not a universal plugin behavior schema. Runtime-specific behavior such as app authentication, hook trust prompts, LSP lifecycle, JavaScript plugin APIs, marketplace review, managed policy, UI presentation, and telemetry belongs in each runtime's native plugin format.
+This document defines the target dotagents plugin model. It aligns the portable
+plugin bundle with the public [Agent Plugins specification](https://agent-plugins.org/)
+Working Draft v1.0.0 as reviewed on August 6, 2026.
 
-## Core Model
+The current implementation predates this design and still accepts a generalized
+Codex-style manifest and marketplace as canonical input. The migration section
+describes how to move from that implementation without breaking existing
+projects.
 
-dotagents has one canonical plugin source of truth:
+## Design Principle
+
+dotagents does not define another portable plugin format.
+
+The portable source bundle is an Agent Plugin. dotagents is responsible for:
+
+1. resolving and installing plugin sources,
+2. validating and locking the installed bundle,
+3. selecting configured target agents,
+4. registering or projecting the bundle into each target's native locations,
+5. translating portable MCP declarations into a target format when direct
+   consumption is unavailable, and
+6. preserving target-specific extension data without translating it into other
+   clients' formats.
+
+Marketplaces, source repositories, lockfiles, target selection, trust policy,
+and generated runtime files remain dotagents concerns. They are not part of the
+portable Agent Plugins bundle format.
+
+## Canonical Bundle
+
+The installed source of truth is a plugin directory under
+`.agents/plugins/<name>/`:
 
 ```text
-.agents/plugins/
-|-- marketplace.json
-`-- <plugin-name>/
-    |-- plugin.json
-    `-- ...
+.agents/plugins/<name>/
+|-- plugin.json       # Required portable metadata
+|-- skills/           # Optional Agent Skills directories
+|   `-- <skill>/
+|       `-- SKILL.md
+|-- mcp.json          # Optional portable MCP server declarations
+`-- com.example.client/ # Optional reverse-domain client extension
 ```
 
-The canonical catalog and plugin manifests should use a generalized Codex-compatible format. Codex compatibility is the baseline because Codex already reads `.agents/plugins/marketplace.json` for repo-scoped marketplaces, but dotagents treats the schema as portable project metadata rather than Codex-only configuration.
+The portable core has three parts:
 
-Every other runtime output is generated from `.agents/plugins/` when that runtime does not directly consume the canonical path or schema. Generated artifacts may include `.claude-plugin/marketplace.json`, `.cursor-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, `.agents/plugins/<name>/.claude-plugin/plugin.json`, `.agents/plugins/<name>/.cursor-plugin/plugin.json`, `.agents/plugins/<name>/.codex-plugin/plugin.json`, `.grok/` plugin files, `.opencode/skills/` links, `.opencode/agents/` links, or Pi skill links in `.agents/skills/`. These generated artifacts are runtime projections, not the source of truth, except that `.agents/plugins/marketplace.json` is also Codex's documented repo-scoped marketplace location.
+- `plugin.json` for metadata and client extension namespaces,
+- `skills/` for Agent Skills, and
+- `mcp.json` for MCP servers.
 
-## Input and Output Contract
+There is no canonical dotagents `marketplace.json`. Any Claude, Cursor, Codex,
+or other marketplace file is generated registration state, not plugin source
+metadata.
 
-The canonical inputs are tightly defined but forward-compatible:
+## `plugin.json`
 
-1. `agents.toml` `[[plugins]]` declarations are strict operational config. Unknown fields are rejected.
-2. `.agents/plugins/marketplace.json` must be a JSON object with `name` and `plugins[]`. Each plugin entry must have `name` and `source`. dotagents resolves local plugin selectors only when `source` is a relative path string or `{ "source": "local", "path": "<relative>" }`; selectors are anchored at the marketplace file directory and rejected when the resolved path escapes the source root. Runtime extension source objects may be accepted when their known path fields are safe, but dotagents must report them as unsupported instead of guessing how to resolve them.
-3. `.agents/plugins/<name>/plugin.json` must be a JSON object. Known component path fields are validated as relative filesystem paths without `..` or URL/scheme prefixes when present. Unknown fields are allowed and preserved so native runtimes and future dotagents versions can add metadata without breaking older installs.
-4. All component paths in canonical manifests and marketplace component fields must be relative filesystem paths and must not contain `..`, URL/scheme prefixes, absolute POSIX paths, absolute Windows paths, or backslash-rooted paths.
-5. The portable plugin `name` in `agents.toml` is authoritative. If a discovered manifest also declares `name`, it must match the configured name.
+New plugins must follow the upstream Agent Plugins manifest schema.
 
-Generated outputs are deterministic:
+Example:
 
-1. JSON output is pretty-printed with two-space indentation, sorted object keys, sorted plugin entries by name, and exactly one trailing newline.
-2. Runtime marketplace outputs are overwritten only when they carry `metadata.managedBy = "dotagents"`. Hand-written runtime marketplaces are left untouched and reported as warnings.
-3. Managed generated marketplace files are pruned when no configured plugin targets that runtime anymore.
-4. Remote or copied plugin bundles under `.agents/plugins/<name>/` are treated as dotagents-managed and are listed in `.agents/.gitignore`.
-5. Plugin sources that resolve to the same project's `.agents/plugins/<name>/` install destination are rejected. dotagents must not install a same-repo plugin onto itself.
-6. Existing `.agents/plugins/<name>/` install destinations are overwritten only when `agents.lock` proves they are managed by dotagents.
+```json
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "review-tools",
+  "description": "Code review workflows and repository checks.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Sentry",
+    "url": "https://sentry.io"
+  },
+  "license": "MIT",
+  "keywords": ["review", "quality"],
+  "extensions": {
+    "com.example.client": {
+      "setting": true
+    }
+  }
+}
+```
 
-## Documentation Sources
+### Core fields
 
-This design is based on the public plugin documentation current as of 2026-06-12:
+The upstream JSON Schema is authoritative. The portable metadata includes:
 
-| Runtime | Documentation |
-|---------|---------------|
-| Claude Code | https://code.claude.com/docs/en/plugins, https://code.claude.com/docs/en/plugins-reference.md, and https://code.claude.com/docs/en/plugin-marketplaces |
-| Cursor | https://cursor.com/docs/plugins.md and https://cursor.com/docs/reference/plugins.md |
-| Codex | https://developers.openai.com/codex/plugins and https://developers.openai.com/codex/plugins/build |
-| Grok Build | https://docs.x.ai/build/features/skills-plugins-marketplaces and https://docs.x.ai/build/overview |
-| OpenCode | https://opencode.ai/docs/plugins |
-| `plugins` npm package | https://www.npmjs.com/package/plugins and https://github.com/vercel-labs/plugins |
+| Field | Required | dotagents behavior |
+|-------|----------|--------------------|
+| `$schema` | Yes | Must be a locally supported canonical Agent Plugins schema identifier. Clients must not fetch it while loading. |
+| `name` | Yes | Must match the configured `[[plugins]].name`. |
+| `description` | No | Preserved and used in generated registration metadata. |
+| `version` | No | Preserved. A SemVer warning does not block installation. |
+| `author` | No | Preserved. |
+| `homepage` | No | Preserved. |
+| `repository` | No | Preserved. |
+| `license` | No | Preserved. |
+| `keywords` | No | Preserved. |
 
-The npm `plugins` package is an interoperability reference, not a proposed dotagents dependency. Its public metadata describes an "open-plugin format" installer for agent tools, and its current package scans `.plugin/`, `.claude-plugin/`, `.cursor-plugin/`, and `.codex-plugin/` manifests. `.plugin/` is not a native directory for the runtimes dotagents targets, so dotagents should support it only as an import compatibility format, not as the canonical authoring or install location.
+Portable components are discovered by convention. `skills`, `agents`,
+`commands`, `rules`, `hooks`, and `mcpServers` are not portable top-level path
+fields. Client-specific manifest data belongs under `extensions`, keyed by a
+reverse-domain client namespace. Client-specific files belong under a top-level
+directory with that exact namespace.
 
-## Configuration
+dotagents must validate new manifests against the upstream schema instead of a
+Codex-derived union schema. Unknown top-level fields are reported and ignored
+without invalidating an otherwise valid manifest. Other schema violations are
+fatal. A non-object `extensions` field is reported and ignored. Valid extension
+objects are preserved, and only the adapter registered for that namespace may
+interpret them.
 
-Plugins should be declared in `agents.toml`:
+## Skills
+
+Every direct child of `skills/` that contains a valid `SKILL.md` is a plugin
+skill:
+
+```text
+skills/
+|-- code-review/
+|   `-- SKILL.md
+`-- explain-failure/
+    `-- SKILL.md
+```
+
+Rules:
+
+1. Load skills with the existing Agent Skills parser.
+2. Validate each skill independently.
+3. Reject or warn on duplicate names according to the target adapter's
+   collision policy.
+4. Never follow a skill path or symlink outside the installed plugin root.
+5. Do not require a `skills` field in `plugin.json`.
+
+## `mcp.json`
+
+Portable MCP declarations follow the upstream v1 MCP schema:
+
+```json
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "review-service": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/server/index.js"],
+      "env": {
+        "CACHE_DIR": "${PLUGIN_DATA}/cache"
+      },
+      "cwd": "${PLUGIN_ROOT}"
+    },
+    "remote-review": {
+      "type": "streamable-http",
+      "url": "https://review.example.com/mcp",
+      "headers": {
+        "X-Tenant": "public-review"
+      }
+    }
+  }
+}
+```
+
+Rules:
+
+1. `$schema` is required and must match the Agent Plugins version declared by
+   `plugin.json`; a mismatch disables MCP for the plugin but does not invalidate
+   its skills.
+2. `mcpServers` is a required object. Its member names identify servers.
+3. Each server has a required `type`: `stdio`, `streamable-http`, or `sse`.
+4. A stdio `command` is one bare executable token or a plugin-relative path
+   beginning with `./`. Placeholder expansion does not apply to `command`.
+5. `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` are the only portable placeholders.
+   They expand only in stdio `args`, `env` values, and `cwd`.
+6. dotagents or the target client provides both variables to launched stdio
+   processes. `PLUGIN_DATA` is a writable, persistent, client-managed directory.
+7. Unrecognized placeholder-like strings remain literal. There is no general
+   environment-variable expansion, and portable `env` or `headers` are not a
+   secret mechanism.
+8. dotagents normalizes the file into its existing internal MCP declaration
+   model, then either passes it through or writes the target's native format.
+9. No plugin MCP process is started during install, sync, list, or doctor.
+10. An invalid `mcp.json` disables MCP only; an invalid server entry is skipped
+    without disabling other servers, skills, or extensions.
+
+## Client Extensions
+
+Client-specific behavior is namespaced under a reverse-domain identifier in the
+`extensions` object in `plugin.json`, in a top-level directory with the same
+name, or both.
+
+Examples include Claude commands, agents, hooks, and LSP declarations; Cursor
+rules and hooks; or future Codex/OpenCode resources.
+
+Extension rules:
+
+1. A client adapter registry maps dotagents target IDs to the reverse-domain
+   namespaces that the client publishes and owns. dotagents must not invent a
+   namespace when the client has not defined one.
+2. An extension belongs only to its registered client adapter.
+3. dotagents preserves extension data for clients it does not understand.
+4. dotagents does not convert one client's extension into another client's
+   format. Claude commands do not become Cursor rules, for example.
+5. Every file accessed through an extension must remain inside the plugin root
+   after filesystem resolution. Additional extension path syntax and validation
+   are defined by that extension's owning client.
+6. A target adapter may reject unsupported extension fields with a warning,
+   but must not silently guess their meaning.
+
+## `agents.toml`
+
+dotagents operational configuration remains separate from the plugin bundle:
 
 ```toml
 [[plugins]]
-name = "sentry-tools"
+name = "review-tools"
 source = "getsentry/agent-plugins"
-ref = "v1.2.0"
-path = "plugins/sentry-tools"
-targets = ["claude", "cursor", "codex", "grok"]
+path = "plugins/review-tools"
+ref = "v1.0.0"
+targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 ```
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | Yes | Portable dotagents ID. Must start with lowercase `a-z`, end with lowercase `a-z` or `0-9`, and contain only lowercase letters, numbers, hyphens, and dots. |
-| `source` | Yes | Source repository or local directory. Supports GitHub/GitLab shorthands, git URLs, and `path:` sources. HTTPS well-known skill indexes are not supported for plugins. |
-| `ref` | No | Optional git ref override. |
-| `path` | No | Optional explicit plugin directory path inside the source. |
-| `targets` | No | Optional subset of configured agent IDs. When absent or empty, defaults to every configured agent in `agents`; targets not listed in top-level `agents` and unsupported configured agents produce warnings. |
+| `name` | Yes | Installed plugin name. Must match `plugin.json`. |
+| `source` | Yes | Git or local source resolved by dotagents. |
+| `ref` | No | Git ref override. |
+| `path` | No | Plugin directory inside the source. |
+| `targets` | No | Configured clients that receive registration or projections. Defaults to configured `agents`. |
 
-Wildcard plugin installs can be added later if needed:
+`targets` controls deployment. It is not written into `plugin.json`.
 
-```toml
-[[plugins]]
-name = "*"
-source = "getsentry/agent-plugins"
-exclude = ["deprecated-plugin"]
+## Discovery and Installation
+
+For each `[[plugins]]` declaration:
+
+1. Apply source trust and minimum-release-age policy.
+2. Resolve the repository or local source.
+3. Select the configured `path`, or discover a directory containing
+   `plugin.json` using dotagents' conventional plugin search locations.
+4. Validate `plugin.json` against the Agent Plugins schema.
+5. Require the manifest name to match the configured name.
+6. Validate `skills/`, `mcp.json`, and referenced extension paths.
+7. Copy the complete bundle into `.agents/plugins/<name>/`.
+8. Reject broken symlinks and symlinks that resolve outside the plugin root.
+9. Write the plugin lock entry.
+10. Run each selected target adapter.
+
+The installed canonical bundle should remain a valid Agent Plugin. Generated
+target artifacts should live in target-specific directories or in clearly
+managed adapter directories inside the bundle. Adapters must not rewrite the
+portable `plugin.json`, `skills/`, or `mcp.json` source files.
+
+## Internal Normalization
+
+Adapters should consume one normalized structure rather than each reparsing
+files differently:
+
+```ts
+interface NormalizedPlugin {
+  name: string;
+  pluginDir: string;
+  manifest: AgentPluginManifest;
+  skills: AgentSkill[];
+  mcpServers: McpDeclaration[];
+  extensions: Record<string, Record<string, unknown>>;
+  targets: string[];
+}
 ```
 
-## Portable Projection
+This is an internal dotagents model, not a new on-disk plugin schema.
 
-Every imported plugin should produce this portable shape:
+## Downstream Transformations
 
-| Field | Meaning |
-|-------|---------|
-| `name` | dotagents portable ID from `agents.toml`, a marketplace entry, a manifest, or the plugin directory name |
-| `version` | optional version from native or portable manifest metadata |
-| `description` | optional short description |
-| `metadata` | portable package metadata: author, homepage, repository, license, keywords, category, and logo paths |
-| `components` | discovered component paths for skills, agents, commands, rules, hooks, MCP servers, LSP servers, apps/connectors, monitors, binaries, and settings |
-| `native` | optional raw native plugin metadata keyed by runtime |
-
-Only metadata and component locations are portable. Component semantics remain native unless they are already modeled by dotagents elsewhere, such as skills, MCP servers, hooks, and subagents.
-
-## Dotagents Plugin Layout
-
-The canonical dotagents plugin layout should live under `.agents/plugins/`, matching `.agents/skills/` and `.agents/agents/`. The canonical marketplace catalog is `.agents/plugins/marketplace.json`, using the generalized Codex-compatible marketplace shape described in Core Model.
-
-Local project-authored plugins may be committed under `.agents/plugins/<name>/` as source files, but they must not be declared as same-project `[[plugins]]` dependencies because installing them would overwrite the source with itself. To consume a local plugin, reference a path outside this project's `.agents/plugins/` directory or consume it from a separate repository.
-
-```toml
-[[plugins]]
-name = "my-plugin"
-source = "path:../shared-plugins/my-plugin"
-```
-
-Remote plugins should install into the same canonical directory during `install`:
+The transformation pipeline is:
 
 ```text
-.agents/plugins/my-plugin/
+Agent Plugin bundle
+  -> validate portable core
+  -> normalize skills + MCP + extension namespaces
+  -> select target adapters
+  -> register, link, copy, or serialize native output
+```
+
+### Target matrix
+
+| Target | Portable core | Target extension | Generated output |
+|--------|---------------|------------------|------------------|
+| Claude Code | Keep `plugin.json`, `skills/`, and `mcp.json` intact | Read only namespaces registered to the Claude adapter | Generate the project marketplace and, only when required by Claude's loader, a managed `.claude-plugin/plugin.json` adapter derived from core metadata plus its registered extension. |
+| Cursor | Keep portable core intact | Read only namespaces registered to the Cursor adapter | Generate the project marketplace and, only when required, a managed `.cursor-plugin/plugin.json` adapter derived from core metadata plus its registered extension. |
+| Codex | Keep portable core intact | Read only namespaces registered to the Codex adapter | Generate `.agents/plugins/marketplace.json` as registration state and a managed `.codex-plugin/plugin.json` adapter only for Codex-only metadata the portable manifest cannot express. |
+| Grok Build | Copy the validated bundle without changing portable files | Read only namespaces registered to the Grok adapter | Generate `.grok/plugins/<name>/` as a managed copy until Grok can consume the canonical bundle directly. |
+| OpenCode | Project plugin skills and merge normalized MCP servers into OpenCode config when needed | Read only namespaces registered to the OpenCode adapter | Symlink skills into `.opencode/skills/`; project explicitly declared OpenCode resources such as agents; do not generate JavaScript or TypeScript plugin modules. |
+| Pi | Project supported skills | Read only namespaces registered to the Pi adapter | Symlink skills into `.agents/skills/`; ignore unsupported MCP or extension components with warnings. |
+
+### Metadata
+
+Core metadata is copied into generated native manifests only when the target
+requires a separate manifest. Adapter ownership metadata such as
+`metadata.managedBy = "dotagents"` belongs only in generated files, never in
+the portable `plugin.json`.
+
+### Skills
+
+If a target can consume plugin skills directly, register the canonical bundle.
+Otherwise, create managed links from the target's skill directory to the
+canonical plugin skill directories. Collision handling must preserve
+user-authored files.
+
+### MCP
+
+If a target supports Agent Plugins `mcp.json` directly, do not transform it.
+Otherwise, convert normalized servers into the target's existing MCP writer:
+
+- stdio servers map to command, args, and env,
+- remote servers map to URL, transport, and headers,
+- `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` are expanded for target formats that do
+  not support Agent Plugins runtime expansion, and
+- all other placeholder-like text remains literal.
+
+When dotagents must flatten plugin MCP into a native target configuration, it
+acts as the installation adapter for the portable runtime contract. It uses the
+installed bundle as `PLUGIN_ROOT` and a persistent managed directory such as
+`.agents/plugin-data/<plugin-name>/` as `PLUGIN_DATA`. Plugin data is not
+replaced during plugin upgrades and is removed only on explicit uninstall or
+cleanup policy.
+
+Plugin MCP server names share the target config namespace with top-level
+`[[mcp]]` declarations only when the target flattens plugin MCP into one config.
+The normalized identity is `plugin:<plugin-name>/<server-name>`. A flattened
+adapter should serialize a deterministic managed key such as
+`plugin.<plugin-name>.<server-name>` and document any target-required escaping.
+A collision with an unmanaged declaration must produce a warning and must not
+overwrite it.
+
+### Client extensions
+
+The selected adapter may serialize its namespace into a native manifest or
+project referenced files. Unselected namespaces are preserved in the canonical
+bundle and ignored. There is no cross-client conversion.
+
+## Worked Example
+
+Given this source bundle:
+
+```text
+review-tools/
 |-- plugin.json
+|-- mcp.json
 |-- skills/
-|   `-- code-review/
+|   `-- review/
 |       `-- SKILL.md
-|-- agents/
-|   `-- verifier.md
-|-- commands/
-|   `-- release.md
-|-- rules/
-|   `-- typescript.mdc
-|-- hooks/
-|   `-- hooks.json
-|-- .mcp.json
-|-- .lsp.json
-`-- bin/
+|-- com.vendor.claude/
+|   `-- agents/
+|       `-- reviewer.md
+`-- com.vendor.cursor/
+    `-- rules/
+        `-- review.mdc
 ```
 
-Example canonical marketplace:
+with `plugin.json` extension entries whose reverse-domain namespaces are
+registered to Claude, Cursor, and OpenCode adapters, an install for
+`targets = ["claude", "cursor", "codex", "opencode", "pi"]` produces:
 
-```json
-{
-  "name": "dotagents-local",
-  "interface": {
-    "displayName": "Dotagents Plugins"
-  },
-  "owner": {
-    "name": "dotagents"
-  },
-  "plugins": [
-    {
-      "name": "my-plugin",
-      "source": {
-        "source": "local",
-        "path": "./my-plugin"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Productivity"
-    }
-  ]
-}
+```text
+.agents/plugins/review-tools/              # unchanged validated Agent Plugin
+.claude-plugin/marketplace.json             # generated registration
+.agents/plugins/review-tools/.claude-plugin/plugin.json
+.cursor-plugin/marketplace.json             # generated registration
+.agents/plugins/review-tools/.cursor-plugin/plugin.json
+.agents/plugins/marketplace.json             # generated Codex registration
+.agents/plugins/review-tools/.codex-plugin/plugin.json
+.opencode/skills/review                      # managed symlink
+.opencode/agents/reviewer.md                  # only from its registered namespace
+.opencode/opencode.jsonc                     # normalized plugin MCP if needed
+.agents/skills/review                        # managed Pi skill symlink
 ```
 
-The canonical catalog may include vendor-specific extension fields, but dotagents should keep the required core small: marketplace `name`, optional display metadata, and `plugins[]` entries with `name` and `source`. Writers may emit simpler relative string sources for runtimes that prefer them, such as Claude and Cursor.
+Important consequences:
 
-Example dotagents manifest:
+- The generated marketplaces do not become portable plugin metadata.
+- Each client receives only extensions from namespaces registered to its
+  adapter.
+- The same portable skill can be linked into clients without copying or
+  converting its `SKILL.md`.
+- Portable MCP is parsed once and either consumed directly or serialized by the
+  target's existing MCP writer.
+- Codex does not inherit Claude commands or agents merely because those files
+  exist in the bundle.
 
-```json
-{
-  "name": "my-plugin",
-  "version": "1.0.0",
-  "description": "Shared agent workflows",
-  "author": { "name": "Sentry" },
-  "skills": "./skills",
-  "agents": "./agents",
-  "commands": "./commands",
-  "rules": "./rules",
-  "hooks": "./hooks/hooks.json",
-  "mcpServers": "./.mcp.json",
-  "lspServers": "./.lsp.json"
-}
-```
+## Generated State
 
-Path fields must be relative to the plugin root and must not contain `..`. Generated native manifests may add a leading `./` when the target runtime requires it.
+Generated state is deterministic and dotagents-managed:
 
-dotagents may also import plugin sources that already use native runtime manifests such as `.claude-plugin/plugin.json`, `.cursor-plugin/plugin.json`, or `.codex-plugin/plugin.json`. It may import `.plugin/plugin.json` for compatibility with the npm `plugins` package, but it should normalize that input into `.agents/plugins/<name>/plugin.json` on install.
-
-## Native Formats
-
-Input and matching-runtime output should use the same native format where possible. dotagents should preserve component files for matching runtimes. Generated native manifests project the portable fields each runtime needs to discover the plugin; the Codex manifest additionally preserves unknown manifest extensions from the canonical bundle.
-
-| Runtime | Native Manifest | Native Plugin Roots | Components from Docs | Notes |
-|---------|-----------------|---------------------|----------------------|-------|
-| Claude Code | `.claude-plugin/plugin.json` | marketplace installs, `--plugin-dir`, and skills-directory plugins | skills, commands, hooks, `.mcp.json`, `.lsp.json`, monitors, `bin/`, `settings.json` | Plugin skills are namespaced as `/plugin-name:skill-name`; components live at plugin root, not under `.claude-plugin/`. The current Claude Code validator rejects `agents` in plugin manifests, so dotagents does not project plugin agents into Claude manifests. |
-| Cursor | `.cursor-plugin/plugin.json` | marketplace installs and `~/.cursor/plugins/local/<name>` for local testing | rules, skills, agents, commands, hooks, `mcp.json`, assets, scripts | Manifest component paths replace default discovery for that component. Multi-plugin repos use `.cursor-plugin/marketplace.json`. |
-| Codex | `.codex-plugin/plugin.json` | repo/user marketplaces under `.agents/plugins/marketplace.json` and plugin cache installs | skills, hooks, `.app.json`, `.mcp.json`, assets | Published plugins commonly need rich `interface` metadata. Codex sets `PLUGIN_ROOT` and `PLUGIN_DATA`, plus Claude-compatible plugin env vars. |
-| Grok Build | Claude-compatible plugin directories plus `.grok/plugins/` and marketplaces | `./.grok/plugins/`, `~/.grok/plugins/`, marketplace installs, configured plugin paths, `--plugin-dir` | skills, agents, hooks, MCP servers, LSP servers | Docs state Grok automatically reads Claude Code marketplaces, plugins, skills, MCPs, agents, hooks, and `.claude/rules/` alongside `.grok/`. |
-| OpenCode | No bundle manifest | `.opencode/skills/`, `.agents/skills/`, `.opencode/agents/`, `opencode.json` | skills, agents, MCP servers; JS/TS plugin modules separately support hooks/tools | dotagents projects plugin `skills/` and Markdown `agents/` into OpenCode's native component directories. It does not turn dotagents plugin bundles into OpenCode JS plugins. |
-
-## Discovery
-
-Without an explicit `path`, dotagents should scan source directories in this order:
-
-1. dotagents plugin directories at `.agents/plugins/<name>/plugin.json`
-2. Marketplace manifests at `.agents/plugins/marketplace.json`, `marketplace.json`, `.claude-plugin/marketplace.json`, `.cursor-plugin/marketplace.json`, and `.codex-plugin/marketplace.json`
-3. Root native plugin manifests at `plugin.json`, `.claude-plugin/plugin.json`, `.cursor-plugin/plugin.json`, and `.codex-plugin/plugin.json`
-4. Root plugin component directories such as `skills/`, `commands/`, `agents/`, `rules/`, `hooks/`, `.mcp.json`, `.lsp.json`, `.app.json`, `monitors/`, `bin/`, or root `SKILL.md`
-5. Recursive plugin scan under common collection directories such as `plugins/*`, limited to two levels by default
-6. Compatibility manifests at `.plugin/marketplace.json` and `.plugin/plugin.json`
-
-Directory-name matches for `agents.toml` `name` take precedence over manifest-name matches. Multiple matches in one source are rejected as ambiguous unless a marketplace manifest explicitly selects a path.
-
-Marketplace entries should be treated as plugin selectors. If a marketplace entry points at a local path, dotagents resolves it relative to the marketplace file directory, optionally applying the marketplace's `metadata.pluginRoot` prefix when present. If a marketplace entry points at a remote source object that dotagents cannot resolve yet, it should produce an unsupported-source warning rather than guessing.
-
-## Component Handling
-
-dotagents should handle plugin components in three buckets:
-
-| Bucket | Components | Behavior |
-|--------|------------|----------|
-| Portable existing dotagents concepts | skills, MCP servers, hooks, subagents/agents | Load through existing parsers where possible and generate runtime configs using existing agent writers. Preserve native plugin copies for matching runtimes. |
-| Runtime-specific files | Cursor rules, Claude/Codex/Grok LSP servers, Codex apps, Claude monitors, Claude settings, binaries | Copy or expose only for runtimes that natively understand them. Do not attempt cross-runtime conversion. |
-| Metadata and marketplace files | plugin manifests, marketplace manifests, icons, screenshots, README | Preserve and regenerate native manifests/marketplaces from normalized metadata when needed. |
-
-Plugin skills should not be flattened into `.agents/skills/` by default. Native plugin systems namespace plugin skills and avoid conflicts. Flattening may be offered later as an explicit compatibility mode for runtimes without bundle support.
-
-Plugin subagents should use the subagent importer only when the runtime stores them in a compatible file format. The plugin spec should not expand subagent behavior beyond the rules in `subagents.md`.
-
-## Plugin Root Variables
-
-Portable plugin-authored config should use `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` when referring to files or writable state inside the plugin. Runtime writers translate these where needed:
-
-| Runtime | Root Variable | Data Variable |
-|---------|---------------|---------------|
-| Claude Code | `${CLAUDE_PLUGIN_ROOT}` | `${CLAUDE_PLUGIN_DATA}` |
-| Codex | `${PLUGIN_ROOT}` | `${PLUGIN_DATA}` |
-| Grok Build | `${GROK_PLUGIN_ROOT}` | `${GROK_PLUGIN_DATA}` |
-| Cursor | Target-specific support to verify before implementation | Target-specific support to verify before implementation |
-| OpenCode | Not applicable to projected skills and agents | Not applicable |
-
-Codex also sets Claude-compatible plugin variables for compatibility. For generated Codex output, dotagents can leave `${PLUGIN_ROOT}` intact. The current implementation does not rewrite Claude or Grok hook, MCP, or LSP config files; portable variable rewriting is reserved for a later projection pass.
-
-## Install and Sync
-
-Install should write two layers:
-
-1. Canonical installed plugin bundle in `.agents/plugins/<name>/`
-2. Runtime-specific generated plugin registrations for each configured target
-
-Generated project-scope outputs should be:
-
-| Agent | Project Scope Output | User Scope Output | Notes |
-|-------|----------------------|-------------------|-------|
-| Claude Code | `.claude-plugin/marketplace.json` and `.agents/plugins/<name>/.claude-plugin/plugin.json` | Not generated yet | Generated marketplace uses deterministic `../.agents/plugins/<name>` sources relative to `.claude-plugin/marketplace.json`, and each targeted plugin gets a Claude-native manifest. |
-| Cursor | `.cursor-plugin/marketplace.json` and `.agents/plugins/<name>/.cursor-plugin/plugin.json` | Not generated yet | Generated marketplace uses deterministic `../.agents/plugins/<name>` sources relative to `.cursor-plugin/marketplace.json`, and each targeted plugin gets a Cursor-native manifest. |
-| Codex | `.agents/plugins/marketplace.json` and generated `.codex-plugin/plugin.json` in installed bundle | Not generated yet | Generated marketplace uses deterministic `{ "source": "local", "path": "./<name>" }` entries relative to `.agents/plugins/marketplace.json`. |
-| Grok Build | `.grok/plugins/<name>` for targeted plugins | Not generated yet | The projection is a managed copy of the canonical plugin bundle with a `.dotagents-managed` marker. |
-| OpenCode | Plugin `skills/` symlinked into `.opencode/skills/`; plugin Markdown `agents/` symlinked into `.opencode/agents/` | Not generated yet | dotagents exposes bundle components through OpenCode's native resource directories and skips collisions with user-authored files. |
-| Pi | Plugin `skills/` symlinked into `.agents/skills/` when `pi` is a configured plugin target | Not generated yet | Pi reads agentskills from `.agents/skills/`; only plugin skills are projected. |
-
-Installed and generated files are dotagents-managed. `install` and `sync` may overwrite stale managed files and prune removed managed files, but they must not overwrite hand-written plugin files without a generated marker or a canonical installed bundle path owned by dotagents. Generated Claude, Cursor, and Codex manifests carry `metadata.managedBy = "dotagents"` so target removal can prune them without deleting user-authored native plugin manifests.
-
-User-scope plugin declarations are not supported yet. `install --user` rejects `[[plugins]]` entries, and `sync --user` reports them as unsupported, because the current runtime projections are defined only for project scope.
+1. JSON keys and plugin entries are sorted.
+2. Generated files end in one newline.
+3. Existing unmanaged files are never overwritten.
+4. Managed registration, manifests, copies, links, and MCP entries are pruned
+   when a plugin or target is removed.
+5. `.agents/.gitignore` lists copied managed bundles and generated links without
+   hiding project-authored plugin sources.
 
 ## Lockfile
 
-Plugin lock entries should use the same source-resolution fields as subagents:
+Plugin lock entries continue to use dotagents source-resolution fields:
 
 ```toml
-[plugins.sentry-tools]
+[plugins.review-tools]
 source = "getsentry/agent-plugins"
 resolved_url = "https://github.com/getsentry/agent-plugins.git"
-resolved_path = "plugins/sentry-tools"
+resolved_path = "plugins/review-tools"
+resolved_ref = "v1.0.0"
 resolved_commit = "0123456789abcdef0123456789abcdef01234567"
 ```
 
-| Field | Present For | Description |
-|-------|-------------|-------------|
-| `source` | All | Original source specifier from `agents.toml`. |
-| `resolved_url` | Git sources | Resolved clone URL. |
-| `resolved_path` | Git sources | Directory path within the repo where the plugin was discovered or loaded from. |
-| `resolved_ref` | Git sources (optional) | Ref that was resolved. Omitted when using the default branch. |
-| `resolved_commit` | Git sources (optional) | Full 40-char commit SHA that was installed. Informational only. |
+The Agent Plugin `version` is bundle metadata. It does not replace the source
+ref or resolved commit in `agents.lock`.
 
-## Security and Trust
+## Security
 
-Plugins are a higher-risk dependency class than plain skills because they may bundle executable hooks, MCP servers, LSP servers, or binaries.
+Plugins may contain executable MCP servers and client-specific hooks or tools.
 
-dotagents should:
+dotagents must:
 
-1. Apply existing trust policy before network access.
-2. Reserve executable-component warnings for a later policy pass; current installs rely on source trust validation plus runtime-native trust prompts.
-3. Preserve runtime-native trust flows instead of bypassing them. For example, Codex plugin hooks still require the user's runtime trust review.
-4. Avoid executing plugin code during install except for normal git/source resolution.
-5. Treat local `path:` plugins as allowed by source trust policy without bypassing runtime-native trust prompts.
+1. validate source trust before network access,
+2. keep every discovered and referenced path inside the plugin root,
+3. reject escaping or broken symlinks,
+4. avoid executing plugin code during management commands,
+5. avoid resolving secret environment variables during install,
+6. preserve native client trust and permission prompts, and
+7. report executable components before a future policy layer approves them.
+
+## Migration from the Current Model
+
+Migration should happen in compatibility stages:
+
+### Stage 1: dual reader
+
+- Prefer an Agent Plugins-compliant `plugin.json`, `skills/`, and `mcp.json`.
+- Continue reading legacy generalized fields (`skills`, `agents`, `commands`,
+  `rules`, `hooks`, `mcpServers`, and similar) with deprecation warnings.
+- Continue importing legacy marketplace files for source discovery, but never
+  treat a marketplace as canonical installed plugin metadata.
+
+### Stage 2: standard canonical install
+
+- Normalize legacy input in memory.
+- Install the original bundle plus generated adapter files without rewriting
+  author-owned files.
+- New docs, examples, and fixtures use the Agent Plugins layout only.
+
+### Stage 3: strict authoring
+
+- Reject legacy portable component fields for newly authored plugins.
+- Keep an explicit compatibility importer for older third-party repositories
+  until a documented major-version removal.
+
+## Implementation Gaps
+
+The current branch still needs follow-up implementation for:
+
+1. replacing the generalized manifest schema with the upstream Agent Plugins
+   schemas,
+2. parsing `mcp.json` into the shared MCP declaration model,
+3. moving `agents`, `commands`, `rules`, hooks, and other behavior into client
+   namespaces,
+4. removing canonical marketplace input assumptions,
+5. teaching adapters to prefer direct portable-core consumption, and
+6. adding migration warnings and fixtures for legacy plugin bundles.
 
 ## Non-goals
 
-dotagents should not:
+dotagents does not:
 
-1. Standardize a universal hook event model across all runtimes.
-2. Generate or install OpenCode JavaScript/TypeScript plugins from dotagents plugin bundles.
-3. Convert Cursor rules into Claude, Codex, Grok, or OpenCode instructions by default.
-4. Install app integrations or perform OAuth/authentication for users.
-5. Bypass native marketplace review, policy, or trust prompts.
-6. Promise identical plugin behavior across runtimes.
-
-## Open Questions
-
-1. Whether Claude and Cursor should gain additional native install/config outputs beyond the deterministic marketplace and plugin manifest projections dotagents writes today.
-2. Grok's exact native manifest shape is not fully documented publicly; current support uses native `.grok/plugins/<name>` placement with the canonical bundle.
-3. Whether `[[plugins]]` should allow remote marketplace source objects directly, or only concrete plugin directories resolved from repositories.
-4. Whether plugin-contained skills should optionally expose short aliases in `.agents/skills/` for runtimes without native plugin namespaces.
+1. define plugin distribution or marketplace policy,
+2. guarantee identical behavior across clients,
+3. translate one client's extension into another client's format,
+4. install applications or perform OAuth on a user's behalf,
+5. bypass client trust or permission prompts, or
+6. use `plugin.json` version ranges as a dependency solver.

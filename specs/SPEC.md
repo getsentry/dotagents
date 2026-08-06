@@ -243,9 +243,9 @@ Generated paths:
 
 Plugin dependencies. Each entry selects one plugin bundle from a source. dotagents installs the canonical plugin bundle into `.agents/plugins/<name>/` and writes deterministic runtime-specific plugin outputs for the configured agents selected by the plugin's `targets`.
 
-The canonical plugin input format is `.agents/plugins/marketplace.json` plus `.agents/plugins/<name>/plugin.json`, using a generalized Codex-compatible marketplace and manifest shape. Canonical plugin manifests and marketplaces validate known fields tightly while allowing unknown extension fields. Manifest extensions are preserved in installed bundles and the generated Codex manifest; Claude and Cursor manifests project known supported fields plus managed metadata. Marketplace extensions are accepted as input metadata but are not projected into generated marketplaces.
+The target canonical plugin input is an [Agent Plugins](https://agent-plugins.org/) bundle under `.agents/plugins/<name>/`: required `plugin.json`, optional `skills/`, optional `mcp.json`, and client-specific extension namespaces. dotagents source declarations, lock entries, marketplaces, target selection, and generated runtime files remain management concerns outside the portable bundle. Generated Claude, Cursor, and Codex marketplaces or native manifests are adapters, not source-of-truth plugin metadata.
 
-See [Plugin Support Specification](plugins.md) for the canonical layout, exact input/output contract, native docs captured for each runtime, discovery rules, generated runtime outputs, and non-goals.
+See [Plugin Support Specification](plugins.md) for the Agent Plugins-aligned bundle contract, legacy migration plan, discovery rules, normalized internal model, downstream target transformations, and implementation gaps.
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -255,7 +255,8 @@ See [Plugin Support Specification](plugins.md) for the canonical layout, exact i
 | `path` | No | Optional explicit plugin directory path inside the source. |
 | `targets` | No | Optional subset of configured agent IDs. When absent or empty, defaults to every configured agent in `agents`; targets not listed in top-level `agents` are skipped with a warning. |
 
-Generated project-scope plugin outputs:
+Generated project-scope plugin outputs in the current implementation (before
+the Agent Plugins migration described in `specs/plugins.md`):
 
 | Agent | Project Scope Output |
 |-------|----------------------|
@@ -279,7 +280,7 @@ Plugins are currently project-scope only. `install --user` rejects `[[plugins]]`
 | `codex` | Codex | `.codex` | `.codex/config.toml` | TOML (shared) | `.codex/agents/*.toml` |
 | `grok` | Grok Build | `.grok` | Not generated | Not generated | Not generated |
 | `vscode` | VS Code Copilot | `.vscode` | `.vscode/mcp.json` | JSON | Not supported |
-| `opencode` | OpenCode | `.opencode` | `opencode.json` | JSON (shared) | `.opencode/agents/*.md` |
+| `opencode` | OpenCode | `.opencode` | `.opencode/opencode.jsonc` | JSONC (shared) | `.opencode/agents/*.md` |
 
 Each agent has its own MCP config format. dotagents translates the universal `[[mcp]]` declarations into the format each tool expects during `install` and `sync`. Grok is currently supported for plugin projections only.
 
