@@ -88,7 +88,7 @@ The upstream JSON Schema is authoritative. The portable metadata includes:
 | Field | Required | dotagents behavior |
 |-------|----------|--------------------|
 | `$schema` | Yes | Must be a locally supported canonical Agent Plugins schema identifier. Clients must not fetch it while loading. |
-| `name` | Yes | Must match the configured `[[plugins]].name`. |
+| `name` | Yes | Must match the configured `[[plugins]].name`; 1-64 lowercase `a-z`, `0-9`, `-`, or `.`, with alphanumeric ends and no `--` or `..`. |
 | `description` | No | Preserved and used in generated registration metadata. |
 | `version` | No | Preserved. A SemVer warning does not block installation. |
 | `author` | No | Preserved. |
@@ -131,6 +131,9 @@ Rules:
    collision policy.
 4. Never follow a skill path or symlink outside the installed plugin root.
 5. Do not require a `skills` field in `plugin.json`.
+6. A missing `skills/` directory is valid. A present non-directory `skills`
+   path disables skills only. An invalid skill is skipped without disabling
+   valid sibling skills, MCP servers, or extensions.
 
 ## `mcp.json`
 
@@ -414,6 +417,10 @@ resolved_commit = "0123456789abcdef0123456789abcdef01234567"
 
 The Agent Plugin `version` is bundle metadata. It does not replace the source
 ref or resolved commit in `agents.lock`.
+
+Plugin versions should use Semantic Versioning, but clients do not infer
+compatibility from version numbers. Schema compatibility is determined by the
+required canonical `$schema` identifiers.
 
 ## Security
 
