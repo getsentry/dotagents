@@ -489,8 +489,7 @@ source = "path:plugin-source/claude-tools"
         name: "claude-tools",
         version: "1.0.0",
       } },
-      ".grok/plugins/claude-tools/claude-skills/portable-qa/SKILL.md": { text: SKILL_MD("portable-qa") },
-      ".grok/plugins/claude-tools/skills": { symlink: join(projectRoot, ".grok", "plugins", "claude-tools", "claude-skills") },
+      ".grok/plugins/claude-tools/skills/portable-qa/SKILL.md": { text: SKILL_MD("portable-qa") },
     });
 
     await runSync({ scope });

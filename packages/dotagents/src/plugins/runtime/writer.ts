@@ -273,13 +273,14 @@ async function writeGrokProjection(
     ".dotagents-managed",
     ".dotagents-native-source",
   ]);
+  let portableSkillsSource: string | undefined;
   if (plugin.nativeSource) {
     for (const path of ["agents", "commands", "rules", "hooks", "monitors", ".mcp.json", ".lsp.json", ".app.json"]) {
       excluded.add(path);
     }
     for (const root of nativeComponentRoots(plugin)) {excluded.add(root);}
-    const portableSkillsRoot = await containedSymlinkRoot(plugin.pluginDir, "skills");
-    if (portableSkillsRoot) {excluded.delete(portableSkillsRoot);}
+    portableSkillsSource = await containedSymlinkTarget(plugin.pluginDir, "skills");
+    if (portableSkillsSource) {excluded.add("skills");}
     if (await hasPortableMcp(plugin)) {excluded.delete("mcp.json");}
     else {excluded.add("mcp.json");}
   }
@@ -293,6 +294,12 @@ async function writeGrokProjection(
       return !rootEntry || !excluded.has(rootEntry);
     },
   });
+  if (portableSkillsSource) {
+    await cp(portableSkillsSource, join(dest, "skills"), {
+      recursive: true,
+      verbatimSymlinks: true,
+    });
+  }
   if (plugin.nativeSource) {
     await writeFile(join(dest, "plugin.json"), stableJson(portableCoreManifest(plugin)));
   }
@@ -353,14 +360,14 @@ async function hasPortableMcp(plugin: PluginDeclaration): Promise<boolean> {
   }
 }
 
-async function containedSymlinkRoot(pluginDir: string, entryName: string): Promise<string | undefined> {
+async function containedSymlinkTarget(pluginDir: string, entryName: string): Promise<string | undefined> {
   const filePath = join(pluginDir, entryName);
   try {
     if (!(await lstat(filePath)).isSymbolicLink()) {return undefined;}
-    const target = resolve(dirname(filePath), await readlink(filePath));
-    const relPath = relative(pluginDir, target);
+    const [root, target] = await Promise.all([realpath(pluginDir), realpath(filePath)]);
+    const relPath = relative(root, target);
     if (!relPath || relPath.startsWith("..") || isAbsolute(relPath)) {return undefined;}
-    return relPath.split(/[\\/]/)[0];
+    return target;
   } catch {
     return undefined;
   }
