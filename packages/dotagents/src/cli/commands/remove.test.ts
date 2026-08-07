@@ -268,6 +268,40 @@ source = "path:plugins/review-tools"
     expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
   });
 
+  it("preserves a same-project plugin source when its lock entry is stale", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }, null, 2));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[plugins]]
+name = "local-tools"
+source = "path:."
+`,
+    );
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      plugins: {
+        "local-tools": {
+          source: "getsentry/old-plugin-source",
+        },
+      },
+    });
+
+    const scope = resolveScope("project", projectRoot);
+    await runRemove({ scope, name: "local-tools" });
+
+    expect(existsSync(pluginDir)).toBe(true);
+    expect(JSON.parse(await readFile(join(pluginDir, "plugin.json"), "utf-8"))).toEqual({
+      name: "local-tools",
+    });
+    expect((await loadConfig(join(projectRoot, "agents.toml"))).plugins).toEqual([]);
+    expect((await loadLockfile(join(projectRoot, "agents.lock")))!.plugins).toEqual({});
+  });
+
   it("removes both an explicit skill and plugin that share a name", async () => {
     const skillSource = join(projectRoot, "local-skills", "review-tools");
     await mkdir(skillSource, { recursive: true });

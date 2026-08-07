@@ -491,4 +491,53 @@ describe("plugin store", () => {
       await rm(projectRoot, { recursive: true, force: true });
     }
   });
+
+  it("continues conventional discovery when the source root manifest is malformed", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const pluginDir = join(sourceRoot, "plugins", "review-tools");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(join(sourceRoot, "plugin.json"), "{", "utf-8");
+      await writeFile(
+        join(pluginDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools" }),
+        "utf-8",
+      );
+
+      const resolved = await resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+
+      expect(resolved.plugin.pluginDir).toBe(pluginDir);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("continues recursive discovery through a directory with a malformed manifest", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const containerDir = join(sourceRoot, "plugins", "collection");
+      const pluginDir = join(containerDir, "review-tools");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(join(containerDir, "plugin.json"), "{", "utf-8");
+      await writeFile(
+        join(pluginDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools" }),
+        "utf-8",
+      );
+
+      const resolved = await resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+
+      expect(resolved.plugin.pluginDir).toBe(pluginDir);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
 });

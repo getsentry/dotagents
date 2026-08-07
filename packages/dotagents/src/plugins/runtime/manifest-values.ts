@@ -14,7 +14,7 @@ export function legacyManifestString(
 ): string | undefined {
   if (isStandardPluginManifest(manifest)) {return undefined;}
   const value = (manifest as LegacyPluginManifest)[key];
-  return typeof value === "string" ? value : undefined;
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 /** Formats an already validated plugin-relative component path. */

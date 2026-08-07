@@ -283,6 +283,23 @@ targets = ["emacs"]
     await expect(loadConfig(configPath)).rejects.toThrow(/Unknown plugin target/);
   });
 
+  it("rejects configured agents that do not support plugin outputs as plugin targets", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1
+agents = ["vscode"]
+
+[[plugins]]
+name = "review-tools"
+source = "getsentry/plugins"
+targets = ["vscode"]
+`,
+    );
+
+    await expect(loadConfig(configPath)).rejects.toThrow(/Unknown plugin target.*vscode/);
+  });
+
   it("rejects duplicate plugin names", async () => {
     const configPath = join(dir, "agents.toml");
     await writeFile(

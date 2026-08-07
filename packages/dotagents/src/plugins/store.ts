@@ -371,9 +371,17 @@ async function discoverPlugin(
   const fromMarketplace = await discoverFromMarketplaces(sourceDir, config.name, unsupportedMarketplaceSources);
   if (fromMarketplace) {return fromMarketplace;}
 
-  for (const dir of [sourceDir, join(sourceDir, "plugins", config.name)]) {
-    const candidate = await loadPluginCandidate(sourceDir, dir);
-    if (candidate && candidateMatches(config.name, candidate)) {matches.push(candidate);}
+  let sourceRootError: unknown;
+  try {
+    const sourceCandidate = await loadPluginCandidate(sourceDir, sourceDir);
+    if (sourceCandidate && candidateMatches(config.name, sourceCandidate)) {matches.push(sourceCandidate);}
+  } catch (err) {
+    sourceRootError = err;
+  }
+
+  const namedCandidate = await loadPluginCandidate(sourceDir, join(sourceDir, "plugins", config.name));
+  if (namedCandidate && candidateMatches(config.name, namedCandidate)) {
+    matches.push(namedCandidate);
   }
 
   const recursive = await scanPluginDirectories(sourceDir, join(sourceDir, "plugins"), config.name);
@@ -390,6 +398,7 @@ async function discoverPlugin(
       `Plugin "${config.name}" not found in ${config.source}. Matching marketplace entries use unsupported source types: ${[...new Set(unsupportedMarketplaceSources)].join(", ")}. Only local marketplace sources are supported.`,
     );
   }
+  if (unique.length === 0 && sourceRootError) {throw sourceRootError;}
   return unique[0] ?? null;
 }
 
@@ -448,7 +457,13 @@ async function scanPluginDirectories(
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith(".")) {continue;}
     const childDir = join(dir, entry.name);
-    const candidate = await loadPluginCandidate(sourceRoot, childDir);
+    let candidate: PluginCandidate | null;
+    try {
+      candidate = await loadPluginCandidate(sourceRoot, childDir);
+    } catch (err) {
+      if (entry.name === name) {throw err;}
+      candidate = null;
+    }
     if (candidate && candidateMatches(name, candidate)) {
       matches.push(candidate);
       continue;

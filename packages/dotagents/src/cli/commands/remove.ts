@@ -226,8 +226,14 @@ async function removePluginArtifacts(
   lockfile: Awaited<ReturnType<typeof loadLockfile>>,
 ): Promise<void> {
   const managedPluginNames = new Set<string>();
+  const sameProjectPluginNames = new Set(
+    plugins
+      .filter((plugin) => isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
+      .map((plugin) => plugin.name),
+  );
   for (const plugin of plugins) {
     const name = plugin.name;
+    if (sameProjectPluginNames.has(name)) {continue;}
     const pluginDir = join(scope.pluginsDir, name);
     if (isManagedPluginInstall(pluginDir)) {
       managedPluginNames.add(name);
@@ -241,6 +247,7 @@ async function removePluginArtifacts(
   }
 
   for (const name of pluginNames) {
+    if (sameProjectPluginNames.has(name)) {continue;}
     const locked = lockfile?.plugins[name];
     if (locked && !isInPlacePluginSource(locked.source)) {
       managedPluginNames.add(name);

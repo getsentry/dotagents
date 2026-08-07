@@ -114,7 +114,8 @@ function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
 
   const legacyComponents = usesLegacyPluginComponents(plugin, "claude");
 
-  if (portableSkills || legacyComponents && !copyRuntimeComponentField(plugin, manifest, "skills", warnings) && existsSync(join(plugin.pluginDir, "skills"))) {
+  const hasExplicitSkills = legacyComponents && copyRuntimeComponentField(plugin, manifest, "skills", warnings);
+  if (!hasExplicitSkills && (portableSkills || legacyComponents && existsSync(join(plugin.pluginDir, "skills")))) {
     manifest["skills"] = "./skills";
   }
   if (legacyComponents && !copyRuntimeComponentField(plugin, manifest, "commands", warnings) && existsSync(join(plugin.pluginDir, "commands"))) {
@@ -151,7 +152,8 @@ function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
 
   const legacyComponents = usesLegacyPluginComponents(plugin, "cursor");
 
-  if (portableSkills || legacyComponents && !copyRuntimeComponentField(plugin, manifest, "skills", warnings) && existsSync(join(plugin.pluginDir, "skills"))) {
+  const hasExplicitSkills = legacyComponents && copyRuntimeComponentField(plugin, manifest, "skills", warnings);
+  if (!hasExplicitSkills && (portableSkills || legacyComponents && existsSync(join(plugin.pluginDir, "skills")))) {
     manifest["skills"] = "./skills";
   }
   if (legacyComponents && !copyRuntimeComponentField(plugin, manifest, "agents", warnings) && existsSync(join(plugin.pluginDir, "agents"))) {

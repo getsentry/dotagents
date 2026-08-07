@@ -11,7 +11,7 @@ export function allPluginOnlyAgentIds(): string[] {
   return PLUGIN_ONLY_AGENT_IDS;
 }
 
-function allPluginAgentIds(): string[] {
+export function allPluginAgentIds(): string[] {
   return PLUGIN_AGENT_IDS;
 }
 

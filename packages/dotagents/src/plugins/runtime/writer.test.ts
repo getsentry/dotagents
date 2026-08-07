@@ -46,6 +46,7 @@ describe("plugin writer", () => {
       source: `path:.agents/plugins/${name}`,
       pluginDir,
       manifest,
+      nativeSource: overrides.nativeSource,
       targets: overrides.targets,
     };
   }
@@ -172,6 +173,47 @@ describe("plugin writer", () => {
     });
 
     expect(await verifyPluginOutputs(["cursor", "codex", "claude"], [beta, alpha], root)).toEqual([]);
+  });
+
+  it("uses default Codex categories for empty legacy category values", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: {
+        name: "alpha-tools",
+        category: "",
+      },
+    });
+
+    await writePluginOutputs(["codex"], [alpha], root);
+
+    const marketplace = JSON.parse(
+      await readFile(join(root, ".agents", "plugins", "marketplace.json"), "utf-8"),
+    ) as { plugins: Array<{ category: string }> };
+    expect(marketplace.plugins[0]!.category).toBe("Productivity");
+
+    const manifest = JSON.parse(
+      await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8"),
+    ) as { interface: { category: string } };
+    expect(manifest.interface.category).toBe("Coding");
+  });
+
+  it("preserves explicit skills paths when repairing native manifests", async () => {
+    for (const nativeSource of ["claude", "cursor"] as const) {
+      const nativePlugin = await plugin(`${nativeSource}-tools`, {
+        nativeSource,
+        manifest: {
+          name: `${nativeSource}-tools`,
+          skills: "custom-skills",
+        },
+      });
+      await mkdir(join(nativePlugin.pluginDir, "custom-skills"), { recursive: true });
+
+      await writePluginOutputs([nativeSource], [nativePlugin], root);
+
+      const manifest = JSON.parse(
+        await readFile(join(nativePlugin.pluginDir, `.${nativeSource}-plugin`, "plugin.json"), "utf-8"),
+      ) as { skills: string };
+      expect(manifest.skills).toBe("./custom-skills");
+    }
   });
 
   it("isolates invalid Agent Plugins MCP config from other components", async () => {

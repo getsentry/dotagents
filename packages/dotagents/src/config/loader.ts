@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
 import { agentsConfigSchema, isWildcardDep, type AgentsConfig } from "./schema.js";
 import { allAgentIds } from "../targets/registry.js";
-import { allPluginOnlyAgentIds } from "../plugins/targets.js";
+import { allPluginAgentIds, allPluginOnlyAgentIds } from "../plugins/targets.js";
 import { applyDefaultRepositorySource, parseSource } from "@sentry/dotagents-lib";
 
 export class ConfigError extends Error {
@@ -38,6 +38,7 @@ export async function loadConfig(filePath: string): Promise<AgentsConfig> {
 
   // Post-parse validation: reject unknown agent IDs
   const registryAgentIds = allAgentIds();
+  const pluginAgentIds = allPluginAgentIds();
   const validIds = [...new Set([...registryAgentIds, ...allPluginOnlyAgentIds()])];
   const unknown = result.data.agents.filter((id) => !validIds.includes(id));
   if (unknown.length > 0) {
@@ -62,13 +63,13 @@ export async function loadConfig(filePath: string): Promise<AgentsConfig> {
   const unknownPluginTargets = [
     ...new Set(
       result.data.plugins.flatMap((plugin) =>
-        (plugin.targets ?? []).filter((id) => !validIds.includes(id))
+        (plugin.targets ?? []).filter((id) => !pluginAgentIds.includes(id))
       ),
     ),
   ];
   if (unknownPluginTargets.length > 0) {
     throw new ConfigError(
-      `Unknown plugin target(s) in ${filePath}: ${unknownPluginTargets.join(", ")}. Valid agents: ${validIds.join(", ")}`,
+      `Unknown plugin target(s) in ${filePath}: ${unknownPluginTargets.join(", ")}. Valid agents: ${pluginAgentIds.join(", ")}`,
     );
   }
 
