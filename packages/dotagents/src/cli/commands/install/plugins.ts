@@ -21,6 +21,7 @@ import { InstallError } from "./errors.js";
 export interface InstallPluginsResult {
   plugins: PluginDeclaration[];
   pruned: string[];
+  staleManaged: string[];
   lockEntries: Lockfile["plugins"];
 }
 
@@ -87,12 +88,13 @@ export async function installPlugins(
     }
   }
 
+  const staleManaged = staleManagedPluginNames(lockfile, lockEntries);
   if (lockfile) {
     pruned.push(...await pruneInstalledPlugins(
       scope.pluginsDir,
-      staleManagedPluginNames(lockfile, lockEntries),
+      staleManaged,
     ));
   }
 
-  return { plugins, pruned, lockEntries };
+  return { plugins, pruned, staleManaged, lockEntries };
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access, readdir, readlink, symlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import install, { runInstall as runInstallCommand, InstallError, type InstallOptions, type InstallResult } from "./install.js";
 import { runSync } from "./sync.js";
@@ -531,6 +531,29 @@ source = "path:plugin-source/review-tools"
 
     const existingManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as Record<string, unknown>;
     expect(existingManifest["description"]).toBe("Hand written");
+  });
+
+  it("prunes dangling component links for stale managed plugins whose bundles are already missing", async () => {
+    const linkDir = join(projectRoot, ".opencode", "skills");
+    const linkPath = join(linkDir, "old-plugin-skill");
+    await mkdir(linkDir, { recursive: true });
+    await symlink(
+      relative(linkDir, join(projectRoot, ".agents", "plugins", "old-tools", "skills", "old-plugin-skill")),
+      linkPath,
+    );
+    await writeFile(join(projectRoot, "agents.toml"), `version = 1\nagents = ["opencode"]\n`);
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {
+        "old-tools": { source: "org/old-tools" },
+      },
+    });
+
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    expect(existsSync(linkPath)).toBe(false);
   });
 
   it("overwrites an existing managed plugin install destination", async () => {

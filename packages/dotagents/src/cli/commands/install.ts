@@ -87,7 +87,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     config,
     scope,
     plugins.plugins,
-    plugins.pruned.map((name) => join(scope.pluginsDir, name)),
+    plugins.staleManaged.map((name) => join(scope.pluginsDir, name)),
   );
 
   return {
