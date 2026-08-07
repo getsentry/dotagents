@@ -278,6 +278,8 @@ async function writeGrokProjection(
       excluded.add(path);
     }
     for (const root of nativeComponentRoots(plugin)) {excluded.add(root);}
+    const portableSkillsRoot = await containedSymlinkRoot(plugin.pluginDir, "skills");
+    if (portableSkillsRoot) {excluded.delete(portableSkillsRoot);}
     if (await hasPortableMcp(plugin)) {excluded.delete("mcp.json");}
     else {excluded.add("mcp.json");}
   }
@@ -348,6 +350,19 @@ async function hasPortableMcp(plugin: PluginDeclaration): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function containedSymlinkRoot(pluginDir: string, entryName: string): Promise<string | undefined> {
+  const filePath = join(pluginDir, entryName);
+  try {
+    if (!(await lstat(filePath)).isSymbolicLink()) {return undefined;}
+    const target = resolve(dirname(filePath), await readlink(filePath));
+    const relPath = relative(pluginDir, target);
+    if (!relPath || relPath.startsWith("..") || isAbsolute(relPath)) {return undefined;}
+    return relPath.split(/[\\/]/)[0];
+  } catch {
+    return undefined;
   }
 }
 

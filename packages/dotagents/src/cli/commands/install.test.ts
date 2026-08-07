@@ -430,15 +430,15 @@ source = "path:plugin-source/portable-tools"
   it("imports a native Claude bundle without cross-translating native components", async () => {
     const sourceDir = join(projectRoot, "plugin-source", "claude-tools");
     await mkdir(join(sourceDir, ".claude-plugin"), { recursive: true });
-    await mkdir(join(sourceDir, "skills", "portable-qa"), { recursive: true });
-    await mkdir(join(sourceDir, "claude-skills", "native-only"), { recursive: true });
+    await mkdir(join(sourceDir, "claude-skills", "portable-qa"), { recursive: true });
+    await mkdir(join(sourceDir, "private-skills", "native-only"), { recursive: true });
     await mkdir(join(sourceDir, "commands"), { recursive: true });
     await mkdir(join(sourceDir, "agents"), { recursive: true });
     const nativeManifest = {
       name: "claude-tools",
       version: "1.0.0",
       description: "Claude-native tools",
-      skills: "./claude-skills",
+      skills: ["./claude-skills", "./private-skills"],
       commands: "./commands",
       agents: "./agents",
       mcpServers: "./mcp.json",
@@ -446,8 +446,9 @@ source = "path:plugin-source/portable-tools"
     await writeFile(join(sourceDir, ".claude-plugin", "plugin.json"), JSON.stringify(nativeManifest, null, 2));
     await writeFile(join(sourceDir, ".claude-plugin", "plugin.json.dotagents-managed"), "managedBy=dotagents\n");
     await writeFile(join(sourceDir, "mcp.json"), JSON.stringify({ mcpServers: { native: { command: "node" } } }));
-    await writeFile(join(sourceDir, "skills", "portable-qa", "SKILL.md"), SKILL_MD("portable-qa"));
-    await writeFile(join(sourceDir, "claude-skills", "native-only", "SKILL.md"), SKILL_MD("native-only"));
+    await writeFile(join(sourceDir, "claude-skills", "portable-qa", "SKILL.md"), SKILL_MD("portable-qa"));
+    await writeFile(join(sourceDir, "private-skills", "native-only", "SKILL.md"), SKILL_MD("native-only"));
+    await symlink("claude-skills", join(sourceDir, "skills"));
     await writeFile(join(sourceDir, "commands", "native.md"), "native command");
     await writeFile(join(sourceDir, "agents", "native.md"), "native agent");
     await writeFile(
@@ -488,7 +489,8 @@ source = "path:plugin-source/claude-tools"
         name: "claude-tools",
         version: "1.0.0",
       } },
-      ".grok/plugins/claude-tools/skills/portable-qa/SKILL.md": { text: SKILL_MD("portable-qa") },
+      ".grok/plugins/claude-tools/claude-skills/portable-qa/SKILL.md": { text: SKILL_MD("portable-qa") },
+      ".grok/plugins/claude-tools/skills": { symlink: join(projectRoot, ".grok", "plugins", "claude-tools", "claude-skills") },
     });
 
     await runSync({ scope });
