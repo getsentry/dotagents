@@ -23,7 +23,8 @@ import {
   type LegacyPluginManifest,
   type PluginManifest,
 } from "./schema.js";
-import { isManagedJsonFile } from "./runtime/files.js";
+import { isManagedJsonFile } from "./managed-files.js";
+import type { NativePluginSource, PluginDeclaration } from "./types.js";
 
 // Owns plugin source discovery and installation into the canonical project tree.
 // Resolved sources are never allowed to live inside the same project's
@@ -36,17 +37,6 @@ export interface PluginResolveOptions {
   minimumReleaseAgeExclude?: string[];
   trust?: TrustPolicy;
 }
-
-export interface PluginDeclaration {
-  name: string;
-  source: string;
-  pluginDir: string;
-  manifest: PluginManifest;
-  nativeSource?: NativePluginSource;
-  targets?: string[];
-}
-
-export type NativePluginSource = "claude" | "cursor" | "codex";
 
 interface ResolvedLocalPlugin {
   type: "local";

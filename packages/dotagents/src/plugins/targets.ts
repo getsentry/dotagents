@@ -1,4 +1,4 @@
-import type { PluginDeclaration } from "./store.js";
+import type { PluginDeclaration } from "./types.js";
 import type { PluginWriteWarning } from "./runtime/types.js";
 import { isStandardPluginManifest } from "./schema.js";
 

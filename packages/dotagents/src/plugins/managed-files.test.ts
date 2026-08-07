@@ -2,7 +2,7 @@ import { lstat, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { isManagedJsonFile, managedJsonMarkerPath, writeManagedJsonIfChanged } from "./files.js";
+import { isManagedJsonFile, managedJsonMarkerPath, writeManagedJsonIfChanged } from "./managed-files.js";
 
 describe("managed plugin JSON", () => {
   let root: string;

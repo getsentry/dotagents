@@ -48,7 +48,6 @@ async function writeTextIfChanged(filePath: string, content: string): Promise<bo
   return true;
 }
 
-/** Checks the JSON ownership marker used for managed plugin outputs. */
 export async function isManagedJsonFile(filePath: string): Promise<boolean> {
   try {
     if (!(await lstat(managedJsonMarkerPath(filePath))).isFile()) {return false;}

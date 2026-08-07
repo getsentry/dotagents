@@ -4,7 +4,8 @@ import type { ScopeRoot } from "../../../scope.js";
 import { filterManagedPluginSkillNames } from "../../../gitignore/skills.js";
 import { checkRootGitignoreEntries, writeAgentsGitignore } from "../../../gitignore/writer.js";
 import { isInPlaceSkill } from "../../../utils/fs.js";
-import { isInPlacePluginSource, type PluginDeclaration } from "../../../plugins/store.js";
+import { isInPlacePluginSource } from "../../../plugins/store.js";
+import type { PluginDeclaration } from "../../../plugins/types.js";
 import { projectedPiSkillNames } from "../../../plugins/runtime/writer.js";
 import type { SubagentDeclaration } from "../../../subagents/types.js";
 

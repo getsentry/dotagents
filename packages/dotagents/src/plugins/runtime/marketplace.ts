@@ -1,7 +1,7 @@
 import { join, relative } from "node:path";
-import type { PluginDeclaration } from "../store.js";
+import type { PluginDeclaration } from "../types.js";
 import { selectedAgentIds } from "../targets.js";
-import { stableJson } from "./files.js";
+import { stableJson } from "../managed-files.js";
 import { legacyManifestString, manifestString } from "./manifest-values.js";
 import type { RuntimeOutput } from "./types.js";
 

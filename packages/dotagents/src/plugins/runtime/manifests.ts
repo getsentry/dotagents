@@ -2,9 +2,9 @@ import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { isStandardPluginManifest, parsePluginMcpBestEffort, type LegacyPluginManifest, type PluginManifest, type PluginMcpConfig } from "../schema.js";
-import type { PluginDeclaration } from "../store.js";
+import type { PluginDeclaration } from "../types.js";
 import { usesLegacyPluginComponents } from "../targets.js";
-import { isManagedJsonFile, removeManagedJsonFile, stableJson, writeManagedJsonIfChanged } from "./files.js";
+import { isManagedJsonFile, removeManagedJsonFile, stableJson, writeManagedJsonIfChanged } from "../managed-files.js";
 import {
   manifestString,
   legacyManifestString,

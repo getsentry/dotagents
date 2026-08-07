@@ -10,10 +10,10 @@ import {
   isManagedPluginInstall,
   isProjectPluginSource,
   lockEntryForPlugin,
-  type PluginDeclaration,
   pruneInstalledPlugins,
   resolvePlugin,
 } from "../../../plugins/store.js";
+import type { PluginDeclaration } from "../../../plugins/types.js";
 import { GitError, TrustError } from "@sentry/dotagents-lib";
 import { getCacheStateDir } from "../../cache.js";
 import { InstallError } from "./errors.js";

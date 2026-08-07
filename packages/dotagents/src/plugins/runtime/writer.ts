@@ -3,7 +3,7 @@ import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, rm, rmdir, sta
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { loadSkillMd } from "@sentry/dotagents-lib";
 import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest, parsePluginMcp, type LegacyPluginManifest } from "../schema.js";
-import type { PluginDeclaration } from "../store.js";
+import type { PluginDeclaration } from "../types.js";
 import { selectedAgentIds, selectPlugins, targetWarnings, usesLegacyPluginComponents } from "../targets.js";
 import { marketplaceOutputPaths, marketplaceOutputs } from "./marketplace.js";
 import {
@@ -18,7 +18,7 @@ import {
   removeManagedJsonFile,
   stableJson,
   writeManagedJsonIfChanged,
-} from "./files.js";
+} from "../managed-files.js";
 import { NATIVE_PLUGIN_MANIFEST_TARGETS, writePluginManifests } from "./manifests.js";
 import { isSafeComponentPath } from "./component-paths.js";
 

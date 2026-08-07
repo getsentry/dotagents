@@ -3,7 +3,7 @@ import { lstat, mkdtemp, mkdir, readFile, readlink, rm, symlink, writeFile } fro
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { PluginDeclaration } from "../store.js";
+import type { PluginDeclaration } from "../types.js";
 import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest } from "../schema.js";
 import {
   prunePluginOutputs,
