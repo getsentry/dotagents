@@ -457,6 +457,23 @@ describe("plugin writer", () => {
     expect(manifest.skills).toBeUndefined();
   });
 
+  it("skips plugin agents paths that are not directories", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: { agents: "README.md" },
+    });
+    const agentsPath = join(alpha.pluginDir, "README.md");
+    await writeFile(agentsPath, "not a directory");
+
+    const result = await writePluginOutputs(["opencode"], [alpha], root);
+
+    expect(result.written).toBe(0);
+    expect(result.warnings).toContainEqual({
+      agent: "opencode",
+      name: "alpha-tools",
+      message: `Plugin agents path is not a directory and was skipped: ${agentsPath}`,
+    });
+  });
+
   it("projects contained plugin skills directory symlinks", async () => {
     const alpha = await plugin("alpha-tools", {
       manifest: {

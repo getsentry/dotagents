@@ -549,6 +549,14 @@ async function markdownComponentLinks(
   warnings: PluginWriteWarning[],
 ): Promise<ComponentLink[]> {
   if (!existsSync(agentsDir)) {return [];}
+  if (!await isDirectoryPath(agentsDir)) {
+    warnings.push({
+      agent,
+      name: plugin.name,
+      message: `Plugin agents path is not a directory and was skipped: ${agentsDir}`,
+    });
+    return [];
+  }
   if (!await isContainedPluginPath(plugin.pluginDir, agentsDir)) {
     warnings.push({
       agent,
