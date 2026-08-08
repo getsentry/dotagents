@@ -556,6 +556,56 @@ source = "path:plugin-source/review-tools"
     expect(existsSync(linkPath)).toBe(false);
   });
 
+  it("does not treat malformed lockfile plugin names as managed projection roots", async () => {
+    const outsideSkillDir = join(projectRoot, "outside", "keep");
+    const linkDir = join(projectRoot, ".opencode", "skills");
+    const linkPath = join(linkDir, "keep");
+    await mkdir(outsideSkillDir, { recursive: true });
+    await mkdir(linkDir, { recursive: true });
+    await writeFile(join(outsideSkillDir, "SKILL.md"), SKILL_MD("keep"));
+    await symlink(relative(linkDir, outsideSkillDir), linkPath);
+    await writeFile(join(projectRoot, "agents.toml"), `version = 1\nagents = ["opencode"]\n`);
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {
+        "../../outside": { source: "org/old-tools" },
+      },
+    });
+
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    expect(existsSync(linkPath)).toBe(true);
+    expect(await readFile(join(outsideSkillDir, "SKILL.md"), "utf-8")).toBe(SKILL_MD("keep"));
+    expect((await loadLockfile(join(projectRoot, "agents.lock")))!.plugins).toEqual({});
+  });
+
+  it("rejects escaping plugin symlinks before writing Grok projections", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    const outsideFile = join(projectRoot, "secret.txt");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(outsideFile, "secret\n");
+    await symlink(outsideFile, join(sourceDir, "secret-link"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["grok"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    await expect(runInstall({ scope: resolveScope("project", projectRoot) }))
+      .rejects.toThrow(/symlink resolves outside the plugin directory/);
+
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".grok", "plugins", "review-tools"))).toBe(false);
+  });
+
   it("overwrites an existing managed plugin install destination", async () => {
     const sourceDir = join(projectRoot, "plugin-source", "review-tools");
     await mkdir(join(sourceDir, "skills", "review"), { recursive: true });

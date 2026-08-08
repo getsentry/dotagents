@@ -5,7 +5,12 @@ import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
-import { isWildcardDep, type PluginConfig } from "../../config/schema.js";
+import {
+  isWildcardDep,
+  PLUGIN_NAME_PATTERN,
+  SKILL_NAME_PATTERN,
+  type PluginConfig,
+} from "../../config/schema.js";
 import {
   addExcludeToWildcard,
   removePluginBlocksBySource,
@@ -189,7 +194,9 @@ export async function runRemoveSource(opts: RemoveSourceOptions): Promise<string
 
   // Delete skill dirs and remove from lockfile
   for (const name of skillNames) {
-    await rm(join(skillsDir, name), { recursive: true, force: true });
+    if (SKILL_NAME_PATTERN.test(name)) {
+      await rm(join(skillsDir, name), { recursive: true, force: true });
+    }
     if (lockfile) {
       delete lockfile.skills[name];
     }
@@ -253,7 +260,14 @@ async function removePluginArtifacts(
       managedPluginNames.add(name);
     }
   }
-  const managedPluginRoots = [...managedPluginNames].map((name) => join(scope.pluginsDir, name));
+  const projectionPluginRoots = [
+    ...new Set([
+      ...managedPluginNames,
+      ...plugins.map((plugin) => plugin.name),
+    ]),
+  ]
+    .filter((name) => PLUGIN_NAME_PATTERN.test(name))
+    .map((name) => join(scope.pluginsDir, name));
 
   if (scope.scope === "project") {
     await pruneInstalledPlugins(scope.pluginsDir, managedPluginNames);
@@ -272,7 +286,7 @@ async function removePluginArtifacts(
       .filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
       .filter((plugin) => existsSync(join(scope.pluginsDir, plugin.name)));
     const installedPlugins = await loadInstalledPlugins(scope.pluginsDir, remainingPluginConfigs);
-    await prunePluginOutputs(config.agents, installedPlugins.plugins, scope.root, managedPluginRoots);
+    await prunePluginOutputs(config.agents, installedPlugins.plugins, scope.root, projectionPluginRoots);
   }
 
   await updateProjectGitignore(scope);

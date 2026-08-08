@@ -69,10 +69,12 @@ function isContainedRelativePath(path: string): boolean {
 }
 
 /** Skill names must be safe for use in file paths: alphanumeric, dots, hyphens, underscores. */
+export const SKILL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
 const skillNameSchema = z
   .string()
   .regex(
-    /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
+    SKILL_NAME_PATTERN,
     "Skill names must start with alphanumeric and contain only [a-zA-Z0-9._-]",
   );
 

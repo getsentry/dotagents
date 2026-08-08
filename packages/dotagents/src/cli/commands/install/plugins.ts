@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { AgentsConfig } from "../../../config/schema.js";
+import { PLUGIN_NAME_PATTERN, type AgentsConfig } from "../../../config/schema.js";
 import type { Lockfile } from "../../../lockfile/schema.js";
 import type { ScopeRoot } from "../../../scope.js";
 import {
@@ -31,7 +31,11 @@ function staleManagedPluginNames(
 ): string[] {
   if (!current) {return [];}
   return Object.entries(current.plugins)
-    .filter(([name, locked]) => !nextPlugins[name] && !isInPlacePluginSource(locked.source))
+    .filter(([name, locked]) => (
+      PLUGIN_NAME_PATTERN.test(name) &&
+      !nextPlugins[name] &&
+      !isInPlacePluginSource(locked.source)
+    ))
     .map(([name]) => name);
 }
 

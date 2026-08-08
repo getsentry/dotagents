@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import {
   collectSkillsFromSource,
@@ -270,11 +270,20 @@ source = "path:plugins/review-tools"
 
   it("preserves a same-project plugin source when its lock entry is stale", async () => {
     const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
-    await mkdir(pluginDir, { recursive: true });
+    const skillDir = join(pluginDir, "skills", "local-review");
+    const openCodeLink = join(projectRoot, ".opencode", "skills", "local-review");
+    const piLink = join(projectRoot, ".agents", "skills", "local-review");
+    await mkdir(skillDir, { recursive: true });
+    await mkdir(join(projectRoot, ".opencode", "skills"), { recursive: true });
+    await mkdir(join(projectRoot, ".agents", "skills"), { recursive: true });
     await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }, null, 2));
+    await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("local-review"));
+    await symlink(relative(dirname(openCodeLink), skillDir), openCodeLink);
+    await symlink(relative(dirname(piLink), skillDir), piLink);
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1
+agents = ["opencode", "pi"]
 
 [[plugins]]
 name = "local-tools"
@@ -298,6 +307,8 @@ source = "path:."
     expect(JSON.parse(await readFile(join(pluginDir, "plugin.json"), "utf-8"))).toEqual({
       name: "local-tools",
     });
+    expect(existsSync(openCodeLink)).toBe(false);
+    expect(existsSync(piLink)).toBe(false);
     expect((await loadConfig(join(projectRoot, "agents.toml"))).plugins).toEqual([]);
     expect((await loadLockfile(join(projectRoot, "agents.lock")))!.plugins).toEqual({});
   });
@@ -395,6 +406,52 @@ source = "path:plugins/review-tools"
     expect(config.plugins).toEqual([]);
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile!.plugins).toEqual({});
+  });
+
+  it("does not treat malformed lockfile plugin names as projection roots when removing by source", async () => {
+    const outsideSkillDir = join(projectRoot, "outside", "keep");
+    const linkDir = join(projectRoot, ".opencode", "skills");
+    const linkPath = join(linkDir, "keep");
+    await mkdir(outsideSkillDir, { recursive: true });
+    await mkdir(linkDir, { recursive: true });
+    await writeFile(join(outsideSkillDir, "SKILL.md"), SKILL_MD("keep"));
+    await symlink(relative(linkDir, outsideSkillDir), linkPath);
+    await writeFile(join(projectRoot, "agents.toml"), `version = 1\nagents = ["opencode"]\n`);
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      plugins: {
+        "../../outside": { source: "org/old-tools" },
+      },
+    });
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runRemovePluginSource({ scope, source: "org/old-tools" }))
+      .resolves.toEqual(["../../outside"]);
+
+    expect(existsSync(linkPath)).toBe(true);
+    expect(await readFile(join(outsideSkillDir, "SKILL.md"), "utf-8")).toBe(SKILL_MD("keep"));
+    expect((await loadLockfile(join(projectRoot, "agents.lock")))!.plugins).toEqual({});
+  });
+
+  it("does not delete outside the skills directory for malformed lockfile names", async () => {
+    const hooksDir = join(projectRoot, ".agents", "hooks");
+    await mkdir(hooksDir, { recursive: true });
+    await writeFile(join(hooksDir, "keep.sh"), "echo keep\n");
+    await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        "../hooks": { source: "path:old-skills" },
+      },
+    });
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runRemoveSource({ scope, source: "path:old-skills" }))
+      .resolves.toEqual(["../hooks"]);
+
+    expect(await readFile(join(hooksDir, "keep.sh"), "utf-8")).toBe("echo keep\n");
+    expect((await loadLockfile(join(projectRoot, "agents.lock")))!.skills).toEqual({});
   });
 
   it("throws RemoveError for skill not in config", async () => {
