@@ -277,6 +277,7 @@ async function runOpenCodePluginProof() {
     encoding: "utf-8",
   });
   assertSymlink(".opencode/skills/plugin-qa");
+  assertFile(".opencode/skills/.dotagents-managed/plugin-qa");
   if (!skills.includes("plugin-qa") || !skills.includes("DOTAGENTS_PLUGIN_QA_FIXTURE")) {
     throw new Error("OpenCode debug skill did not include projected plugin skill");
   }
@@ -464,7 +465,9 @@ function assertPluginOutputs() {
   assertFile(".agents/plugins/qa-tools/com.example.client/agents/plugin-reviewer.md");
   assertFile(".agents/plugins/qa-tools/.claude-plugin/plugin.json");
   assertSymlink(".agents/skills/plugin-qa");
+  assertFile(".agents/skills/.dotagents-managed/plugin-qa");
   assertFileIncludes(".agents/.gitignore", "/skills/plugin-qa");
+  assertFileIncludes(".agents/.gitignore", "/skills/.dotagents-managed/");
   assertFileIncludes("agents.lock", "qa-tools");
   assertFile(".agents/plugins/marketplace.json");
   assertFile(".agents/plugins/marketplace.json.dotagents-managed");
@@ -513,6 +516,7 @@ function assertPluginOutputs() {
   assertFileIncludes(".grok/plugins/qa-tools/skills/plugin-qa/SKILL.md", "DOTAGENTS_PLUGIN_QA_FIXTURE");
 
   assertSymlink(".opencode/skills/plugin-qa");
+  assertFile(".opencode/skills/.dotagents-managed/plugin-qa");
   assertMissing(".opencode/agents/plugin-reviewer.md");
 }
 

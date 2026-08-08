@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, rm, rmdir, stat, symlink, writeFile } from "node:fs/promises";
-import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { loadSkillMd } from "@sentry/dotagents-lib";
 import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest, parsePluginMcp, type LegacyPluginManifest } from "../schema.js";
 import type { PluginDeclaration } from "../types.js";
@@ -36,6 +36,11 @@ interface ComponentLink {
   destPath: string;
 }
 
+interface PluginSkillComponent {
+  name: string;
+  sourcePath: string;
+}
+
 const OPENCODE_SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const SKILL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
@@ -48,8 +53,8 @@ export async function projectedPiSkillNames(
   const selected = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes("pi"));
   for (const plugin of selected) {
     for (const skillsDir of componentDirs(plugin, "skills", "skills", "pi")) {
-      for (const name of await skillNamesInDir(plugin, skillsDir)) {
-        if (SKILL_NAME_PATTERN.test(name)) {names.add(name);}
+      for (const skill of await discoverSkillComponents("pi", plugin, skillsDir)) {
+        names.add(skill.name);
       }
     }
   }
@@ -93,9 +98,8 @@ export async function reconcilePluginOutputs(
   agentIds: string[],
   plugins: PluginDeclaration[],
   projectRoot: string,
-  extraManagedPluginRoots: string[] = [],
 ): Promise<{ result: PluginWriteResult; pruned: string[] }> {
-  const pruned = await prunePluginOutputs(agentIds, plugins, projectRoot, extraManagedPluginRoots);
+  const pruned = await prunePluginOutputs(agentIds, plugins, projectRoot);
   const result = await writePluginOutputs(agentIds, plugins, projectRoot);
   return { result, pruned };
 }
@@ -126,22 +130,11 @@ export async function verifyPluginOutputs(
 
   for (const plugin of selected) {
     const agents = selectedAgentIds(agentIds, plugin);
-    if (agents.includes("claude")) {
-      const filePath = join(plugin.pluginDir, ".claude-plugin", "plugin.json");
+    for (const spec of NATIVE_PLUGIN_MANIFEST_TARGETS) {
+      if (!agents.includes(spec.agent)) {continue;}
+      const filePath = join(plugin.pluginDir, spec.dir, "plugin.json");
       if (!existsSync(filePath)) {
-        issues.push({ agent: "claude", name: plugin.name, issue: `Claude plugin manifest missing: ${filePath}` });
-      }
-    }
-    if (agents.includes("cursor")) {
-      const filePath = join(plugin.pluginDir, ".cursor-plugin", "plugin.json");
-      if (!existsSync(filePath)) {
-        issues.push({ agent: "cursor", name: plugin.name, issue: `Cursor plugin manifest missing: ${filePath}` });
-      }
-    }
-    if (agents.includes("codex")) {
-      const filePath = join(plugin.pluginDir, ".codex-plugin", "plugin.json");
-      if (!existsSync(filePath)) {
-        issues.push({ agent: "codex", name: plugin.name, issue: `Codex plugin manifest missing: ${filePath}` });
+        issues.push({ agent: spec.agent, name: plugin.name, issue: `${spec.label} plugin manifest missing: ${filePath}` });
       }
     }
     if (agents.includes("grok")) {
@@ -153,12 +146,12 @@ export async function verifyPluginOutputs(
   }
 
   for (const link of await desiredComponentLinks("opencode", agentIds, selected, projectRoot, [])) {
-    if (!await symlinkPointsTo(link.destPath, link.sourcePath)) {
+    if (!await symlinkPointsTo(link.destPath, link.sourcePath) || !await isManagedComponentLink(link.destPath)) {
       issues.push({ agent: link.agent, name: link.name, issue: `OpenCode plugin ${link.kind} projection missing: ${link.destPath}` });
     }
   }
   for (const link of await desiredComponentLinks("pi", agentIds, selected, projectRoot, [])) {
-    if (!await symlinkPointsTo(link.destPath, link.sourcePath)) {
+    if (!await symlinkPointsTo(link.destPath, link.sourcePath) || !await isManagedComponentLink(link.destPath)) {
       issues.push({ agent: link.agent, name: link.name, issue: `Pi plugin ${link.kind} projection missing: ${link.destPath}` });
     }
   }
@@ -166,22 +159,13 @@ export async function verifyPluginOutputs(
   return issues;
 }
 
-/** Removes stale dotagents-managed plugin runtime artifacts.
- *
- * `extraManagedPluginRoots` lets callers prune component symlinks for plugin
- * bundles that were just removed from the canonical install tree.
- */
+/** Removes stale dotagents-managed plugin runtime artifacts. */
 export async function prunePluginOutputs(
   agentIds: string[],
   plugins: PluginDeclaration[],
   projectRoot: string,
-  extraManagedPluginRoots: string[] = [],
 ): Promise<string[]> {
   const pruned: string[] = [];
-  const managedPluginRoots = [
-    ...plugins.map((plugin) => plugin.pluginDir),
-    ...extraManagedPluginRoots,
-  ];
   const desiredMarketplacePaths = new Set(
     marketplaceOutputs(agentIds, projectRoot, plugins).map((output) => output.filePath),
   );
@@ -213,13 +197,13 @@ export async function prunePluginOutputs(
   const desiredOpenCodeLinks = new Set(
     (await desiredComponentLinks("opencode", agentIds, plugins, projectRoot, [])).map((link) => link.destPath),
   );
-  pruned.push(...await pruneManagedComponentLinks(join(projectRoot, ".opencode", "skills"), desiredOpenCodeLinks, managedPluginRoots));
-  pruned.push(...await pruneManagedComponentLinks(join(projectRoot, ".opencode", "agents"), desiredOpenCodeLinks, managedPluginRoots));
+  pruned.push(...await pruneManagedComponentLinks(join(projectRoot, ".opencode", "skills"), desiredOpenCodeLinks));
+  pruned.push(...await pruneManagedComponentLinks(join(projectRoot, ".opencode", "agents"), desiredOpenCodeLinks));
 
   const desiredPiLinks = new Set(
     (await desiredComponentLinks("pi", agentIds, plugins, projectRoot, [])).map((link) => link.destPath),
   );
-  pruned.push(...await pruneManagedComponentLinks(join(projectRoot, ".agents", "skills"), desiredPiLinks, managedPluginRoots));
+  pruned.push(...await pruneManagedComponentLinks(join(projectRoot, ".agents", "skills"), desiredPiLinks));
 
   const canonicalPluginDir = join(projectRoot, ".agents", "plugins");
   if (existsSync(canonicalPluginDir)) {
@@ -382,7 +366,7 @@ async function writeComponentProjections(
 ): Promise<number> {
   let written = 0;
   for (const link of await desiredComponentLinks(agent, agentIds, plugins, projectRoot, warnings)) {
-    if (await writeManagedComponentLink(link, projectRoot, warnings)) {written++;}
+    if (await writeManagedComponentLink(link, warnings)) {written++;}
   }
   return written;
 }
@@ -449,6 +433,21 @@ async function skillComponentLinks(
   destRoot: string,
   warnings: PluginWriteWarning[],
 ): Promise<ComponentLink[]> {
+  return (await discoverSkillComponents(agent, plugin, skillsDir, warnings)).map((skill) => ({
+    agent,
+    kind: "skill",
+    name: plugin.name,
+    sourcePath: skill.sourcePath,
+    destPath: join(destRoot, skill.name),
+  }));
+}
+
+async function discoverSkillComponents(
+  agent: ComponentProjectionAgent,
+  plugin: PluginDeclaration,
+  skillsDir: string,
+  warnings: PluginWriteWarning[] = [],
+): Promise<PluginSkillComponent[]> {
   if (!existsSync(skillsDir)) {return [];}
   if (!await isDirectoryPath(skillsDir)) {
     warnings.push({
@@ -467,7 +466,7 @@ async function skillComponentLinks(
     return [];
   }
 
-  const links: ComponentLink[] = [];
+  const skills: PluginSkillComponent[] = [];
   for (const entry of await readdir(skillsDir, { withFileTypes: true })) {
     if (!entry.isDirectory() && !entry.isSymbolicLink()) {continue;}
     const sourcePath = join(skillsDir, entry.name);
@@ -514,38 +513,12 @@ async function skillComponentLinks(
       continue;
     }
 
-    links.push({
-      agent,
-      kind: "skill",
-      name: plugin.name,
+    skills.push({
+      name: skillName,
       sourcePath,
-      destPath: join(destRoot, skillName),
     });
   }
-  return links;
-}
-
-async function skillNamesInDir(
-  plugin: PluginDeclaration,
-  skillsDir: string,
-): Promise<string[]> {
-  if (!existsSync(skillsDir)) {return [];}
-  if (!await isDirectoryPath(skillsDir)) {return [];}
-  if (!await isContainedPluginPath(plugin.pluginDir, skillsDir)) {return [];}
-
-  const names: string[] = [];
-  for (const entry of await readdir(skillsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory() && !entry.isSymbolicLink()) {continue;}
-    const skillMd = join(skillsDir, entry.name, "SKILL.md");
-    if (!existsSync(skillMd)) {continue;}
-    if (!await isContainedPluginPath(plugin.pluginDir, skillMd)) {continue;}
-    try {
-      names.push((await loadSkillMd(skillMd)).name);
-    } catch {
-      // Invalid skills are skipped by the projection writer too.
-    }
-  }
-  return names;
+  return skills;
 }
 
 async function markdownComponentLinks(
@@ -612,12 +585,13 @@ async function isContainedPluginPath(pluginDir: string, filePath: string): Promi
 
 async function writeManagedComponentLink(
   link: ComponentLink,
-  projectRoot: string,
   warnings: PluginWriteWarning[],
 ): Promise<boolean> {
   if (await pathExists(link.destPath)) {
-    if (await symlinkPointsTo(link.destPath, link.sourcePath)) {return false;}
-    if (!await isManagedComponentLink(link.destPath, projectRoot)) {
+    if (await symlinkPointsTo(link.destPath, link.sourcePath) && await isManagedComponentLink(link.destPath)) {
+      return false;
+    }
+    if (!await isManagedComponentLink(link.destPath)) {
       warnings.push({
         agent: link.agent,
         name: link.name,
@@ -626,10 +600,26 @@ async function writeManagedComponentLink(
       return false;
     }
     await rm(link.destPath, { force: true });
+    await removeComponentLinkMarker(link.destPath);
   }
 
   await mkdir(dirname(link.destPath), { recursive: true });
-  await symlink(relative(dirname(link.destPath), link.sourcePath), link.destPath);
+  const symlinkTarget = relative(dirname(link.destPath), link.sourcePath);
+  const markerCreated = await claimComponentLinkMarker(link.destPath, symlinkTarget);
+  if (markerCreated === null) {
+    warnings.push({
+      agent: link.agent,
+      name: link.name,
+      message: `${displayName(link.agent)} plugin ${link.kind} ownership marker exists and is not managed by dotagents: ${componentLinkMarkerPath(link.destPath)}`,
+    });
+    return false;
+  }
+  try {
+    await symlink(symlinkTarget, link.destPath);
+  } catch (err) {
+    if (markerCreated) {await removeComponentLinkMarker(link.destPath);}
+    throw err;
+  }
   return true;
 }
 
@@ -704,14 +694,20 @@ async function writeManagedJsonOutput(
 
 /** Checks Grok directory projections using the non-JSON marker file. */
 async function isManagedProjection(path: string): Promise<boolean> {
-  return existsSync(join(path, ".dotagents-managed"));
+  const markerPath = join(path, ".dotagents-managed");
+  try {
+    const markerStat = await lstat(markerPath);
+    return markerStat.isFile() && await readFile(markerPath, "utf-8") === "Generated by dotagents. Do not edit.\n";
+  } catch (err) {
+    if (isNotFoundError(err)) {return false;}
+    throw err;
+  }
 }
 
-/** Prunes stale component symlinks whose targets resolve under managed plugin roots. */
+/** Prunes stale component symlinks carrying a marker in the reserved ownership directory. */
 async function pruneManagedComponentLinks(
   dir: string,
   desiredPaths: Set<string>,
-  managedPluginRoots: string[],
 ): Promise<string[]> {
   if (!existsSync(dir)) {return [];}
 
@@ -720,10 +716,12 @@ async function pruneManagedComponentLinks(
   for (const entry of entries) {
     const path = join(dir, entry.name);
     if (desiredPaths.has(path)) {continue;}
-    if (!await isManagedComponentLink(path, managedPluginRoots)) {continue;}
+    if (!await isManagedComponentLink(path)) {continue;}
     await rm(path, { force: true });
+    await removeComponentLinkMarker(path);
     pruned.push(path);
   }
+  await pruneOrphanComponentMarkers(dir);
   return pruned;
 }
 
@@ -757,37 +755,120 @@ async function isDirectoryPath(filePath: string): Promise<boolean> {
   }
 }
 
-async function isManagedComponentLink(filePath: string, managedRoot: string | string[]): Promise<boolean> {
+async function isManagedComponentLink(filePath: string): Promise<boolean> {
   try {
     const stat = await lstat(filePath);
     if (!stat.isSymbolicLink()) {return false;}
-    const lexicalTarget = resolve(dirname(filePath), await readlink(filePath));
-    const roots = Array.isArray(managedRoot)
-      ? managedRoot
-      : [join(managedRoot, ".agents", "plugins")];
-    try {
-      const target = await realpath(filePath);
-      const canonicalRoots = await Promise.all(roots.map(async (root) => {
-        try {
-          return await realpath(root);
-        } catch (err) {
-          if (isNotFoundError(err)) {return resolve(root);}
-          throw err;
-        }
-      }));
-      return canonicalRoots.some((root) => isInside(target, root));
-    } catch (err) {
-      if (!isNotFoundError(err)) {return false;}
-      return roots.some((root) => isInside(lexicalTarget, root));
-    }
+    const markerPath = await safeComponentLinkMarkerPath(filePath, false);
+    if (!markerPath || !(await lstat(markerPath)).isFile()) {return false;}
+    const target = await readlink(filePath);
+    return await readFile(markerPath, "utf-8") === componentLinkMarkerContent(target);
   } catch {
     return false;
   }
 }
 
-function isInside(path: string, root: string): boolean {
-  const relPath = relative(resolve(root), resolve(path));
-  return relPath === "" || (!relPath.startsWith("..") && !isAbsolute(relPath));
+function componentLinkMarkerPath(filePath: string): string {
+  return join(dirname(filePath), ".dotagents-managed", basename(filePath));
+}
+
+async function claimComponentLinkMarker(filePath: string, target: string): Promise<boolean | null> {
+  const markerPath = await safeComponentLinkMarkerPath(filePath, true);
+  if (!markerPath) {return null;}
+  const content = componentLinkMarkerContent(target);
+  try {
+    await writeFile(markerPath, content, { encoding: "utf-8", flag: "wx" });
+    return true;
+  } catch (err) {
+    if (!(err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "EEXIST")) {
+      throw err;
+    }
+  }
+  try {
+    const markerStat = await lstat(markerPath);
+    if (!markerStat.isFile()) {return null;}
+    return await readFile(markerPath, "utf-8") === content ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+function componentLinkMarkerContent(target: string): string {
+  return `managedBy=dotagents\ntarget=${JSON.stringify(target)}\n`;
+}
+
+function isComponentLinkMarkerContent(content: string): boolean {
+  const prefix = "managedBy=dotagents\ntarget=";
+  if (!content.startsWith(prefix) || !content.endsWith("\n")) {return false;}
+  try {
+    const target = JSON.parse(content.slice(prefix.length, -1));
+    return typeof target === "string" && content === componentLinkMarkerContent(target);
+  } catch {
+    return false;
+  }
+}
+
+async function safeComponentLinkMarkerPath(filePath: string, createDir: boolean): Promise<string | null> {
+  const componentDir = dirname(filePath);
+  const markerDir = join(componentDir, ".dotagents-managed");
+  try {
+    const markerDirStat = await lstat(markerDir);
+    if (!markerDirStat.isDirectory()) {return null;}
+  } catch (err) {
+    if (!isNotFoundError(err) || !createDir) {return null;}
+    try {
+      await mkdir(markerDir);
+    } catch (mkdirErr) {
+      if (!(mkdirErr instanceof Error && "code" in mkdirErr && (mkdirErr as NodeJS.ErrnoException).code === "EEXIST")) {
+        throw mkdirErr;
+      }
+    }
+    if (!(await lstat(markerDir)).isDirectory()) {return null;}
+  }
+
+  try {
+    const [componentRealPath, markerRealPath] = await Promise.all([
+      realpath(componentDir),
+      realpath(markerDir),
+    ]);
+    if (relative(componentRealPath, markerRealPath) !== ".dotagents-managed") {return null;}
+  } catch {
+    return null;
+  }
+  return join(markerDir, basename(filePath));
+}
+
+async function removeComponentLinkMarker(filePath: string): Promise<void> {
+  const markerPath = await safeComponentLinkMarkerPath(filePath, false);
+  if (!markerPath) {return;}
+  await rm(markerPath, { force: true });
+  await rmdirIfEmpty(dirname(markerPath));
+}
+
+async function pruneOrphanComponentMarkers(componentDir: string): Promise<void> {
+  const probePath = join(componentDir, ".marker-probe");
+  const probeMarkerPath = await safeComponentLinkMarkerPath(probePath, false);
+  if (!probeMarkerPath) {return;}
+  const markerDir = dirname(probeMarkerPath);
+  for (const entry of await readdir(markerDir, { withFileTypes: true })) {
+    if (!entry.isFile()) {continue;}
+    const markerPath = join(markerDir, entry.name);
+    const content = await readFile(markerPath, "utf-8");
+    if (!isComponentLinkMarkerContent(content)) {continue;}
+    const componentPath = join(componentDir, entry.name);
+    if (await pathExists(componentPath)) {
+      try {
+        const componentStat = await lstat(componentPath);
+        if (componentStat.isSymbolicLink() && content === componentLinkMarkerContent(await readlink(componentPath))) {
+          continue;
+        }
+      } catch (err) {
+        if (!isNotFoundError(err)) {throw err;}
+      }
+    }
+    await rm(markerPath, { force: true });
+  }
+  await rmdirIfEmpty(markerDir);
 }
 
 function displayName(agent: ComponentProjectionAgent): string {

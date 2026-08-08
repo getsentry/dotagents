@@ -12,6 +12,7 @@ The core agentic QA asserts:
 - `.opencode/agents/code-reviewer.md` exists
 - generated Markdown contains the dotagents managed marker
 - plugin skills selected for OpenCode are symlinked into `.opencode/skills/`
+  with ownership markers under `.opencode/skills/.dotagents-managed/`
 
 OpenCode does not support dotagents hooks in the current agent definition, so hook warnings for OpenCode are expected when the fixture includes hooks.
 

@@ -3,7 +3,14 @@ import { lstat, mkdtemp, mkdir, readdir, readFile, realpath, rename, rm, symlink
 import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installPluginBundle, isSameProjectPluginConfig, lockEntryForPlugin, resolvePlugin, type ResolvedPlugin } from "./store.js";
+import {
+  installPluginBundle,
+  isSameProjectPluginConfig,
+  loadInstalledPlugins,
+  lockEntryForPlugin,
+  resolvePlugin,
+  type ResolvedPlugin,
+} from "./store.js";
 
 vi.mock("node:fs/promises", async () => {
   const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
@@ -65,6 +72,69 @@ describe("plugin store", () => {
         },
       })).rejects.toThrow("Plugin bundle symlink resolves outside the plugin directory");
       expect(existsSync(join(pluginsDir, "review-tools"))).toBe(false);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects broken plugin bundle symlinks", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    const sourceDir = join(projectRoot, "source", "review-tools");
+    const pluginsDir = join(projectRoot, ".agents", "plugins");
+    await mkdir(sourceDir, { recursive: true });
+    await mkdir(pluginsDir, { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({ name: "review-tools" }));
+    await symlink("missing.md", join(sourceDir, "broken.md"));
+
+    try {
+      await expect(installPluginBundle(pluginsDir, {
+        type: "local",
+        plugin: {
+          name: "review-tools",
+          source: "path:source/review-tools",
+          pluginDir: sourceDir,
+          manifest: { name: "review-tools" },
+        },
+      })).rejects.toThrow("Plugin bundle contains an invalid symlink");
+      expect(existsSync(join(pluginsDir, "review-tools"))).toBe(false);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects installed plugin roots that resolve outside the plugin directory", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    const pluginsDir = join(projectRoot, ".agents", "plugins");
+    const outsideDir = join(projectRoot, "outside", "review-tools");
+    await mkdir(pluginsDir, { recursive: true });
+    await mkdir(outsideDir, { recursive: true });
+    await writeFile(join(outsideDir, "plugin.json"), JSON.stringify({ name: "review-tools" }));
+    await symlink(outsideDir, join(pluginsDir, "review-tools"));
+
+    try {
+      const result = await loadInstalledPlugins(pluginsDir, [{
+        name: "review-tools",
+        source: "path:source/review-tools",
+      }]);
+      expect(result.plugins).toEqual([]);
+      expect(result.issues[0]?.issue).toContain("Installed plugin resolves outside source");
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("reports installed plugin bundles without a manifest", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    const pluginsDir = join(projectRoot, ".agents", "plugins");
+    await mkdir(join(pluginsDir, "review-tools", "skills"), { recursive: true });
+
+    try {
+      const result = await loadInstalledPlugins(pluginsDir, [{
+        name: "review-tools",
+        source: "path:source/review-tools",
+      }]);
+      expect(result.plugins).toEqual([]);
+      expect(result.issues[0]?.issue).toContain("has no plugin.json or supported native manifest");
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }

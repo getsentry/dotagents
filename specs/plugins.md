@@ -362,7 +362,7 @@ Agent Plugin bundle
 | Cursor | Keep portable core intact | Read only namespaces registered to the Cursor adapter | Generate the project marketplace with the same project-root-relative source contract and, only when required, a managed `.cursor-plugin/plugin.json` adapter derived from core metadata plus its registered extension. |
 | Codex | Keep portable core intact | Read only namespaces registered to the Codex adapter | Generate `.agents/plugins/marketplace.json` with local source paths resolved from the project root, plus a managed `.codex-plugin/plugin.json` adapter only for Codex-only metadata the portable manifest cannot express. |
 | Grok Build | Copy the validated bundle without changing portable files | Read only namespaces registered to the Grok adapter | Generate `.grok/plugins/<name>/` as a managed copy until Grok can consume the canonical bundle directly. |
-| OpenCode | Project plugin skills and merge normalized MCP servers into OpenCode config when needed | Read only namespaces registered to the OpenCode adapter | Symlink skills into `.opencode/skills/`; project explicitly declared OpenCode resources such as agents; do not generate JavaScript or TypeScript plugin modules. |
+| OpenCode | Project plugin skills and merge normalized MCP servers into OpenCode config when needed | Read only namespaces registered to the OpenCode adapter | Symlink skills into `.opencode/skills/`; generalized legacy bundles may project Markdown agents, while standard extension resources are preserved but not projected yet; do not generate JavaScript or TypeScript plugin modules. |
 | Pi | Project supported skills | Read only namespaces registered to the Pi adapter | Symlink skills into `.agents/skills/`; ignore unsupported MCP or extension components with warnings. |
 
 Pi is an explicit isolation exception. Its plugin surface is the shared
@@ -476,8 +476,10 @@ Generated state is deterministic and dotagents-managed:
 1. JSON keys and plugin entries are sorted.
 2. Generated files end in one newline.
 3. Existing unmanaged files are never overwritten.
-4. Generated JSON ownership uses adjacent `.dotagents-managed` sidecars;
-   legacy `metadata.managedBy` files remain recognized for migration.
+4. Generated JSON ownership uses adjacent `.dotagents-managed` sidecars.
+   Component symlinks use marker files in a reserved sibling
+   `.dotagents-managed/` directory so markers cannot consume a valid component
+   name. Legacy `metadata.managedBy` files remain recognized for JSON migration.
 5. Managed registration, manifests, copies, links, and MCP entries are pruned
    when a plugin or target is removed.
 6. `.agents/.gitignore` lists copied managed bundles and generated links without

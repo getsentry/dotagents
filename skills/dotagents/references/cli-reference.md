@@ -108,6 +108,8 @@ npx @sentry/dotagents remove find-bugs
 
 Removes from `agents.toml`, deletes managed installed files, updates the lockfile, prunes generated plugin outputs when needed, and regenerates `.agents/.gitignore`. Passing a source removes all matching skills and plugins from that source.
 
+If a skill and plugin share the same name, name-based removal is rejected. When their sources differ, pass the dependency's source to disambiguate.
+
 For skills sourced from a wildcard entry (`name = "*"`), interactively prompts whether to add the skill to the wildcard's `exclude` list. If declined, the removal is cancelled.
 
 ### `sync`
@@ -143,7 +145,7 @@ npx @sentry/dotagents doctor --fix
 |------|-------------|
 | `--fix` | Auto-fix issues where possible |
 
-**Checks:** gitignore setup, legacy config fields, installed skills/plugins, symlinks, generated runtime configs, `.agents/.gitignore`.
+**Checks:** gitignore setup, legacy config fields, installed skills/plugins, symlinks, and `.agents/.gitignore`. Use `dotagents sync` to repair generated runtime configs.
 
 Useful when migrating to a new version of dotagents.
 

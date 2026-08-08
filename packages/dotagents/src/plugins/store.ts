@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import {
   applyDefaultRepositorySource,
@@ -212,9 +212,13 @@ export async function loadInstalledPlugins(
       continue;
     }
     try {
+      await assertInsideSourceRoot(pluginsDir, pluginDir, "Installed plugin");
       await assertPluginBundleSymlinksContained(pluginDir);
       const loaded = await loadManifest(pluginDir);
-      const manifest = loaded?.manifest ?? { name: config.name };
+      if (!loaded) {
+        throw new Error("Plugin bundle has no plugin.json or supported native manifest");
+      }
+      const manifest = loaded.manifest;
       await validateStandardBundleLayout(pluginDir, manifest, true);
       assertPluginName(config.name, manifest, pluginDir);
       plugins.push({
@@ -278,6 +282,7 @@ export async function pruneInstalledPlugins(
   for (const name of names) {
     const pluginPath = managedPluginPath(pluginsDir, name);
     if (!pluginPath || !existsSync(pluginPath)) {continue;}
+    if (!await isManagedPluginInstall(pluginPath)) {continue;}
     await rm(pluginPath, { recursive: true, force: true });
     pruned.push(name);
   }
@@ -285,8 +290,15 @@ export async function pruneInstalledPlugins(
 }
 
 /** Returns true when an existing plugin bundle was previously installed by dotagents. */
-export function isManagedPluginInstall(pluginDir: string): boolean {
-  return existsSync(join(pluginDir, DOTAGENTS_MANAGED_PLUGIN_MARKER));
+export async function isManagedPluginInstall(pluginDir: string): Promise<boolean> {
+  const markerPath = join(pluginDir, DOTAGENTS_MANAGED_PLUGIN_MARKER);
+  try {
+    const markerStat = await lstat(markerPath);
+    return markerStat.isFile() && await readFile(markerPath, "utf-8") === "managedBy=dotagents\n";
+  } catch (err) {
+    if (isNotFoundError(err)) {return false;}
+    throw err;
+  }
 }
 
 /** Converts a resolved plugin to its lockfile entry. */
@@ -482,9 +494,9 @@ async function loadPluginCandidate(
   await assertInsideSourceRoot(sourceRoot, pluginDir, "Plugin source");
 
   const loaded = await loadManifest(pluginDir);
-  const manifest = loaded?.manifest;
-  if (!manifest && !await hasPluginComponents(pluginDir)) {return null;}
-  if (manifest) {await validateStandardBundleLayout(pluginDir, manifest, false);}
+  if (!loaded) {return null;}
+  const manifest = loaded.manifest;
+  await validateStandardBundleLayout(pluginDir, manifest, false);
 
   const name = manifest && typeof manifest["name"] === "string"
     ? String(manifest["name"])
@@ -526,24 +538,6 @@ async function loadManifest(
   return null;
 }
 
-async function hasPluginComponents(pluginDir: string): Promise<boolean> {
-  const paths = [
-    "skills",
-    "agents",
-    "commands",
-    "rules",
-    "hooks/hooks.json",
-    ".mcp.json",
-    "mcp.json",
-    ".lsp.json",
-    ".app.json",
-    "monitors/monitors.json",
-    "bin",
-    "SKILL.md",
-  ];
-  return paths.some((path) => existsSync(join(pluginDir, path)));
-}
-
 async function validateStandardBundleLayout(
   pluginDir: string,
   manifest: PluginManifest,
@@ -575,6 +569,7 @@ async function validateStandardBundleLayout(
 }
 
 async function removeSourceOwnershipMarkers(dir: string): Promise<void> {
+  // Source-controlled markers never establish dotagents ownership or provenance.
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const filePath = join(dir, entry.name);
     if (

@@ -1,4 +1,6 @@
 import { z } from "zod/v4";
+import { validateHeaderName, validateHeaderValue } from "node:http";
+import { isIP } from "node:net";
 
 export const AGENT_PLUGIN_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
 export const AGENT_PLUGIN_MCP_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json";
@@ -36,9 +38,9 @@ const pluginAuthorSchema = z.object({
 }).passthrough();
 
 const standardPluginAuthorSchema = z.object({
-  name: z.string().min(1),
-  email: z.string().min(1).optional(),
-  url: z.string().min(1).optional(),
+  name: z.string().optional(),
+  email: z.string().optional(),
+  url: z.string().optional(),
 }).strict();
 
 const extensionNamespaceSchema = z.string().regex(
@@ -49,13 +51,13 @@ const extensionNamespaceSchema = z.string().regex(
 const standardPluginManifestSchema = z.object({
   $schema: z.literal(AGENT_PLUGIN_SCHEMA),
   name: agentPluginNameSchema,
-  description: z.string().min(1).optional(),
-  version: z.string().min(1).optional(),
+  description: z.string().optional(),
+  version: z.string().optional(),
   author: standardPluginAuthorSchema.optional(),
-  homepage: z.string().min(1).optional(),
-  repository: z.string().min(1).optional(),
-  license: z.string().min(1).optional(),
-  keywords: z.array(z.string().min(1)).optional(),
+  homepage: z.string().optional(),
+  repository: z.string().optional(),
+  license: z.string().optional(),
+  keywords: z.array(z.string()).optional(),
   extensions: z.record(extensionNamespaceSchema, z.record(z.string(), z.unknown())).optional(),
 });
 
@@ -129,9 +131,43 @@ function isPortableMcpCwd(value: string): boolean {
 
 const pluginMcpRemoteSchema = z.object({
   type: z.enum(["streamable-http", "sse"]),
-  url: z.url(),
-  headers: z.record(z.string(), z.string()).optional(),
+  url: z.url().refine(
+    isValidRemoteMcpUrl,
+    "Remote MCP URLs must be HTTPS, or HTTP on a loopback host, without user information or fragments",
+  ),
+  headers: z.record(z.string(), z.string()).refine(
+    areValidMcpHeaders,
+    "Remote MCP headers must be valid HTTP fields with case-insensitively unique names",
+  ).optional(),
 }).strict();
+
+function isValidRemoteMcpUrl(value: string): boolean {
+  const url = new URL(value);
+  if (!["http:", "https:"].includes(url.protocol)) {return false;}
+  if (url.username || url.password || url.hash) {return false;}
+  if (url.protocol === "https:") {return true;}
+
+  const hostname = url.hostname.replaceAll(/^\[|\]$/g, "").toLowerCase();
+  if (hostname === "localhost" || hostname === "::1") {return true;}
+  if (isIP(hostname) !== 4) {return false;}
+  return hostname.split(".")[0] === "127";
+}
+
+function areValidMcpHeaders(headers: Record<string, string>): boolean {
+  const names = new Set<string>();
+  for (const [name, value] of Object.entries(headers)) {
+    const normalized = name.toLowerCase();
+    if (names.has(normalized)) {return false;}
+    names.add(normalized);
+    try {
+      validateHeaderName(name);
+      validateHeaderValue(name, value);
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
 
 const pluginMcpServerSchema = z.union([pluginMcpStdioSchema, pluginMcpRemoteSchema]);
 

@@ -15,7 +15,7 @@ export async function writeAgentsGitignore(
   managedSubagentNames: string[] = [],
   managedPluginNames: string[] = [],
 ): Promise<void> {
-  const lines = [HEADER];
+  const lines = [HEADER, "/skills/.dotagents-managed/"];
   for (const name of managedSkillNames.toSorted()) {
     lines.push(`/skills/${name}`);
   }

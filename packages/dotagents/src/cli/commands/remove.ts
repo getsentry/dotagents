@@ -7,7 +7,6 @@ import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import {
   isWildcardDep,
-  PLUGIN_NAME_PATTERN,
   SKILL_NAME_PATTERN,
   type PluginConfig,
 } from "../../config/schema.js";
@@ -65,23 +64,31 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
   const skillDir = join(skillsDir, name);
 
   const config = await loadConfig(configPath);
+  const lockfile = await loadLockfile(lockPath);
 
   // Check if skill is an explicit entry
   const explicitDep = config.skills.find((s) => s.name === name);
   const explicitPlugin = config.plugins.find((plugin) => plugin.name === name);
+  if (explicitDep && !isWildcardDep(explicitDep) && explicitPlugin) {
+    throw new RemoveError(
+      `Name "${name}" matches both a skill and a plugin. When their sources differ, remove one by its source to disambiguate.`,
+    );
+  }
+  const locked = lockfile?.skills[name];
+  const wildcardDep = locked
+    ? config.skills.find((skill) => isWildcardDep(skill) && wildcardContainsLockedSkill(skill, name, locked))
+    : undefined;
+  if (explicitPlugin && wildcardDep) {
+    throw new RemoveError(
+      `Name "${name}" matches both a wildcard-provided skill and a plugin. When their sources differ, remove one by its source to disambiguate.`,
+    );
+  }
   if (explicitDep && !isWildcardDep(explicitDep)) {
-    const lockfile = await loadLockfile(lockPath);
     await removeSkillFromConfig(configPath, name);
     await rm(skillDir, { recursive: true, force: true });
 
     if (lockfile) {
       delete lockfile.skills[name];
-    }
-
-    if (explicitPlugin) {
-      await removePluginFromConfig(configPath, name);
-      await removePluginArtifacts(scope, [name], [explicitPlugin], lockfile);
-      return;
     }
 
     if (lockfile) {
@@ -92,24 +99,14 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
   }
 
   if (explicitPlugin) {
-    const lockfile = await loadLockfile(lockPath);
     await removePluginFromConfig(configPath, name);
     await removePluginArtifacts(scope, [name], [explicitPlugin], lockfile);
     return;
   }
 
   // Check if skill is from a wildcard entry (via lockfile source matching)
-  const lockfile = await loadLockfile(lockPath);
-  const locked = lockfile?.skills[name];
-  if (locked) {
-    const wildcardDep = config.skills.find(
-      (s) =>
-        isWildcardDep(s) &&
-        wildcardContainsLockedSkill(s, name, locked),
-    );
-    if (wildcardDep) {
-      throw new WildcardSkillRemoveError(name, locked.source);
-    }
+  if (locked && wildcardDep) {
+    throw new WildcardSkillRemoveError(name, locked.source);
   }
 
   throw new RemoveError(`Skill or plugin "${name}" not found in agents.toml.`);
@@ -242,7 +239,7 @@ async function removePluginArtifacts(
     const name = plugin.name;
     if (sameProjectPluginNames.has(name)) {continue;}
     const pluginDir = join(scope.pluginsDir, name);
-    if (isManagedPluginInstall(pluginDir)) {
+    if (await isManagedPluginInstall(pluginDir)) {
       managedPluginNames.add(name);
       continue;
     }
@@ -260,15 +257,6 @@ async function removePluginArtifacts(
       managedPluginNames.add(name);
     }
   }
-  const projectionPluginRoots = [
-    ...new Set([
-      ...managedPluginNames,
-      ...plugins.map((plugin) => plugin.name),
-    ]),
-  ]
-    .filter((name) => PLUGIN_NAME_PATTERN.test(name))
-    .map((name) => join(scope.pluginsDir, name));
-
   if (scope.scope === "project") {
     await pruneInstalledPlugins(scope.pluginsDir, managedPluginNames);
   }
@@ -286,7 +274,7 @@ async function removePluginArtifacts(
       .filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
       .filter((plugin) => existsSync(join(scope.pluginsDir, plugin.name)));
     const installedPlugins = await loadInstalledPlugins(scope.pluginsDir, remainingPluginConfigs);
-    await prunePluginOutputs(config.agents, installedPlugins.plugins, scope.root, projectionPluginRoots);
+    await prunePluginOutputs(config.agents, installedPlugins.plugins, scope.root);
   }
 
   await updateProjectGitignore(scope);

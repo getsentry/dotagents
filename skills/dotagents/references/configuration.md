@@ -103,7 +103,7 @@ MCP configs are written per-agent in the appropriate format:
 - Cursor: `.cursor/mcp.json` (JSON)
 - Codex: `.codex/config.toml` (TOML, shared with other Codex config)
 - VS Code: `.vscode/mcp.json` (JSON)
-- OpenCode: `opencode.json` (JSON, shared)
+- OpenCode: `.opencode/opencode.jsonc` by default (JSONC, shared); existing nested or root OpenCode config files are reused.
 
 ## Hooks
 

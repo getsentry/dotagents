@@ -102,7 +102,7 @@ agents = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 | `codex` | `.codex` | `.codex/config.toml` | -- | `.codex/agents/*.toml` |
 | `grok` | `.grok` | -- | -- | -- |
 | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` | -- |
-| `opencode` | `.opencode` | `opencode.json` | -- | `.opencode/agents/*.md` |
+| `opencode` | `.opencode` | `.opencode/opencode.jsonc` | -- | `.opencode/agents/*.md` |
 
 Custom subagents are declared with `[[subagents]]` entries. dotagents writes generated runtime-specific files during `install` and repairs them during `sync`:
 
@@ -128,7 +128,9 @@ Review the current diff and return findings with file references.
 
 dotagents can also import native runtime subagent files from `.claude/agents/`, `.cursor/agents/`, `.codex/agents/*.toml`, and `.opencode/agents/`. Input and matching-runtime output use the same native format: Markdown with YAML frontmatter for Claude, Cursor, and OpenCode; TOML for Codex. Claude and Codex identify agents by `name`, Cursor can derive `name` from the filename when omitted, and OpenCode uses the filename as the agent name. Multiple portable matches for the same subagent are rejected as ambiguous, while matching native runtime artifacts are merged. When the source format matches a target runtime, dotagents reuses the native source content for that runtime and only adds its managed-file marker. Other runtimes are generated from the portable `name`, `description`, and instructions. Subagent declarations intentionally cover only dependency source and runtime targets, not universal model/tool/permission behavior.
 
-Plugins are declared with `[[plugins]]` entries. dotagents installs canonical bundles into `.agents/plugins/<name>/` and generates runtime plugin outputs such as `.claude-plugin/marketplace.json`, `.agents/plugins/<name>/.claude-plugin/plugin.json`, `.cursor-plugin/marketplace.json`, `.agents/plugins/<name>/.cursor-plugin/plugin.json`, `.agents/plugins/marketplace.json`, `.agents/plugins/<name>/.codex-plugin/plugin.json`, `.grok/plugins/<name>/`, `.opencode/skills/<skill>/`, `.opencode/agents/<agent>.md`, and Pi skill links under `.agents/skills/<skill>/` where supported:
+OpenCode reuses an existing project config from `.opencode/opencode.jsonc`, `.opencode/opencode.json`, `opencode.jsonc`, or `opencode.json`, in that order. New projects use `.opencode/opencode.jsonc`.
+
+Plugins are declared with `[[plugins]]` entries. dotagents installs canonical bundles into `.agents/plugins/<name>/` and generates runtime plugin outputs such as `.claude-plugin/marketplace.json`, `.agents/plugins/<name>/.claude-plugin/plugin.json`, `.cursor-plugin/marketplace.json`, `.agents/plugins/<name>/.cursor-plugin/plugin.json`, `.agents/plugins/marketplace.json`, `.agents/plugins/<name>/.codex-plugin/plugin.json`, `.grok/plugins/<name>/`, `.opencode/skills/<skill>/`, and Pi skill links under `.agents/skills/<skill>/` where supported. During legacy migration, generalized bundles can also project Markdown agents into `.opencode/agents/`; standard extension agents are preserved but are not projected yet:
 
 ```toml
 [[plugins]]
@@ -138,7 +140,7 @@ path = "plugins/review-tools"
 targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 ```
 
-The canonical portable format is an [Agent Plugins](https://agent-plugins.org/) v1 bundle: required `plugin.json`, optional `skills/`, optional `mcp.json`, and reverse-domain client extensions. dotagents preserves those portable source files under `.agents/plugins/<name>/` and generates isolated target harnesses with adjacent ownership sidecars instead of adding dotagents fields to client JSON. Legacy generalized and native Claude/Cursor/Codex manifests remain discoverable during migration; native imports preserve their owning manifest and expose only core metadata and Agent Skills to other clients. Standard bundles reject legacy root components so client-specific behavior cannot leak across harnesses.
+The canonical portable format is an [Agent Plugins](https://agent-plugins.org/) v1 bundle: required `plugin.json`, optional `skills/`, optional `mcp.json`, and reverse-domain client extensions. dotagents preserves those portable source files under `.agents/plugins/<name>/` and generates isolated target harnesses. Generated JSON uses adjacent ownership sidecars, while component symlinks use markers in reserved `.dotagents-managed/` directories, so client-owned JSON remains unchanged. Legacy generalized and native Claude/Cursor/Codex manifests remain discoverable during migration; native imports preserve their owning manifest and expose only core metadata and Agent Skills to other clients. Standard bundles reject legacy root components so client-specific behavior cannot leak across harnesses.
 
 Plugin declarations are project-scope only for now. `dotagents --user install` rejects `[[plugins]]` entries because user-scope runtime plugin projections are not generated yet.
 

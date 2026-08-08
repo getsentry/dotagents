@@ -131,6 +131,8 @@ Remove a skill or plugin from `agents.toml`, delete managed installed files, and
 update the lockfile. You can also pass a source to remove all skills and plugins
 from that source. When removing a skill provided by a wildcard source, dotagents
 can add that skill to the wildcard `exclude` list.
+If a skill and plugin share the same name, name-based removal is rejected. When
+their sources differ, pass the dependency's source to disambiguate.
 
 Options:
 
@@ -288,9 +290,10 @@ dotagents doctor [--fix]
 ```
 
 Check project health and fix issues. Verifies gitignore setup, installed
-skills/plugins, symlinks, generated runtime configs, and detects legacy config
-fields. User-scope plugin declarations and same-project plugin declarations are
-reported because plugin runtime projections are project-scoped.
+skills/plugins, symlinks, and detects legacy config fields. Use `dotagents sync`
+to repair generated runtime configs. User-scope plugin declarations and
+same-project plugin declarations are reported because plugin runtime projections
+are project-scoped.
 
 Options:
 
@@ -344,9 +347,10 @@ Status output:
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `version` | integer | -- | Schema version. Always `1`. |
-| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `opencode` |
+| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `grok`, `vscode`, `opencode`, `pi`. `grok` and `pi` are plugin-only targets. |
 | `subagents` | table[] | `[]` | Custom subagent declarations for Claude, Cursor, Codex, and OpenCode |
-| `minimum_release_age` | integer | -- | Minimum commit age, in minutes, before a git skill can install. |
+| `plugins` | table[] | `[]` | Project-scoped plugin declarations for Claude, Cursor, Codex, Grok, OpenCode, and Pi. |
+| `minimum_release_age` | integer | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install. |
 | `minimum_release_age_exclude` | string[] | `[]` | Sources that bypass the minimum release age gate. Supports org names, `org/repo`, and `org/*`. |
 | `defaultRepositorySource` | string | `github` | Host used for shorthand `owner/repo` sources. Valid values: `github` or `gitlab`. |
 
@@ -424,7 +428,8 @@ sources; HTTPS well-known sources are not supported for plugins.
 New plugin bundles follow Agent Plugins v1 with a required `plugin.json` and
 optional `skills/` and `mcp.json`. dotagents preserves the raw bundle and
 generates isolated target adapters from the portable core. Generated JSON uses
-adjacent ownership sidecars, not dotagents-only fields inside client schemas.
+adjacent ownership sidecars; component symlinks use marker files in reserved
+`.dotagents-managed/` directories. Client schemas receive no dotagents-only fields.
 Legacy generalized and native Claude/Cursor/Codex manifests remain supported
 during migration. Native imports preserve the owning manifest and expose only
 core metadata and Agent Skills to other clients; native components are never
@@ -439,8 +444,10 @@ translated into unrelated clients' formats.
 | `targets` | string[] | No | Optional subset of configured agents. |
 
 Generated plugin outputs include Claude/Cursor/Codex marketplaces and native
-manifests, Grok plugin directories, OpenCode skill/agent links, and Pi skill
-links. dotagents rejects plugin sources that resolve to the same project's
+manifests, Grok plugin directories, OpenCode skill links, and Pi skill links.
+Generalized legacy bundles can also project Markdown agents into OpenCode;
+standard extension agents are preserved but not projected yet. dotagents rejects
+plugin sources that resolve to the same project's
 `.agents/plugins/<name>/` install destination, and user-scope plugins are not
 supported yet.
 

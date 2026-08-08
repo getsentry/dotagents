@@ -307,6 +307,7 @@ test -f .agents/plugins/qa-tools/.cursor-plugin/plugin.json
 test -f .agents/plugins/qa-tools/.codex-plugin/plugin.json
 test -f .grok/plugins/qa-tools/.dotagents-managed
 test -L .opencode/skills/plugin-qa
+test -f .opencode/skills/.dotagents-managed/plugin-qa
 test ! -e .opencode/agents/plugin-reviewer.md
 grep -q "code-reviewer" agents.lock
 grep -q "qa-tools" agents.lock
@@ -337,6 +338,7 @@ test -f .agents/plugins/qa-tools/.cursor-plugin/plugin.json
 test -f .agents/plugins/qa-tools/.codex-plugin/plugin.json
 test -f .grok/plugins/qa-tools/.dotagents-managed
 test -L .opencode/skills/plugin-qa
+test -f .opencode/skills/.dotagents-managed/plugin-qa
 test ! -e .opencode/agents/plugin-reviewer.md
 ```
 

@@ -81,9 +81,8 @@ export async function writePluginRuntime(
   config: AgentsConfig,
   scope: ScopeRoot,
   plugins: PluginDeclaration[],
-  extraManagedPluginRoots: string[] = [],
 ): Promise<{ agent: string; name: string; message: string }[]> {
   if (scope.scope !== "project") {return [];}
-  const { result } = await reconcilePluginOutputs(config.agents, plugins, scope.root, extraManagedPluginRoots);
+  const { result } = await reconcilePluginOutputs(config.agents, plugins, scope.root);
   return result.warnings;
 }

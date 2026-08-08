@@ -46,6 +46,24 @@ describe("plugin manifest schema", () => {
     expect(manifest.homepage).toBe("internal-homepage");
   });
 
+  it("accepts empty optional Agent Plugins metadata", () => {
+    const manifest = parsePluginManifest({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+      version: "",
+      description: "",
+      author: {},
+      homepage: "",
+      repository: "",
+      license: "",
+      keywords: [""],
+    }, "plugin.json");
+
+    expect(manifest.author).toEqual({});
+    expect(manifest.description).toBe("");
+    expect(manifest.keywords).toEqual([""]);
+  });
+
   it("drops unknown standard fields and malformed extensions", () => {
     const manifest = parsePluginManifest({
       $schema: AGENT_PLUGIN_SCHEMA,
@@ -191,6 +209,45 @@ describe("plugin MCP schema", () => {
       expect(() => parsePluginMcp({
         $schema: AGENT_PLUGIN_MCP_SCHEMA,
         mcpServers: { bad: { type: "stdio", command: "node", env: { [key]: "override" } } },
+      }, "mcp.json")).toThrow('Invalid plugin MCP server "bad"');
+    }
+  });
+
+  it("enforces remote MCP URL and header requirements", () => {
+    for (const url of [
+      "ftp://example.com/mcp",
+      "http://example.com/mcp",
+      "https://user@example.com/mcp",
+      "https://example.com/mcp#fragment",
+    ]) {
+      expect(() => parsePluginMcp({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { bad: { type: "streamable-http", url } },
+      }, "mcp.json")).toThrow('Invalid plugin MCP server "bad"');
+    }
+
+    for (const url of [
+      "https://example.com/mcp",
+      "http://localhost/mcp",
+      "http://127.0.0.1/mcp",
+      "http://[::1]/mcp",
+    ]) {
+      expect(parsePluginMcp({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { valid: { type: "streamable-http", url } },
+      }, "mcp.json").mcpServers["valid"]?.type).toBe("streamable-http");
+    }
+
+    for (const headers of [
+      { "Bad Header": "value" },
+      { Good: "line\nbreak" },
+      { Authorization: "one", authorization: "two" },
+    ]) {
+      expect(() => parsePluginMcp({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          bad: { type: "streamable-http", url: "https://example.com/mcp", headers },
+        },
       }, "mcp.json")).toThrow('Invalid plugin MCP server "bad"');
     }
   });

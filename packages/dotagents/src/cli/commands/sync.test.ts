@@ -81,6 +81,18 @@ describe("runSync", () => {
     expect(config.skills).toHaveLength(2);
   });
 
+  it("ignores plugin skill ownership markers when adopting orphaned skills", async () => {
+    await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
+    const markerDir = join(projectRoot, ".agents", "skills", ".dotagents-managed");
+    await mkdir(markerDir, { recursive: true });
+    await writeFile(join(markerDir, "plugin-skill"), "managedBy=dotagents\n");
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.adopted).toEqual([]);
+    expect((await loadConfig(join(projectRoot, "agents.toml"))).skills).toEqual([]);
+  });
+
   it("adopted skill does not appear as orphan issue", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -1024,6 +1036,10 @@ source = "path:."
     await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
     await mkdir(join(projectRoot, ".agents", "plugins", "stale-managed"), { recursive: true });
     await mkdir(join(projectRoot, ".agents", "plugins", "local-unmanaged"), { recursive: true });
+    await writeFile(
+      join(projectRoot, ".agents", "plugins", "stale-managed", ".dotagents-managed"),
+      "managedBy=dotagents\n",
+    );
     await writeFile(
       join(projectRoot, ".agents", "plugins", "local-unmanaged", "plugin.json"),
       JSON.stringify({ name: "local-unmanaged" }, null, 2),

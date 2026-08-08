@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { GitError, TrustError } from "@sentry/dotagents-lib";
@@ -87,7 +87,6 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     config,
     scope,
     plugins.plugins,
-    plugins.staleManaged.map((name) => join(scope.pluginsDir, name)),
   );
 
   return {

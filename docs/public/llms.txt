@@ -161,7 +161,8 @@ Each `[[skills]]` entry requires `name` and `source`. Optional fields: `ref` (gi
 | `name` | string | Yes | Skill name. Pattern: `^[a-zA-Z0-9][a-zA-Z0-9._-]*$`. Use `"*"` for wildcard. |
 | `source` | string | Yes | `owner/repo` (resolved via `defaultRepositorySource`), `owner/repo@ref`, `https://github.com/owner/repo`, `https://gitlab.com/group/repo`, `https://<domain>` (well-known), `git:<url>`, or `path:<relative>` |
 | `ref` | string | No | Git ref (tag, branch, or SHA). Also supported inline: `owner/repo@ref`. |
-| `path` | string | No | Subdirectory within repo. Only needed when auto-discovery fails. |
+| `path` | string | No | Named skills: explicit skill directory when auto-discovery fails. Wildcards: contained source subtree to scan recursively. |
+| `exclude` | string[] | No | Skills to skip. Wildcard entries only. |
 
 Source formats:
 - `owner/repo` -- shorthand resolved by `defaultRepositorySource` (defaults to GitHub)
@@ -205,7 +206,7 @@ Config files generated per agent:
 - Cursor: `.cursor/mcp.json` (JSON)
 - Codex: `.codex/config.toml` (TOML, shared with other Codex config)
 - VS Code: `.vscode/mcp.json` (JSON)
-- OpenCode: `opencode.json` (JSON, shared)
+- OpenCode: `.opencode/opencode.jsonc` by default (JSONC, shared). Existing `.opencode/opencode.json`, `opencode.jsonc`, or `opencode.json` files are reused in precedence order.
 
 ### Hooks
 
@@ -278,11 +279,11 @@ Generated files include a dotagents header marker. `install` and `sync` overwrit
 
 Each `[[plugins]]` entry requires `name` and `source`. Optional: `ref`, `path`, and `targets`. When `targets` is absent or empty, dotagents targets every agent listed in `agents`.
 
-dotagents installs canonical plugin bundles under `.agents/plugins/<name>/`. New bundles use Agent Plugins v1: required `plugin.json`, optional `skills/`, optional `mcp.json`, and reverse-domain client extensions. Portable source files are preserved, target JSON remains client-native, and dotagents ownership uses adjacent sidecar markers. Standard bundles reject legacy root components so client-specific behavior cannot leak across harnesses. Native Claude/Cursor/Codex bundles may be imported conservatively: the owning native manifest is preserved, while other clients receive only core metadata and Agent Skills. Native MCP and client-specific components are not guessed or cross-translated.
+dotagents installs canonical plugin bundles under `.agents/plugins/<name>/`. New bundles use Agent Plugins v1: required `plugin.json`, optional `skills/`, optional `mcp.json`, and reverse-domain client extensions. Portable source files are preserved and target JSON remains client-native. Generated JSON uses adjacent ownership sidecars; component symlinks use marker files in reserved `.dotagents-managed/` directories. Standard bundles reject legacy root components so client-specific behavior cannot leak across harnesses. Native Claude/Cursor/Codex bundles may be imported conservatively: the owning native manifest is preserved, while other clients receive only core metadata and Agent Skills. Native MCP and client-specific components are not guessed or cross-translated.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | Yes | Lowercase plugin identifier. Must start with lowercase `a-z`, end with lowercase `a-z` or `0-9`, and contain only lowercase letters, numbers, hyphens, and dots. |
+| `name` | string | Yes | 1-64 character lowercase plugin identifier with alphanumeric ends, only letters, numbers, hyphens, and dots, and no `--` or `..`. |
 | `source` | string | Yes | Source repository or local directory. Supports GitHub/GitLab shorthands, git URLs, and `path:` sources; HTTPS well-known skill indexes are not supported for plugins. |
 | `ref` | string | No | Optional git ref override. |
 | `path` | string | No | Optional explicit plugin directory path inside the source. |
@@ -293,7 +294,7 @@ Generated project-scope plugin outputs:
 - Cursor: `.cursor-plugin/marketplace.json` and `.agents/plugins/<name>/.cursor-plugin/plugin.json`
 - Codex: `.agents/plugins/marketplace.json` and `.agents/plugins/<name>/.codex-plugin/plugin.json`
 - Grok: `.grok/plugins/<name>/` managed copy
-- OpenCode: plugin `skills/` symlinked into `.opencode/skills/`; plugin Markdown `agents/` symlinked into `.opencode/agents/`
+- OpenCode: plugin `skills/` symlinked into `.opencode/skills/`; generalized legacy plugin Markdown `agents/` symlinked into `.opencode/agents/`. Standard extension agents are preserved but not projected yet.
 - Pi: plugin `skills/` symlinked into `.agents/skills/` when `pi` is a configured plugin target
 
 Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated marketplaces and Claude/Cursor/Codex manifests use adjacent `.dotagents-managed` sidecars so client-owned JSON remains schema-native; legacy `metadata.managedBy` output remains recognizable during migration. Managed Grok copies and OpenCode/Pi component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when their on-disk `.dotagents-managed` marker proves ownership.
@@ -372,6 +373,8 @@ npx @sentry/dotagents remove <name|source> [-y]
 ```
 
 Remove a skill or plugin from `agents.toml`, delete managed installed files, update the lockfile, prune generated plugin outputs when needed, and regenerate `.agents/.gitignore`. For skills sourced from a wildcard entry, prompts to add the skill to the `exclude` list instead of removing the entire wildcard.
+
+If a skill and plugin share the same name, name-based removal is rejected. When their sources differ, pass the dependency's source to disambiguate.
 
 When the argument is a source specifier (e.g. `owner/repo`, a URL) instead of a dependency name, removes all skills and plugins from that source. Confirms before removing unless `-y` is passed.
 
@@ -463,7 +466,7 @@ Skills from wildcard entries are marked with a wildcard indicator.
 npx @sentry/dotagents doctor [--fix]
 ```
 
-Check project health: gitignore setup, installed skills and plugins, symlinks, generated config, and legacy config fields. Use `--fix` to auto-repair issues.
+Check project health: gitignore setup, installed skills and plugins, symlinks, and legacy config fields. Use `--fix` to auto-repair issues; use `sync` to repair generated runtime config drift.
 
 | Flag | Description |
 |------|-------------|
@@ -477,7 +480,7 @@ Check project health: gitignore setup, installed skills and plugins, symlinks, g
 | `cursor` | Cursor | `.cursor` | `.claude/skills/` -> `.agents/skills/` | `.cursor/mcp.json` | `.cursor/hooks.json` | `.cursor/agents/*.md` |
 | `codex` | Codex | `.codex` | (reads `.agents/skills/` natively) | `.codex/config.toml` | Not supported | `.codex/agents/*.toml` |
 | `vscode` | VS Code Copilot | `.vscode` | (reads `.agents/skills/` natively) | `.vscode/mcp.json` | `.claude/settings.json` | Not supported |
-| `opencode` | OpenCode | `.opencode` | (reads `.agents/skills/` natively) | `opencode.json` | Not supported | `.opencode/agents/*.md` |
+| `opencode` | OpenCode | `.opencode` | (reads `.agents/skills/` natively) | `.opencode/opencode.jsonc` by default | Not supported | `.opencode/agents/*.md` |
 
 Claude uses `.claude/skills/`, and Cursor shares the same Claude-compatible skills symlink. Codex, VS Code, and OpenCode read `.agents/skills/` directly.
 

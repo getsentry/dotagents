@@ -25,6 +25,10 @@ description: Test skill ${name}
 ---
 `;
 
+function componentMarkerContent(linkPath: string, targetPath: string): string {
+  return `managedBy=dotagents\ntarget=${JSON.stringify(relative(dirname(linkPath), targetPath))}\n`;
+}
+
 describe("runRemove", () => {
   let tmpDir: string;
   let stateDir: string;
@@ -280,6 +284,16 @@ source = "path:plugins/review-tools"
     await writeFile(join(skillDir, "SKILL.md"), SKILL_MD("local-review"));
     await symlink(relative(dirname(openCodeLink), skillDir), openCodeLink);
     await symlink(relative(dirname(piLink), skillDir), piLink);
+    await mkdir(join(dirname(openCodeLink), ".dotagents-managed"), { recursive: true });
+    await mkdir(join(dirname(piLink), ".dotagents-managed"), { recursive: true });
+    await writeFile(
+      join(dirname(openCodeLink), ".dotagents-managed", "local-review"),
+      componentMarkerContent(openCodeLink, skillDir),
+    );
+    await writeFile(
+      join(dirname(piLink), ".dotagents-managed", "local-review"),
+      componentMarkerContent(piLink, skillDir),
+    );
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1
@@ -313,7 +327,7 @@ source = "path:."
     expect((await loadLockfile(join(projectRoot, "agents.lock")))!.plugins).toEqual({});
   });
 
-  it("removes both an explicit skill and plugin that share a name", async () => {
+  it("rejects an ambiguous name shared by an explicit skill and plugin", async () => {
     const skillSource = join(projectRoot, "local-skills", "review-tools");
     await mkdir(skillSource, { recursive: true });
     await writeFile(join(skillSource, "SKILL.md"), SKILL_MD("review-tools"));
@@ -339,20 +353,59 @@ source = "path:plugins/review-tools"
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    await runRemove({ scope, name: "review-tools" });
+    await expect(runRemove({ scope, name: "review-tools" }))
+      .rejects.toThrow("matches both a skill and a plugin");
 
     const config = await loadConfig(join(projectRoot, "agents.toml"));
-    expect(config.skills.find((skill) => skill.name === "review-tools")).toBeUndefined();
-    expect(config.plugins.find((plugin) => plugin.name === "review-tools")).toBeUndefined();
+    expect(config.skills.find((skill) => skill.name === "review-tools")).toBeDefined();
+    expect(config.plugins.find((plugin) => plugin.name === "review-tools")).toBeDefined();
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
-    expect(lockfile!.skills["review-tools"]).toBeUndefined();
-    expect(lockfile!.plugins["review-tools"]).toBeUndefined();
-    expect(existsSync(join(projectRoot, ".agents", "skills", "review-tools"))).toBe(false);
-    expect(existsSync(join(projectRoot, ".agents", "skills", "plugin-review"))).toBe(false);
-    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(false);
+    expect(lockfile!.skills["review-tools"]).toBeDefined();
+    expect(lockfile!.plugins["review-tools"]).toBeDefined();
+    expect(existsSync(join(projectRoot, ".agents", "skills", "review-tools"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "skills", "plugin-review"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(true);
   });
 
-  it("removes an installed plugin even when its lock entry is missing", async () => {
+  it("rejects an ambiguous name shared by a wildcard skill and plugin", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[skills]]
+name = "*"
+source = "org/skills"
+
+[[plugins]]
+name = "pdf"
+source = "path:plugins/pdf"
+`,
+    );
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {
+        pdf: {
+          source: "org/skills",
+          resolved_url: "https://github.com/org/skills.git",
+          resolved_path: "pdf",
+        },
+      },
+      plugins: { pdf: { source: "path:plugins/pdf" } },
+    });
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runRemove({ scope, name: "pdf" }))
+      .rejects.toThrow("matches both a wildcard-provided skill and a plugin");
+
+    const config = await loadConfig(join(projectRoot, "agents.toml"));
+    expect(config.skills).toHaveLength(1);
+    expect(config.plugins).toHaveLength(1);
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.skills["pdf"]).toBeDefined();
+    expect(lockfile!.plugins["pdf"]).toBeDefined();
+  });
+
+  it("preserves an installed plugin without an ownership marker", async () => {
     const pluginSource = join(projectRoot, "plugins", "review-tools");
     await mkdir(join(pluginSource, "skills", "review"), { recursive: true });
     await writeFile(join(pluginSource, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
@@ -379,7 +432,7 @@ source = "path:plugins/review-tools"
 
     const config = await loadConfig(join(projectRoot, "agents.toml"));
     expect(config.plugins.find((plugin) => plugin.name === "review-tools")).toBeUndefined();
-    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(true);
     expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
   });
 

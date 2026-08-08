@@ -51,7 +51,6 @@ export const NATIVE_PLUGIN_MANIFEST_TARGETS: ReadonlyArray<{
   { agent: "codex", label: "Codex", dir: ".codex-plugin" },
 ];
 
-/** Writes selected native manifests with one shared validation pass. */
 export async function writePluginManifests(
   plugin: PluginDeclaration,
   agents: string[],
@@ -80,8 +79,16 @@ export async function writePluginManifests(
         mcpPath = "./mcp.json";
         if (await isManagedJsonFile(adapterMcpPath)) {await removeManagedJsonFile(adapterMcpPath);}
       } else if (Object.keys(standardMcp.config.mcpServers).length > 0) {
-        if (await writeManagedJsonIfChanged(adapterMcpPath, stableJson(standardMcp.config))) {written++;}
-        mcpPath = `./${spec.dir}/mcp.json`;
+        if (existsSync(adapterMcpPath) && !await isManagedJsonFile(adapterMcpPath)) {
+          warnings.push({
+            agent: spec.agent,
+            name: plugin.name,
+            message: `${spec.label} plugin MCP adapter exists and is not managed by dotagents: ${adapterMcpPath}`,
+          });
+        } else {
+          if (await writeManagedJsonIfChanged(adapterMcpPath, stableJson(standardMcp.config))) {written++;}
+          mcpPath = `./${spec.dir}/mcp.json`;
+        }
       }
     } else if (await isManagedJsonFile(adapterMcpPath)) {
       await removeManagedJsonFile(adapterMcpPath);
@@ -99,7 +106,6 @@ export async function writePluginManifests(
   return written;
 }
 
-/** Builds the managed Claude manifest projection using Claude-native paths. */
 function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcpPath: string | undefined, portableSkills: boolean): Record<string, unknown> {
   const manifest: Record<string, unknown> = {
     name: plugin.name,
@@ -137,7 +143,6 @@ function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
   return manifest;
 }
 
-/** Builds the managed Cursor manifest projection using Cursor-native paths. */
 function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcpPath: string | undefined, portableSkills: boolean): Record<string, unknown> {
   const manifest: Record<string, unknown> = {
     name: plugin.name,
@@ -180,7 +185,6 @@ function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
   return manifest;
 }
 
-/** Builds the managed Codex manifest projection and stamps dotagents ownership metadata. */
 function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcpPath: string | undefined, portableSkills: boolean): Record<string, unknown> {
   const standard = isStandardPluginManifest(plugin.manifest);
   const legacyComponents = usesLegacyPluginComponents(plugin, "codex");

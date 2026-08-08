@@ -40,12 +40,12 @@ function staleManagedPluginNames(
 }
 
 /** Ensures installs only replace plugin destinations already owned by dotagents. */
-function assertPluginDestinationIsManaged(
+async function assertPluginDestinationIsManaged(
   pluginsDir: string,
   name: string,
-): void {
+): Promise<void> {
   if (!existsSync(join(pluginsDir, name))) {return;}
-  if (isManagedPluginInstall(join(pluginsDir, name))) {return;}
+  if (await isManagedPluginInstall(join(pluginsDir, name))) {return;}
 
   throw new InstallError(
     `Plugin "${name}" install destination already exists and is not managed by dotagents: ${join(pluginsDir, name)}`,
@@ -86,7 +86,7 @@ export async function installPlugins(
             "Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.",
         );
       }
-      assertPluginDestinationIsManaged(scope.pluginsDir, pluginConfig.name);
+      await assertPluginDestinationIsManaged(scope.pluginsDir, pluginConfig.name);
       plugins.push(await installPluginBundle(scope.pluginsDir, resolved));
       lockEntries[resolved.plugin.name] = lockEntryForPlugin(resolved);
     }

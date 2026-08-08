@@ -56,6 +56,10 @@ describe("plugin writer", () => {
     expect(resolve(dirname(linkPath), await readlink(linkPath))).toBe(resolve(expectedTarget));
   }
 
+  function componentMarkerContent(linkPath: string, targetPath: string): string {
+    return `managedBy=dotagents\ntarget=${JSON.stringify(relative(dirname(linkPath), targetPath))}\n`;
+  }
+
   async function writePluginSkill(pluginDir: string, name: string): Promise<void> {
     await mkdir(join(pluginDir, "skills", name), { recursive: true });
     await writeFile(
@@ -262,6 +266,35 @@ describe("plugin writer", () => {
     }
   });
 
+  it("preserves unmanaged native MCP adapter files", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: {
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "alpha-tools",
+      },
+    });
+    await writeFile(join(alpha.pluginDir, "mcp.json"), JSON.stringify({
+      $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+      mcpServers: {
+        good: { type: "stdio", command: "node" },
+        bad: { type: "stdio", command: "node server.js" },
+      },
+    }));
+    const adapterMcpPath = join(alpha.pluginDir, ".claude-plugin", "mcp.json");
+    await mkdir(join(alpha.pluginDir, ".claude-plugin"), { recursive: true });
+    await writeFile(adapterMcpPath, '{"user":"owned"}\n');
+
+    const result = await writePluginOutputs(["claude"], [alpha], root);
+
+    expect(await readFile(adapterMcpPath, "utf-8")).toBe('{"user":"owned"}\n');
+    expect(existsSync(`${adapterMcpPath}.dotagents-managed`)).toBe(false);
+    const manifest = JSON.parse(
+      await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    expect(manifest["mcpServers"]).toBeUndefined();
+    expect(result.warnings.some((warning) => warning.message.includes("MCP adapter exists and is not managed"))).toBe(true);
+  });
+
   it("skips component symlinks that escape the plugin bundle", async () => {
     const alpha = await plugin("alpha-tools");
     const outsideFile = join(root, "outside.md");
@@ -451,6 +484,33 @@ describe("plugin writer", () => {
     expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"))).toBe(false);
   });
 
+  it.each(["directory", "wrong-content file"] as const)(
+    "does not treat a Grok marker %s as projection ownership",
+    async (markerShape) => {
+    const alpha = await plugin("alpha-tools");
+    const dest = join(root, ".grok", "plugins", "alpha-tools");
+    await mkdir(dest, { recursive: true });
+    if (markerShape === "directory") {
+      await mkdir(join(dest, ".dotagents-managed"));
+    } else {
+      await writeFile(join(dest, ".dotagents-managed"), "owned-by=user\n");
+    }
+    await writeFile(join(dest, "user.txt"), "keep\n");
+
+    const result = await writePluginOutputs(["grok"], [alpha], root);
+
+    expect(result).toEqual({
+      written: 0,
+      warnings: [{
+        agent: "grok",
+        name: "alpha-tools",
+        message: `Grok plugin projection exists and is not managed by dotagents: ${dest}`,
+      }],
+    });
+    expect(await readFile(join(dest, "user.txt"), "utf-8")).toBe("keep\n");
+    },
+  );
+
   it("projects plugin skills and agents into OpenCode native locations", async () => {
     const alpha = await plugin("alpha-tools");
     await writePluginSkill(alpha.pluginDir, "plugin-qa");
@@ -473,6 +533,29 @@ describe("plugin writer", () => {
       join(alpha.pluginDir, "agents", "plugin-reviewer.md"),
     );
     expect(await verifyPluginOutputs(["opencode"], [alpha], root)).toEqual([]);
+  });
+
+  it("keeps component ownership markers outside the valid skill-name namespace", async () => {
+    const alpha = await plugin("alpha-tools");
+    await writePluginSkill(alpha.pluginDir, "foo");
+    await writePluginSkill(alpha.pluginDir, "foo.dotagents-managed");
+
+    const result = await writePluginOutputs(["pi"], [alpha], root);
+
+    expect(result).toEqual({ written: 2, warnings: [] });
+    for (const name of ["foo", "foo.dotagents-managed"]) {
+      await expectSymlinkTarget(
+        join(root, ".agents", "skills", name),
+        join(alpha.pluginDir, "skills", name),
+      );
+      expect(await readFile(
+        join(root, ".agents", "skills", ".dotagents-managed", name),
+        "utf-8",
+      )).toBe(componentMarkerContent(
+        join(root, ".agents", "skills", name),
+        join(alpha.pluginDir, "skills", name),
+      ));
+    }
   });
 
   it("skips plugin skills paths that are not directories", async () => {
@@ -671,13 +754,62 @@ describe("plugin writer", () => {
     });
   });
 
+  it("does not write through unmanaged component ownership marker symlinks", async () => {
+    const alpha = await plugin("alpha-tools");
+    await writePluginSkill(alpha.pluginDir, "plugin-qa");
+    const skillsDir = join(root, ".opencode", "skills");
+    const markerPath = join(skillsDir, ".dotagents-managed", "plugin-qa");
+    const outsideFile = join(root, "outside-marker.txt");
+    await mkdir(skillsDir, { recursive: true });
+    await mkdir(dirname(markerPath), { recursive: true });
+    await writeFile(outsideFile, "keep\n");
+    await symlink(outsideFile, markerPath);
+
+    const result = await writePluginOutputs(["opencode"], [alpha], root);
+
+    expect(existsSync(join(skillsDir, "plugin-qa"))).toBe(false);
+    expect(await readFile(outsideFile, "utf-8")).toBe("keep\n");
+    expect((await lstat(markerPath)).isSymbolicLink()).toBe(true);
+    expect(result.warnings).toContainEqual({
+      agent: "opencode",
+      name: "alpha-tools",
+      message: `OpenCode plugin skill ownership marker exists and is not managed by dotagents: ${markerPath}`,
+    });
+  });
+
+  it("does not write through symlinked component ownership directories", async () => {
+    const alpha = await plugin("alpha-tools");
+    await writePluginSkill(alpha.pluginDir, "plugin-qa");
+    const skillsDir = join(root, ".opencode", "skills");
+    const markerDir = join(skillsDir, ".dotagents-managed");
+    const outsideDir = join(root, "outside-markers");
+    await mkdir(skillsDir, { recursive: true });
+    await mkdir(outsideDir, { recursive: true });
+    await symlink(outsideDir, markerDir);
+
+    const result = await writePluginOutputs(["opencode"], [alpha], root);
+
+    expect(existsSync(join(skillsDir, "plugin-qa"))).toBe(false);
+    expect(existsSync(join(outsideDir, "plugin-qa"))).toBe(false);
+    expect((await lstat(markerDir)).isSymbolicLink()).toBe(true);
+    expect(result.warnings).toContainEqual({
+      agent: "opencode",
+      name: "alpha-tools",
+      message: `OpenCode plugin skill ownership marker exists and is not managed by dotagents: ${join(markerDir, "plugin-qa")}`,
+    });
+  });
+
   it("repairs dangling managed plugin component links", async () => {
     const alpha = await plugin("alpha-tools");
     await writePluginSkill(alpha.pluginDir, "plugin-qa");
     await mkdir(join(root, ".opencode", "skills"), { recursive: true });
-    await symlink(
-      relative(join(root, ".opencode", "skills"), join(root, ".agents", "plugins", "alpha-tools", "missing", "plugin-qa")),
-      join(root, ".opencode", "skills", "plugin-qa"),
+    const linkPath = join(root, ".opencode", "skills", "plugin-qa");
+    const missingTarget = join(root, ".agents", "plugins", "alpha-tools", "missing", "plugin-qa");
+    await symlink(relative(dirname(linkPath), missingTarget), linkPath);
+    await mkdir(join(root, ".opencode", "skills", ".dotagents-managed"), { recursive: true });
+    await writeFile(
+      join(root, ".opencode", "skills", ".dotagents-managed", "plugin-qa"),
+      componentMarkerContent(linkPath, missingTarget),
     );
 
     const result = await writePluginOutputs(["opencode"], [alpha], root);
@@ -706,6 +838,69 @@ describe("plugin writer", () => {
 
     expect(pruned).not.toContain(linkPath);
     expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
+  });
+
+  it("does not prune through symlinked component ownership directories", async () => {
+    const outsideTarget = join(root, "outside", "plugin-qa");
+    const outsideMarkers = join(root, "outside-markers");
+    const skillsDir = join(root, ".opencode", "skills");
+    const linkPath = join(skillsDir, "plugin-qa");
+    await mkdir(outsideTarget, { recursive: true });
+    await mkdir(outsideMarkers, { recursive: true });
+    await mkdir(skillsDir, { recursive: true });
+    await writeFile(
+      join(outsideMarkers, "plugin-qa"),
+      componentMarkerContent(linkPath, outsideTarget),
+    );
+    await symlink(relative(skillsDir, outsideTarget), linkPath);
+    await symlink(outsideMarkers, join(skillsDir, ".dotagents-managed"));
+
+    const pruned = await prunePluginOutputs([], [], root);
+
+    expect(pruned).not.toContain(linkPath);
+    expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
+    expect(await readFile(join(outsideMarkers, "plugin-qa"), "utf-8")).toBe(
+      componentMarkerContent(linkPath, outsideTarget),
+    );
+  });
+
+  it("removes orphan component markers before a later user link can inherit ownership", async () => {
+    const alpha = await plugin("alpha-tools");
+    await writePluginSkill(alpha.pluginDir, "plugin-qa");
+    const linkPath = join(root, ".opencode", "skills", "plugin-qa");
+    const markerPath = join(root, ".opencode", "skills", ".dotagents-managed", "plugin-qa");
+    await writePluginOutputs(["opencode"], [alpha], root);
+    await rm(linkPath);
+
+    await prunePluginOutputs([], [], root);
+
+    expect(existsSync(markerPath)).toBe(false);
+    const userTarget = join(root, "user-skill");
+    await mkdir(userTarget);
+    await symlink(relative(dirname(linkPath), userTarget), linkPath);
+
+    const pruned = await prunePluginOutputs([], [], root);
+
+    expect(pruned).not.toContain(linkPath);
+    expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
+  });
+
+  it("does not transfer a target-bound marker to a replacement user link", async () => {
+    const alpha = await plugin("alpha-tools");
+    await writePluginSkill(alpha.pluginDir, "plugin-qa");
+    const linkPath = join(root, ".opencode", "skills", "plugin-qa");
+    const markerPath = join(root, ".opencode", "skills", ".dotagents-managed", "plugin-qa");
+    await writePluginOutputs(["opencode"], [alpha], root);
+    await rm(linkPath);
+    const userTarget = join(root, "user-skill");
+    await mkdir(userTarget);
+    await symlink(relative(dirname(linkPath), userTarget), linkPath);
+
+    const pruned = await prunePluginOutputs([], [], root);
+
+    expect(pruned).not.toContain(linkPath);
+    expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
+    expect(existsSync(markerPath)).toBe(false);
   });
 
   it("warns and skips invalid OpenCode plugin skill names", async () => {

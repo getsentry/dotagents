@@ -106,6 +106,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     const entries = await readdir(skillsDir, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory()) {continue;}
+      if (entry.name === ".dotagents-managed") {continue;}
       if (declaredNames.has(entry.name)) {continue;}
 
       const locked = lockfile?.skills[entry.name];
@@ -346,7 +347,6 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       config.agents,
       pluginDecls,
       scope.root,
-      staleManagedPluginNames.map((name) => join(pluginsDir, name)),
     );
     pluginsRepaired = pluginResult.written + prunedPluginOutputs.length + prunedInstalledPlugins.length;
     pluginIssues = await verifyPluginOutputs(config.agents, pluginDecls, scope.root);

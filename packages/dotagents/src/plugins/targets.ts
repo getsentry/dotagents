@@ -33,6 +33,7 @@ export function selectedAgentIds(
     .filter((target) => SUPPORTED_PLUGIN_AGENT_IDS.has(target));
 }
 
+/** Keeps native legacy components with their owning client while generalized legacy bundles remain portable. */
 export function usesLegacyPluginComponents(
   plugin: Pick<PluginDeclaration, "manifest" | "nativeSource">,
   target: string,
