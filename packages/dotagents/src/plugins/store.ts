@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { lstat, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import {
   applyDefaultRepositorySource,
   copyDir,
@@ -257,7 +257,7 @@ async function assertPluginBundleSymlinksContained(pluginDir: string): Promise<v
           );
         }
         const targetRelativePath = relative(rootRealPath, targetRealPath);
-        if (targetRelativePath.startsWith("..") || isAbsolute(targetRelativePath)) {
+        if (isOutsideRelativePath(targetRelativePath)) {
           throw new Error(
             `Plugin bundle symlink resolves outside the plugin directory: ${relativePath(pluginDir, entryPath)}`,
           );
@@ -298,7 +298,7 @@ export async function isManagedPluginInstall(pluginDir: string): Promise<boolean
     const markerStat = await lstat(markerPath);
     return markerStat.isFile() && await readFile(markerPath, "utf-8") === "managedBy=dotagents\n";
   } catch (err) {
-    if (isNotFoundError(err)) {return false;}
+    if (isNotFoundError(err) || isNotDirectoryError(err)) {return false;}
     throw err;
   }
 }
@@ -338,7 +338,7 @@ export function isProjectPluginSource(
 ): boolean {
   const rootPath = resolve(pluginsDir);
   const relPath = relative(rootPath, resolve(pluginDir));
-  return relPath === "" || (!relPath.startsWith("..") && !isAbsolute(relPath));
+  return relPath === "" || !isOutsideRelativePath(relPath);
 }
 
 /** Returns true when a plugin config resolves back into this project's managed plugin tree. */
@@ -358,7 +358,7 @@ export function isSameProjectPluginConfig(
       : resolve(sourceDir, ".agents", "plugins", plugin.name);
     if (!plugin.path && !existsSync(pluginDir)) {return false;}
     const relPath = relative(sourceDir, pluginDir);
-    if (relPath.startsWith("..") || isAbsolute(relPath)) {return false;}
+    if (isOutsideRelativePath(relPath)) {return false;}
     return isProjectPluginSource(pluginDir, pluginsDir);
   } catch {
     return false;
@@ -708,7 +708,7 @@ async function resolveInside(root: string, childPath: string, label: string): Pr
   const rootPath = resolve(root);
   const filePath = resolve(rootPath, childPath);
   const relPath = relative(rootPath, filePath);
-  if (relPath.startsWith("..") || isAbsolute(relPath)) {
+  if (isOutsideRelativePath(relPath)) {
     throw new Error(`${label} resolves outside source: ${childPath}`);
   }
   if (existsSync(filePath)) {
@@ -726,7 +726,7 @@ async function resolveMarketplaceSource(
   const filePath = resolve(marketplaceRoot, childPath);
   const sourceRootPath = resolve(sourceRoot);
   const relPath = relative(sourceRootPath, filePath);
-  if (relPath.startsWith("..") || isAbsolute(relPath)) {
+  if (isOutsideRelativePath(relPath)) {
     throw new Error(`${label} resolves outside source: ${childPath}`);
   }
   if (existsSync(filePath)) {
@@ -760,7 +760,7 @@ async function assertInsideSourceRoot(
     throw err;
   }
   const realRelPath = relative(rootRealPath, fileRealPath);
-  if (realRelPath.startsWith("..") || isAbsolute(realRelPath)) {
+  if (isOutsideRelativePath(realRelPath)) {
     throw new Error(`${label} resolves outside source: ${displayPath}`);
   }
 }
@@ -773,13 +773,21 @@ function managedPluginPath(pluginsDir: string, name: string): string | null {
   const rootPath = resolve(pluginsDir);
   const pluginPath = resolve(rootPath, name);
   const relPath = relative(rootPath, pluginPath);
-  if (!relPath || relPath.startsWith("..") || isAbsolute(relPath)) {return null;}
+  if (!relPath || isOutsideRelativePath(relPath)) {return null;}
   if (relPath.includes("/") || relPath.includes("\\")) {return null;}
   return pluginPath;
 }
 
 function relativePath(root: string, filePath: string): string {
   return relative(root, filePath).split("\\").join("/");
+}
+
+function isOutsideRelativePath(path: string): boolean {
+  return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
+}
+
+function isNotDirectoryError(err: unknown): boolean {
+  return err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOTDIR";
 }
 
 async function readJson(filePath: string): Promise<Record<string, unknown>> {

@@ -274,7 +274,13 @@ async function removePluginArtifacts(
       .filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
       .filter((plugin) => existsSync(join(scope.pluginsDir, plugin.name)));
     const installedPlugins = await loadInstalledPlugins(scope.pluginsDir, remainingPluginConfigs);
-    await prunePluginOutputs(config.agents, installedPlugins.plugins, scope.root);
+    if (installedPlugins.issues.length === 0) {
+      await prunePluginOutputs(config.agents, installedPlugins.plugins, scope.root);
+    } else {
+      console.log(chalk.yellow(
+        `Warning: Plugin runtime cleanup was skipped because these remaining plugins could not be loaded: ${installedPlugins.issues.map((issue) => issue.name).join(", ")}.`,
+      ));
+    }
   }
 
   await updateProjectGitignore(scope);

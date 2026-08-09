@@ -903,6 +903,34 @@ source = "path:plugin-source/review-tools"
     expect(existsSync(join(projectRoot, ".cursor-plugin", "marketplace.json"))).toBe(true);
   });
 
+  it("preserves plugin runtime outputs when an installed plugin is broken", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }));
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["opencode", "pi"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+    const scope = resolveScope("project", projectRoot);
+    await runSync({ scope });
+    const openCodeLink = join(projectRoot, ".opencode", "skills", "review");
+    const piLink = join(projectRoot, ".agents", "skills", "review");
+    await writeFile(join(pluginDir, "plugin.json"), "{broken");
+
+    const result = await runSync({ scope });
+
+    expect(result.issues.some((issue) => issue.type === "plugins" && issue.name === "review-tools")).toBe(true);
+    expect(existsSync(openCodeLink)).toBe(true);
+    expect(existsSync(piLink)).toBe(true);
+  });
+
   it("prunes removed native manifests before refreshing a surviving Grok copy", async () => {
     const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
     await mkdir(join(pluginDir, "skills", "review"), { recursive: true });

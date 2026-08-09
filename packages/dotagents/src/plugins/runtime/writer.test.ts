@@ -311,6 +311,36 @@ describe("plugin writer", () => {
     });
   });
 
+  it("warns when a Grok projection collides with a file", async () => {
+    const alpha = await plugin("alpha-tools");
+    const dest = join(root, ".grok", "plugins", "alpha-tools");
+    await mkdir(dirname(dest), { recursive: true });
+    await writeFile(dest, "owned by user\n");
+
+    const result = await writePluginOutputs(["grok"], [alpha], root);
+
+    expect(result.warnings).toEqual([{
+      agent: "grok",
+      name: "alpha-tools",
+      message: `Grok plugin projection exists and is not managed by dotagents: ${dest}`,
+    }]);
+    expect(await readFile(dest, "utf-8")).toBe("owned by user\n");
+  });
+
+  it("accepts contained plugin component directories whose names start with two dots", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: { name: "alpha-tools", skills: "..skills" },
+    });
+    const skillDir = join(alpha.pluginDir, "..skills", "plugin-qa");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), `---\nname: plugin-qa\ndescription: Plugin QA\n---\n`);
+
+    const result = await writePluginOutputs(["opencode"], [alpha], root);
+
+    expect(result.warnings).toEqual([]);
+    await expectSymlinkTarget(join(root, ".opencode", "skills", "plugin-qa"), skillDir);
+  });
+
   it("projects explicit runtime component paths before conventional discovery", async () => {
     const alpha = await plugin("alpha-tools", {
       manifest: {

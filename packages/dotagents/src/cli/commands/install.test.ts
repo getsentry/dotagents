@@ -536,6 +536,28 @@ source = "path:plugin-source/claude-tools"
     expect(await readFile(join(installedDir, "agents", "native.md"), "utf-8")).toBe("native agent");
     expect(JSON.parse(await readFile(join(installedDir, "mcp.json"), "utf-8"))).toEqual(nativeMcp);
   });
+  it("reports a plugin destination file as unmanaged", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+    await mkdir(join(projectRoot, ".agents", "plugins"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "plugins", "review-tools"), "owned by user\n");
+
+    await expect(runInstallCommand({ scope: resolveScope("project", projectRoot) }))
+      .rejects.toThrow(/install destination already exists and is not managed/);
+  });
+
   it.each(["directory", "wrong-content file"] as const)(
     "does not overwrite an existing plugin destination with an unmanaged marker %s",
     async (markerShape) => {

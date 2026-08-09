@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -270,6 +270,42 @@ source = "path:plugins/review-tools"
     expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(false);
     expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(false);
     expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
+  });
+
+  it("preserves runtime outputs when another installed plugin is broken", async () => {
+    for (const name of ["alpha", "beta"]) {
+      const pluginSource = join(projectRoot, "plugins", name);
+      await mkdir(join(pluginSource, "skills", name), { recursive: true });
+      await writeFile(join(pluginSource, "plugin.json"), JSON.stringify({ name }, null, 2));
+      await writeFile(join(pluginSource, "skills", name, "SKILL.md"), SKILL_MD(name));
+    }
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["opencode", "pi"]
+
+[[plugins]]
+name = "alpha"
+source = "path:plugins/alpha"
+
+[[plugins]]
+name = "beta"
+source = "path:plugins/beta"
+`,
+    );
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+    const openCodeLink = join(projectRoot, ".opencode", "skills", "beta");
+    const piLink = join(projectRoot, ".agents", "skills", "beta");
+    await writeFile(join(projectRoot, ".agents", "plugins", "beta", "plugin.json"), "{broken");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runRemove({ scope, name: "alpha" });
+
+    expect(existsSync(openCodeLink)).toBe(true);
+    expect(existsSync(piLink)).toBe(true);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Plugin runtime cleanup was skipped"));
+    log.mockRestore();
   });
 
   it("preserves a same-project plugin source when its lock entry is stale", async () => {

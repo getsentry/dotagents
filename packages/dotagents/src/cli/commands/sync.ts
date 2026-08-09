@@ -342,7 +342,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const prunedInstalledPlugins = await pruneInstalledPlugins(pluginsDir, staleManagedPluginNames);
   let pluginIssues: Awaited<ReturnType<typeof verifyPluginOutputs>> = [];
 
-  if (scope.scope === "project") {
+  if (scope.scope === "project" && installedPluginResult.issues.length === 0) {
     const { result: pluginResult, pruned: prunedPluginOutputs } = await reconcilePluginOutputs(
       config.agents,
       pluginDecls,
@@ -358,6 +358,8 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
         message: warning.message,
       });
     }
+  } else if (scope.scope === "project") {
+    pluginsRepaired = prunedInstalledPlugins.length;
   }
 
   for (const issue of installedPluginResult.issues) {
