@@ -247,6 +247,8 @@ describe("plugin MCP schema", () => {
       "http://localhost/mcp",
       "http://127.0.0.1/mcp",
       "http://[::1]/mcp",
+      "http://[0:0:0:0:0:0:0:1]/mcp",
+      "http://[0::1]/mcp",
     ]) {
       expect(parsePluginMcp({
         $schema: AGENT_PLUGIN_MCP_SCHEMA,

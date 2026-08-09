@@ -709,7 +709,7 @@ async function pruneManagedComponentLinks(
   dir: string,
   desiredPaths: Set<string>,
 ): Promise<string[]> {
-  if (!existsSync(dir)) {return [];}
+  if (!await isDirectoryPath(dir)) {return [];}
 
   const pruned: string[] = [];
   const entries = await readdir(dir, { withFileTypes: true });

@@ -18,6 +18,7 @@ vi.mock("node:fs/promises", async () => {
     ...actual,
     realpath: vi.fn(actual.realpath),
     rename: vi.fn(actual.rename),
+    rm: vi.fn(actual.rm),
   };
 });
 
@@ -26,6 +27,7 @@ describe("plugin store", () => {
     const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
     vi.mocked(realpath).mockImplementation(actual.realpath);
     vi.mocked(rename).mockImplementation(actual.rename);
+    vi.mocked(rm).mockImplementation(actual.rm);
   });
 
   it("preserves an empty resolved path for root git plugins", () => {
@@ -199,6 +201,49 @@ describe("plugin store", () => {
       expect(backupName).toBeDefined();
       const backupManifest = JSON.parse(await readFile(join(pluginsDir, backupName!, "plugin.json"), "utf-8"));
       expect(backupManifest.description).toBe("Original plugin");
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("commits an install when obsolete backup cleanup fails", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const sourceDir = join(projectRoot, "source", "review-tools");
+      const pluginsDir = join(projectRoot, ".agents", "plugins");
+      const destDir = join(pluginsDir, "review-tools");
+      await mkdir(sourceDir, { recursive: true });
+      await mkdir(destDir, { recursive: true });
+      await writeFile(
+        join(sourceDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools", description: "New plugin" }),
+        "utf-8",
+      );
+      await writeFile(
+        join(destDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools", description: "Original plugin" }),
+        "utf-8",
+      );
+
+      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+      vi.mocked(rm).mockImplementation(async (path, options) => {
+        if (String(path).includes(".backup-")) {throw new Error("backup cleanup failed");}
+        await actual.rm(path, options);
+      });
+
+      await expect(installPluginBundle(pluginsDir, {
+        type: "local",
+        plugin: {
+          name: "review-tools",
+          source: "path:source/review-tools",
+          pluginDir: sourceDir,
+          manifest: { name: "review-tools", description: "New plugin" },
+        },
+      })).resolves.toMatchObject({ pluginDir: destDir });
+
+      const installedManifest = JSON.parse(await readFile(join(destDir, "plugin.json"), "utf-8"));
+      expect(installedManifest.description).toBe("New plugin");
+      expect((await readdir(pluginsDir)).some((name) => name.includes(".backup-"))).toBe(true);
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }

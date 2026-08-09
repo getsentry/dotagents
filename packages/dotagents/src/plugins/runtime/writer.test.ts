@@ -884,6 +884,16 @@ describe("plugin writer", () => {
     );
   });
 
+  it("ignores component projection roots that are files during pruning", async () => {
+    const skillsPath = join(root, ".opencode", "skills");
+    await mkdir(dirname(skillsPath), { recursive: true });
+    await writeFile(skillsPath, "user-owned\n");
+
+    await expect(prunePluginOutputs([], [], root)).resolves.toEqual([]);
+
+    expect(await readFile(skillsPath, "utf-8")).toBe("user-owned\n");
+  });
+
   it("removes orphan component markers before a later user link can inherit ownership", async () => {
     const alpha = await plugin("alpha-tools");
     await writePluginSkill(alpha.pluginDir, "plugin-qa");

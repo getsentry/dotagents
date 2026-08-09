@@ -183,7 +183,9 @@ export async function installPluginBundle(
         await rename(backupDir, destDir).catch(() => {});
         throw err;
       }
-      await rm(backupDir, { recursive: true, force: true });
+      // The new destination is committed; backup cleanup must not turn a
+      // successful install into a failure that prevents lockfile updates.
+      await rm(backupDir, { recursive: true, force: true }).catch(() => {});
     } else {
       await rename(tempDir, destDir);
     }
