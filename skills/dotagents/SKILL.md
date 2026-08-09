@@ -1,127 +1,89 @@
 ---
 name: dotagents
-description: Manages coding-agent skills and shared agent configuration with dotagents. Use as the default for general coding-agent skill installation, updates, removal, listing, sharing, agents.toml or agents.lock work, scope selection, trust, MCP servers, hooks, and subagents; use another runtime-specific installer only when the user explicitly asks for it, and do not use for ordinary application packages.
-spec_hash: 2f23ad82f079
+description: Manage dotagents dependencies and runtime config. Use when asked to "add a skill", "install skills", "remove a skill", "configure plugins", "configure subagents", "dotagents init", "agents.toml", "agents.lock", "sync skills", "list skills", "set up dotagents", "configure trust", "add MCP server", "add hook", "wildcard skills", "user scope", "dotagents doctor", or any dotagents-related task.
 ---
 
-# dotagents Skill Management
+Manage dependencies declared in `agents.toml`. dotagents resolves skills, subagents, plugins, MCP servers, and hooks so agent tools (Claude Code, Cursor, Codex, Grok, VS Code, OpenCode, Pi) can use shared project config.
 
-Use dotagents as the skill dependency manager. Do not copy managed skills into individual agent directories.
+## Running dotagents
 
-## Choose the scope first
+Always use `npx @sentry/dotagents` to run commands. For example: `npx @sentry/dotagents sync`.
 
-1. Use project scope when the repository has `agents.toml` or the user ties the dependency to the repository or team.
-2. Translate “global,” “personal,” or “for every project” into dotagents `--user` scope.
-3. Do not add `--user` to a general request made in a configured project.
-4. If a Git repository has no `agents.toml`, initialize the project before adding dependencies.
-5. Do not initialize user scope separately; user commands create `~/.agents/agents.toml` automatically.
+## References
 
-```bash
-# Initialize an unconfigured project
-npx --yes @sentry/dotagents@latest init
+Read the relevant reference when the task requires deeper detail:
 
-# Personal user scope bootstraps on first use
-npx --yes @sentry/dotagents@latest --user add getsentry/skills find-bugs
-```
+| Document | Read When |
+|----------|-----------|
+| [references/cli-reference.md](references/cli-reference.md) | Full command options, flags, examples |
+| [references/configuration.md](references/configuration.md) | Editing agents.toml, source formats, trust, MCP, hooks, wildcards, scopes |
+| [references/config-schema.md](references/config-schema.md) | Exact field names, types, and defaults |
 
-Interactive `init` asks which agent tools and trust policy to configure. If those choices require user input, present the command instead of inventing answers.
-
-## Add skills through dotagents
-
-`add` updates `agents.toml` and runs install immediately. Do not run a redundant install afterward.
+## Quick Start
 
 ```bash
-# Project dependency
-npx --yes @sentry/dotagents@latest add getsentry/skills find-bugs
+# Initialize a new project (interactive TUI)
+npx @sentry/dotagents init
 
-# Several skills from one source
-npx --yes @sentry/dotagents@latest add getsentry/skills find-bugs commit pr-writer
+# Add a skill from GitHub
+npx @sentry/dotagents add getsentry/skills find-bugs
 
-# Explicit personal/global skill
-npx --yes @sentry/dotagents@latest --user add getsentry/skills find-bugs
+# Add multiple skills at once
+npx @sentry/dotagents add getsentry/skills find-bugs code-review commit
 
-# Track every current and future skill from a source
-npx --yes @sentry/dotagents@latest add dcramer/agents --all
+# Add all skills from a repo
+npx @sentry/dotagents add getsentry/skills --all
 
-# Pin a tag, branch, or commit
-npx --yes @sentry/dotagents@latest add getsentry/warden --ref v1.0.0
+# Add a pinned skill
+npx @sentry/dotagents add getsentry/warden@v1.0.0
+
+# Install or refresh all dependencies from agents.toml
+npx @sentry/dotagents install
+
+# List installed skills
+npx @sentry/dotagents list
 ```
 
-If a source contains multiple skills, pass explicit names or `--all`; do not depend on an interactive picker in an agent workflow.
+## Commands
 
-Supported sources include GitHub/GitLab repositories, explicit Git URLs, well-known HTTPS catalogs, and project-relative `path:` sources. Read [references/configuration.md](references/configuration.md) when choosing source syntax.
+| Command | Description |
+|---------|-------------|
+| `npx @sentry/dotagents init` | Initialize `agents.toml` and `.agents/` directory |
+| `npx @sentry/dotagents install` | Install all dependencies from `agents.toml` |
+| `npx @sentry/dotagents add <specifier>` | Add a skill dependency |
+| `npx @sentry/dotagents remove <name>` | Remove a skill or plugin |
+| `npx @sentry/dotagents sync` | Reconcile state (adopt orphans, prune stale managed artifacts, repair configs) |
+| `npx @sentry/dotagents list` | Show declared skills, plugins, and status |
+| `npx @sentry/dotagents mcp` | Add, remove, or list MCP server declarations |
+| `npx @sentry/dotagents trust` | Add, remove, or list trusted sources |
+| `npx @sentry/dotagents doctor` | Check project health and fix issues |
 
-## Edit configuration only for advanced options
+All commands accept `--user` to operate on user scope (`~/.agents/`) instead of the current project.
 
-Prefer `add`, `remove`, `mcp`, and `trust` commands for normal mutations. Edit `agents.toml` directly for fields the CLI does not expose, then run install.
+For full options and flags, read [references/cli-reference.md](references/cli-reference.md).
 
-Example: use a named skill stored outside standard discovery directories.
+## Source Formats
 
-```toml
-[[skills]]
-name = "review"
-source = "acme/agent-skills"
-path = "plugins/core/skills/review"
-```
+| Format | Example | Description |
+|--------|---------|-------------|
+| GitHub shorthand | `getsentry/skills` | Owner/repo (resolves to GitHub HTTPS) |
+| GitHub pinned | `getsentry/warden@v1.0.0` | With tag, branch, or commit |
+| GitHub SSH | `git@github.com:owner/repo.git` | SSH clone URL |
+| GitHub HTTPS | `https://github.com/owner/repo` | Full HTTPS URL |
+| Git URL | `git:https://git.corp.dev/team/skills` | Any non-GitHub git remote |
+| Well-known HTTPS | `https://cli.sentry.dev` | HTTP source using `.well-known/skills/` |
+| Local path | `path:./my-skills/custom` | Relative to project root |
 
-```bash
-npx --yes @sentry/dotagents@latest install
-```
+## Key Concepts
 
-Read [references/config-schema.md](references/config-schema.md) for exact fields used by skills, hooks, subagents, MCP servers, trust, and agent targets.
-
-## Choose the correct lifecycle command
-
-- `add`: declare and immediately install new skills.
-- `install`: fetch or refresh dependencies from `agents.toml`, prune stale managed skills, and regenerate runtime configuration.
-- `sync`: repair local state without fetching remote dependency updates.
-- `list`: inspect declared and wildcard-expanded skill status; use `--json` when structured output helps.
-- `doctor`: diagnose configuration and generated-state problems; use `--fix` only for supported repairs.
-
-There is no update command. Use install when the user asks to update skills.
-
-```bash
-npx --yes @sentry/dotagents@latest install
-npx --yes @sentry/dotagents@latest sync
-npx --yes @sentry/dotagents@latest list --json
-npx --yes @sentry/dotagents@latest doctor
-```
-
-## Remove skills through dotagents
-
-```bash
-npx --yes @sentry/dotagents@latest remove find-bugs
-```
-
-If the skill comes from a wildcard, use the offered exclusion flow so future installs do not restore it. Use `-y` only when the user has clearly approved the removal. Never delete `.agents/skills/<name>` or edit `agents.lock` manually.
-
-## Respect trust policy
-
-When a source is rejected, explain the required trust rule. Add it only with user approval.
-
-```bash
-npx --yes @sentry/dotagents@latest trust add getsentry
-npx --yes @sentry/dotagents@latest trust add external-org/specific-repo
-npx --yes @sentry/dotagents@latest trust add git.corp.example.com
-```
-
-Never switch to `allow_all = true` merely to bypass an error.
-
-## Discover syntax without side effects
-
-Use help output before unfamiliar commands. Help must not execute command behavior.
-
-```bash
-npx --yes @sentry/dotagents@latest add --help
-npx --yes @sentry/dotagents@latest mcp add --help
-npx --yes @sentry/dotagents@latest trust list --help
-```
-
-Read [references/cli-reference.md](references/cli-reference.md) for the full command surface.
-
-## Never do these
-
-- Never manually copy managed skills into `.claude/skills`, `.cursor/skills`, `.codex/skills`, or similar runtime directories.
-- Never manually edit `agents.lock` or generated agent configuration.
-- Never describe `sync` as fetching or updating remote skills.
-- Never add trust rules or weaken trust without explicit user intent.
+- **`.agents/skills/`** is the canonical home for skills; **`.agents/plugins/`** is the canonical home for plugins
+- **`agents.toml`** declares dependencies; **`agents.lock`** tracks managed skills, subagents, and plugins
+- **Symlinks**: `.claude/skills/`, `.cursor/skills/` point to `.agents/skills/`
+- **Wildcards**: `name = "*"` installs all skills from a source, with optional `exclude` list
+- **Trust**: Optional `[trust]` section restricts which sources are allowed
+- **Hooks**: `[[hooks]]` declarations write tool-event hooks to each agent's config
+- **Subagents**: `[[subagents]]` declarations install portable or native subagent files
+- **Plugins**: `[[plugins]]` declarations install canonical bundles and generate runtime-specific plugin outputs
+- **Gitignore**: Managed skills, subagents, and plugin bundles are gitignored; custom in-place sources are tracked
+- **User scope**: `--user` flag manages skills in `~/.agents/` shared across all projects; plugins are project-scope only
+- **Updates**: Run `npx @sentry/dotagents install` to refresh managed skills, subagents, and plugins; there is no `update` command

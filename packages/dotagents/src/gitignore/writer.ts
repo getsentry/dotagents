@@ -13,13 +13,17 @@ export async function writeAgentsGitignore(
   agentsDir: string,
   managedSkillNames: string[],
   managedSubagentNames: string[] = [],
+  managedPluginNames: string[] = [],
 ): Promise<void> {
-  const lines = [HEADER];
+  const lines = [HEADER, "/skills/.dotagents-managed/"];
   for (const name of managedSkillNames.toSorted()) {
-    lines.push(`/skills/${name}/`);
+    lines.push(`/skills/${name}`);
   }
   for (const name of managedSubagentNames.toSorted()) {
     lines.push(`/agents/${name}.md`);
+  }
+  for (const name of managedPluginNames.toSorted()) {
+    lines.push(`/plugins/${name}/`);
   }
   lines.push(""); // trailing newline
 

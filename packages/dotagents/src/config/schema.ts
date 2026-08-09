@@ -69,10 +69,12 @@ function isContainedRelativePath(path: string): boolean {
 }
 
 /** Skill names must be safe for use in file paths: alphanumeric, dots, hyphens, underscores. */
+export const SKILL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
 const skillNameSchema = z
   .string()
   .regex(
-    /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
+    SKILL_NAME_PATTERN,
     "Skill names must start with alphanumeric and contain only [a-zA-Z0-9._-]",
   );
 
@@ -189,6 +191,27 @@ const subagentSchema = z.object({
 
 export type SubagentConfig = z.infer<typeof subagentSchema>;
 
+export const PLUGIN_NAME_PATTERN = /^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$/;
+
+const pluginNameSchema = z
+  .string()
+  .regex(
+    PLUGIN_NAME_PATTERN,
+    "Plugin names must be 1-64 lowercase letters, numbers, hyphens, or dots, have alphanumeric ends, and not contain '--' or '..'",
+  );
+
+const pluginTargetSchema = z.string().min(1);
+
+const pluginSchema = z.object({
+  name: pluginNameSchema,
+  source: skillSourceSchema,
+  ref: z.string().optional(),
+  path: z.string().optional(),
+  targets: z.array(pluginTargetSchema).optional(),
+}).strict();
+
+export type PluginConfig = z.infer<typeof pluginSchema>;
+
 const trustConfigSchema = z.object({
   allow_all: z.boolean().default(false),
   github_orgs: z.array(z.string()).default([]),
@@ -210,6 +233,7 @@ export const agentsConfigSchema = z.object({
   mcp: z.array(mcpSchema).default([]),
   hooks: z.array(hookSchema).default([]),
   subagents: z.array(subagentSchema).default([]),
+  plugins: z.array(pluginSchema).default([]),
   trust: trustConfigSchema.optional(),
   minimum_release_age: z.number().int().min(0).optional(),
   minimum_release_age_exclude: z.array(z.string()).default([]),

@@ -27,6 +27,7 @@ describe("mcp", () => {
       root: projectRoot,
       agentsDir: join(projectRoot, ".agents"),
       skillsDir: join(projectRoot, ".agents", "skills"),
+      pluginsDir: join(projectRoot, ".agents", "plugins"),
       configPath: join(projectRoot, "agents.toml"),
       lockPath: join(projectRoot, "agents.lock"),
     };

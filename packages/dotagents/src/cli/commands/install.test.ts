@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access, chmod } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, access, readdir, readlink, symlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import install, { runInstall as runInstallCommand, InstallError, type InstallOptions, type InstallResult } from "./install.js";
 import { runSync } from "./sync.js";
@@ -11,6 +11,8 @@ import { writeLockfile } from "../../lockfile/writer.js";
 import type { Lockfile } from "../../lockfile/schema.js";
 import { resolveScope } from "../../scope.js";
 import { DOTAGENTS_SUBAGENT_MARKER } from "../../subagents/format.js";
+import { DOTAGENTS_MANAGED_PLUGIN_MARKER } from "../../plugins/store.js";
+import { AGENT_PLUGIN_MCP_SCHEMA, AGENT_PLUGIN_SCHEMA } from "../../plugins/schema.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -27,6 +29,54 @@ description: Review code for correctness.
 
 Review the current diff.
 `;
+
+type HarnessEntry =
+  | { json: unknown }
+  | { text: string }
+  | { symlink: string };
+
+function componentMarkerContent(linkPath: string, targetPath: string): string {
+  return `managedBy=dotagents\ntarget=${JSON.stringify(relative(dirname(linkPath), targetPath))}\n`;
+}
+
+async function expectHarnessFiles(
+  projectRoot: string,
+  roots: string[],
+  expected: Record<string, HarnessEntry>,
+): Promise<void> {
+  const actual = new Set<string>();
+
+  const collect = async (relativePath: string): Promise<void> => {
+    const filePath = join(projectRoot, relativePath);
+    if (!existsSync(filePath)) {return;}
+    const stat = await lstat(filePath);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      actual.add(relativePath);
+      return;
+    }
+    for (const entry of await readdir(filePath, { withFileTypes: true })) {
+      await collect(join(relativePath, entry.name));
+    }
+  };
+
+  for (const root of roots) {
+    await collect(root);
+    await collect(`${root}.dotagents-managed`);
+  }
+  expect([...actual].toSorted()).toEqual(Object.keys(expected).toSorted());
+
+  for (const [relativePath, entry] of Object.entries(expected)) {
+    const filePath = join(projectRoot, relativePath);
+    if ("symlink" in entry) {
+      expect((await lstat(filePath)).isSymbolicLink()).toBe(true);
+      expect(resolve(dirname(filePath), await readlink(filePath))).toBe(entry.symlink);
+    } else if ("json" in entry) {
+      expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual(entry.json);
+    } else {
+      expect(await readFile(filePath, "utf-8")).toBe(entry.text);
+    }
+  }
+}
 
 async function initTestGitRepo(repoDir: string): Promise<void> {
   await exec("git", ["init"], { cwd: repoDir });
@@ -110,12 +160,1252 @@ describe("runInstall", () => {
       expect("integrity" in entry).toBe(false);
     }
 
-    const gitignore = await readFile(
-      join(projectRoot, ".agents", ".gitignore"),
-      "utf-8",
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).toContain("/skills/pdf");
+    expect(gitignore).toContain("/skills/review");
+  });
+
+  it("installs a local plugin and writes deterministic runtime artifacts", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await mkdir(join(sourceDir, "commands"), { recursive: true });
+    await writeFile(
+      join(sourceDir, "plugin.json"),
+      JSON.stringify({
+        name: "review-tools",
+        version: "1.0.0",
+        description: "Review workflow helpers",
+        category: "Coding",
+        author: { name: "Sentry" },
+        "x-extra": { kept: true },
+      }, null, 2),
     );
-    expect(gitignore).toContain("/skills/pdf/");
-    expect(gitignore).toContain("/skills/review/");
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(join(sourceDir, "commands", "review.md"), "Review command");
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex", "claude", "cursor"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools", "skills", "review", "SKILL.md"))).toBe(true);
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.plugins["review-tools"]).toEqual({
+      source: "path:plugin-source/review-tools",
+    });
+
+    const codexMarketplace = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "marketplace.json"), "utf-8")) as Record<string, unknown>;
+    expect(codexMarketplace).toEqual({
+      interface: {
+        displayName: "Dotagents Plugins",
+      },
+      name: "dotagents-local",
+      owner: {
+        name: "dotagents",
+      },
+      plugins: [
+        {
+          category: "Coding",
+          description: "Review workflow helpers",
+          name: "review-tools",
+          policy: {
+            authentication: "ON_INSTALL",
+            installation: "AVAILABLE",
+          },
+          source: {
+            path: "./.agents/plugins/review-tools",
+            source: "local",
+          },
+          version: "1.0.0",
+        },
+      ],
+    });
+    const codexPlugin = (codexMarketplace["plugins"] as Array<{ source: { path: string } }>)[0]!;
+    expect(resolve(projectRoot, codexPlugin["source"].path)).toBe(
+      join(projectRoot, ".agents", "plugins", "review-tools"),
+    );
+
+    const claudeMarketplaceJson = await readFile(join(projectRoot, ".claude-plugin", "marketplace.json"), "utf-8");
+    expect(claudeMarketplaceJson).toBe(`{
+  "description": "Generated by dotagents",
+  "name": "dotagents",
+  "owner": {
+    "name": "dotagents"
+  },
+  "plugins": [
+    {
+      "description": "Review workflow helpers",
+      "name": "review-tools",
+      "source": "./.agents/plugins/review-tools",
+      "version": "1.0.0"
+    }
+  ]
+}
+`);
+    const claudeMarketplace = JSON.parse(claudeMarketplaceJson) as { plugins: Array<{ source: string }> };
+    expect(resolve(projectRoot, claudeMarketplace["plugins"][0]!["source"])).toBe(
+      join(projectRoot, ".agents", "plugins", "review-tools"),
+    );
+    expect(await readFile(join(projectRoot, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(claudeMarketplaceJson);
+
+    const claudeManifest = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".claude-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(claudeManifest["name"]).toBe("review-tools");
+    expect(claudeManifest["skills"]).toBe("./skills");
+    expect(claudeManifest["commands"]).toBe("./commands");
+    expect(claudeManifest["agents"]).toBeUndefined();
+    expect(claudeManifest["category"]).toBeUndefined();
+    expect(claudeManifest["metadata"]).toBeUndefined();
+
+    const codexManifest = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(codexManifest["name"]).toBe("review-tools");
+    expect(codexManifest["skills"]).toBe("./skills");
+    expect(codexManifest["commands"]).toBe("./commands");
+    expect(codexManifest["x-extra"]).toEqual({ kept: true });
+
+    const agentsGitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(agentsGitignore).toContain("/plugins/review-tools/");
+  });
+
+  it.each(["claude", "cursor", "codex", "grok", "opencode", "pi"] as const)(
+    "compiles an Agent Plugins v1 bundle into the complete %s harness",
+    async (target) => {
+      const sourceDir = join(projectRoot, "plugin-source", "portable-tools");
+      await mkdir(join(sourceDir, "linked-skills", "portable-qa"), { recursive: true });
+      await mkdir(join(sourceDir, "com.example.client", "agents"), { recursive: true });
+      await mkdir(join(sourceDir, "com.example.client", "commands"), { recursive: true });
+      const sourceManifest = {
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "portable-tools",
+        description: "Portable QA tools",
+        version: "1.0.0",
+        author: { name: "dotagents" },
+        extensions: { "com.example.client": { enabled: true } },
+      };
+      const mcpConfig = {
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          "portable-stdio": {
+            type: "stdio",
+            command: "node",
+            args: ["${PLUGIN_ROOT}/server.mjs"],
+            env: { CACHE: "${PLUGIN_DATA}/cache" },
+            cwd: "${PLUGIN_ROOT}",
+          },
+          "portable-http": {
+            type: "streamable-http",
+            url: "https://example.com/mcp",
+            headers: { "X-Fixture": "dotagents" },
+          },
+        },
+      };
+      const extensionAgent = "client extension agent";
+      const extensionCommand = "client extension command";
+      const serverSource = 'import { writeFileSync } from "node:fs";\nwriteFileSync(new URL("./executed", import.meta.url), "executed");\n';
+      await writeFile(join(sourceDir, "plugin.json"), JSON.stringify(sourceManifest, null, 2));
+      await writeFile(join(sourceDir, "mcp.json"), JSON.stringify(mcpConfig, null, 2));
+      await writeFile(join(sourceDir, "server.mjs"), serverSource);
+      await writeFile(join(sourceDir, "linked-skills", "portable-qa", "SKILL.md"), SKILL_MD("portable-qa"));
+      await symlink("linked-skills", join(sourceDir, "skills"));
+      await writeFile(join(sourceDir, "com.example.client", "agents", "should-not-project.md"), extensionAgent);
+      await writeFile(join(sourceDir, "com.example.client", "commands", "should-not-project.md"), extensionCommand);
+      await writeFile(
+        join(projectRoot, "agents.toml"),
+        `version = 1
+agents = ["${target}"]
+
+[[plugins]]
+name = "portable-tools"
+source = "path:plugin-source/portable-tools"
+`,
+      );
+
+      const scope = resolveScope("project", projectRoot);
+      const result = await runInstall({ scope });
+      expect(result.installedPlugins).toEqual(["portable-tools"]);
+
+      const installedDir = join(projectRoot, ".agents", "plugins", "portable-tools");
+      const portableSkillDir = join(installedDir, "skills", "portable-qa");
+      const nativeManifest = {
+        author: { name: "dotagents" },
+        description: "Portable QA tools",
+        mcpServers: "./mcp.json",
+        name: "portable-tools",
+        skills: "./skills",
+        version: "1.0.0",
+      };
+      const codexManifest = {
+        author: { name: "dotagents" },
+        description: "Portable QA tools",
+        interface: {
+          capabilities: ["Interactive", "Write"],
+          category: "Coding",
+          developerName: "dotagents",
+          displayName: "Portable Tools",
+          shortDescription: "Portable QA tools",
+        },
+        mcpServers: "./mcp.json",
+        name: "portable-tools",
+        skills: "./skills",
+        version: "1.0.0",
+      };
+      const canonicalFiles: Record<string, HarnessEntry> = {
+        ".agents/plugins/portable-tools/.dotagents-managed": { text: "managedBy=dotagents\n" },
+        ".agents/plugins/portable-tools/com.example.client/agents/should-not-project.md": { text: extensionAgent },
+        ".agents/plugins/portable-tools/com.example.client/commands/should-not-project.md": { text: extensionCommand },
+        ".agents/plugins/portable-tools/linked-skills/portable-qa/SKILL.md": { text: SKILL_MD("portable-qa") },
+        ".agents/plugins/portable-tools/mcp.json": { json: mcpConfig },
+        ".agents/plugins/portable-tools/plugin.json": { json: sourceManifest },
+        ".agents/plugins/portable-tools/server.mjs": { text: serverSource },
+        ".agents/plugins/portable-tools/skills": { symlink: join(installedDir, "linked-skills") },
+      };
+      const addNativeManifest = (dir: string, manifest: unknown): void => {
+        canonicalFiles[`.agents/plugins/portable-tools/${dir}/plugin.json`] = { json: manifest };
+        canonicalFiles[`.agents/plugins/portable-tools/${dir}/plugin.json.dotagents-managed`] = { text: "managedBy=dotagents\n" };
+      };
+      if (target === "claude") {addNativeManifest(".claude-plugin", nativeManifest);}
+      if (target === "cursor") {addNativeManifest(".cursor-plugin", nativeManifest);}
+      if (target === "codex") {addNativeManifest(".codex-plugin", codexManifest);}
+      await expectHarnessFiles(projectRoot, [".agents/plugins/portable-tools"], canonicalFiles);
+
+      if (target === "claude" || target === "cursor") {
+        const marketplaceDir = target === "claude" ? ".claude-plugin" : ".cursor-plugin";
+        await expectHarnessFiles(projectRoot, [marketplaceDir], {
+          [`${marketplaceDir}/marketplace.json`]: { json: {
+            description: "Generated by dotagents",
+            name: "dotagents",
+            owner: { name: "dotagents" },
+            plugins: [{
+              description: "Portable QA tools",
+              name: "portable-tools",
+              source: "./.agents/plugins/portable-tools",
+              version: "1.0.0",
+            }],
+          } },
+          [`${marketplaceDir}/marketplace.json.dotagents-managed`]: { text: "managedBy=dotagents\n" },
+        });
+      } else if (target === "codex") {
+        await expectHarnessFiles(projectRoot, [".agents/plugins/marketplace.json"], {
+          ".agents/plugins/marketplace.json": { json: {
+            interface: { displayName: "Dotagents Plugins" },
+            name: "dotagents-local",
+            owner: { name: "dotagents" },
+            plugins: [{
+              category: "Productivity",
+              description: "Portable QA tools",
+              name: "portable-tools",
+              policy: { authentication: "ON_INSTALL", installation: "AVAILABLE" },
+              source: { path: "./.agents/plugins/portable-tools", source: "local" },
+              version: "1.0.0",
+            }],
+          } },
+          ".agents/plugins/marketplace.json.dotagents-managed": { text: "managedBy=dotagents\n" },
+        });
+      } else if (target === "grok") {
+        await expectHarnessFiles(projectRoot, [".grok/plugins/portable-tools"], {
+          ".grok/plugins/portable-tools/.dotagents-managed": { text: "Generated by dotagents. Do not edit.\n" },
+          ".grok/plugins/portable-tools/com.example.client/agents/should-not-project.md": { text: extensionAgent },
+          ".grok/plugins/portable-tools/com.example.client/commands/should-not-project.md": { text: extensionCommand },
+          ".grok/plugins/portable-tools/linked-skills/portable-qa/SKILL.md": { text: SKILL_MD("portable-qa") },
+          ".grok/plugins/portable-tools/mcp.json": { json: mcpConfig },
+          ".grok/plugins/portable-tools/plugin.json": { json: sourceManifest },
+          ".grok/plugins/portable-tools/server.mjs": { text: serverSource },
+          ".grok/plugins/portable-tools/skills": { symlink: join(projectRoot, ".grok", "plugins", "portable-tools", "linked-skills") },
+        });
+      } else if (target === "opencode") {
+        const linkPath = join(projectRoot, ".opencode", "skills", "portable-qa");
+        await expectHarnessFiles(projectRoot, [".opencode/skills", ".opencode/agents"], {
+          ".opencode/skills/portable-qa": { symlink: portableSkillDir },
+          ".opencode/skills/.dotagents-managed/portable-qa": { text: componentMarkerContent(linkPath, portableSkillDir) },
+        });
+      } else {
+        const linkPath = join(projectRoot, ".agents", "skills", "portable-qa");
+        await expectHarnessFiles(projectRoot, [".agents/skills"], {
+          ".agents/skills/portable-qa": { symlink: portableSkillDir },
+          ".agents/skills/.dotagents-managed/portable-qa": { text: componentMarkerContent(linkPath, portableSkillDir) },
+        });
+      }
+
+      const targetOutputPaths: Record<typeof target, string[]> = {
+        claude: [".claude-plugin"],
+        cursor: [".cursor-plugin"],
+        codex: [".agents/plugins/marketplace.json"],
+        grok: [".grok/plugins/portable-tools"],
+        opencode: [
+          ".opencode/skills/portable-qa",
+          ".opencode/skills/.dotagents-managed/portable-qa",
+          ".opencode/agents",
+        ],
+        pi: [".agents/skills/portable-qa", ".agents/skills/.dotagents-managed/portable-qa"],
+      };
+      await runSync({ scope });
+      for (const [otherTarget, paths] of Object.entries(targetOutputPaths)) {
+        if (otherTarget === target) {continue;}
+        for (const path of paths) {
+          expect(existsSync(join(projectRoot, path)), `${target} unexpectedly wrote ${path}`).toBe(false);
+        }
+      }
+      expect(existsSync(join(sourceDir, "executed"))).toBe(false);
+      expect(existsSync(join(installedDir, "executed"))).toBe(false);
+    },
+  );
+
+  it("imports a native Claude bundle without cross-translating native components", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "claude-tools");
+    await mkdir(join(sourceDir, ".claude-plugin"), { recursive: true });
+    await mkdir(join(sourceDir, "claude-skills", "portable-qa"), { recursive: true });
+    await mkdir(join(sourceDir, "private-skills", "native-only"), { recursive: true });
+    await mkdir(join(sourceDir, "commands"), { recursive: true });
+    await mkdir(join(sourceDir, "agents"), { recursive: true });
+    const nativeManifest = {
+      name: "claude-tools",
+      version: "1.0.0",
+      description: "Claude-native tools",
+      skills: ["./claude-skills", "./private-skills"],
+      commands: "./commands",
+      agents: "./agents",
+      mcpServers: "./mcp.json",
+    };
+    await writeFile(join(sourceDir, ".claude-plugin", "plugin.json"), JSON.stringify(nativeManifest, null, 2));
+    await writeFile(join(sourceDir, ".claude-plugin", "plugin.json.dotagents-managed"), "managedBy=dotagents\n");
+    const nativeMcp = { mcpServers: { native: { command: "node" } } };
+    await writeFile(join(sourceDir, "mcp.json"), JSON.stringify(nativeMcp));
+    await writeFile(join(sourceDir, "claude-skills", "portable-qa", "SKILL.md"), SKILL_MD("portable-qa"));
+    await writeFile(join(sourceDir, "private-skills", "native-only", "SKILL.md"), SKILL_MD("native-only"));
+    await symlink("claude-skills", join(sourceDir, "skills"));
+    await writeFile(join(sourceDir, "commands", "native.md"), "native command");
+    await writeFile(join(sourceDir, "agents", "native.md"), "native agent");
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude", "cursor", "grok", "opencode"]
+
+[[plugins]]
+name = "claude-tools"
+source = "path:plugin-source/claude-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+    expect(result.pluginWarnings).toEqual([]);
+
+    const installedDir = join(projectRoot, ".agents", "plugins", "claude-tools");
+    expect(await readFile(join(installedDir, ".dotagents-native-source"), "utf-8")).toBe("claude\n");
+    expect(JSON.parse(await readFile(join(installedDir, ".claude-plugin", "plugin.json"), "utf-8"))).toEqual(nativeManifest);
+    expect(existsSync(join(installedDir, ".claude-plugin", "plugin.json.dotagents-managed"))).toBe(false);
+    expect(await readFile(join(installedDir, "commands", "native.md"), "utf-8")).toBe("native command");
+    expect(await readFile(join(installedDir, "agents", "native.md"), "utf-8")).toBe("native agent");
+    expect(JSON.parse(await readFile(join(installedDir, "mcp.json"), "utf-8"))).toEqual(nativeMcp);
+
+    const cursorManifest = JSON.parse(await readFile(join(installedDir, ".cursor-plugin", "plugin.json"), "utf-8"));
+    expect(cursorManifest).toEqual({
+      description: "Claude-native tools",
+      name: "claude-tools",
+      skills: "./skills",
+      version: "1.0.0",
+    });
+    expect(existsSync(join(projectRoot, ".opencode", "skills", "portable-qa"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".opencode", "skills", "native-only"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".opencode", "agents", "native.md"))).toBe(false);
+    await expectHarnessFiles(projectRoot, [".grok/plugins/claude-tools"], {
+      ".grok/plugins/claude-tools/.dotagents-managed": { text: "Generated by dotagents. Do not edit.\n" },
+      ".grok/plugins/claude-tools/plugin.json": { json: {
+        $schema: AGENT_PLUGIN_SCHEMA,
+        description: "Claude-native tools",
+        name: "claude-tools",
+        version: "1.0.0",
+      } },
+      ".grok/plugins/claude-tools/skills/portable-qa/SKILL.md": { text: SKILL_MD("portable-qa") },
+    });
+
+    await runSync({ scope });
+    expect(await readFile(join(installedDir, ".dotagents-native-source"), "utf-8")).toBe("claude\n");
+    expect(JSON.parse(await readFile(join(installedDir, ".claude-plugin", "plugin.json"), "utf-8"))).toEqual(nativeManifest);
+    expect(JSON.parse(await readFile(join(installedDir, ".cursor-plugin", "plugin.json"), "utf-8"))).toEqual(cursorManifest);
+    expect(await readFile(join(installedDir, "commands", "native.md"), "utf-8")).toBe("native command");
+    expect(await readFile(join(installedDir, "agents", "native.md"), "utf-8")).toBe("native agent");
+    expect(JSON.parse(await readFile(join(installedDir, "mcp.json"), "utf-8"))).toEqual(nativeMcp);
+  });
+  it("reports a plugin destination file as unmanaged", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+    await mkdir(join(projectRoot, ".agents", "plugins"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "plugins", "review-tools"), "owned by user\n");
+
+    await expect(runInstallCommand({ scope: resolveScope("project", projectRoot) }))
+      .rejects.toThrow(/install destination already exists and is not managed/);
+  });
+
+  it.each(["directory", "wrong-content file"] as const)(
+    "does not overwrite an existing plugin destination with an unmanaged marker %s",
+    async (markerShape) => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+
+    const existingDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(existingDir, { recursive: true });
+    if (markerShape === "directory") {
+      await mkdir(join(existingDir, DOTAGENTS_MANAGED_PLUGIN_MARKER));
+    } else {
+      await writeFile(join(existingDir, DOTAGENTS_MANAGED_PLUGIN_MARKER), "owned-by=user\n");
+    }
+    await writeFile(join(existingDir, "plugin.json"), JSON.stringify({ name: "review-tools", description: "Hand written" }, null, 2));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {
+        "review-tools": { source: "path:plugin-source/review-tools" },
+      },
+    });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(/install destination already exists and is not managed/);
+
+    const existingManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(existingManifest["description"]).toBe("Hand written");
+    },
+  );
+
+  it("prunes dangling component links for stale managed plugins whose bundles are already missing", async () => {
+    const linkDir = join(projectRoot, ".opencode", "skills");
+    const linkPath = join(linkDir, "old-plugin-skill");
+    await mkdir(linkDir, { recursive: true });
+    await symlink(
+      relative(linkDir, join(projectRoot, ".agents", "plugins", "old-tools", "skills", "old-plugin-skill")),
+      linkPath,
+    );
+    await writeFile(join(projectRoot, "agents.toml"), `version = 1\nagents = ["opencode"]\n`);
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {
+        "old-tools": { source: "org/old-tools" },
+      },
+    });
+
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    expect(existsSync(linkPath)).toBe(false);
+  });
+
+  it("does not treat malformed lockfile plugin names as managed projection roots", async () => {
+    const outsideSkillDir = join(projectRoot, "outside", "keep");
+    const linkDir = join(projectRoot, ".opencode", "skills");
+    const linkPath = join(linkDir, "keep");
+    await mkdir(outsideSkillDir, { recursive: true });
+    await mkdir(linkDir, { recursive: true });
+    await writeFile(join(outsideSkillDir, "SKILL.md"), SKILL_MD("keep"));
+    await symlink(relative(linkDir, outsideSkillDir), linkPath);
+    await writeFile(join(projectRoot, "agents.toml"), `version = 1\nagents = ["opencode"]\n`);
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {
+        "../../outside": { source: "org/old-tools" },
+      },
+    });
+
+    await runInstall({ scope: resolveScope("project", projectRoot) });
+
+    expect(existsSync(linkPath)).toBe(true);
+    expect(await readFile(join(outsideSkillDir, "SKILL.md"), "utf-8")).toBe(SKILL_MD("keep"));
+    expect((await loadLockfile(join(projectRoot, "agents.lock")))!.plugins).toEqual({});
+  });
+
+  it("rejects escaping plugin symlinks before writing Grok projections", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    const outsideFile = join(projectRoot, "secret.txt");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(outsideFile, "secret\n");
+    await symlink(outsideFile, join(sourceDir, "secret-link"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["grok"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    await expect(runInstall({ scope: resolveScope("project", projectRoot) }))
+      .rejects.toThrow(/symlink resolves outside the plugin directory/);
+
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".grok", "plugins", "review-tools"))).toBe(false);
+  });
+
+  it("overwrites an existing managed plugin install destination", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(sourceDir, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "Updated plugin" }, null, 2),
+    );
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+
+    const existingDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(join(existingDir, "skills", "old-review"), { recursive: true });
+    await writeFile(
+      join(existingDir, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "Old managed plugin" }, null, 2),
+    );
+    await writeFile(join(existingDir, DOTAGENTS_MANAGED_PLUGIN_MARKER), "managedBy=dotagents\n", "utf-8");
+    await writeFile(join(existingDir, "skills", "old-review", "SKILL.md"), SKILL_MD("old-review"));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {
+        "review-tools": { source: "path:plugin-source/review-tools" },
+      },
+    });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const installedManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(installedManifest["description"]).toBe("Updated plugin");
+    expect(existsSync(join(existingDir, "skills", "review", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(existingDir, "skills", "old-review", "SKILL.md"))).toBe(false);
+  });
+
+  it("recovers a dotagents-managed plugin destination missing from the lockfile", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(sourceDir, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "Recovered plugin" }, null, 2),
+    );
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+
+    const existingDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(join(existingDir, "skills", "partial"), { recursive: true });
+    await writeFile(join(existingDir, DOTAGENTS_MANAGED_PLUGIN_MARKER), "managedBy=dotagents\n", "utf-8");
+    await writeFile(join(existingDir, "skills", "partial", "SKILL.md"), SKILL_MD("partial"));
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const installedManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(installedManifest["description"]).toBe("Recovered plugin");
+    expect(existsSync(join(existingDir, "skills", "review", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(existingDir, "skills", "partial", "SKILL.md"))).toBe(false);
+  });
+
+  it("does not overwrite an unmarked in-place plugin when its source moves external", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(sourceDir, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "External plugin" }, null, 2),
+    );
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+
+    const existingDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(existingDir, { recursive: true });
+    await writeFile(join(existingDir, "plugin.json"), JSON.stringify({ name: "review-tools", description: "In-place plugin" }, null, 2));
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {
+        "review-tools": { source: "path:.agents/plugins/review-tools" },
+      },
+    });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(/install destination already exists and is not managed/);
+
+    const installedManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as Record<string, unknown>;
+    expect(installedManifest["description"]).toBe("In-place plugin");
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.plugins["review-tools"]).toEqual({
+      source: "path:.agents/plugins/review-tools",
+    });
+  });
+
+  it("does not gitignore in-place skills that collide with Pi plugin projections", async () => {
+    await mkdir(join(projectRoot, ".agents", "skills", "review"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "skills", "review", "SKILL.md"), SKILL_MD("review"));
+
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["pi"]
+
+[[skills]]
+name = "review"
+source = "path:.agents/skills/review"
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+
+    expect(result.pluginWarnings).toEqual([
+      {
+        agent: "pi",
+        name: "review-tools",
+        message: `Pi plugin skill projection exists and is not managed by dotagents: ${join(projectRoot, ".agents", "skills", "review")}`,
+      },
+    ]);
+    const agentsGitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(agentsGitignore).not.toContain("/skills/review");
+    expect(agentsGitignore).toContain("/plugins/review-tools/");
+  });
+
+  it("does not gitignore orphan skills that collide with Pi plugin projections", async () => {
+    await mkdir(join(projectRoot, ".agents", "skills", "review"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "skills", "review", "SKILL.md"), SKILL_MD("review"));
+
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["pi"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+
+    expect(result.pluginWarnings).toEqual([
+      {
+        agent: "pi",
+        name: "review-tools",
+        message: `Pi plugin skill projection exists and is not managed by dotagents: ${join(projectRoot, ".agents", "skills", "review")}`,
+      },
+    ]);
+    const agentsGitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(agentsGitignore).not.toContain("/skills/review");
+    expect(agentsGitignore).toContain("/plugins/review-tools/");
+  });
+
+  it("installs a plugin from a git source and records resolved lock metadata", async () => {
+    await ensureGitRepo();
+    const pluginDir = join(repoDir, "plugins", "review-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "review-tools",
+        description: "Review workflow helpers",
+      }, null, 2),
+    );
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "add review plugin"], { cwd: repoDir });
+    const { stdout: commit } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "git:${repoDir}"
+path = "plugins/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools", "skills", "review", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"))).toBe(true);
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.plugins["review-tools"]).toEqual({
+      source: `git:${repoDir}`,
+      resolved_url: repoDir,
+      resolved_path: "plugins/review-tools",
+      resolved_commit: commit.trim(),
+    });
+  });
+
+  it("rejects an explicit plugin path without a manifest", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools-v2");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:."
+path = "plugin-source/review-tools-v2"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow('Plugin "review-tools" not found');
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(false);
+  });
+
+  it("rejects an explicit plugin path when its manifest name differs", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools-v2");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(sourceDir, "plugin.json"),
+      JSON.stringify({ name: "other-tools", description: "Wrong plugin" }, null, 2),
+    );
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:."
+path = "plugin-source/review-tools-v2"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(
+      'Plugin manifest name "other-tools" does not match configured name "review-tools"',
+    );
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(false);
+  });
+
+  it("prefers plugin directory-name matches over root manifest-name matches", async () => {
+    const sourceRoot = join(projectRoot, "plugin-source");
+    const pluginDir = join(sourceRoot, "plugins", "review-tools");
+    await mkdir(join(sourceRoot, "skills", "root-review"), { recursive: true });
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(sourceRoot, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "Root plugin should not win" }, null, 2),
+    );
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "Directory plugin" }, null, 2),
+    );
+    await writeFile(join(sourceRoot, "skills", "root-review", "SKILL.md"), SKILL_MD("root-review"));
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools", "skills", "review", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools", "skills", "root-review", "SKILL.md"))).toBe(false);
+  });
+
+  it("keeps plugin lock entries when runtime projection fails after installing the bundle", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "review-tools");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(sourceDir, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "Review workflow helpers" }, null, 2),
+    );
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(join(sourceDir, ".codex-plugin"), "not a directory\n", "utf-8");
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow();
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.plugins["review-tools"]).toEqual({
+      source: "path:plugin-source/review-tools",
+    });
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"))).toBe(true);
+  });
+
+  it("rejects same-project plugins that would install onto themselves", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "local-tools",
+        description: "Local plugin",
+      }, null, 2),
+    );
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "local-tools"
+source = "path:./.agents/plugins/local-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(/Same-project plugins cannot be installed into the same project/);
+    expect(existsSync(pluginDir)).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(false);
+  });
+
+  it("rejects same-project plugin sources nested under their install destination", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    const sourceDir = join(pluginDir, "source");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(sourceDir, "plugin.json"),
+      JSON.stringify({
+        name: "local-tools",
+        description: "Local plugin",
+      }, null, 2),
+    );
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "local-tools"
+source = "path:./.agents/plugins/local-tools/source"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(/Same-project plugins cannot be installed into the same project/);
+    expect(existsSync(sourceDir)).toBe(true);
+  });
+
+  it("rejects user-scope plugin declarations", async () => {
+    const previousHome = process.env["DOTAGENTS_HOME"];
+    const dotagentsHome = join(tmpDir, "user-agents");
+    process.env["DOTAGENTS_HOME"] = dotagentsHome;
+    try {
+      const scope = resolveScope("user");
+      await mkdir(scope.root, { recursive: true });
+      await writeFile(
+        scope.configPath,
+        `version = 1
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+      );
+
+      await expect(runInstall({ scope })).rejects.toThrow(/User-scope plugins are not supported yet/);
+      expect(existsSync(scope.pluginsDir)).toBe(false);
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env["DOTAGENTS_HOME"];
+      } else {
+        process.env["DOTAGENTS_HOME"] = previousHome;
+      }
+    }
+  });
+
+  it("prefers canonical plugin directories before marketplace entries", async () => {
+    const sourceRoot = join(projectRoot, "plugin-source");
+    const canonicalDir = join(sourceRoot, ".agents", "plugins", "review-tools");
+    const marketplaceDir = join(sourceRoot, "plugins", "review-tools-alt");
+    await mkdir(canonicalDir, { recursive: true });
+    await mkdir(marketplaceDir, { recursive: true });
+    await writeFile(
+      join(canonicalDir, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "Canonical plugin" }, null, 2),
+    );
+    await writeFile(
+      join(marketplaceDir, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "Marketplace plugin" }, null, 2),
+    );
+    await writeFile(
+      join(sourceRoot, "marketplace.json"),
+      JSON.stringify({
+        name: "source",
+        plugins: [
+          {
+            name: "review-tools",
+            source: {
+              source: "local",
+              path: "plugins/review-tools-alt",
+            },
+          },
+        ],
+      }, null, 2),
+    );
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const installed = JSON.parse(
+      await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    expect(installed["description"]).toBe("Canonical plugin");
+  });
+
+  it("does not overlay marketplace fields onto standard manifests", async () => {
+    const sourceRoot = join(projectRoot, "plugin-source");
+    const pluginDir = join(sourceRoot, "plugins", "review-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    const sourceManifest = {
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+      description: "Source description",
+      version: "2.0.0",
+    };
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify(sourceManifest, null, 2));
+    await writeFile(
+      join(sourceRoot, "marketplace.json"),
+      JSON.stringify({
+        name: "test-marketplace",
+        plugins: [
+          {
+            name: "review-tools",
+            source: { source: "local", path: "plugins/review-tools" },
+            description: "Marketplace description",
+            version: "1.0.0",
+            category: "Coding",
+            policy: { installation: "AVAILABLE" },
+            "x-marketplace": true,
+          },
+        ],
+      }, null, 2),
+    );
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const installedManifest = JSON.parse(
+      await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    const codexManifest = JSON.parse(
+      await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"), "utf-8"),
+    ) as Record<string, unknown>;
+
+    expect(installedManifest).toEqual(sourceManifest);
+    expect(codexManifest["description"]).toBe("Source description");
+    expect(codexManifest["version"]).toBe("2.0.0");
+    expect(codexManifest["category"]).toBeUndefined();
+    expect(installedManifest["source"]).toBeUndefined();
+    expect(installedManifest["policy"]).toBeUndefined();
+    expect(installedManifest["x-marketplace"]).toBeUndefined();
+    expect(codexManifest["source"]).toBeUndefined();
+    expect(codexManifest["policy"]).toBeUndefined();
+    expect(codexManifest["x-marketplace"]).toBeUndefined();
+  });
+
+  it("resolves canonical marketplace sources relative to the marketplace directory", async () => {
+    const sourceRoot = join(projectRoot, "plugin-source");
+    const pluginDir = join(sourceRoot, ".agents", "plugins", "review-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({ name: "review-tools", description: "Canonical marketplace plugin" }, null, 2),
+    );
+    await writeFile(
+      join(sourceRoot, ".agents", "plugins", "marketplace.json"),
+      JSON.stringify({
+        name: "source-marketplace",
+        plugins: [
+          {
+            name: "review-tools",
+            source: { source: "local", path: "./review-tools" },
+          },
+        ],
+      }, null, 2),
+    );
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const installedManifest = JSON.parse(
+      await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    expect(installedManifest["description"]).toBe("Canonical marketplace plugin");
+  });
+
+  it("skips unsupported marketplace source objects during plugin discovery", async () => {
+    const sourceRoot = join(projectRoot, "plugin-source");
+    await mkdir(sourceRoot, { recursive: true });
+    await writeFile(
+      join(sourceRoot, "marketplace.json"),
+      JSON.stringify({
+        name: "source-marketplace",
+        plugins: [
+          {
+            name: "review-tools",
+            source: {
+              source: "github",
+              path: "external/marketplace-review-tools",
+              repo: "org/review-tools",
+            },
+          },
+        ],
+      }, null, 2),
+    );
+    const marketplaceOnlyDir = join(sourceRoot, "external", "marketplace-review-tools");
+    await mkdir(marketplaceOnlyDir, { recursive: true });
+    await writeFile(
+      join(marketplaceOnlyDir, "plugin.json"),
+      JSON.stringify({
+        name: "review-tools",
+        description: "Marketplace-only plugin",
+      }, null, 2),
+    );
+    const pluginDir = join(sourceRoot, "plugins", "review-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "review-tools",
+        description: "Fallback local plugin",
+      }, null, 2),
+    );
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const installedManifest = JSON.parse(
+      await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    expect(installedManifest["description"]).toBe(
+      "Fallback local plugin",
+    );
+  });
+
+  it("skips malformed marketplace files during plugin discovery", async () => {
+    const sourceRoot = join(projectRoot, "plugin-source");
+    await mkdir(sourceRoot, { recursive: true });
+    await writeFile(
+      join(sourceRoot, "marketplace.json"),
+      JSON.stringify({
+        name: "source-marketplace",
+        plugins: [
+          {
+            name: "review-tools",
+            source: { source: "local" },
+          },
+        ],
+      }, null, 2),
+    );
+    const pluginDir = join(sourceRoot, "plugins", "review-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "review-tools",
+        description: "Fallback local plugin",
+      }, null, 2),
+    );
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    const installedManifest = JSON.parse(
+      await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    expect(installedManifest["description"]).toBe("Fallback local plugin");
+  });
+
+  it("reports unsupported marketplace source objects when no compatible plugin is found", async () => {
+    const sourceRoot = join(projectRoot, "plugin-source");
+    await mkdir(sourceRoot, { recursive: true });
+    await writeFile(
+      join(sourceRoot, "marketplace.json"),
+      JSON.stringify({
+        name: "source-marketplace",
+        plugins: [
+          {
+            name: "review-tools",
+            source: {
+              source: "github",
+              path: "external/marketplace-review-tools",
+              repo: "org/review-tools",
+            },
+          },
+        ],
+      }, null, 2),
+    );
+    const marketplaceOnlyDir = join(sourceRoot, "external", "marketplace-review-tools");
+    await mkdir(marketplaceOnlyDir, { recursive: true });
+    await writeFile(
+      join(marketplaceOnlyDir, "plugin.json"),
+      JSON.stringify({
+        name: "review-tools",
+        description: "Marketplace-only plugin",
+      }, null, 2),
+    );
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(
+      /Matching marketplace entries use unsupported source types: github/,
+    );
   });
 
   it("handles empty skills list", async () => {
@@ -446,7 +1736,7 @@ path = "code-reviewer.md"
     expect(syncResult.adopted).toEqual([]);
   });
 
-  it("does not update the lockfile when installed subagent writes fail", async () => {
+  it("keeps resolved lock entries when installed subagent writes fail", async () => {
     const skillSourceDir = join(projectRoot, "local-skills", "pdf");
     await mkdir(skillSourceDir, { recursive: true });
     await writeFile(join(skillSourceDir, "SKILL.md"), SKILL_MD("pdf"));
@@ -475,6 +1765,7 @@ path = "code-reviewer.md"
           source: "path:old-agents",
         },
       },
+      plugins: {},
     };
     await writeLockfile(join(projectRoot, "agents.lock"), originalLockfile);
 
@@ -501,49 +1792,6 @@ path = "code-reviewer.md"
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile).toEqual(originalLockfile);
     expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
-  });
-
-  it("does not write the lockfile when stale subagent pruning fails", async () => {
-    const sourceDir = join(projectRoot, "agents");
-    await mkdir(sourceDir, { recursive: true });
-    await writeFile(join(sourceDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
-
-    const installedDir = join(projectRoot, ".agents", "agents");
-    await mkdir(installedDir, { recursive: true });
-    const stalePath = join(installedDir, "old-reviewer.md");
-    await writeFile(
-      stalePath,
-      `---
-# ${DOTAGENTS_SUBAGENT_MARKER}
-name: old-reviewer
-description: Review old code.
----
-
-Review old code.
-`,
-      "utf-8",
-    );
-    await chmod(stalePath, 0o000);
-
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1
-[[subagents]]
-name = "code-reviewer"
-source = "path:agents"
-path = "code-reviewer.md"
-`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    try {
-      await expect(runInstall({ scope })).rejects.toThrow();
-    } finally {
-      await chmod(stalePath, 0o600).catch(() => {});
-    }
-
-    expect(await loadLockfile(join(projectRoot, "agents.lock"))).toBeNull();
-    expect(existsSync(join(installedDir, "code-reviewer.md"))).toBe(true);
   });
 
   it("keeps lock entries when runtime subagent writes fail", async () => {
@@ -883,9 +2131,9 @@ path = "reviewer.md"
 
     const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
     // Sourced skill should be gitignored
-    expect(gitignore).toContain("/skills/pdf/");
+    expect(gitignore).toContain("/skills/pdf");
     // In-place skill should NOT be gitignored
-    expect(gitignore).not.toContain("/skills/local-skill/");
+    expect(gitignore).not.toContain("/skills/local-skill");
   });
 
   it("installs all skills from a wildcard entry", async () => {
@@ -1007,8 +2255,8 @@ path = "reviewer.md"
     await runInstall({ scope });
 
     const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
-    expect(gitignore).toContain("/skills/pdf/");
-    expect(gitignore).toContain("/skills/review/");
+    expect(gitignore).toContain("/skills/pdf");
+    expect(gitignore).toContain("/skills/review");
   });
 
   it("errors on name conflict between two wildcard sources", async () => {

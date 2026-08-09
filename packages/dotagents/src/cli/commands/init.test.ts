@@ -8,7 +8,16 @@ import init, { runInit, InitError, installPostMergeHook } from "./init.js";
 import { loadConfig } from "../../config/loader.js";
 
 vi.mock("./install.js", () => ({
-  runInstall: vi.fn().mockResolvedValue({ installed: [], skipped: [], hookWarnings: [] }),
+  runInstall: vi.fn().mockResolvedValue({
+    installed: [],
+    installedPlugins: [],
+    pruned: [],
+    prunedPlugins: [],
+    mcpWarnings: [],
+    hookWarnings: [],
+    subagentWarnings: [],
+    pluginWarnings: [],
+  }),
 }));
 
 describe("runInit", () => {

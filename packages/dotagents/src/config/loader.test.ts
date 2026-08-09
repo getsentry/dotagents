@@ -246,4 +246,91 @@ source = "https://agents.example.com"
 
     await expect(loadConfig(configPath)).rejects.toThrow(/unsupported HTTPS well-known source/);
   });
+
+  it("loads plugin entries", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1
+agents = ["claude", "codex", "cursor", "grok", "opencode", "pi"]
+
+[[plugins]]
+name = "review-tools"
+source = "getsentry/plugins"
+targets = ["claude", "codex", "cursor", "grok", "opencode", "pi"]
+`,
+    );
+
+    const config = await loadConfig(configPath);
+    expect(config.plugins).toHaveLength(1);
+    expect(config.plugins[0]!.targets).toEqual(["claude", "codex", "cursor", "grok", "opencode", "pi"]);
+    expect(config.plugins[0]!.source).toBe("getsentry/plugins");
+  });
+
+  it("rejects unknown plugin targets", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1
+
+[[plugins]]
+name = "review-tools"
+source = "getsentry/plugins"
+targets = ["emacs"]
+`,
+    );
+
+    await expect(loadConfig(configPath)).rejects.toThrow(/Unknown plugin target/);
+  });
+
+  it("rejects configured agents that do not support plugin outputs as plugin targets", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1
+agents = ["vscode"]
+
+[[plugins]]
+name = "review-tools"
+source = "getsentry/plugins"
+targets = ["vscode"]
+`,
+    );
+
+    await expect(loadConfig(configPath)).rejects.toThrow(/Unknown plugin target.*vscode/);
+  });
+
+  it("rejects duplicate plugin names", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1
+
+[[plugins]]
+name = "review-tools"
+source = "getsentry/plugins"
+
+[[plugins]]
+name = "review-tools"
+source = "getsentry/plugins"
+`,
+    );
+
+    await expect(loadConfig(configPath)).rejects.toThrow(/Duplicate plugin/);
+  });
+
+  it("rejects HTTPS well-known plugin sources", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1
+
+[[plugins]]
+name = "review-tools"
+source = "https://plugins.example.com"
+`,
+    );
+
+    await expect(loadConfig(configPath)).rejects.toThrow(/unsupported HTTPS well-known source/);
+  });
 });

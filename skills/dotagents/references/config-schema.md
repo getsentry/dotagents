@@ -1,177 +1,231 @@
-# agents.toml Schema
+# agents.toml Configuration Schema
 
-## Top Level
+## Top-Level Structure
 
 ```toml
-version = 1
-defaultRepositorySource = "github"
-agents = ["claude", "cursor", "codex", "vscode", "opencode"]
-minimum_release_age = 60
-minimum_release_age_exclude = ["getsentry/*"]
+version = 1                     # Required, must be 1
+agents = ["claude", "cursor"]   # Optional, agent targets
+defaultRepositorySource = "github" # Optional, github or gitlab
+minimum_release_age = 60        # Optional, minutes
+minimum_release_age_exclude = ["getsentry/*"] # Optional
+
+[project]                       # Optional
+[trust]                         # Optional
+[[skills]]                      # Optional, array of skill entries
+[[mcp]]                         # Optional, array of MCP servers
+[[hooks]]                       # Optional, array of hook declarations
+[[subagents]]                   # Optional, array of subagent dependencies
+[[plugins]]                     # Optional, array of plugin dependencies
 ```
 
-| Field | Type | Default | Purpose |
-|-------|------|---------|---------|
-| `version` | literal `1` | required | Config format version |
-| `defaultRepositorySource` | `github` or `gitlab` | `github` | Host for shorthand sources |
-| `agents` | string[] | `[]` | Runtime targets |
-| `minimum_release_age` | non-negative integer | unset | Minimum Git commit age in minutes |
-| `minimum_release_age_exclude` | string[] | `[]` | Source patterns exempt from age gating |
+## Top-Level Fields
 
-Unknown agent IDs fail configuration loading.
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `version` | integer | Yes | -- | Schema version, must be `1` |
+| `defaultRepositorySource` | string | No | `github` | Host for shorthand `owner/repo` sources. Valid values: `github`, `gitlab` |
+| `agents` | string[] | No | `[]` | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `grok`, `opencode`, `pi` |
+| `minimum_release_age` | integer | No | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install |
+| `minimum_release_age_exclude` | string[] | No | `[]` | Sources that bypass `minimum_release_age` |
 
-## Project Metadata
+## Project Section
 
 ```toml
 [project]
-name = "my-project"
+name = "my-project"             # Optional, display name
 ```
 
-`name` is optional display metadata.
-
-## Legacy Symlink Targets
+## Symlinks Section
 
 ```toml
 [symlinks]
-targets = [".claude", ".cursor"]
+targets = [".claude", ".cursor"]  # Legacy: explicit symlink targets
 ```
 
-`targets` is optional and defaults to `[]`. Prefer the top-level `agents` field for standard runtimes.
+When `agents` is set, symlink targets are derived automatically. The `[symlinks]` section is for backward compatibility.
 
-## Named Skills
+## Skills Section
+
+### Regular Skills
 
 ```toml
 [[skills]]
-name = "find-bugs"
-source = "getsentry/skills"
-ref = "v1.0.0"
-path = "plugins/core/skills/find-bugs"
+name = "find-bugs"              # Required, unique skill identifier
+source = "getsentry/skills"     # Required, skill source
+ref = "v1.0.0"                  # Optional, pin to tag/branch/commit
+path = "tools/my-skill"         # Optional, subdirectory within repo
 ```
 
-| Field | Type | Required | Purpose |
-|-------|------|----------|---------|
-| `name` | string | yes | Safe skill name matching `[a-zA-Z0-9][a-zA-Z0-9._-]*` |
-| `source` | string | yes | Repository, Git URL, HTTPS catalog, or local path |
-| `ref` | string | no | Git tag, branch, or commit |
-| `path` | string | no | Exact skill directory within a Git source |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Unique identifier. Pattern: `^[a-zA-Z0-9][a-zA-Z0-9._-]*$` |
+| `source` | string | Yes | `owner/repo`, `owner/repo@ref`, GitHub/GitLab URL, `https://<domain>`, `git:url`, or `path:relative` |
+| `ref` | string | No | Tag, branch, or commit SHA to pin |
+| `path` | string | No | Subdirectory containing the skill within the source repo |
 
-## Wildcard Skills
+### Wildcard Skills
 
 ```toml
 [[skills]]
-name = "*"
-source = "getsentry/skills"
-ref = "v1.0.0"
-path = "skills/engineering"
-exclude = ["deprecated-skill"]
+name = "*"                      # Wildcard: install all skills from source
+source = "getsentry/skills"     # Required
+ref = "v1.0.0"                  # Optional
+path = "skills/engineering"     # Optional, recursive discovery scope
+exclude = ["deprecated-skill"]  # Optional, skills to skip
 ```
 
-| Field | Type | Required | Purpose |
-|-------|------|----------|---------|
-| `name` | literal `"*"` | yes | Wildcard marker |
-| `source` | string | yes | Same source formats as named skills |
-| `ref` | string | no | Git tag, branch, or commit |
-| `path` | string | no | Existing contained recursive discovery root for Git/local sources; use `"."` for the complete root. Well-known sources are unsupported. |
-| `exclude` | string[] | no | Skill names to omit; defaults to `[]` |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | literal `"*"` | Yes | Wildcard marker |
+| `source` | string | Yes | Same formats as regular skills |
+| `ref` | string | No | Tag, branch, or commit SHA to pin |
+| `path` | string | No | Source subdirectory to discover recursively; `.` means the source root |
+| `exclude` | string[] | No | Skill names to skip. Default: `[]` |
 
-Only one wildcard entry per source is allowed.
-
-## Trust
+## Trust Section
 
 ```toml
 [trust]
-allow_all = false
-github_orgs = ["getsentry"]
-github_repos = ["external-org/repo"]
-git_domains = ["git.corp.example/team"]
+allow_all = true                    # Allow any source
+
+# OR restrict to specific sources:
+[trust]
+github_orgs = ["getsentry"]         # GitHub org names
+github_repos = ["ext-org/repo"]     # Exact owner/repo pairs
+git_domains = ["git.corp.example.com"]  # Git URL domains
 ```
 
-| Field | Type | Default |
-|-------|------|---------|
-| `allow_all` | boolean | `false` |
-| `github_orgs` | string[] | `[]` |
-| `github_repos` | string[] | `[]` |
-| `git_domains` | string[] | `[]` |
+| Field | Type | Description |
+|-------|------|-------------|
+| `allow_all` | boolean | Allow all sources (overrides other fields) |
+| `github_orgs` | string[] | Allowed GitHub organizations |
+| `github_repos` | string[] | Allowed exact `owner/repo` pairs |
+| `git_domains` | string[] | Allowed domains or domain path prefixes for `git:` URLs (e.g., `gitlab.com/myorg`) |
 
-If `[trust]` is absent, sources are allowed for backward compatibility. `allow_all = true` overrides restrictions.
+No `[trust]` section = allow all sources (backward compatible).
 
-## MCP Servers
+## MCP Section
 
-Stdio transport:
+### Stdio Transport
 
 ```toml
 [[mcp]]
-name = "github"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-github"]
-env = ["GITHUB_TOKEN"]
+name = "github"                     # Required, unique server name
+command = "npx"                     # Required for stdio
+args = ["-y", "@modelcontextprotocol/server-github"]  # Optional
+env = ["GITHUB_TOKEN"]             # Optional, env vars to pass through
 ```
 
-HTTP transport:
+### HTTP Transport
 
 ```toml
 [[mcp]]
-name = "remote"
-url = "https://mcp.example.com/sse"
-headers = { Authorization = "Bearer ${TOKEN}" }
-env = ["TOKEN"]
+name = "remote-api"                 # Required, unique server name
+url = "https://mcp.example.com/sse" # Required for HTTP
 ```
 
-Each entry requires `name` and exactly one of `command` or `url`. `args`, `headers`, and `env` are optional; `env` defaults to `[]`.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Unique server identifier |
+| `command` | string | Stdio only | Command to execute |
+| `args` | string[] | No | Command arguments |
+| `env` | string[] | No | Environment variable names to pass through |
+| `url` | string | HTTP only | Server URL |
+| `headers` | table | No | HTTP headers |
 
-## Hooks
+## Hooks Section
 
 ```toml
 [[hooks]]
-event = "PreToolUse"
-matcher = "Bash"
-command = "./scripts/check-command"
+event = "PreToolUse"                # Required
+matcher = "Bash"                    # Optional, tool name filter
+command = "my-lint-check"           # Required
 ```
 
-| Field | Type | Required |
-|-------|------|----------|
-| `event` | `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, or `Stop` | yes |
-| `matcher` | string | no |
-| `command` | non-empty string | yes |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `event` | string | Yes | `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop` |
+| `matcher` | string | No | Tool name to match (omit for all tools) |
+| `command` | string | Yes | Shell command to execute |
 
-## Subagents
+## Subagents Section
 
 ```toml
 [[subagents]]
-name = "code-reviewer"
-source = "getsentry/agent-pack"
-ref = "v1.0.0"
-path = "agents/code-reviewer.md"
-targets = ["claude", "codex", "opencode"]
+name = "code-reviewer"          # Required, unique subagent identifier
+source = "getsentry/agent-pack" # Required, source repository or path
+ref = "v1.0.0"                  # Optional, pin to tag/branch/commit
+path = "agents/code-reviewer.md" # Optional, artifact path within source
+targets = ["claude", "codex"]   # Optional, subset of configured agents
 ```
 
-| Field | Type | Required | Purpose |
-|-------|------|----------|---------|
-| `name` | lowercase kebab-case string | yes | Subagent identity |
-| `source` | skill source string | yes | Git or local source; well-known HTTPS is rejected |
-| `ref` | string | no | Git tag, branch, or commit |
-| `path` | string | no | Explicit source file path |
-| `targets` | string[] | no | Runtime targets; defaults to configured agents |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Unique subagent identifier |
+| `source` | string | Yes | `owner/repo`, `owner/repo@ref`, GitHub/GitLab URL, `git:url`, or `path:relative` |
+| `ref` | string | No | Tag, branch, or commit SHA to pin |
+| `path` | string | No | Subagent artifact path within the source repo |
+| `targets` | string[] | No | Runtime targets for generated subagent files |
 
-Subagent names must match `[a-z][a-z0-9-]*`, and duplicate names are rejected.
+## Plugins Section
 
-## Lockfile
+```toml
+[[plugins]]
+name = "review-tools"           # Required, unique plugin identifier
+source = "getsentry/agent-plugins" # Required, source repository or path
+ref = "v1.0.0"                  # Optional, pin to tag/branch/commit
+path = "plugins/review-tools"   # Optional, plugin directory within source
+targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+```
 
-`agents.lock` is generated and gitignored. Skill entries may record:
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Unique plugin identifier |
+| `source` | string | Yes | `owner/repo`, `owner/repo@ref`, GitHub/GitLab URL, `git:url`, or `path:relative`; well-known HTTPS sources are not supported for plugins |
+| `ref` | string | No | Tag, branch, or commit SHA to pin |
+| `path` | string | No | Plugin directory path within the source repo |
+| `targets` | string[] | No | Plugin runtime targets; defaults to configured `agents` |
 
-| Field | Purpose |
-|-------|---------|
-| `source` | Original dependency source |
-| `resolved_url` | Resolved Git or HTTP source |
-| `resolved_path` | Path within the source where the skill was discovered |
-| `resolved_ref` | Resolved Git ref |
-| `resolved_commit` | Informational installed commit SHA |
+## Lockfile (agents.lock)
 
-Scoped wildcard-expanded local skills record `resolved_path` for offline scope reconciliation. Subagents use the same Git resolution fields. Never edit the lockfile manually.
+Auto-generated. Do not edit manually. Gitignored automatically.
+
+```toml
+version = 1
+
+[skills.find-bugs]
+source = "getsentry/skills@v1.0.0"
+resolved_url = "https://github.com/getsentry/skills.git"
+resolved_path = "plugins/sentry-skills/skills/find-bugs"
+resolved_ref = "v1.0.0"
+resolved_commit = "0123456789abcdef0123456789abcdef01234567"
+
+[subagents.code-reviewer]
+source = "getsentry/agent-pack"
+resolved_url = "https://github.com/getsentry/agent-pack.git"
+resolved_path = "agents/code-reviewer.md"
+resolved_commit = "0123456789abcdef0123456789abcdef01234567"
+
+[plugins.review-tools]
+source = "getsentry/agent-plugins"
+resolved_url = "https://github.com/getsentry/agent-plugins.git"
+resolved_path = "plugins/review-tools"
+resolved_commit = "0123456789abcdef0123456789abcdef01234567"
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `source` | string | Original source from `agents.toml` |
+| `resolved_url` | string | Resolved git URL or well-known HTTP base URL |
+| `resolved_path` | string | Subdirectory within repo |
+| `resolved_ref` | string | Ref that was resolved (omitted for default branch) |
+| `resolved_commit` | string | Full commit SHA that was installed. Informational only |
+
+Local path skills, subagents, and plugins have `source` only.
 
 ## Environment Variables
 
 | Variable | Purpose |
 |----------|---------|
-| `DOTAGENTS_HOME` | Override user-scope directory; default `~/.agents` |
-| `DOTAGENTS_STATE_DIR` | Override cache directory; default platform state path |
+| `DOTAGENTS_STATE_DIR` | Override cache location (default: `~/.local/dotagents`) |
+| `DOTAGENTS_HOME` | Override user-scope location (default: `~/.agents`) |

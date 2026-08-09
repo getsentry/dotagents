@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
+import { filterManagedPluginSkillNames } from "../../gitignore/skills.js";
 import { checkRootGitignoreEntries, ensureRootGitignoreEntries, writeAgentsGitignore } from "../../gitignore/writer.js";
 import { loadConfig } from "../../config/loader.js";
 import { isWildcardDep } from "../../config/schema.js";
@@ -14,6 +15,8 @@ import { skillSymlinkTargets } from "../../targets/skill-symlinks.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { exec } from "@sentry/dotagents-lib";
 import { isInPlaceSkill } from "../../utils/fs.js";
+import { isInPlacePluginSource, isSameProjectPluginConfig, loadInstalledPlugins } from "../../plugins/store.js";
+import { projectedPiSkillNames } from "../../plugins/runtime/writer.js";
 
 export interface DoctorCheck {
   name: string;
@@ -151,15 +154,29 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     } else {
       const managedNames = getManagedSkillNames(config, lockfile);
       const managedSubagentNames = getManagedSubagentNames(config, lockfile);
+      const managedPluginNames = getManagedPluginNames(config, lockfile, scope);
       checks.push({
         name: ".agents/.gitignore",
         status: "warn",
         message: ".agents/.gitignore is missing. Run 'npx @sentry/dotagents install' or 'npx @sentry/dotagents sync' to regenerate.",
         fix: async () => {
+          const installedPlugins = await loadInstalledPlugins(
+            scope.pluginsDir,
+            config.plugins.filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root)),
+          );
           await writeAgentsGitignore(
             scope.agentsDir,
-            managedNames,
+            [
+              ...managedNames,
+              ...await filterManagedPluginSkillNames(
+                await projectedPiSkillNames(config.agents, installedPlugins.plugins),
+                config,
+                scope.skillsDir,
+                scope.pluginsDir,
+              ),
+            ],
             managedSubagentNames,
+            managedPluginNames,
           );
         },
       });
@@ -192,7 +209,49 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     checks.push({ name: "installed skills", status: "ok", message: "No skills declared." });
   }
 
-  // 9. Symlinks (project scope only)
+  // 9. Declared plugins are installed
+  const userScopePlugins = scope.scope === "user"
+    ? config.plugins.map((plugin) => plugin.name)
+    : [];
+  const sameProjectPlugins = scope.scope === "project"
+    ? config.plugins
+      .filter((plugin) => isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
+      .map((plugin) => plugin.name)
+    : [];
+  const missingPlugins = config.plugins
+    .filter((plugin) => !sameProjectPlugins.includes(plugin.name))
+    .filter((plugin) => !existsSync(`${scope.pluginsDir}/${plugin.name}`))
+    .map((plugin) => plugin.name);
+  const pluginErrors: string[] = [];
+  if (userScopePlugins.length > 0) {
+    pluginErrors.push(
+      `${userScopePlugins.length} plugin(s) declared in user scope: ${userScopePlugins.join(", ")}. User-scope plugins are not supported yet; declare plugins in a project agents.toml instead.`,
+    );
+  } else {
+    if (sameProjectPlugins.length > 0) {
+      pluginErrors.push(
+        `${sameProjectPlugins.length} plugin(s) resolve inside this project's .agents/plugins/ tree: ${sameProjectPlugins.join(", ")}. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.`,
+      );
+    }
+    if (missingPlugins.length > 0) {
+      pluginErrors.push(
+        `${missingPlugins.length} plugin(s) not installed: ${missingPlugins.join(", ")}. Run 'npx @sentry/dotagents install'.`,
+      );
+    }
+  }
+  if (pluginErrors.length > 0) {
+    checks.push({
+      name: "installed plugins",
+      status: "error",
+      message: pluginErrors.join(" "),
+    });
+  } else if (config.plugins.length > 0) {
+    checks.push({ name: "installed plugins", status: "ok", message: `All ${config.plugins.length} declared plugin(s) installed.` });
+  } else {
+    checks.push({ name: "installed plugins", status: "ok", message: "No plugins declared." });
+  }
+
+  // 10. Symlinks (project scope only)
   if (scope.scope === "project" && existsSync(scope.agentsDir)) {
     const targets = skillSymlinkTargets(
       scope,
@@ -282,6 +341,32 @@ function getManagedSubagentNames(
   if (lockfile) {
     for (const name of Object.keys(lockfile.subagents)) {
       names.add(name);
+    }
+  }
+  return [...names];
+}
+
+function getManagedPluginNames(
+  config: Awaited<ReturnType<typeof loadConfig>>,
+  lockfile: Awaited<ReturnType<typeof loadLockfile>>,
+  scope: ScopeRoot,
+): string[] {
+  const names = new Set(
+    config.plugins
+      .filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
+      .map((plugin) => plugin.name),
+  );
+  const sameProjectPluginNames = new Set(
+    config.plugins
+      .filter((plugin) => isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
+      .map((plugin) => plugin.name),
+  );
+  if (lockfile) {
+    for (const [name, locked] of Object.entries(lockfile.plugins)) {
+      if (sameProjectPluginNames.has(name)) {continue;}
+      if (!isInPlacePluginSource(locked.source)) {
+        names.add(name);
+      }
     }
   }
   return [...names];

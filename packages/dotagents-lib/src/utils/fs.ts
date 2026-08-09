@@ -5,10 +5,15 @@ import { basename } from "node:path";
  * Copy a directory recursively, excluding .git/.
  * Removes destination first if it exists.
  */
-export async function copyDir(src: string, dest: string): Promise<void> {
+export async function copyDir(
+  src: string,
+  dest: string,
+  opts: { verbatimSymlinks?: boolean } = {},
+): Promise<void> {
   await rm(dest, { recursive: true, force: true });
   await cp(src, dest, {
     recursive: true,
+    ...(opts.verbatimSymlinks === undefined ? {} : { verbatimSymlinks: opts.verbatimSymlinks }),
     filter: (source) => basename(source) !== ".git",
   });
 }

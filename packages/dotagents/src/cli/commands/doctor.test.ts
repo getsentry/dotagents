@@ -102,6 +102,79 @@ describe("runDoctor", () => {
     expect(check?.message).toContain("pdf");
   });
 
+  it("detects same-project plugins that cannot be installed", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[plugins]]
+name = "local-tools"
+source = "path:.agents/plugins/local-tools"
+`,
+    );
+    await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+    await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");
+
+    const result = await runDoctor({ scope: resolveScope("project", projectRoot) });
+    const check = result.checks.find((c) => c.name === "installed plugins");
+    expect(check?.status).toBe("error");
+    expect(check?.message).toContain("Same-project plugins cannot be installed into the same project");
+  });
+
+  it("detects same-project plugins resolved through canonical discovery", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[plugins]]
+name = "local-tools"
+source = "path:."
+`,
+    );
+    await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+    await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");
+
+    const result = await runDoctor({ scope: resolveScope("project", projectRoot) });
+    const check = result.checks.find((c) => c.name === "installed plugins");
+    expect(check?.status).toBe("error");
+    expect(check?.message).toContain("Same-project plugins cannot be installed into the same project");
+  });
+
+  it("reports same-project and missing plugin errors together", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[plugins]]
+name = "local-tools"
+source = "path:.agents/plugins/local-tools"
+
+[[plugins]]
+name = "review-tools"
+source = "path:external-review-tools"
+`,
+    );
+    await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+    await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");
+
+    const result = await runDoctor({ scope: resolveScope("project", projectRoot) });
+    const check = result.checks.find((c) => c.name === "installed plugins");
+    expect(check?.status).toBe("error");
+    expect(check?.message).toContain("local-tools");
+    expect(check?.message).toContain("Same-project plugins cannot be installed into the same project");
+    expect(check?.message).toContain("review-tools");
+    expect(check?.message).toContain("Run 'npx @sentry/dotagents install'");
+  });
+
   it("detects a missing agent skill symlink", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -114,6 +187,37 @@ describe("runDoctor", () => {
     const check = result.checks.find((c) => c.name === "symlinks");
     expect(check?.status).toBe("warn");
     expect(check?.message).toContain("1 symlink(s)");
+  });
+
+  it("reports user-scope plugins as unsupported", async () => {
+    const previousHome = process.env["DOTAGENTS_HOME"];
+    const userRoot = join(tmpDir, "user-agents");
+    process.env["DOTAGENTS_HOME"] = userRoot;
+    const scope = resolveScope("user");
+    await mkdir(scope.agentsDir, { recursive: true });
+    await writeFile(
+      scope.configPath,
+      `version = 1
+
+[[plugins]]
+name = "review-tools"
+source = "getsentry/plugins"
+`,
+    );
+
+    try {
+      const result = await runDoctor({ scope });
+      const check = result.checks.find((c) => c.name === "installed plugins");
+      expect(check?.status).toBe("error");
+      expect(check?.message).toContain("User-scope plugins are not supported yet");
+      expect(check?.message).not.toContain("Run 'npx @sentry/dotagents install'");
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env["DOTAGENTS_HOME"];
+      } else {
+        process.env["DOTAGENTS_HOME"] = previousHome;
+      }
+    }
   });
 
   it("detects generated files tracked by git", async () => {
@@ -214,6 +318,82 @@ describe("runDoctor", () => {
       await runDoctor({ scope: resolveScope("project", projectRoot), fix: true });
 
       expect(existsSync(join(projectRoot, ".agents", ".gitignore"))).toBe(true);
+    });
+
+    it("does not gitignore same-project canonical plugins when recreating .agents/.gitignore", async () => {
+      const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }));
+      await writeFile(
+        join(projectRoot, "agents.toml"),
+        `version = 1
+
+[[plugins]]
+name = "local-tools"
+source = "path:."
+`,
+      );
+      await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+
+      await runDoctor({ scope: resolveScope("project", projectRoot), fix: true });
+
+      const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+      expect(gitignore).not.toContain("/plugins/local-tools/");
+    });
+
+    it("does not let stale lock entries gitignore same-project canonical plugins", async () => {
+      const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }));
+      await writeFile(
+        join(projectRoot, "agents.toml"),
+        `version = 1
+
+[[plugins]]
+name = "local-tools"
+source = "path:."
+`,
+      );
+      await writeFile(
+        join(projectRoot, "agents.lock"),
+        `version = 1
+
+[plugins.local-tools]
+source = "path:plugins/local-tools"
+`,
+      );
+      await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+
+      await runDoctor({ scope: resolveScope("project", projectRoot), fix: true });
+
+      const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+      expect(gitignore).not.toContain("/plugins/local-tools/");
+    });
+
+    it("does not gitignore orphan skills that collide with Pi plugin projections when recreating .agents/.gitignore", async () => {
+      await mkdir(join(projectRoot, ".agents", "skills", "review"), { recursive: true });
+      await writeFile(join(projectRoot, ".agents", "skills", "review", "SKILL.md"), "---\nname: review\ndescription: Review\n---\n");
+      const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
+      await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+      await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+      await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), "---\nname: review\ndescription: Review\n---\n");
+      await writeFile(
+        join(projectRoot, "agents.toml"),
+        `version = 1
+agents = ["pi"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugins/review-tools"
+`,
+      );
+      await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+
+      await runDoctor({ scope: resolveScope("project", projectRoot), fix: true });
+
+      const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+      expect(gitignore).not.toContain("/skills/review");
+      expect(gitignore).toContain("/plugins/review-tools/");
     });
 
     it("includes lockfile subagents when recreating .agents/.gitignore", async () => {

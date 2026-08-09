@@ -10,6 +10,8 @@ import {
   reconcileSubagentConfigs,
   userSubagentResolver,
 } from "../../../subagents/writer.js";
+import { reconcilePluginOutputs } from "../../../plugins/runtime/writer.js";
+import type { PluginDeclaration } from "../../../plugins/types.js";
 import type { SubagentDeclaration } from "../../../subagents/types.js";
 
 /** Writes agent skill symlinks after canonical install artifacts are ready. */
@@ -71,5 +73,16 @@ export async function writeSubagentRuntime(
   const result = await reconcileSubagentConfigs(config.agents, subagents, resolver, {
     mode: "apply",
   });
+  return result.warnings;
+}
+
+/** Writes project-scoped plugin runtime projections. */
+export async function writePluginRuntime(
+  config: AgentsConfig,
+  scope: ScopeRoot,
+  plugins: PluginDeclaration[],
+): Promise<{ agent: string; name: string; message: string }[]> {
+  if (scope.scope !== "project") {return [];}
+  const { result } = await reconcilePluginOutputs(config.agents, plugins, scope.root);
   return result.warnings;
 }

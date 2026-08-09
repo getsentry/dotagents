@@ -248,11 +248,13 @@ describe("runAdd", () => {
     );
     const installSpy = vi.spyOn(installModule, "runInstall").mockResolvedValue({
       installed: [],
-      skipped: [],
+      installedPlugins: [],
       pruned: [],
+      prunedPlugins: [],
       mcpWarnings: [],
       hookWarnings: [],
       subagentWarnings: [],
+      pluginWarnings: [],
     });
 
     const result = await runAdd({
@@ -365,11 +367,13 @@ describe("runAdd", () => {
     vi.mocked(clack.isCancel).mockReturnValue(false);
     const install = vi.spyOn(installModule, "runInstall").mockResolvedValue({
       installed: [],
-      skipped: [],
+      installedPlugins: [],
       pruned: [],
+      prunedPlugins: [],
       mcpWarnings: [],
       hookWarnings: [],
       subagentWarnings: [],
+      pluginWarnings: [],
     });
 
     const result = await runAdd({
@@ -391,11 +395,13 @@ describe("runAdd", () => {
     vi.mocked(clack.isCancel).mockReturnValue(false);
     const install = vi.spyOn(installModule, "runInstall").mockResolvedValue({
       installed: [],
-      skipped: [],
+      installedPlugins: [],
       pruned: [],
+      prunedPlugins: [],
       mcpWarnings: [],
       hookWarnings: [],
       subagentWarnings: [],
+      pluginWarnings: [],
     });
 
     const result = await runAdd({

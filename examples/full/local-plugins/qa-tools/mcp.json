@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "fixture-stdio": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/server.mjs"],
+      "env": {
+        "FIXTURE_CACHE": "${PLUGIN_DATA}/cache"
+      },
+      "cwd": "${PLUGIN_ROOT}"
+    },
+    "fixture-http": {
+      "type": "streamable-http",
+      "url": "https://example.com/mcp",
+      "headers": {
+        "X-Fixture": "dotagents"
+      }
+    }
+  }
+}

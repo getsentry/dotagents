@@ -26,7 +26,7 @@ Options:
   --help, -h      Show this help message`,
   remove: `Usage: npx @sentry/dotagents [--user] remove <name|source> [options]
 
-Remove a skill, or remove every dependency from a source.
+Remove a skill or plugin, or remove every dependency from a source.
 
 Options:
   -y, --yes       Skip confirmation when excluding or removing by source
@@ -39,7 +39,7 @@ Options:
   --help, -h      Show this help message`,
   list: `Usage: npx @sentry/dotagents [--user] list [options]
 
-Show declared and wildcard-expanded skills with installation status.
+Show declared skills and plugins with installation status.
 
 Options:
   --json          Print structured output

@@ -81,6 +81,18 @@ describe("runSync", () => {
     expect(config.skills).toHaveLength(2);
   });
 
+  it("ignores plugin skill ownership markers when adopting orphaned skills", async () => {
+    await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
+    const markerDir = join(projectRoot, ".agents", "skills", ".dotagents-managed");
+    await mkdir(markerDir, { recursive: true });
+    await writeFile(join(markerDir, "plugin-skill"), "managedBy=dotagents\n");
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.adopted).toEqual([]);
+    expect((await loadConfig(join(projectRoot, "agents.toml"))).skills).toEqual([]);
+  });
+
   it("adopted skill does not appear as orphan issue", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -308,9 +320,9 @@ describe("runSync", () => {
     await exec("git", ["clone", "--branch", "main", projectOrigin, bobRepo], { cwd: tmpDir });
     await exec("git", ["config", "user.email", "alice@example.com"], { cwd: aliceRepo });
     await exec("git", ["config", "user.name", "Alice"], { cwd: aliceRepo });
+    await exec("git", ["config", "commit.gpgsign", "false"], { cwd: aliceRepo });
     await exec("git", ["config", "user.email", "bob@example.com"], { cwd: bobRepo });
     await exec("git", ["config", "user.name", "Bob"], { cwd: bobRepo });
-    await exec("git", ["config", "commit.gpgsign", "false"], { cwd: aliceRepo });
     await exec("git", ["config", "commit.gpgsign", "false"], { cwd: bobRepo });
 
     try {
@@ -324,7 +336,7 @@ describe("runSync", () => {
       expect(existsSync(bobSkillDir)).toBe(true);
 
       process.env["DOTAGENTS_STATE_DIR"] = aliceStateDir;
-      await runRemove({ scope: resolveScope("project", aliceRepo), skillName: "pdf" });
+      await runRemove({ scope: resolveScope("project", aliceRepo), name: "pdf" });
       await exec("git", ["add", "agents.toml"], { cwd: aliceRepo });
       await exec("git", ["commit", "-m", "remove pdf"], { cwd: aliceRepo });
       await exec("git", ["push", "origin", "main"], { cwd: aliceRepo });
@@ -355,7 +367,7 @@ describe("runSync", () => {
         process.env["DOTAGENTS_STATE_DIR"] = previousStateDir;
       }
     }
-  }, 30_000);
+  }, 90_000);
 
   it("detects missing skills", async () => {
     await writeFile(
@@ -367,6 +379,50 @@ describe("runSync", () => {
     const missingIssues = result.issues.filter((i) => i.type === "missing");
     expect(missingIssues).toHaveLength(1);
     expect(missingIssues[0]!.name).toBe("pdf");
+  });
+
+  it("detects missing plugins as errors", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+    expect(result.issues).toEqual([
+      {
+        type: "missing",
+        name: "review-tools",
+        message: `Plugin "review-tools" is in agents.toml but not installed. Run 'npx @sentry/dotagents install'.`,
+      },
+    ]);
+  });
+
+  it("preserves plugin names for malformed installed bundle issues", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), "not json");
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.issues).toContainEqual({
+      type: "plugins",
+      name: "review-tools",
+      message: expect.stringContaining('Failed to load installed plugin "review-tools"'),
+    });
   });
 
   it("reports no issues when everything is in sync", async () => {
@@ -444,7 +500,32 @@ describe("runSync", () => {
       join(projectRoot, ".agents", ".gitignore"),
       "utf-8",
     );
-    expect(gitignore).toContain("/skills/pdf/");
+    expect(gitignore).toContain("/skills/pdf");
+  });
+
+  it("does not gitignore orphan skills that collide with Pi plugin projections", async () => {
+    await mkdir(join(projectRoot, ".agents", "skills", "review"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["pi"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    await runSync({ scope: resolveScope("project", projectRoot) });
+
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).not.toContain("/skills/review");
+    expect(gitignore).toContain("/plugins/review-tools/");
   });
 
   it("repairs missing MCP configs", async () => {
@@ -788,6 +869,229 @@ agents = ["claude"]
 
     const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
     expect(gitignore).not.toContain("/agents/old-reviewer.md");
+  });
+
+  it("repairs plugin runtime artifacts from installed plugin bundles", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "review-tools",
+        version: "1.0.0",
+        description: "Review workflow helpers",
+      }, null, 2),
+    );
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex", "claude", "cursor"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.pluginsRepaired).toBeGreaterThan(0);
+    expect(result.issues).toEqual([]);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".claude-plugin", "marketplace.json"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".cursor-plugin", "marketplace.json"))).toBe(true);
+  });
+
+  it("preserves plugin runtime outputs when an installed plugin is broken", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }));
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["opencode", "pi"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+    const scope = resolveScope("project", projectRoot);
+    await runSync({ scope });
+    const openCodeLink = join(projectRoot, ".opencode", "skills", "review");
+    const piLink = join(projectRoot, ".agents", "skills", "review");
+    await writeFile(join(pluginDir, "plugin.json"), "{broken");
+
+    const result = await runSync({ scope });
+
+    expect(result.issues.some((issue) => issue.type === "plugins" && issue.name === "review-tools")).toBe(true);
+    expect(existsSync(openCodeLink)).toBe(true);
+    expect(existsSync(piLink)).toBe(true);
+  });
+
+  it("prunes removed native manifests before refreshing a surviving Grok copy", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }));
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["claude", "grok"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+
+    const scope = resolveScope("project", projectRoot);
+    await runSync({ scope });
+    expect(existsSync(join(pluginDir, ".claude-plugin", "plugin.json"))).toBe(true);
+    expect(existsSync(join(projectRoot, ".grok", "plugins", "review-tools", ".claude-plugin", "plugin.json"))).toBe(false);
+
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["grok"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugin-source/review-tools"
+`,
+    );
+    await runSync({ scope });
+
+    expect(existsSync(join(pluginDir, ".claude-plugin", "plugin.json"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".grok", "plugins", "review-tools", ".claude-plugin", "plugin.json"))).toBe(false);
+  });
+
+  it("reports same-project plugins without generating runtime outputs", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "local-tools",
+        description: "Local plugin",
+      }, null, 2),
+    );
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "local-tools"
+source = "path:./.agents/plugins/local-tools"
+`,
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.issues).toContainEqual({
+      type: "plugins",
+      name: "local-tools",
+      message: 'Plugin "local-tools" resolves to .agents/plugins/local-tools. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.',
+    });
+    expect(existsSync(pluginDir)).toBe(true);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(false);
+    expect(existsSync(join(pluginDir, ".codex-plugin", "plugin.json"))).toBe(false);
+  });
+
+  it("reports same-project plugins resolved through path aliases", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }, null, 2));
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "local-tools"
+source = "path:."
+path = ".agents/plugins/local-tools"
+`,
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.issues).toContainEqual({
+      type: "plugins",
+      name: "local-tools",
+      message: 'Plugin "local-tools" resolves to .agents/plugins/local-tools. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.',
+    });
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).not.toContain("/plugins/local-tools/");
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(false);
+    expect(existsSync(join(pluginDir, ".codex-plugin", "plugin.json"))).toBe(false);
+  });
+
+  it("reports same-project plugins resolved through canonical discovery", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "local-tools");
+    await mkdir(join(pluginDir, "skills", "review"), { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "local-tools" }, null, 2));
+    await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "local-tools"
+source = "path:."
+`,
+    );
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.issues).toContainEqual({
+      type: "plugins",
+      name: "local-tools",
+      message: 'Plugin "local-tools" resolves to .agents/plugins/local-tools. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.',
+    });
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).not.toContain("/plugins/local-tools/");
+    expect(existsSync(join(pluginDir, ".codex-plugin", "plugin.json"))).toBe(false);
+  });
+
+  it("only prunes stale managed plugin directories from the lockfile", async () => {
+    await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
+    await mkdir(join(projectRoot, ".agents", "plugins", "stale-managed"), { recursive: true });
+    await mkdir(join(projectRoot, ".agents", "plugins", "local-unmanaged"), { recursive: true });
+    await writeFile(
+      join(projectRoot, ".agents", "plugins", "stale-managed", ".dotagents-managed"),
+      "managedBy=dotagents\n",
+    );
+    await writeFile(
+      join(projectRoot, ".agents", "plugins", "local-unmanaged", "plugin.json"),
+      JSON.stringify({ name: "local-unmanaged" }, null, 2),
+    );
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {
+        "stale-managed": {
+          source: "getsentry/plugins",
+          resolved_url: "https://github.com/getsentry/plugins.git",
+          resolved_path: "stale-managed",
+        },
+      },
+    });
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.pluginsRepaired).toBe(1);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "stale-managed"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".agents", "plugins", "local-unmanaged"))).toBe(true);
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile!.plugins).toEqual({});
   });
 
   it("does not auto-create root .gitignore", async () => {

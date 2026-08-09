@@ -28,6 +28,7 @@ describe("ensureUserScopeBootstrapped", () => {
       configPath: join(home, "agents.toml"),
       lockPath: join(home, "agents.lock"),
       skillsDir: join(home, "skills"),
+      pluginsDir: join(home, "plugins"),
     };
   }
 
@@ -82,6 +83,7 @@ describe("ensureUserScopeBootstrapped", () => {
       configPath: join(tmpDir, "agents.toml"),
       lockPath: join(tmpDir, "agents.lock"),
       skillsDir: join(tmpDir, ".agents", "skills"),
+      pluginsDir: join(tmpDir, ".agents", "plugins"),
     };
 
     await ensureUserScopeBootstrapped(scope);

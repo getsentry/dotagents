@@ -54,12 +54,13 @@ dotagents --user init
 dotagents install
 ```
 
-Install and refresh skill and subagent dependencies from `agents.toml`. Resolves
-sources, copies skills, writes the lockfile, creates symlinks, and generates MCP,
-hook, and subagent configs. There is no separate update command. With
-`--frozen`, dotagents prints a compatibility warning and performs the same normal
-install. The flag is ignored and will be removed in the next major release; use
-explicit `ref` values in `agents.toml` to pin sources.
+Install and refresh skill, subagent, and plugin dependencies from `agents.toml`.
+Resolves sources, copies canonical artifacts, writes the lockfile, creates
+symlinks, and generates MCP, hook, subagent, and plugin runtime configs. There
+is no separate update command. Plugins are project-scope only; `dotagents
+--user install` rejects configs that declare `[[plugins]]`. The deprecated
+`--frozen` flag prints a warning and performs the same normal install; use
+explicit `ref` values to pin sources.
 
 Example:
 
@@ -126,10 +127,12 @@ dotagents add path:./my-skills/custom
 dotagents remove <name|source> [-y]
 ```
 
-Remove a skill from `agents.toml`, delete it from disk, and update the lockfile.
-You can also pass a source to remove all skills from that source. When removing
-a skill provided by a wildcard source, dotagents can add that skill to the
-wildcard `exclude` list.
+Remove a skill or plugin from `agents.toml`, delete managed installed files, and
+update the lockfile. You can also pass a source to remove all skills and plugins
+from that source. When removing a skill provided by a wildcard source, dotagents
+can add that skill to the wildcard `exclude` list.
+If a skill and plugin share the same name, name-based removal is rejected. When
+their sources differ, pass the dependency's source to disambiguate.
 
 Options:
 
@@ -152,8 +155,9 @@ dotagents sync
 ```
 
 Reconcile project state without network access. Adopts local orphaned skills,
-prunes stale managed skills and subagents removed from config, regenerates gitignore, and
-repairs symlinks plus MCP/hook configs. Reports issues as warnings or errors.
+prunes stale managed skills, subagents, and plugins removed from config,
+regenerates gitignore, and repairs symlinks plus MCP/hook/subagent/plugin
+configs. Reports issues as warnings or errors.
 
 <a id="mcp-add"></a>
 
@@ -286,8 +290,10 @@ dotagents doctor [--fix]
 ```
 
 Check project health and fix issues. Verifies gitignore setup, installed
-skills, symlinks, and detects legacy config fields. Useful for migrating to a
-new version of dotagents.
+skills/plugins, symlinks, and detects legacy config fields. Use `dotagents sync`
+to repair generated runtime configs. User-scope plugin declarations and
+same-project plugin declarations are reported because plugin runtime projections
+are project-scoped.
 
 Options:
 
@@ -308,7 +314,9 @@ dotagents doctor --fix    # fix what it can
 dotagents list [--json]
 ```
 
-Show installed skills and status. Use `--json` for machine-readable output.
+Show declared skills and plugins with install/lock status. Use `--json` for
+machine-readable output. JSON output contains separate `skills` and `plugins`
+arrays.
 
 Status output:
 
@@ -339,9 +347,10 @@ Status output:
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `version` | integer | -- | Schema version. Always `1`. |
-| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `opencode` |
+| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `grok`, `vscode`, `opencode`, `pi`. `grok` and `pi` are plugin-only targets. |
 | `subagents` | table[] | `[]` | Custom subagent declarations for Claude, Cursor, Codex, and OpenCode |
-| `minimum_release_age` | integer | -- | Minimum commit age, in minutes, before a git skill can install. |
+| `plugins` | table[] | `[]` | Project-scoped plugin declarations for Claude, Cursor, Codex, Grok, OpenCode, and Pi. |
+| `minimum_release_age` | integer | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install. |
 | `minimum_release_age_exclude` | string[] | `[]` | Sources that bypass the minimum release age gate. Supports org names, `org/repo`, and `org/*`. |
 | `defaultRepositorySource` | string | `github` | Host used for shorthand `owner/repo` sources. Valid values: `github` or `gitlab`. |
 
@@ -352,7 +361,7 @@ Status output:
 | `name` | string | Yes | Skill identifier. Use `"*"` for wildcard. |
 | `source` | string | Yes | `owner/repo`, `owner/repo@ref`, GitHub/GitLab URL, `git:url`, or `path:relative` |
 | `ref` | string | No | Tag, branch, or commit SHA to pin |
-| `path` | string | No | Exact directory for a named Git skill, or an existing contained recursive discovery root for a Git/local wildcard; use `"."` for the complete source root. Well-known sources do not support `path`. |
+| `path` | string | No | Subdirectory within repo, when auto-discovery fails |
 | `exclude` | string[] | No | Skills to skip. Wildcard entries only. |
 
 ### MCP Servers
@@ -405,14 +414,48 @@ Generated files:
 - Codex: `.codex/agents/<name>.toml`
 - OpenCode: `.opencode/agents/<name>.md`
 
-Generated files include a dotagents header marker. `install` and `sync` update managed files and do not overwrite hand-written files without the generated header marker. They also avoid creating duplicate runtime identities when an unmanaged file in the same agent directory already declares the same subagent. The deprecated `--frozen` option does not change this behavior.
+Generated files include a dotagents header marker. `install` and `sync` update managed files and do not overwrite hand-written files without the generated header marker. They also avoid creating duplicate runtime identities when an unmanaged file in the same agent directory already declares the same subagent. The deprecated `--frozen` flag does not change this behavior.
+
+<a id="plugins"></a>
+
+### Plugins
+
+`[[plugins]]` entries install canonical plugin bundles into
+`.agents/plugins/<name>/` and generate runtime-specific outputs for configured
+agents. Plugin sources support GitHub/GitLab shorthands, git URLs, and `path:`
+sources; HTTPS well-known sources are not supported for plugins.
+
+New plugin bundles follow Agent Plugins v1 with a required `plugin.json` and
+optional `skills/` and `mcp.json`. dotagents preserves the raw bundle and
+generates isolated target adapters from the portable core. Generated JSON uses
+adjacent ownership sidecars; component symlinks use marker files in reserved
+`.dotagents-managed/` directories. Client schemas receive no dotagents-only fields.
+Legacy generalized and native Claude/Cursor/Codex manifests remain supported
+during migration. Native imports preserve the owning manifest and expose only
+core metadata and Agent Skills to other clients; native components are never
+translated into unrelated clients' formats.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | string | Yes | Plugin identifier. Lowercase letters, numbers, hyphens, and dots. |
+| `source` | string | Yes | Repository or local source. |
+| `ref` | string | No | Optional git ref override. |
+| `path` | string | No | Optional explicit plugin path inside the source. |
+| `targets` | string[] | No | Optional subset of configured agents. |
+
+Generated plugin outputs include Claude/Cursor/Codex marketplaces and native
+manifests, Grok plugin directories, OpenCode skill links, and Pi skill links.
+Generalized legacy bundles can also project Markdown agents into OpenCode;
+standard extension agents are preserved but not projected yet. dotagents rejects
+plugin sources that resolve to the same project's
+`.agents/plugins/<name>/` install destination, and user-scope plugins are not
+supported yet.
 
 ## Scopes
 
 ### Project Scope (default)
 
-Operates on the current Git repository. Commands run from a subdirectory
-discover the repository root and use its `agents.toml`.
+Operates on the current project. Requires `agents.toml` at the project root.
 Skills go to `.agents/skills/` and the lockfile goes to `agents.lock`.
 
 ### User Scope

@@ -115,11 +115,11 @@ Use `dotagents sync` for offline repair. It does not fetch anything from the
 network. Instead, it:
 
 - Adopts local orphaned skills, meaning installed skills that are not declared.
-- Prunes stale managed skills and subagents removed from config.
+- Prunes stale managed skills, subagents, and plugins removed from config.
 - Regenerates `.agents/.gitignore`.
 - Repairs broken symlinks.
 - Fixes MCP and hook configs.
-- Repairs generated subagent files.
+- Repairs generated subagent and plugin runtime files.
 
 ## Diagnosing Issues
 
@@ -131,8 +131,9 @@ dotagents doctor        # check for issues
 dotagents doctor --fix  # auto-fix what it can
 ```
 
-Checks for missing gitignore entries, legacy config fields, missing skills, and
-broken symlinks. It is especially useful when migrating from an older version.
+Checks for missing gitignore entries, legacy config fields, missing skills and
+plugins, and broken symlinks. Use `dotagents sync` to repair generated runtime
+config drift. Doctor is especially useful when migrating from an older version.
 
 ## Personal Skills
 
@@ -158,7 +159,7 @@ back to user scope automatically.
 
 ## Full Configuration Example
 
-`agents.toml` with skills, wildcards, MCP servers, hooks, and subagents:
+`agents.toml` with skills, wildcards, plugins, MCP servers, hooks, and subagents:
 
 ```toml
 version = 1
@@ -214,6 +215,12 @@ command = "my-lint-check"
 name = "code-reviewer"
 source = "getsentry/agent-pack"
 targets = ["claude", "codex", "opencode"]
+
+# Plugin bundle
+[[plugins]]
+name = "review-tools"
+source = "getsentry/agent-pack"
+targets = ["claude", "cursor", "codex", "opencode"]
 ```
 
 See the [CLI reference](/cli/#configuration-agentstoml) for all fields and

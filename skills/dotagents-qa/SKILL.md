@@ -35,9 +35,11 @@ Write down the QA target before running commands:
 
 Read the targeted reference before running runtime-specific QA:
 - Core install/sync example: [references/core-agentic-qa.md](references/core-agentic-qa.md)
-- Codex custom agents and runtime caveats: [references/codex.md](references/codex.md)
-- Claude Code files and runtime caveats: [references/claude.md](references/claude.md)
+- Plugin runtime verification matrix: [references/plugin-runtime.md](references/plugin-runtime.md)
+- Codex custom agents and plugin marketplace/install proof: [references/codex.md](references/codex.md)
+- Claude Code files, plugin validation, and runtime caveats: [references/claude.md](references/claude.md)
 - Cursor files/runtime caveats: [references/cursor.md](references/cursor.md)
+- Grok Build files/runtime caveats: [references/grok.md](references/grok.md)
 - OpenCode files/runtime caveats: [references/opencode.md](references/opencode.md)
 
 Run focused Vitest coverage for logic bugs. Use this skill for end-to-end QA
@@ -58,8 +60,12 @@ docker build \
 The image installs the latest npm-published Codex, Claude Code, and OpenCode
 CLIs (`codex`, `claude`, `opencode`). Use them for version checks, help-output
 checks, and optional isolated runtime probes. Their presence does not prove
-runtime discovery by itself; authenticated model-backed checks are still
-explicit opt-ins.
+runtime discovery by itself; for plugins, prefer native dry-run/management
+commands where available: `claude plugin validate` for Claude plugin and
+marketplace shape, and `codex plugin marketplace add/list` plus
+`codex plugin add/list` for Codex marketplace installation. Authenticated
+model-backed checks are still explicit opt-ins. Keep runtime credentials out of
+fixtures and retained `/qa-out` artifacts.
 
 Use an interactive container so the QA steps stay change-specific:
 
@@ -145,10 +151,31 @@ asserts:
 - hook files for Claude and Cursor
 - canonical installed subagent under `.agents/agents/`
 - generated subagent runtime files for Claude, Cursor, Codex, and OpenCode
+- canonical installed plugin bundle under `.agents/plugins/`
+- Codex repo-scoped plugin marketplace under `.agents/plugins/marketplace.json`
+- generated plugin runtime files for Claude, Cursor, Codex, Grok, and OpenCode component projections
 - `sync` repair after deleting representative generated files
 
 Use `node skills/dotagents-qa/scripts/qa-example.mjs all --keep` when you need
 to inspect the temp project; the script prints the retained path.
+
+For automatic real-client plugin proof, run:
+
+```bash
+pnpm qa:plugins
+```
+
+This runs every installed no-auth client proof in a fresh single-target fixture:
+Claude validates, adds, installs, and lists the plugin, then verifies one skill,
+zero leaked client-extension agents, and both portable MCP servers. Codex adds
+the generated marketplace and installs/lists the plugin. Grok Build runs
+`plugin list` and `plugin details` when available. Missing client CLIs are
+reported and skipped; the command fails if none are installed.
+
+Cursor currently has no plugin validation or marketplace command in its desktop
+CLI, so Cursor remains covered by the isolated per-harness integration contract rather
+than being mislabeled as client-level E2E. The OpenCode proof remains available
+as an explicit task but is not part of the automatic client set.
 
 For paid Codex runtime proof of generated custom agents, run the runtime proof
 outside Docker only when the branch affects Codex custom agents or when
@@ -224,6 +251,9 @@ Useful fixture changes:
 - Subagents: include a portable Markdown fixture under `agents/`, assert the
   installed canonical file in `.agents/agents/`, assert generated runtime files
   for Claude/Cursor/Codex/OpenCode, and inspect `agents.lock`.
+- Plugins: include a local plugin fixture with representative components,
+  assert the installed canonical bundle in `.agents/plugins/`, assert generated
+  runtime files for Claude/Cursor/Codex/Grok/OpenCode, and inspect `agents.lock`.
 - Sync and doctor: pre-create broken or legacy state, then prove repair and
   diagnostics.
 - User scope: set both `HOME` and `DOTAGENTS_HOME`, pass `--user`, and inspect
@@ -268,7 +298,19 @@ test -f .claude/agents/code-reviewer.md
 test -f .cursor/agents/code-reviewer.md
 test -f .codex/agents/code-reviewer.toml
 test -f .opencode/agents/code-reviewer.md
+test -f .agents/plugins/qa-tools/plugin.json
+test -f .agents/plugins/marketplace.json
+test -f .claude-plugin/marketplace.json
+test -f .cursor-plugin/marketplace.json
+test -f .agents/plugins/qa-tools/.claude-plugin/plugin.json
+test -f .agents/plugins/qa-tools/.cursor-plugin/plugin.json
+test -f .agents/plugins/qa-tools/.codex-plugin/plugin.json
+test -f .grok/plugins/qa-tools/.dotagents-managed
+test -L .opencode/skills/plugin-qa
+test -f .opencode/skills/.dotagents-managed/plugin-qa
+test ! -e .opencode/agents/plugin-reviewer.md
 grep -q "code-reviewer" agents.lock
+grep -q "qa-tools" agents.lock
 grep -q "Generated by dotagents" .claude/agents/code-reviewer.md
 grep -q "Generated by dotagents" .codex/agents/code-reviewer.toml
 ```
@@ -278,11 +320,26 @@ diff claims to repair, then verify the repair:
 
 ```bash
 rm .mcp.json .claude/skills .claude/agents/code-reviewer.md .codex/agents/code-reviewer.toml
+rm .agents/plugins/marketplace.json .claude-plugin/marketplace.json .agents/plugins/qa-tools/.claude-plugin/plugin.json
+rm .cursor-plugin/marketplace.json .agents/plugins/qa-tools/.cursor-plugin/plugin.json
+rm .agents/plugins/qa-tools/.codex-plugin/plugin.json
+rm -rf .grok/plugins/qa-tools
+rm .opencode/skills/plugin-qa
 "${cli[@]}" sync | tee /qa-out/sync.out
 test -f .mcp.json
 test -L .claude/skills
 test -f .claude/agents/code-reviewer.md
 test -f .codex/agents/code-reviewer.toml
+test -f .agents/plugins/marketplace.json
+test -f .claude-plugin/marketplace.json
+test -f .cursor-plugin/marketplace.json
+test -f .agents/plugins/qa-tools/.claude-plugin/plugin.json
+test -f .agents/plugins/qa-tools/.cursor-plugin/plugin.json
+test -f .agents/plugins/qa-tools/.codex-plugin/plugin.json
+test -f .grok/plugins/qa-tools/.dotagents-managed
+test -L .opencode/skills/plugin-qa
+test -f .opencode/skills/.dotagents-managed/plugin-qa
+test ! -e .opencode/agents/plugin-reviewer.md
 ```
 
 For user-scope changes:
@@ -328,6 +385,10 @@ when Codex trusts the project. See [references/codex.md](references/codex.md).
 Claude has no cheap dry-run skill list. If auth/network/model cost is
 acceptable, run a minimal non-interactive prompt from the temp project;
 otherwise report it as skipped.
+
+Provider and gateway checks are runtime-specific. Before claiming model-backed
+runtime proof, run the check inside Docker and report the exact provider config
+used with secret values redacted.
 
 ## 7. Report Evidence
 

@@ -36,6 +36,11 @@ const taskGroups = {
 const tasks = {
   "install-files": runInstallFiles,
   "sync-repair": runSyncRepair,
+  "plugin-claude": runClaudePluginProof,
+  "plugin-codex": runCodexPluginProof,
+  "plugin-grok": runGrokPluginProof,
+  "opencode-projections": runOpenCodePluginProof,
+  "plugin-clients": runAvailablePluginClientProofs,
   "codex-runtime": runCodexRuntimeProof,
 };
 
@@ -110,6 +115,11 @@ Tasks:
   all              Run install-files and sync-repair
   install-files    Install the full example and assert generated files
   sync-repair      Delete representative generated files and assert sync repairs them
+  plugin-claude    Validate generated Claude plugin and marketplace with Claude Code
+  plugin-codex     Add/list/install generated Codex marketplace with Codex CLI
+  plugin-grok      Confirm Grok Build discovers the generated project plugin
+  opencode-projections  Assert generated OpenCode resource projections
+  plugin-clients   Run every installed no-auth plugin client proof
   codex-runtime    Paid proof that Codex can spawn the generated custom agent
 
 Compatibility:
@@ -127,11 +137,160 @@ async function runSyncRepair() {
   rmSync(join(projectDir, ".claude", "skills"), { force: true, recursive: true });
   rmSync(join(projectDir, ".claude", "agents", "code-reviewer.md"), { force: true });
   rmSync(join(projectDir, ".codex", "agents", "code-reviewer.toml"), { force: true });
+  rmSync(join(projectDir, ".agents", "plugins", "marketplace.json"), { force: true });
+  rmSync(join(projectDir, ".claude-plugin", "marketplace.json"), { force: true });
+  rmSync(join(projectDir, ".cursor-plugin", "marketplace.json"), { force: true });
+  rmSync(join(projectDir, ".agents", "plugins", "qa-tools", ".claude-plugin", "plugin.json"), { force: true });
+  rmSync(join(projectDir, ".agents", "plugins", "qa-tools", ".cursor-plugin", "plugin.json"), { force: true });
+  rmSync(join(projectDir, ".agents", "plugins", "qa-tools", ".codex-plugin", "plugin.json"), { force: true });
+  rmSync(join(projectDir, ".grok", "plugins", "qa-tools"), { force: true, recursive: true });
+  rmSync(join(projectDir, ".opencode", "skills", "plugin-qa"), { force: true, recursive: true });
+  rmSync(join(projectDir, ".agents", "skills", "plugin-qa"), { force: true, recursive: true });
   runCli(["sync"]);
   assertFile(".mcp.json");
   assertSymlink(".claude/skills");
   assertFile(".claude/agents/code-reviewer.md");
   assertFile(".codex/agents/code-reviewer.toml");
+  assertPluginOutputs();
+}
+
+async function runClaudePluginProof() {
+  prepareClientHarness("claude");
+  execFileSync("claude", ["plugin", "validate", join(projectDir, ".agents", "plugins", "qa-tools")], {
+    cwd: projectDir,
+    env: fixtureEnv,
+    stdio: "inherit",
+  });
+  execFileSync("claude", ["plugin", "validate", join(projectDir, ".claude-plugin", "marketplace.json")], {
+    cwd: projectDir,
+    env: fixtureEnv,
+    stdio: "inherit",
+  });
+  execFileSync("claude", ["plugin", "marketplace", "add", projectDir, "--scope", "local"], {
+    cwd: projectDir,
+    env: fixtureEnv,
+    stdio: "inherit",
+  });
+  const available = execJson("claude", ["plugin", "list", "--available", "--json"], fixtureEnv);
+  if (!available.available?.some((plugin) => plugin.pluginId === "qa-tools@dotagents")) {
+    throw new Error("Claude available plugin list did not include qa-tools@dotagents");
+  }
+  execFileSync("claude", ["plugin", "install", "qa-tools@dotagents", "--scope", "local"], {
+    cwd: projectDir,
+    env: fixtureEnv,
+    stdio: "inherit",
+  });
+  const installed = execJson("claude", ["plugin", "list", "--json"], fixtureEnv);
+  const plugin = installed.find((entry) => entry.id === "qa-tools@dotagents" && entry.enabled === true);
+  if (!plugin) {throw new Error("Claude installed plugin list did not include enabled qa-tools@dotagents");}
+  const mcpNames = Object.keys(plugin.mcpServers ?? {}).toSorted();
+  if (JSON.stringify(mcpNames) !== JSON.stringify(["fixture-http", "fixture-stdio"])) {
+    throw new Error(`Claude installed plugin MCP servers were unexpected: ${mcpNames.join(", ")}`);
+  }
+  const details = execFileSync("claude", ["plugin", "details", "qa-tools"], {
+    cwd: projectDir,
+    env: fixtureEnv,
+    encoding: "utf-8",
+  });
+  assertIncludes(details, "Skills (1)  plugin-qa", "Claude details should include one plugin skill");
+  assertIncludes(details, "Agents (0)", "Claude details should not include client-extension agents");
+}
+
+async function runAvailablePluginClientProofs() {
+  const proofs = [
+    ["claude", runClaudePluginProof],
+    ["codex", runCodexPluginProof],
+    ["grok", runGrokPluginProof],
+  ];
+  let ran = 0;
+  for (const [command, proof] of proofs) {
+    if (!commandAvailable(command)) {
+      console.log(`qa-example: skip=${command} (not installed)`);
+      continue;
+    }
+    console.log(`qa-example: client=${command}`);
+    await proof();
+    ran++;
+  }
+  if (ran === 0) {
+    throw new Error("No supported plugin client CLI is installed");
+  }
+}
+
+async function runGrokPluginProof() {
+  prepareClientHarness("grok");
+  const list = execFileSync("grok", ["plugin", "list"], {
+    cwd: projectDir,
+    env: fixtureEnv,
+    encoding: "utf-8",
+  });
+  if (!list.includes("qa-tools")) {
+    throw new Error("Grok plugin list did not include qa-tools");
+  }
+  const info = execFileSync("grok", ["plugin", "details", "qa-tools"], {
+    cwd: projectDir,
+    env: fixtureEnv,
+    encoding: "utf-8",
+  });
+  if (!info.includes("qa-tools")) {
+    throw new Error("Grok plugin details did not describe qa-tools");
+  }
+}
+
+async function runCodexPluginProof() {
+  prepareClientHarness("codex");
+  rmSync(codexHomeDir, { recursive: true, force: true });
+  mkdirSync(codexHomeDir, { recursive: true });
+  const env = { ...fixtureEnv, CODEX_HOME: codexHomeDir };
+
+  const add = execJson("codex", ["plugin", "marketplace", "add", projectDir, "--json"], env);
+  if (add.marketplaceName !== "dotagents-local") {
+    throw new Error("Codex marketplace add did not return dotagents-local");
+  }
+
+  const available = execJson("codex", ["plugin", "list", "--available", "--json"], env);
+  if (!available.available?.some((plugin) => plugin.pluginId === "qa-tools@dotagents-local")) {
+    throw new Error("Codex available plugin list did not include qa-tools@dotagents-local");
+  }
+
+  const installed = execJson("codex", ["plugin", "add", "qa-tools@dotagents-local", "--json"], env);
+  if (installed.pluginId !== "qa-tools@dotagents-local") {
+    throw new Error("Codex plugin add did not install qa-tools@dotagents-local");
+  }
+  const installedMcp = JSON.parse(readFileSync(join(installed.installedPath, "mcp.json"), "utf-8"));
+  const installedMcpNames = Object.keys(installedMcp.mcpServers ?? {}).toSorted();
+  if (JSON.stringify(installedMcpNames) !== JSON.stringify(["fixture-http", "fixture-stdio"])) {
+    throw new Error(`Codex installed plugin MCP servers were unexpected: ${installedMcpNames.join(", ")}`);
+  }
+
+  const list = execJson("codex", ["plugin", "list", "--json"], env);
+  if (!list.installed?.some((plugin) => plugin.pluginId === "qa-tools@dotagents-local" && plugin.enabled === true)) {
+    throw new Error("Codex installed plugin list did not include enabled qa-tools@dotagents-local");
+  }
+}
+
+async function runOpenCodePluginProof() {
+  prepareClientHarness("opencode");
+  const skills = execFileSync("opencode", ["debug", "skill"], {
+    cwd: projectDir,
+    env: fixtureEnv,
+    encoding: "utf-8",
+  });
+  assertSymlink(".opencode/skills/plugin-qa");
+  assertFile(".opencode/skills/.dotagents-managed/plugin-qa");
+  if (!skills.includes("plugin-qa") || !skills.includes("DOTAGENTS_PLUGIN_QA_FIXTURE")) {
+    throw new Error("OpenCode debug skill did not include projected plugin skill");
+  }
+}
+
+function prepareClientHarness(agent) {
+  rmSync(projectDir, { recursive: true, force: true });
+  cpSync(exampleRoot, projectDir, { recursive: true });
+  const configPath = join(projectDir, "agents.toml");
+  const config = readFileSync(configPath, "utf-8").replace(/^agents = .*$/m, `agents = ["${agent}"]`);
+  writeFileSync(configPath, config);
+  runCli(["install"]);
+  assertFile(".agents/plugins/qa-tools/plugin.json");
 }
 
 async function runCodexRuntimeProof() {
@@ -163,6 +322,7 @@ async function installAndAssert() {
   assertFile(".claude/settings.json");
   assertFile(".cursor/hooks.json");
   assertSubagentOutputs();
+  assertPluginOutputs();
 }
 
 function runCli(cliArgs) {
@@ -172,6 +332,25 @@ function runCli(cliArgs) {
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "inherit"],
   });
+}
+
+function commandAvailable(command) {
+  try {
+    execFileSync("sh", ["-lc", `command -v ${command}`], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function execJson(command, args, env) {
+  const output = execFileSync(command, args, {
+    cwd: projectDir,
+    env,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+  return JSON.parse(output);
 }
 
 async function listSkills() {
@@ -274,10 +453,84 @@ function assertSubagentOutputs() {
   assertFileIncludes(".opencode/agents/code-reviewer.md", sentinel);
 }
 
+function assertPluginOutputs() {
+  assertFile(".agents/plugins/qa-tools/plugin.json");
+  assertFileIncludes(".agents/plugins/qa-tools/plugin.json", '"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"');
+  assertFile(".agents/plugins/qa-tools/mcp.json");
+  assertFileIncludes(".agents/plugins/qa-tools/mcp.json", '"fixture-stdio"');
+  assertFileIncludes(".agents/plugins/qa-tools/mcp.json", '"fixture-http"');
+  assertFile(".agents/plugins/qa-tools/server.mjs");
+  assertFile(".agents/plugins/qa-tools/skills/plugin-qa/SKILL.md");
+  assertFile(".agents/plugins/qa-tools/com.example.client/commands/plugin-qa.md");
+  assertFile(".agents/plugins/qa-tools/com.example.client/agents/plugin-reviewer.md");
+  assertFile(".agents/plugins/qa-tools/.claude-plugin/plugin.json");
+  assertSymlink(".agents/skills/plugin-qa");
+  assertFile(".agents/skills/.dotagents-managed/plugin-qa");
+  assertFileIncludes(".agents/.gitignore", "/skills/plugin-qa");
+  assertFileIncludes(".agents/.gitignore", "/skills/.dotagents-managed/");
+  assertFileIncludes("agents.lock", "qa-tools");
+  assertFile(".agents/plugins/marketplace.json");
+  assertFile(".agents/plugins/marketplace.json.dotagents-managed");
+  assertFileIncludes(".agents/plugins/marketplace.json", '"name": "dotagents-local"');
+  assertFileExcludes(".agents/plugins/marketplace.json", '"managedBy"');
+  assertFileIncludes(".agents/plugins/marketplace.json", '"path": "./.agents/plugins/qa-tools"');
+  assertFileIncludes(".agents/plugins/marketplace.json", '"installation": "AVAILABLE"');
+  assertFileIncludes(".agents/plugins/marketplace.json", '"authentication": "ON_INSTALL"');
+  assertFileIncludes(".agents/plugins/marketplace.json", '"source": "local"');
+
+  assertFile(".claude-plugin/marketplace.json");
+  assertFile(".claude-plugin/marketplace.json.dotagents-managed");
+  assertFileIncludes(".claude-plugin/marketplace.json", '"description": "Generated by dotagents"');
+  assertFileExcludes(".claude-plugin/marketplace.json", '"managedBy"');
+  assertFileIncludes(".claude-plugin/marketplace.json", '"name": "qa-tools"');
+  assertFileIncludes(".claude-plugin/marketplace.json", '"source": "./.agents/plugins/qa-tools"');
+  assertFile(".cursor-plugin/marketplace.json");
+  assertFile(".cursor-plugin/marketplace.json.dotagents-managed");
+  assertSameFile(".cursor-plugin/marketplace.json", ".claude-plugin/marketplace.json");
+
+  assertFile(".agents/plugins/qa-tools/.claude-plugin/plugin.json.dotagents-managed");
+  assertFileExcludes(".agents/plugins/qa-tools/.claude-plugin/plugin.json", '"managedBy"');
+  assertFileIncludes(".agents/plugins/qa-tools/.claude-plugin/plugin.json", '"skills": "./skills"');
+  assertFileIncludes(".agents/plugins/qa-tools/.claude-plugin/plugin.json", '"mcpServers": "./mcp.json"');
+  assertFileExcludes(".agents/plugins/qa-tools/.claude-plugin/plugin.json", '"commands"');
+  assertFile(".agents/plugins/qa-tools/.cursor-plugin/plugin.json");
+  assertFile(".agents/plugins/qa-tools/.cursor-plugin/plugin.json.dotagents-managed");
+  assertFileExcludes(".agents/plugins/qa-tools/.cursor-plugin/plugin.json", '"managedBy"');
+  assertFileIncludes(".agents/plugins/qa-tools/.cursor-plugin/plugin.json", '"skills": "./skills"');
+  assertFileIncludes(".agents/plugins/qa-tools/.cursor-plugin/plugin.json", '"mcpServers": "./mcp.json"');
+  assertFileExcludes(".agents/plugins/qa-tools/.cursor-plugin/plugin.json", '"commands"');
+  assertFileExcludes(".agents/plugins/qa-tools/.cursor-plugin/plugin.json", '"agents"');
+  assertFile(".agents/plugins/qa-tools/.codex-plugin/plugin.json");
+  assertFile(".agents/plugins/qa-tools/.codex-plugin/plugin.json.dotagents-managed");
+  assertFileExcludes(".agents/plugins/qa-tools/.codex-plugin/plugin.json", '"managedBy"');
+  assertFileIncludes(".agents/plugins/qa-tools/.codex-plugin/plugin.json", '"skills": "./skills"');
+  assertFileIncludes(".agents/plugins/qa-tools/.codex-plugin/plugin.json", '"mcpServers": "./mcp.json"');
+  assertFileExcludes(".agents/plugins/qa-tools/.codex-plugin/plugin.json", '"commands"');
+  assertFileExcludes(".agents/plugins/qa-tools/.codex-plugin/plugin.json", '"agents"');
+
+  assertFile(".grok/plugins/qa-tools/.dotagents-managed");
+  assertFile(".grok/plugins/qa-tools/plugin.json");
+  assertFile(".grok/plugins/qa-tools/server.mjs");
+  assertFile(".grok/plugins/qa-tools/com.example.client/commands/plugin-qa.md");
+  assertFile(".grok/plugins/qa-tools/com.example.client/agents/plugin-reviewer.md");
+  assertFileIncludes(".grok/plugins/qa-tools/skills/plugin-qa/SKILL.md", "DOTAGENTS_PLUGIN_QA_FIXTURE");
+
+  assertSymlink(".opencode/skills/plugin-qa");
+  assertFile(".opencode/skills/.dotagents-managed/plugin-qa");
+  assertMissing(".opencode/agents/plugin-reviewer.md");
+}
+
 function assertFile(relativePath) {
   const path = join(projectDir, relativePath);
   if (!existsSync(path)) {
     throw new Error(`expected file to exist: ${relativePath}`);
+  }
+}
+
+function assertFileDoesNotExist(relativePath) {
+  const path = join(projectDir, relativePath);
+  if (existsSync(path)) {
+    throw new Error(`expected file not to exist: ${relativePath}`);
   }
 }
 
@@ -293,6 +546,20 @@ function assertFileIncludes(relativePath, expected) {
   assertIncludes(readFileSync(join(projectDir, relativePath), "utf-8"), expected, `${relativePath} should include ${expected}`);
 }
 
+function assertFileExcludes(relativePath, unexpected) {
+  assertFile(relativePath);
+  const content = readFileSync(join(projectDir, relativePath), "utf-8");
+  if (content.includes(unexpected)) {
+    throw new Error(`${relativePath} should not include ${unexpected}`);
+  }
+}
+
+function assertMissing(relativePath) {
+  if (existsSync(join(projectDir, relativePath))) {
+    throw new Error(`expected path to be absent: ${relativePath}`);
+  }
+}
+
 function assertSkillStatus(statuses, name) {
   const status = statuses.find((entry) => entry.name === name);
   if (!status) {
@@ -300,6 +567,16 @@ function assertSkillStatus(statuses, name) {
   }
   if (status.status !== "ok") {
     throw new Error(`list should report ${name} as ok, got ${status.status}`);
+  }
+}
+
+function assertSameFile(actualPath, expectedPath) {
+  assertFile(actualPath);
+  assertFile(expectedPath);
+  const actual = readFileSync(join(projectDir, actualPath), "utf-8");
+  const expected = readFileSync(join(projectDir, expectedPath), "utf-8");
+  if (actual !== expected) {
+    throw new Error(`${actualPath} should match ${expectedPath}`);
   }
 }
 

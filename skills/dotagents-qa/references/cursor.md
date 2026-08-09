@@ -18,6 +18,18 @@ For user scope, isolate `HOME` and `DOTAGENTS_HOME`, then assert generated Curso
 
 ## Runtime Proof
 
-This QA skill does not currently include an automated Cursor desktop/runtime proof. Do not claim Cursor runtime discovery from file-level checks alone.
+The isolated Cursor harness integration test proves the Agent Plugins input bundle
+produces the documented Cursor marketplace and native manifest, including
+portable skills/MCP and exclusion of unrelated legacy root components.
+
+This QA skill does not currently include an automated Cursor desktop/runtime
+proof because the installed desktop CLI has no plugin validation or marketplace
+command. Do not claim Cursor runtime discovery from integration or file-level
+checks alone.
+
+Cursor runtime proof uses Cursor auth. Use `CURSOR_API_KEY` or browser login
+for Cursor CLI/headless checks. Do not claim generic gateway proof for Cursor
+unless current Cursor docs or observed local behavior proves a compatible
+endpoint.
 
 If a branch specifically requires Cursor runtime proof, use a real Cursor session or a documented headless path if one exists in the local environment. Report the exact interaction and evidence. Otherwise report file-level Cursor wiring only.

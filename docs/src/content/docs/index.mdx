@@ -4,7 +4,7 @@ description: Shared tooling for coding agents.
 template: splash
 hero:
   title: '<span class="dotagents-brand">dotagents</span><span class="dotagents-headline">One Config for Your Coding Agents</span>'
-  tagline: 'Declare skills, MCP servers, hooks, and subagents in <code>agents.toml</code>. dotagents installs shared skills and writes each tool''s local config.'
+  tagline: 'Declare skills, plugins, MCP servers, hooks, and subagents in <code>agents.toml</code>. dotagents installs shared dependencies and writes each tool''s local config.'
   actions:
     - text: Get Started
       link: /guide/
@@ -34,7 +34,12 @@ source = "getsentry/skills"
 [[subagents]]
 name = "code-reviewer"
 source = "getsentry/agent-pack"
-targets = ["claude", "codex", "opencode"]`}</code></pre>
+targets = ["claude", "codex", "opencode"]
+
+[[plugins]]
+name = "review-tools"
+source = "getsentry/agent-pack"
+targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
     </div>
   </section>
 
@@ -61,9 +66,13 @@ targets = ["claude", "codex", "opencode"]`}</code></pre>
         <strong>Subagents</strong>
         <span>Declare custom Claude, Cursor, Codex, and OpenCode subagents once and generate native runtime files.</span>
       </a>
+      <a className="dotagents-card" href="/cli/#plugins">
+        <strong>Plugins</strong>
+        <span>Install canonical plugin bundles and project supported skills, agents, manifests, and marketplaces into runtime-native locations.</span>
+      </a>
       <a className="dotagents-card" href="/security/">
         <strong>Trust policy</strong>
-        <span>Restrict skill and subagent sources before dotagents performs any network operation.</span>
+        <span>Restrict skill, subagent, and plugin sources before dotagents performs any network operation.</span>
       </a>
     </div>
   </section>

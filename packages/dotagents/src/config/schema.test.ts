@@ -8,6 +8,7 @@ describe("agentsConfigSchema", () => {
     if (result.success) {
       expect(result.data.version).toBe(1);
       expect(result.data.skills).toEqual([]);
+      expect(result.data.plugins).toEqual([]);
     }
   });
 
@@ -355,6 +356,61 @@ describe("agentsConfigSchema", () => {
         ],
       });
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe("plugins field", () => {
+    it("defaults to empty array when absent", () => {
+      const result = agentsConfigSchema.safeParse({ version: 1 });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.plugins).toEqual([]);
+      }
+    });
+
+    it("accepts a portable plugin declaration", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        agents: ["claude", "codex", "cursor", "grok", "opencode", "pi"],
+        plugins: [
+          {
+            name: "review-tools",
+            source: "getsentry/plugins",
+            targets: ["claude", "codex", "cursor", "grok", "opencode", "pi"],
+          },
+        ],
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.plugins[0]!.name).toBe("review-tools");
+      }
+    });
+
+    it("rejects runtime-specific plugin declaration options", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        plugins: [
+          {
+            name: "review-tools",
+            source: "getsentry/plugins",
+            codex: { enabled: true },
+          },
+        ],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects invalid plugin names", () => {
+      const result = agentsConfigSchema.safeParse({
+        version: 1,
+        plugins: [
+          {
+            name: "ReviewTools",
+            source: "getsentry/plugins",
+          },
+        ],
+      });
+      expect(result.success).toBe(false);
     });
   });
 

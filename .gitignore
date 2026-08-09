@@ -9,6 +9,9 @@ docs/.astro/
 agents.lock
 .agents/.gitignore
 
+# Local QA credentials
+.env.qa.local
+
 # openspec local install artifacts (per-machine, not project source)
 openspec/
 .agents/skills/openspec-*/

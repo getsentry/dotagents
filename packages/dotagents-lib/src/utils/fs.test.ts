@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, mkdir, readlink, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
@@ -31,5 +31,16 @@ describe("copyDir", () => {
     expect(existsSync(join(destDir, "SKILL.md"))).toBe(true);
     expect(existsSync(join(destDir, ".github", "README.md"))).toBe(true);
     expect(existsSync(join(destDir, ".git"))).toBe(false);
+  });
+
+  it("can preserve relative symlinks verbatim", async () => {
+    await mkdir(join(srcDir, "linked"), { recursive: true });
+    await writeFile(join(srcDir, "linked", "file.txt"), "linked");
+    await symlink("linked", join(srcDir, "alias"));
+
+    await copyDir(srcDir, destDir, { verbatimSymlinks: true });
+
+    expect(await readlink(join(destDir, "alias"))).toBe("linked");
+    expect(existsSync(join(destDir, "alias", "file.txt"))).toBe(true);
   });
 });
