@@ -26,6 +26,22 @@ describe("plugin manifest schema", () => {
     expect(manifest.extensions?.["com.example.client"]).toEqual({ enabled: true });
   });
 
+  it("recognizes case-insensitive Agent Plugins schema origins", () => {
+    const manifest = parsePluginManifest({
+      $schema: "HTTPS://AGENT-PLUGINS.ORG/schemas/1.0.0/plugin.schema.json",
+      name: "review-tools",
+      description: "Review tools",
+    }, "plugin.json");
+
+    expect(isStandardPluginManifest(manifest)).toBe(true);
+    expect(manifest.$schema).toBe(AGENT_PLUGIN_SCHEMA);
+    expect(() => parsePluginManifest({
+      $schema: "HTTPS://AGENT-PLUGINS.ORG/schemas/1.0.0/plugin.schema.json",
+      name: "bad name",
+      description: "Review tools",
+    }, "plugin.json")).toThrow("Invalid plugin manifest");
+  });
+
   it("preserves nonstandard author and homepage strings", () => {
     const manifest = parsePluginManifest({
       $schema: AGENT_PLUGIN_SCHEMA,

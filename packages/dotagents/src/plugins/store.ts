@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { lstat, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import {
   applyDefaultRepositorySource,
@@ -462,7 +462,7 @@ async function scanPluginDirectories(
   name: string,
   depth = 2,
 ): Promise<PluginCandidate[]> {
-  if (depth <= 0 || !existsSync(dir)) {return [];}
+  if (depth <= 0 || !await isDirectory(dir)) {return [];}
 
   const matches: PluginCandidate[] = [];
   const entries = await readdir(dir, { withFileTypes: true });
@@ -483,6 +483,15 @@ async function scanPluginDirectories(
     matches.push(...await scanPluginDirectories(sourceRoot, childDir, name, depth - 1));
   }
   return matches;
+}
+
+async function isDirectory(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch (err) {
+    if (isNotFoundError(err)) {return false;}
+    throw err;
+  }
 }
 
 async function loadPluginCandidate(

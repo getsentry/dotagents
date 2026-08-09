@@ -204,7 +204,7 @@ function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWa
     if (legacyComponents) {copyRuntimeComponentField(plugin, manifest, key, warnings);}
   }
 
-  if ((portableSkills || legacy?.skills === undefined && existsSync(join(plugin.pluginDir, "skills"))) && !manifest["skills"]) {
+  if ((portableSkills || legacy !== undefined && legacy.skills === undefined && existsSync(join(plugin.pluginDir, "skills"))) && !manifest["skills"]) {
     manifest["skills"] = "./skills";
   }
   if (legacy && legacy.agents === undefined && !manifest["agents"] && existsSync(join(plugin.pluginDir, "agents"))) {

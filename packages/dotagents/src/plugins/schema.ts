@@ -275,10 +275,12 @@ export function parsePluginManifest(
     ? value as Record<string, unknown>
     : null;
   const schemaValue = recordValue?.["$schema"];
-  const isStandard = schemaValue === AGENT_PLUGIN_SCHEMA;
+  const normalizedSchemaValue = typeof schemaValue === "string"
+    ? normalizeAgentPluginSchemaUrl(schemaValue)
+    : null;
+  const isStandard = normalizedSchemaValue === AGENT_PLUGIN_SCHEMA;
   if (
-    typeof schemaValue === "string" &&
-    schemaValue.startsWith("https://agent-plugins.org/schemas/") &&
+    normalizedSchemaValue?.startsWith("https://agent-plugins.org/schemas/") &&
     !isStandard
   ) {
     throw new Error(`Invalid plugin manifest ${filePath}: unsupported Agent Plugins schema ${schemaValue}`);
@@ -286,6 +288,7 @@ export function parsePluginManifest(
   let input = value;
   if (isStandard) {
     const record = { ...(value as Record<string, unknown>) };
+    record["$schema"] = AGENT_PLUGIN_SCHEMA;
     const extensions = record["extensions"];
     if (extensions !== undefined && (extensions === null || typeof extensions !== "object" || Array.isArray(extensions))) {
       delete record["extensions"];
@@ -307,6 +310,24 @@ export function parsePluginManifest(
     throw new Error(`Invalid plugin manifest ${filePath}: ${parsed.error.message}`);
   }
   return parsed.data;
+}
+
+function normalizeAgentPluginSchemaUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      url.hostname !== "agent-plugins.org" ||
+      url.username ||
+      url.password ||
+      url.port
+    ) {
+      return null;
+    }
+    return url.href;
+  } catch {
+    return null;
+  }
 }
 
 /** Parses an external plugin marketplace and annotates schema errors with its file path. */

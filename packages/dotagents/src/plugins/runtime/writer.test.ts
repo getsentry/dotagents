@@ -582,6 +582,26 @@ describe("plugin writer", () => {
     expect(manifest.skills).toBeUndefined();
   });
 
+  it("does not advertise a skills file in generated Codex manifests", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: {
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "alpha-tools",
+        description: "Portable tools",
+      },
+    });
+    const skillsPath = join(alpha.pluginDir, "skills");
+    await rm(skillsPath, { recursive: true });
+    await writeFile(skillsPath, "not a directory");
+
+    await writePluginOutputs(["codex"], [alpha], root);
+
+    const manifest = JSON.parse(
+      await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8"),
+    );
+    expect(manifest.skills).toBeUndefined();
+  });
+
   it("skips plugin agents paths that are not directories", async () => {
     const alpha = await plugin("alpha-tools", {
       manifest: { agents: "README.md" },

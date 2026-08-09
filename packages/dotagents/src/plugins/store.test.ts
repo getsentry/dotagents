@@ -610,4 +610,18 @@ describe("plugin store", () => {
       await rm(projectRoot, { recursive: true, force: true });
     }
   });
+
+  it("ignores a conventional plugins path that is not a directory", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      await writeFile(join(projectRoot, "plugins"), "not a directory", "utf-8");
+
+      await expect(resolvePlugin(
+        { name: "review-tools", source: "path:." },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      )).rejects.toThrow('Plugin "review-tools" not found');
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
 });
