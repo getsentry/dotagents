@@ -73,25 +73,26 @@ dotagents install
 ### `dotagents add`
 
 ```shell
-dotagents add <specifier> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]
+dotagents add <source> [<name>...] [--name <name>...] [--ref <ref>] [--all]
 ```
 
-Add one or more skill dependencies and install them. dotagents auto-discovers
-skills in the source. When a source has one skill, it is added automatically.
-When multiple skills are found, interactive mode shows a picker. In
-non-interactive mode, pass skill names as positional arguments, use `--skill`, or
-use `--all`.
+Add and install plugins or skills. For git and local sources, dotagents discovers
+plugins first. If it finds any, the whole source is treated as plugin-only and
+skills in that source are ignored. Otherwise the existing skill discovery flow
+is used. Well-known HTTPS catalogs are always skill-only. A single dependency is
+selected automatically; multiple dependencies use a picker in interactive mode.
 
 Shorthand `owner/repo` resolves through `defaultRepositorySource` in
 `agents.toml`.
 
 Options:
 
-- `--skill <name>` specifies which skill to add. Repeatable. Alias: `--name`.
+- `--name <name>` specifies which dependency to add. Repeatable.
+- `--skill <name>` is a compatibility alias for `--name` and does not force skill mode.
 - `--ref <ref>` pins to a specific tag, branch, or commit.
-- `--all` adds all skills from the source as a wildcard entry (`name = "*"`).
+- `--all` writes every currently discovered plugin explicitly in plugin mode. In skill mode it adds the existing wildcard entry (`name = "*"`), which can include future upstream skills.
 
-Do not mix positional skill names and `--skill` or `--name` flags in the same
+Do not mix positional names and `--skill` or `--name` flags in the same
 command.
 
 Examples:
@@ -102,6 +103,12 @@ dotagents add getsentry/skills find-bugs
 
 # All skills from a repo
 dotagents add getsentry/skills --all
+
+# One plugin from a repository plugin catalog
+dotagents add getsentry/agent-plugins review-tools
+
+# Snapshot every plugin currently in a local catalog
+dotagents add path:./agent-plugins --all
 
 # Pinned to a ref
 dotagents add getsentry/warden@v1.0.0
@@ -472,6 +479,9 @@ dotagents --user install
 
 When no `agents.toml` exists and you are not inside a git repo, dotagents falls
 back to user scope automatically.
+
+Plugins remain project-only. If `--user add` detects a plugin source, it exits
+without changing the user config, lockfile, installed directories, or runtime output.
 
 ## Environment Variables
 

@@ -522,12 +522,12 @@ dotagents install
 
 The deprecated `--frozen` option is accepted for compatibility, prints a warning, and follows this normal install flow. Use explicit `ref` values to pin sources.
 
-### `dotagents add <specifier>`
+### `dotagents add <source>`
 
-Add one or more skill dependencies.
+Discover and add plugins, otherwise skills, then install them.
 
 ```
-dotagents add <specifier> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]
+dotagents add <source> [<name>...] [--name <name>...] [--ref <ref>] [--all]
 ```
 
 **Examples:**
@@ -537,6 +537,8 @@ dotagents add getsentry/skills find-bugs code-review commit
 dotagents add getsentry/skills --skill find-bugs --skill code-review
 dotagents add getsentry/warden warden-skill --ref v1.0.0
 dotagents add getsentry/skills --all
+dotagents add getsentry/agent-plugins review-tools
+dotagents add path:../agent-plugins --all
 dotagents add path:../shared-skills/my-skill
 dotagents add myorg/single-skill-repo   # auto-detects if repo has one skill
 ```
@@ -544,23 +546,32 @@ dotagents add myorg/single-skill-repo   # auto-detects if repo has one skill
 **Behavior:**
 1. Validate source against trust policy before any network operations
 2. Parse specifier to determine source type
-3. Clone/fetch repo to cache
-4. Discover skill(s) in the repo
-   - If skill names are given (positional or `--skill`), verify each exists in the source
-   - If `--all`, add a wildcard entry for the entire source
-   - If repo has exactly one skill, use it automatically
-   - If repo has multiple skills and no names given, show interactive picker (TTY) or list them (non-TTY)
-5. When adding multiple skills, skip any that already exist in `agents.toml` (with a warning). Error only if all specified skills already exist.
-6. Add `[[skills]]` entry to `agents.toml` for each new skill
-7. Run install to fetch and place the skills
-8. Update `agents.lock`
+3. Clone/fetch a git source once, or resolve the local source; well-known HTTPS catalogs remain skill-only
+4. For git and local sources, enumerate valid plugins before discovering skills
+   - Any plugin makes the entire invocation plugin-only; do not expose standalone or bundled skills from that source
+   - Invalid plugin-shaped content is an error and does not fall back to skills
+   - With no plugins, preserve normal skill discovery
+5. Interpret positional names, `--name`, and compatibility `--skill` within the selected kind
+   - One dependency is selected automatically
+   - Multiple dependencies use an interactive picker or non-interactive selection guidance
+   - Plugin `--all` selects every current plugin explicitly
+   - Skill `--all` keeps the wildcard entry that can include future upstream skills
+6. Preflight every requested name and duplicate before changing config. A single duplicate errors; multi-name additions skip duplicates and fail only when all are already declared.
+7. Append explicit `[[plugins]]` entries (including a safe non-root `path`) or the selected `[[skills]]` entries
+8. Run install exactly once and update `agents.lock`
+
+Plugins are project-only. If user scope is active and plugin discovery succeeds,
+`add` exits before changing user configuration, the lockfile, installed files,
+or generated runtime state. Mixed plugin-and-skill selection from one source is
+intentionally unsupported; plugin presence wins for the whole source.
 
 **Flags:**
 - `--ref <ref>`: Pin to a specific tag/branch/commit
-- `--skill <name>` (repeatable): Specify which skill(s) to add. Alternative to positional arguments.
-- `--all`: Add all skills from the source as a wildcard entry
+- `--name <name>` (repeatable): Specify which dependency to add. Alternative to positional arguments.
+- `--skill <name>` (repeatable): Compatibility alias for `--name`; it does not force skill mode.
+- `--all`: Add current plugins explicitly, or all skills as a wildcard entry
 
-Positional skill names and `--skill` flags cannot be mixed.
+Positional names and `--name`/`--skill` flags cannot be mixed.
 
 ### `dotagents remove <name|source> [-y]`
 

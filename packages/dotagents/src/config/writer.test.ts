@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   addSkillToConfig,
+  addPluginsToConfig,
   addWildcardToConfig,
   addExcludeToWildcard,
   removeSkillFromConfig,
@@ -237,6 +238,31 @@ describe("writer", () => {
       expect(config.skills.find((skill) => skill.name === "pdf")).toMatchObject({
         source: "anthropics/skills",
       });
+    });
+  });
+
+  describe("addPluginsToConfig", () => {
+    it("appends one or more escaped plugin blocks without rewriting existing TOML", async () => {
+      const prefix = "version = 1\n# keep this comment\n\n[misc]\nvalue = 'unchanged'\n";
+      await writeFile(configPath, prefix);
+
+      await addPluginsToConfig(configPath, [
+        {
+          name: "review-tools",
+          source: 'git:https://example.com/org/"review-tools"',
+          ref: "release/v1",
+          path: "plugins/review-tools",
+        },
+        { name: "root-plugin", source: "path:./plugins" },
+      ]);
+
+      const content = await readFile(configPath, "utf-8");
+      expect(content.startsWith(prefix.trimEnd())).toBe(true);
+      expect(content.match(/\[\[plugins\]\]/g)).toHaveLength(2);
+      expect(content).toContain('source = "git:https://example.com/org/\\"review-tools\\""');
+      expect(content).toContain('ref = "release/v1"');
+      expect(content).toContain('path = "plugins/review-tools"');
+      expect(content).not.toContain('path = ""');
     });
   });
 

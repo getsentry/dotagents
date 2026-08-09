@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -25,6 +26,24 @@ description: Test skill ${name}
 
 # ${name}
 `;
+
+async function writePlugin(dir: string, name: string): Promise<void> {
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, "plugin.json"), JSON.stringify({ name }));
+}
+
+function mockRunInstall() {
+  return vi.spyOn(installModule, "runInstall").mockResolvedValue({
+    installed: [],
+    installedPlugins: [],
+    pruned: [],
+    prunedPlugins: [],
+    mcpWarnings: [],
+    hookWarnings: [],
+    subagentWarnings: [],
+    pluginWarnings: [],
+  });
+}
 
 describe("runAdd", () => {
   let tmpDir: string;
@@ -197,21 +216,21 @@ describe("runAdd", () => {
     ).rejects.toThrow("Cannot use --all with --name. Use one or the other.");
   });
 
-  it("treats shorthand and expanded GitLab sources as the same wildcard", async () => {
+  it("rejects an existing wildcard after source classification", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
-      `version = 1\ndefaultRepositorySource = "gitlab"\n\n[[skills]]\nname = "*"\nsource = "getsentry/skills"\n`,
+      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
     );
 
     const scope = resolveScope("project", projectRoot);
     await expect(
       runAdd({
         scope,
-        specifier: "getsentry/skills",
+        specifier: `git:${repoDir}`,
         all: true,
       }),
     ).rejects.toThrow(
-      'A wildcard entry for "getsentry/skills" already exists in agents.toml.',
+      `A wildcard entry for "git:${repoDir}" already exists in agents.toml.`,
     );
   });
 
@@ -242,10 +261,6 @@ describe("runAdd", () => {
   });
 
   it("stores the original source spelling and installs once", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\ndefaultRepositorySource = "gitlab"\n`,
-    );
     const installSpy = vi.spyOn(installModule, "runInstall").mockResolvedValue({
       installed: [],
       installedPlugins: [],
@@ -259,15 +274,14 @@ describe("runAdd", () => {
 
     const result = await runAdd({
       scope: resolveScope("project", projectRoot),
-      specifier: "getsentry/skills",
+      specifier: `git:${repoDir}`,
       all: true,
     });
 
     expect(result).toBe("*");
     expect(installSpy).toHaveBeenCalledOnce();
     const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
-    expect(toml).toContain('source = "getsentry/skills"');
-    expect(toml).not.toContain('source = "https://gitlab.com/getsentry/skills"');
+    expect(toml).toContain(`source = "git:${repoDir}"`);
   });
 
   it("selects explicit well-known names like git catalog names", async () => {
@@ -454,6 +468,7 @@ describe("runAdd (local sources)", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     delete process.env["DOTAGENTS_STATE_DIR"];
     await rm(tmpDir, { recursive: true });
   });
@@ -486,6 +501,183 @@ describe("runAdd (local sources)", () => {
     expect(result).toBe("pdf");
     const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
     expect(toml).toContain('name = "pdf"');
+  });
+
+  it("prefers a plugin over standalone and bundled skills for the whole source", async () => {
+    const sourceDir = join(projectRoot, "mixed-source");
+    await writePlugin(sourceDir, "review-plugin");
+    await mkdir(join(sourceDir, "skills", "bundled"), { recursive: true });
+    await writeFile(join(sourceDir, "skills", "bundled", "SKILL.md"), SKILL_MD("bundled"));
+    await mkdir(join(sourceDir, "standalone"), { recursive: true });
+    await writeFile(join(sourceDir, "standalone", "SKILL.md"), SKILL_MD("standalone"));
+    const install = mockRunInstall();
+
+    const result = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:mixed-source",
+    });
+
+    expect(result).toBe("review-plugin");
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml).toContain("[[plugins]]");
+    expect(toml).toContain('name = "review-plugin"');
+    expect(toml).not.toContain("[[skills]]");
+    expect(install).toHaveBeenCalledOnce();
+  });
+
+  it("does not fall back to skills when a plugin manifest is malformed", async () => {
+    const sourceDir = join(projectRoot, "broken-plugin-source");
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(join(sourceDir, "plugin.json"), "{");
+
+    await expect(runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:broken-plugin-source",
+      names: ["review"],
+    })).rejects.toThrow(join(sourceDir, "plugin.json"));
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe("version = 1\n");
+  });
+
+  it("preflights plugin names and persists exact paths and refs in one install", async () => {
+    const sourceDir = join(projectRoot, "plugin-catalog");
+    await writePlugin(join(sourceDir, "plugins", "alpha"), "alpha");
+    await writePlugin(join(sourceDir, "plugins", "beta"), "beta");
+    const install = mockRunInstall();
+
+    await expect(runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:plugin-catalog",
+      names: ["alpha", "missing"],
+    })).rejects.toThrow('Plugin "missing" not found');
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe("version = 1\n");
+
+    const result = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:plugin-catalog",
+      names: ["alpha", "beta"],
+      ref: "release/v1",
+    });
+
+    expect(result).toEqual(["alpha", "beta"]);
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml.match(/\[\[plugins\]\]/g)).toHaveLength(2);
+    expect(toml).toContain('path = "plugins/alpha"');
+    expect(toml).toContain('path = "plugins/beta"');
+    expect(toml.match(/ref = "release\/v1"/g)).toHaveLength(2);
+    expect(install).toHaveBeenCalledOnce();
+  });
+
+  it("lists plugins in non-interactive mode and supports interactive selection", async () => {
+    const sourceDir = join(projectRoot, "plugin-picker");
+    await writePlugin(join(sourceDir, "plugins", "alpha"), "alpha");
+    await writePlugin(join(sourceDir, "plugins", "beta"), "beta");
+
+    await expect(runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:plugin-picker",
+      interactive: false,
+    })).rejects.toThrow(/Multiple plugins found.*alpha, beta.*--name/);
+
+    vi.mocked(clack.select).mockResolvedValue("pick");
+    vi.mocked(clack.multiselect).mockResolvedValue(["plugins/beta"]);
+    vi.mocked(clack.isCancel).mockReturnValue(false);
+    mockRunInstall();
+    const result = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:plugin-picker",
+      interactive: true,
+    });
+
+    expect(result).toBe("beta");
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toContain(
+      'path = "plugins/beta"',
+    );
+  });
+
+  it("adds every discovered plugin explicitly with --all", async () => {
+    const sourceDir = join(projectRoot, "plugin-all");
+    await writePlugin(join(sourceDir, "plugins", "alpha"), "alpha");
+    await writePlugin(join(sourceDir, "plugins", "beta"), "beta");
+    const install = mockRunInstall();
+
+    const result = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:plugin-all",
+      all: true,
+    });
+
+    expect(result).toEqual(["alpha", "beta"]);
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml.match(/\[\[plugins\]\]/g)).toHaveLength(2);
+    expect(toml).not.toContain('name = "*"');
+    expect(install).toHaveBeenCalledOnce();
+  });
+
+  it("preserves single and multi-name duplicate behavior for plugins", async () => {
+    const sourceDir = join(projectRoot, "plugin-duplicates");
+    await writePlugin(join(sourceDir, "plugins", "alpha"), "alpha");
+    await writePlugin(join(sourceDir, "plugins", "beta"), "beta");
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      'version = 1\n\n[[plugins]]\nname = "alpha"\nsource = "path:plugin-duplicates"\npath = "plugins/alpha"\n',
+    );
+
+    await expect(runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:plugin-duplicates",
+      names: ["alpha"],
+    })).rejects.toThrow('Plugin "alpha" already exists');
+
+    const install = mockRunInstall();
+    const result = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:plugin-duplicates",
+      names: ["alpha", "beta"],
+    });
+    expect(result).toEqual(["beta"]);
+    expect(install).toHaveBeenCalledOnce();
+  });
+
+  it("rejects user-scope plugins before changing config or runtime state", async () => {
+    const userRoot = join(tmpDir, "user-home");
+    const sourceDir = join(userRoot, "plugin-source");
+    await mkdir(userRoot, { recursive: true });
+    await writeFile(join(userRoot, "agents.toml"), "version = 1\n");
+    await writePlugin(sourceDir, "project-only");
+    const scope = resolveScope("user");
+    scope.root = userRoot;
+    scope.configPath = join(userRoot, "agents.toml");
+    scope.lockPath = join(userRoot, "agents.lock");
+    scope.pluginsDir = join(userRoot, "plugins");
+
+    await expect(runAdd({
+      scope,
+      specifier: "path:plugin-source",
+    })).rejects.toThrow("Plugins are project-scope only");
+
+    expect(await readFile(scope.configPath, "utf-8")).toBe("version = 1\n");
+    await expect(readFile(scope.lockPath, "utf-8")).rejects.toThrow();
+    await expect(readFile(join(scope.pluginsDir, "project-only", "plugin.json"), "utf-8")).rejects.toThrow();
+  });
+
+  it("does not bootstrap a missing user config for a detected plugin", async () => {
+    const userRoot = join(tmpDir, "fresh-user-home");
+    await writePlugin(join(userRoot, "plugin-source"), "project-only");
+    const scope = resolveScope("user");
+    scope.root = userRoot;
+    scope.configPath = join(userRoot, "agents.toml");
+    scope.lockPath = join(userRoot, "agents.lock");
+    scope.pluginsDir = join(userRoot, "plugins");
+
+    await expect(runAdd({
+      scope,
+      specifier: "path:plugin-source",
+    })).rejects.toThrow("Plugins are project-scope only");
+
+    expect(existsSync(scope.configPath)).toBe(false);
+    expect(existsSync(scope.lockPath)).toBe(false);
+    expect(existsSync(scope.pluginsDir)).toBe(false);
   });
 
 });
@@ -533,6 +725,7 @@ describe("add() CLI parsing", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     delete process.env["DOTAGENTS_STATE_DIR"];
     process.exitCode = originalExitCode;
     await rm(tmpDir, { recursive: true });
@@ -576,6 +769,25 @@ describe("add() CLI parsing", () => {
     try {
       await add([`git:${repoDir}`, "pdf", "--skill", "review"]);
       expect(process.exitCode).toBe(1);
+    } finally {
+      process.chdir(origCwd);
+    }
+  });
+
+  it("treats --skill as a plugin-selection alias and prints plugin output", async () => {
+    await writePlugin(join(projectRoot, "plugin-source"), "cli-plugin");
+    mockRunInstall();
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const origCwd = process.cwd();
+    process.chdir(projectRoot);
+    try {
+      await add(["path:plugin-source", "--skill", "cli-plugin"]);
+
+      expect(process.exitCode).toBeUndefined();
+      expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toContain(
+        "[[plugins]]",
+      );
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("Added plugin: cli-plugin"));
     } finally {
       process.chdir(origCwd);
     }

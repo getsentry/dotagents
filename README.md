@@ -18,7 +18,7 @@ Shared tooling for coding agents. Declare skills, MCP servers, hooks, subagents,
 npx @sentry/dotagents init
 ```
 
-The interactive setup walks you through selecting agents and trust policy. Then add skills:
+The interactive setup walks you through selecting agents and trust policy. Then add skills or plugins:
 
 ```bash
 # Add a skill from a GitHub repo
@@ -29,6 +29,9 @@ npx @sentry/dotagents add getsentry/skills find-bugs code-review commit
 
 # Or add all skills from a repo
 npx @sentry/dotagents add getsentry/skills --all
+
+# Add a plugin (auto-detected from the source)
+npx @sentry/dotagents add getsentry/agent-plugins review-tools
 ```
 
 This creates an `agents.toml` at your project root and an `agents.lock` tracking installed skills, subagents, and plugins.
@@ -44,7 +47,7 @@ npx @sentry/dotagents install
 | Command | Description |
 |---------|-------------|
 | `init` | Create `agents.toml` and `.agents/skills/` |
-| `add <source> [skills...]` | Add skill dependencies |
+| `add <source> [names...]` | Discover and add plugins, otherwise skills |
 | `remove <name\|source> [-y]` | Remove a skill, plugin, or all dependencies from a source |
 | `install` | Install all dependencies from `agents.toml` |
 | `list` | Show declared skills, plugins, and their status |
@@ -57,7 +60,7 @@ All commands accept `--user` to operate on user scope (`~/.agents/`) instead of 
 
 ## Source Formats
 
-Skills can come from GitHub, GitLab, any git server, well-known HTTPS skill sources, or local directories:
+Skills can come from GitHub, GitLab, any git server, well-known HTTPS skill sources, or local directories. Git and local sources are checked for plugins first. If any plugin is found, `add` treats the entire source as plugin-only; standalone and bundled skills in that source are not offered. Well-known HTTPS sources remain skill-only:
 
 ```toml
 [[skills]]
@@ -142,7 +145,7 @@ targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 
 The canonical portable format is an [Agent Plugins](https://agent-plugins.org/) v1 bundle: required `plugin.json`, optional `skills/`, optional `mcp.json`, and reverse-domain client extensions. dotagents preserves those portable source files under `.agents/plugins/<name>/` and generates isolated target harnesses. Generated JSON uses adjacent ownership sidecars, while component symlinks use markers in reserved `.dotagents-managed/` directories, so client-owned JSON remains unchanged. Legacy generalized and native Claude/Cursor/Codex manifests remain discoverable during migration; native imports preserve their owning manifest and expose only core metadata and Agent Skills to other clients. Standard bundles reject legacy root components so client-specific behavior cannot leak across harnesses.
 
-Plugin declarations are project-scope only for now. `dotagents --user install` rejects `[[plugins]]` entries because user-scope runtime plugin projections are not generated yet.
+Plugin declarations are project-scope only for now. `dotagents --user add` rejects a detected plugin source without changing user configuration, and `dotagents --user install` rejects `[[plugins]]` entries because user-scope runtime plugin projections are not generated yet.
 
 Pi plugin targets are global skill projections rather than isolated plugin installs: a Pi-targeted plugin skill is added to `.agents/skills/` and is therefore visible to other clients that consume that shared directory.
 

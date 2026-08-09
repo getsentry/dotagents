@@ -13,7 +13,7 @@ import {
   type RepositorySource,
   type TrustPolicy,
 } from "@sentry/dotagents-lib";
-import type { PluginConfig } from "../config/schema.js";
+import { PLUGIN_NAME_PATTERN, type PluginConfig } from "../config/schema.js";
 import type { LockedPlugin } from "../lockfile/schema.js";
 import {
   parsePluginManifest,
@@ -54,7 +54,8 @@ interface ResolvedGitPlugin {
 
 export type ResolvedPlugin = ResolvedLocalPlugin | ResolvedGitPlugin;
 
-interface PluginCandidate {
+export interface PluginCandidate {
+  name: string;
   dir: string;
   path: string;
   manifest: PluginManifest;
@@ -98,7 +99,7 @@ export async function resolvePlugin(
 
   if (parsed.type === "local") {
     const sourceDir = await resolveLocalSource(opts.projectRoot, parsed.path!);
-    const discovered = await discoverPlugin(sourceDir, config);
+    const discovered = await resolvePluginCandidate(sourceDir, config);
     if (!discovered) {
       throw new Error(`Plugin "${config.name}" not found in ${config.source}.`);
     }
@@ -129,7 +130,7 @@ export async function resolvePlugin(
     minimumReleaseAge: excluded ? undefined : opts.minimumReleaseAge,
   });
 
-  const discovered = await discoverPlugin(cached.repoDir, config);
+  const discovered = await resolvePluginCandidate(cached.repoDir, config);
   if (!discovered) {
     throw new Error(`Plugin "${config.name}" not found in ${config.source}.`);
   }
@@ -365,7 +366,7 @@ export function isSameProjectPluginConfig(
   }
 }
 
-async function discoverPlugin(
+async function resolvePluginCandidate(
   sourceDir: string,
   config: PluginConfig,
 ): Promise<PluginCandidate | null> {
@@ -374,34 +375,25 @@ async function discoverPlugin(
     return loadPluginCandidate(sourceDir, dir, { name: config.name });
   }
 
-  const matches: PluginCandidate[] = [];
-  const canonicalDir = await resolveInside(sourceDir, join(".agents", "plugins", config.name), "Canonical plugin source");
-  const canonical = await loadPluginCandidate(sourceDir, canonicalDir);
+  const candidates = await discoverPlugins(sourceDir);
+  const canonicalPath = posix.join(".agents", "plugins", config.name);
+  const canonical = candidates.find((candidate) => candidate.path === canonicalPath);
   if (canonical && candidateMatches(config.name, canonical)) {
     return canonical;
   }
 
   const unsupportedMarketplaceSources: string[] = [];
-  const fromMarketplace = await discoverFromMarketplaces(sourceDir, config.name, unsupportedMarketplaceSources);
+  const marketplacePaths = await discoverMarketplaceCandidatePaths(
+    sourceDir,
+    config.name,
+    unsupportedMarketplaceSources,
+  );
+  const fromMarketplace = candidates.find(
+    (candidate) => marketplacePaths.includes(candidate.path) && candidateMatches(config.name, candidate),
+  );
   if (fromMarketplace) {return fromMarketplace;}
 
-  let sourceRootError: unknown;
-  try {
-    const sourceCandidate = await loadPluginCandidate(sourceDir, sourceDir);
-    if (sourceCandidate && candidateMatches(config.name, sourceCandidate)) {matches.push(sourceCandidate);}
-  } catch (err) {
-    sourceRootError = err;
-  }
-
-  const namedCandidate = await loadPluginCandidate(sourceDir, join(sourceDir, "plugins", config.name));
-  if (namedCandidate && candidateMatches(config.name, namedCandidate)) {
-    matches.push(namedCandidate);
-  }
-
-  const recursive = await scanPluginDirectories(sourceDir, join(sourceDir, "plugins"), config.name);
-  matches.push(...recursive);
-
-  const unique = rankedCandidates(config.name, matches);
+  const unique = rankedCandidates(config.name, candidates);
   if (unique.length > 1) {
     throw new Error(
       `Plugin "${config.name}" is ambiguous in ${config.source}: ${unique.map((m) => m.path).join(", ")}`,
@@ -412,8 +404,29 @@ async function discoverPlugin(
       `Plugin "${config.name}" not found in ${config.source}. Matching marketplace entries use unsupported source types: ${[...new Set(unsupportedMarketplaceSources)].join(", ")}. Only local marketplace sources are supported.`,
     );
   }
-  if (unique.length === 0 && sourceRootError) {throw sourceRootError;}
   return unique[0] ?? null;
+}
+
+/** Enumerates every valid plugin in a local or acquired repository source. */
+export async function discoverPlugins(sourceDir: string): Promise<PluginCandidate[]> {
+  const candidates: PluginCandidate[] = [];
+
+  const root = await loadPluginCandidate(sourceDir, sourceDir);
+  if (root) {candidates.push(root);}
+
+  candidates.push(...await discoverFromMarketplaces(sourceDir));
+  candidates.push(...await scanPluginDirectories(
+    sourceDir,
+    join(sourceDir, ".agents", "plugins"),
+    2,
+    "Canonical plugin source",
+  ));
+  candidates.push(...await scanPluginDirectories(
+    sourceDir,
+    join(sourceDir, "plugins"),
+  ));
+
+  return dedupeCandidates(candidates);
 }
 
 /**
@@ -423,9 +436,49 @@ async function discoverPlugin(
  */
 async function discoverFromMarketplaces(
   sourceDir: string,
+): Promise<PluginCandidate[]> {
+  const candidates: PluginCandidate[] = [];
+  for (const marketplacePath of MARKETPLACE_PATHS) {
+    const filePath = join(sourceDir, marketplacePath);
+    if (!existsSync(filePath)) {continue;}
+
+    let marketplace: ReturnType<typeof parsePluginMarketplace>;
+    try {
+      marketplace = parsePluginMarketplace(await readJson(filePath), filePath);
+    } catch {
+      continue;
+    }
+    const root = typeof marketplace.metadata?.pluginRoot === "string"
+      ? marketplace.metadata.pluginRoot
+      : ".";
+    for (const entry of marketplace.plugins) {
+      const path = localMarketplacePath(entry);
+      if (!path) {continue;}
+      const marketplaceRoot = dirname(filePath);
+      const pluginDir = await resolveMarketplaceSource(
+        sourceDir,
+        marketplaceRoot,
+        join(root, path),
+        "Marketplace plugin source",
+      );
+      const candidate = await loadPluginCandidate(
+        sourceDir,
+        pluginDir,
+        marketplaceManifestOverlay(entry),
+        "Marketplace plugin source",
+      );
+      if (candidate) {candidates.push(candidate);}
+    }
+  }
+  return candidates;
+}
+
+async function discoverMarketplaceCandidatePaths(
+  sourceDir: string,
   name: string,
   unsupportedSources: string[],
-): Promise<PluginCandidate | null> {
+): Promise<string[]> {
+  const paths: string[] = [];
   for (const marketplacePath of MARKETPLACE_PATHS) {
     const filePath = join(sourceDir, marketplacePath);
     if (!existsSync(filePath)) {continue;}
@@ -450,39 +503,32 @@ async function discoverFromMarketplaces(
 
       const marketplaceRoot = dirname(filePath);
       const pluginDir = await resolveMarketplaceSource(sourceDir, marketplaceRoot, join(root, path), "Marketplace plugin source");
-      const candidate = await loadPluginCandidate(sourceDir, pluginDir, marketplaceManifestOverlay(entry));
-      if (candidate) {return candidate;}
+      paths.push(relativePath(sourceDir, pluginDir));
     }
   }
 
-  return null;
+  return paths;
 }
 
 async function scanPluginDirectories(
   sourceRoot: string,
   dir: string,
-  name: string,
   depth = 2,
+  label = "Plugin source",
 ): Promise<PluginCandidate[]> {
   if (depth <= 0 || !await isDirectory(dir)) {return [];}
 
   const matches: PluginCandidate[] = [];
   const entries = await readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith(".")) {continue;}
+    if ((!entry.isDirectory() && !entry.isSymbolicLink()) || entry.name.startsWith(".")) {continue;}
     const childDir = join(dir, entry.name);
-    let candidate: PluginCandidate | null;
-    try {
-      candidate = await loadPluginCandidate(sourceRoot, childDir);
-    } catch (err) {
-      if (entry.name === name) {throw err;}
-      candidate = null;
-    }
-    if (candidate && candidateMatches(name, candidate)) {
+    const candidate = await loadPluginCandidate(sourceRoot, childDir, {}, label);
+    if (candidate) {
       matches.push(candidate);
       continue;
     }
-    matches.push(...await scanPluginDirectories(sourceRoot, childDir, name, depth - 1));
+    matches.push(...await scanPluginDirectories(sourceRoot, childDir, depth - 1, label));
   }
   return matches;
 }
@@ -500,9 +546,10 @@ async function loadPluginCandidate(
   sourceRoot: string,
   pluginDir: string,
   overlay: Partial<LegacyPluginManifest> = {},
+  label = "Plugin source",
 ): Promise<PluginCandidate | null> {
   if (!existsSync(pluginDir)) {return null;}
-  await assertInsideSourceRoot(sourceRoot, pluginDir, "Plugin source");
+  await assertInsideSourceRoot(sourceRoot, pluginDir, label);
 
   const loaded = await loadManifest(pluginDir);
   if (!loaded) {return null;}
@@ -517,7 +564,14 @@ async function loadPluginCandidate(
   const combined = manifest && isStandardPluginManifest(manifest)
     ? manifest
     : normalizeManifest(name, { ...overlay, ...manifest } as LegacyPluginManifest);
+  if (!PLUGIN_NAME_PATTERN.test(name)) {
+    throw new Error(
+      `Invalid plugin name "${name}" in ${relativePath(sourceRoot, pluginDir) || "."}. ` +
+        "Plugin names must be 1-64 lowercase letters, numbers, hyphens, or dots, have alphanumeric ends, and not contain '--' or '..'.",
+    );
+  }
   return {
+    name,
     dir: pluginDir,
     path: relativePath(sourceRoot, pluginDir),
     manifest: combined,
@@ -658,7 +712,7 @@ function normalizeManifest(
 }
 
 function candidateMatches(name: string, candidate: PluginCandidate): boolean {
-  return basename(candidate.dir) === name || candidate.manifest["name"] === name;
+  return basename(candidate.dir) === name || candidate.name === name;
 }
 
 /** Applies discovery precedence: directory-name matches win before manifest-name fallback. */
@@ -667,7 +721,7 @@ function rankedCandidates(name: string, candidates: PluginCandidate[]): PluginCa
   const directoryMatches = unique.filter((candidate) => basename(candidate.dir) === name);
   return directoryMatches.length > 0
     ? directoryMatches
-    : unique.filter((candidate) => candidate.manifest["name"] === name);
+    : unique.filter((candidate) => candidate.name === name);
 }
 
 function dedupeCandidates(candidates: PluginCandidate[]): PluginCandidate[] {
@@ -792,7 +846,13 @@ function isNotDirectoryError(err: unknown): boolean {
 
 async function readJson(filePath: string): Promise<Record<string, unknown>> {
   const raw = await readFile(filePath, "utf-8");
-  const parsed = JSON.parse(raw) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Invalid JSON ${filePath}: ${message}`, { cause: err });
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`Expected JSON object in ${filePath}`);
   }
