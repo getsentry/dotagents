@@ -22,7 +22,9 @@ const codex: AgentDefinition = {
   },
   serializeServer(s) {
     if (s.url) {
-      const { httpHeaders, envHttpHeaders } = extractCodexHeaders(s.headers);
+      const { httpHeaders, envHttpHeaders } = s.interpolateEnvRefs === false
+        ? { httpHeaders: s.headers, envHttpHeaders: undefined }
+        : extractCodexHeaders(s.headers);
       return [s.name, {
         url: s.url,
         ...(httpHeaders && { http_headers: httpHeaders }),

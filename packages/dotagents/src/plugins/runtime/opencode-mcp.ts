@@ -93,6 +93,7 @@ async function openCodeDeclarations(
         name,
         url: server.url,
         ...(server.headers && { headers: server.headers }),
+        interpolateEnvRefs: false,
       });
       continue;
     }
@@ -105,6 +106,9 @@ async function openCodeDeclarations(
     const command = server.command.startsWith("./")
       ? join(pluginRoot, server.command.slice(2))
       : server.command;
+    const cwd = server.cwd?.startsWith("./")
+      ? join(pluginRoot, server.cwd.slice(2))
+      : expand(server.cwd ?? "${PLUGIN_ROOT}");
     const envValues: Record<string, string> = {
       PLUGIN_ROOT: pluginRoot,
       PLUGIN_DATA: dataDir,
@@ -117,7 +121,7 @@ async function openCodeDeclarations(
       command,
       ...(server.args && { args: server.args.map(expand) }),
       envValues,
-      ...(server.cwd && { cwd: expand(server.cwd) }),
+      cwd,
     });
   }
   return declarations;

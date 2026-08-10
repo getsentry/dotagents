@@ -66,12 +66,18 @@ export function httpServer(
   template?: (varName: string) => string,
 ): [string, unknown] {
   const tpl = template ?? ((k: string) => `\${${k}}`);
+  const url = s.interpolateEnvRefs === false
+    ? s.url!
+    : interpolateEnvRefs(s.url!, tpl);
+  const headers = s.interpolateEnvRefs === false
+    ? s.headers
+    : interpolateHeaders(s.headers, tpl);
   return [
     s.name,
     {
       ...(type && { type }),
-      url: interpolateEnvRefs(s.url!, tpl),
-      ...(s.headers && { headers: interpolateHeaders(s.headers, tpl) }),
+      url,
+      ...(headers && { headers }),
     },
   ];
 }

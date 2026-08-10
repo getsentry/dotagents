@@ -582,12 +582,16 @@ describe("plugin writer", () => {
           command: "node",
           args: ["${PLUGIN_ROOT}/server.mjs", "${OTHER}"],
           env: { CACHE_DIR: "${PLUGIN_DATA}/cache" },
-          cwd: "${PLUGIN_ROOT}",
+          cwd: "./runtime",
+        },
+        "default-cwd": {
+          type: "stdio",
+          command: "node",
         },
         remote: {
           type: "streamable-http",
-          url: "https://example.com/mcp",
-          headers: { "X-Fixture": "dotagents" },
+          url: "https://example.com/${DEPLOYMENT}/mcp",
+          headers: { "X-Fixture": "Bearer ${TOKEN}" },
         },
       },
     }));
@@ -611,16 +615,25 @@ describe("plugin writer", () => {
     expect(config.mcp["manual"]).toEqual({ type: "local", command: ["manual"] });
     expect(config.mcp["plugin.alpha-tools.remote"]).toEqual({
       type: "remote",
-      url: "https://example.com/mcp",
-      headers: { "X-Fixture": "dotagents" },
+      url: "https://example.com/${DEPLOYMENT}/mcp",
+      headers: { "X-Fixture": "Bearer ${TOKEN}" },
     });
     const dataDir = join(root, ".agents", "plugin-data", "alpha-tools");
     expect(config.mcp["plugin.alpha-tools.local"]).toEqual({
       type: "local",
       command: ["node", join(alpha.pluginDir, "server.mjs"), "${OTHER}"],
-      cwd: alpha.pluginDir,
+      cwd: join(alpha.pluginDir, "runtime"),
       environment: {
         CACHE_DIR: `${dataDir}/cache`,
+        PLUGIN_DATA: dataDir,
+        PLUGIN_ROOT: alpha.pluginDir,
+      },
+    });
+    expect(config.mcp["plugin.alpha-tools.default-cwd"]).toEqual({
+      type: "local",
+      command: ["node"],
+      cwd: alpha.pluginDir,
+      environment: {
         PLUGIN_DATA: dataDir,
         PLUGIN_ROOT: alpha.pluginDir,
       },
@@ -631,7 +644,11 @@ describe("plugin writer", () => {
       "utf-8",
     ))).toEqual({
       version: 1,
-      servers: ["plugin.alpha-tools.local", "plugin.alpha-tools.remote"],
+      servers: [
+        "plugin.alpha-tools.default-cwd",
+        "plugin.alpha-tools.local",
+        "plugin.alpha-tools.remote",
+      ],
     });
     expect(await verifyPluginOutputs(["opencode"], [alpha], root)).toEqual([]);
 

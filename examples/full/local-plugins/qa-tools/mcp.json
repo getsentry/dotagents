@@ -7,14 +7,13 @@
       "args": ["${PLUGIN_ROOT}/server.mjs"],
       "env": {
         "FIXTURE_CACHE": "${PLUGIN_DATA}/cache"
-      },
-      "cwd": "${PLUGIN_ROOT}"
+      }
     },
     "fixture-http": {
       "type": "streamable-http",
-      "url": "https://example.com/mcp",
+      "url": "https://example.com/${DEPLOYMENT}/mcp",
       "headers": {
-        "X-Fixture": "dotagents"
+        "X-Fixture": "Bearer ${TOKEN}"
       }
     }
   }

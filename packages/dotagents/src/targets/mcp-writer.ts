@@ -300,6 +300,9 @@ function normalizeMcpDeclaration(mcp: McpDeclaration): NormalizedMcpDeclaration 
       name: mcp.name,
       url: mcp.url,
       ...(mcp.headers && { headers: mcp.headers }),
+      ...(mcp.interpolateEnvRefs !== undefined && {
+        interpolateEnvRefs: mcp.interpolateEnvRefs,
+      }),
       ...(mcp.env?.length && { env: mcp.env }),
       ...(mcp.envValues && { envValues: mcp.envValues }),
     };

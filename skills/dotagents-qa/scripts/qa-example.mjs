@@ -300,8 +300,8 @@ async function runOpenCodePluginProof() {
   }
   if (JSON.stringify(remote) !== JSON.stringify({
     type: "remote",
-    url: "https://example.com/mcp",
-    headers: { "X-Fixture": "dotagents" },
+    url: "https://example.com/${DEPLOYMENT}/mcp",
+    headers: { "X-Fixture": "Bearer ${TOKEN}" },
   })) {
     throw new Error("OpenCode debug config did not include the plugin HTTP MCP server");
   }

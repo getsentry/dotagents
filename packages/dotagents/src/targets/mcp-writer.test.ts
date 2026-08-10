@@ -438,6 +438,31 @@ describe("writeMcpConfigs", () => {
     });
   });
 
+  it("preserves literal HTTP placeholder-like values for adapter declarations", async () => {
+    const literal = { ...HTTP_SERVER_WITH_ENV_REFS, interpolateEnvRefs: false };
+    await writeMcpConfigs(["opencode", "codex"], [literal], projectMcpResolver(dir));
+
+    const openCode = JSON.parse(
+      await readFile(join(dir, ".opencode", "opencode.jsonc"), "utf-8"),
+    );
+    expect(openCode.mcp["authed-api"]).toEqual({
+      type: "remote",
+      url: "https://${API_HOST}/mcp",
+      headers: { "X-Api-Key": "${API_KEY}", Authorization: "Bearer ${TOKEN}" },
+    });
+
+    const codex = parseTOML(
+      await readFile(join(dir, ".codex", "config.toml"), "utf-8"),
+    ) as Record<string, Record<string, Record<string, unknown>>>;
+    expect(codex["mcp_servers"]!["authed-api"]).toEqual({
+      url: "https://${API_HOST}/mcp",
+      http_headers: {
+        "X-Api-Key": "${API_KEY}",
+        Authorization: "Bearer ${TOKEN}",
+      },
+    });
+  });
+
   it("splits codex env refs into env_http_headers for pure refs", async () => {
     await writeMcpConfigs(["codex"], [HTTP_SERVER_WITH_ENV_REFS], projectMcpResolver(dir));
 
