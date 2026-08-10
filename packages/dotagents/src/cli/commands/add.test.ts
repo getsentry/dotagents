@@ -566,6 +566,24 @@ describe("runAdd (local sources)", () => {
     expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe("version = 1\n");
   });
 
+  it("does not fall back to skills when a named marketplace plugin has no manifest", async () => {
+    const sourceDir = join(projectRoot, "broken-marketplace-source");
+    await mkdir(join(sourceDir, "plugins", "review"), { recursive: true });
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(join(sourceDir, "marketplace.json"), JSON.stringify({
+      name: "broken",
+      plugins: [{ name: "review", source: "./plugins/review" }],
+    }));
+
+    await expect(runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:broken-marketplace-source",
+      names: ["review"],
+    })).rejects.toThrow(/Marketplace plugin "review".*has no supported plugin manifest/);
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe("version = 1\n");
+  });
+
   it("preflights plugin names and persists exact paths and refs in one install", async () => {
     const sourceDir = join(projectRoot, "plugin-catalog");
     await writePlugin(join(sourceDir, "plugins", "alpha"), "alpha");

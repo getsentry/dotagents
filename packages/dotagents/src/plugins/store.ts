@@ -612,14 +612,18 @@ async function discoverFromMarketplaces(
         continue;
       }
       if (!candidate) {
+        const error = new Error(
+          `Marketplace plugin "${entry.name}" in ${filePath} has no supported plugin manifest at ${path}.`,
+        );
         issues.push({
           name: entry.name,
           origin: "marketplace",
-          error: new Error(
-            `Marketplace plugin "${entry.name}" in ${filePath} has no supported plugin manifest at ${path}.`,
-          ),
-          blocksNamedResolution: false,
+          error,
+          blocksNamedResolution: true,
         });
+        const namedOutcomes = outcomes.get(entry.name) ?? [];
+        namedOutcomes.push({ error });
+        outcomes.set(entry.name, namedOutcomes);
         continue;
       }
       referencedDirs.add(resolve(pluginDir!));

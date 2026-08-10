@@ -931,6 +931,9 @@ describe("plugin store", () => {
       await expect(discoverPlugins(sourceRoot)).rejects.toThrow(
         /Marketplace plugin "broken".*has no supported plugin manifest.*missing-manifest/,
       );
+      await expect(discoverPlugins(sourceRoot, ["broken"])).rejects.toThrow(
+        /Marketplace plugin "broken".*has no supported plugin manifest.*missing-manifest/,
+      );
     } finally {
       await rm(sourceRoot, { recursive: true, force: true });
     }
