@@ -28,8 +28,8 @@ The portable source bundle is an Agent Plugin. dotagents is responsible for:
    clients' formats.
 
 Marketplaces, source repositories, lockfiles, target selection, trust policy,
-and generated runtime files remain dotagents concerns. They are not part of the
-portable Agent Plugins bundle format.
+CLI source discovery, generated runtime files, and config persistence remain
+dotagents concerns. They are not part of the portable Agent Plugins bundle format.
 
 ## Bidirectional Contract
 
@@ -286,6 +286,22 @@ targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 `targets` controls deployment. It is not written into `plugin.json`.
 
 ## Discovery and Installation
+
+`dotagents add <source>` uses this discovery as a management operation for git
+and local sources. It enumerates root manifests, conventional plugin directories,
+supported local marketplace entries, and native manifests before looking for
+skills. If any plugin is valid, the source is plugin-only for that invocation;
+invalid plugin-shaped content is reported instead of triggering skill fallback.
+Well-known HTTPS catalogs remain skill-only.
+
+Selected plugins are persisted as individual `[[plugins]]` declarations with
+their validated source-relative `path` (`.` for a source-root plugin), so
+subsequent installs select the same directory even if the repository gains more plugins.
+There is no plugin wildcard: `add --all` records a snapshot of every plugin
+currently discovered, while skill `--all` retains its dynamic wildcard meaning.
+CLI plugin add is project-scope only.
+Local plugin sources that overlap the project's managed `.agents/plugins`
+directory are rejected before configuration changes.
 
 For each `[[plugins]]` declaration:
 

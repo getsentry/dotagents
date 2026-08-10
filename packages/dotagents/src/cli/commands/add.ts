@@ -1,10 +1,22 @@
-import { join, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { realpath } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
-import { isWildcardDep, GITHUB_HTTPS_URL, GITLAB_HTTPS_URL } from "../../config/schema.js";
-import { addSkillToConfig, addWildcardToConfig } from "../../config/writer.js";
+import {
+  isWildcardDep,
+  GITHUB_HTTPS_URL,
+  GITLAB_HTTPS_URL,
+  PLUGIN_NAME_PATTERN,
+  agentsConfigSchema,
+} from "../../config/schema.js";
+import {
+  addPluginsToConfig,
+  addSkillToConfig,
+  addWildcardToConfig,
+} from "../../config/writer.js";
 import {
   applyDefaultRepositorySource,
   isExplicitSourceSpecifier,
@@ -29,6 +41,10 @@ import { formatGitError, formatTrustError } from "../errors.js";
 import { runInstall } from "./install.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
+import {
+  discoverPlugins,
+  type PluginCandidate,
+} from "../../plugins/store.js";
 
 /** Parent paths that are standard/expected — no need to show them in the picker */
 const STANDARD_PARENTS = new Set(["", "skills", ".agents/skills", ".claude/skills"]);
@@ -56,30 +72,59 @@ export interface AddOptions {
   interactive?: boolean;
 }
 
-type AcquiredSkills =
-  | { type: "root-skill"; name: string }
-  | { type: "catalog"; rootDir: string };
+interface AcquiredSource {
+  rootDir: string;
+  pluginEligible: boolean;
+  local: boolean;
+}
 
-type AddSelection =
+type DuplicatePolicy = "single" | "specified" | "selected";
+
+type SkillSelection =
   | { type: "wildcard" }
   | {
       type: "skills";
       names: string[];
       /** Single names reject duplicates; specified names warn; prompted selections skip silently. */
-      duplicatePolicy: "single" | "specified" | "selected";
+      duplicatePolicy: DuplicatePolicy;
     };
 
-async function acquireSkills(
+interface PluginSelection {
+  candidates: PluginCandidate[];
+  duplicatePolicy: DuplicatePolicy;
+}
+
+interface DetailedAddResult {
+  kind: "skill" | "plugin";
+  result: string | string[];
+}
+
+function containsPath(parentDir: string, childDir: string): boolean {
+  const childPath = relative(resolve(parentDir), resolve(childDir));
+  return childPath === "" ||
+    (childPath !== ".." && !childPath.startsWith(`..${sep}`) && !isAbsolute(childPath));
+}
+
+async function physicalPath(path: string): Promise<string> {
+  let existingPath = resolve(path);
+  const missingSegments: string[] = [];
+  while (!existsSync(existingPath)) {
+    const parentPath = dirname(existingPath);
+    if (parentPath === existingPath) {return existingPath;}
+    missingSegments.unshift(basename(existingPath));
+    existingPath = parentPath;
+  }
+  return resolve(await realpath(existingPath), ...missingSegments);
+}
+
+async function acquireSource(
   parsed: ReturnType<typeof parseSource>,
   scope: ScopeRoot,
   effectiveRef: string | undefined,
-  hasExplicitNames: boolean,
-): Promise<AcquiredSkills> {
+): Promise<AcquiredSource> {
   if (parsed.type === "local") {
     const rootDir = await resolveLocalSource(scope.root, parsed.path!);
-    if (hasExplicitNames) {return { type: "catalog", rootDir };}
-    const meta = await loadSkillMd(join(rootDir, "SKILL.md"));
-    return { type: "root-skill", name: meta.name };
+    return { rootDir, pluginEligible: true, local: true };
   }
 
   if (parsed.type === "well-known") {
@@ -98,7 +143,7 @@ async function acquireSkills(
         `No skills found at ${baseUrl}. If this is a git repository, use the git: prefix: git:${baseUrl}`,
       );
     }
-    return { type: "catalog", rootDir: cached.cacheDir };
+    return { rootDir: cached.cacheDir, pluginEligible: false, local: false };
   }
 
   const url = parsed.url!;
@@ -110,7 +155,7 @@ async function acquireSkills(
       : sanitizeCacheKey(url),
     ref: effectiveRef,
   });
-  return { type: "catalog", rootDir: cached.repoDir };
+  return { rootDir: cached.repoDir, pluginEligible: true, local: false };
 }
 
 async function verifyRequestedNames(
@@ -132,15 +177,16 @@ async function verifyRequestedNames(
 }
 
 async function selectSkills(
-  acquired: AcquiredSkills,
+  acquired: AcquiredSource,
   names: string[] | undefined,
   source: string,
   interactive: boolean | undefined,
-): Promise<AddSelection> {
-  if (acquired.type === "root-skill") {
+): Promise<SkillSelection> {
+  if (acquired.local && !names?.length) {
+    const meta = await loadSkillMd(join(acquired.rootDir, "SKILL.md"));
     return {
       type: "skills",
-      names: [acquired.name],
+      names: [meta.name],
       duplicatePolicy: "single",
     };
   }
@@ -221,7 +267,121 @@ async function selectSkills(
   };
 }
 
-export async function runAdd(opts: AddOptions): Promise<string | string[]> {
+function pluginCandidateForName(
+  candidates: PluginCandidate[],
+  name: string,
+  source: string,
+): PluginCandidate {
+  const matches = candidates.filter((candidate) => candidate.name === name);
+  if (matches.length === 0) {
+    throw new AddError(
+      `Plugin "${name}" not found in ${source}. ` +
+        `Use 'npx @sentry/dotagents add ${source}' without --name to see available plugins.`,
+    );
+  }
+  if (matches.length > 1) {
+    throw new AddError(
+      `Plugin "${name}" is ambiguous in ${source}: ${matches.map((candidate) => candidate.path || ".").join(", ")}`,
+    );
+  }
+  return matches[0]!;
+}
+
+function assertUniquePluginNames(
+  candidates: PluginCandidate[],
+  source: string,
+): void {
+  const byName = new Map<string, PluginCandidate[]>();
+  for (const candidate of candidates) {
+    const matches = byName.get(candidate.name) ?? [];
+    matches.push(candidate);
+    byName.set(candidate.name, matches);
+  }
+  for (const [name, matches] of byName) {
+    if (matches.length > 1) {
+      throw new AddError(
+        `Plugin "${name}" is ambiguous in ${source}: ${matches.map((candidate) => candidate.path || ".").join(", ")}`,
+      );
+    }
+  }
+}
+
+async function selectPlugins(
+  candidates: PluginCandidate[],
+  names: string[] | undefined,
+  source: string,
+  interactive: boolean | undefined,
+  all: boolean | undefined,
+): Promise<PluginSelection> {
+  if (all) {
+    assertUniquePluginNames(candidates, source);
+    return { candidates, duplicatePolicy: "specified" };
+  }
+  if (names?.length) {
+    return {
+      candidates: names.map((name) => pluginCandidateForName(candidates, name, source)),
+      duplicatePolicy: names.length === 1 ? "single" : "specified",
+    };
+  }
+  if (candidates.length === 1) {
+    return { candidates, duplicatePolicy: "single" };
+  }
+  if (!interactive) {
+    const availableNames = candidates.map((candidate) => candidate.name).toSorted();
+    throw new AddError(
+      `Multiple plugins found in ${source}: ${availableNames.join(", ")}. ` +
+        "Specify plugin names as arguments, use --name to specify which ones, or --all for all plugins.",
+    );
+  }
+
+  const mode = await clack.select({
+    message: `Multiple plugins found in ${source}. How would you like to add them?`,
+    options: [
+      {
+        label: "All",
+        value: "all" as const,
+        hint: "Add every plugin currently discovered in this source",
+      },
+      {
+        label: "Select specific plugins",
+        value: "pick" as const,
+        hint: "Choose individual plugins to add",
+      },
+    ],
+  });
+  if (clack.isCancel(mode)) {throw new AddCancelledError();}
+  if (mode === "all") {
+    assertUniquePluginNames(candidates, source);
+    return { candidates, duplicatePolicy: "selected" };
+  }
+
+  const pickerCandidates = candidates.toSorted((a, b) =>
+    a.name.localeCompare(b.name) || a.path.localeCompare(b.path)
+  );
+  const selectedIndices = await clack.multiselect({
+    message: "Select which plugins to add:",
+    options: pickerCandidates
+      .map((candidate, index) => ({
+        label: candidate.name,
+        value: index,
+        hint: candidate.path ? chalk.dim(`(${candidate.path})`) : "Source root",
+      })),
+    required: true,
+  });
+  if (clack.isCancel(selectedIndices)) {throw new AddCancelledError();}
+  const selected = selectedIndices.map((index) => {
+    const candidate = pickerCandidates[index];
+    if (!candidate) {throw new AddError("Invalid plugin selection.");}
+    return candidate;
+  });
+  assertUniquePluginNames(selected, source);
+  return {
+    candidates: selected,
+    duplicatePolicy: selected.length === 1 ? "single" : "selected",
+  };
+}
+
+async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
   const {
     scope,
     specifier: rawSpecifier,
@@ -233,7 +393,11 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
   const specifier = stripLeadingAt(rawSpecifier);
   const namesOverride = rawNames ? [...new Set(rawNames)] : rawNames;
   const { configPath } = scope;
-  const config = await loadConfig(configPath);
+  // Defer user bootstrap until classification so rejected plugins cannot mutate user state.
+  const needsUserBootstrap = scope.scope === "user" && !existsSync(configPath);
+  const config = needsUserBootstrap
+    ? agentsConfigSchema.parse({ version: 1 })
+    : await loadConfig(configPath);
 
   const hintedSpecifier = applyDefaultRepositorySource(
     specifier,
@@ -267,17 +431,8 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
     throw new AddError("Cannot use --all with --name. Use one or the other.");
   }
 
-  if (namesOverride?.length) {
-    for (const name of namesOverride) {
-      if (!VALID_SKILL_NAME.test(name)) {
-        throw new AddError(
-          `Invalid skill name "${name}". Names must start with alphanumeric and contain only alphanumeric, dots, underscores, or hyphens.`,
-        );
-      }
-    }
-  }
-
-  async function persist(selection: AddSelection): Promise<string | string[]> {
+  async function persistSkills(selection: SkillSelection): Promise<DetailedAddResult> {
+    if (needsUserBootstrap) {await ensureUserScopeBootstrapped(scope);}
     if (selection.type === "wildcard") {
       if (
         config.skills.some(
@@ -295,7 +450,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
         exclude: [],
       });
       await runInstall({ scope });
-      return "*";
+      return { kind: "skill", result: "*" };
     }
 
     if (selection.duplicatePolicy === "single") {
@@ -310,7 +465,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
         ...refOpts,
       });
       await runInstall({ scope });
-      return name;
+      return { kind: "skill", result: name };
     }
 
     const toAdd: string[] = [];
@@ -340,26 +495,138 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
       });
     }
     await runInstall({ scope });
-    return toAdd;
+    return { kind: "skill", result: toAdd };
   }
 
-  if (all) {
-    return persist({ type: "wildcard" });
+  async function persistPlugins(selection: PluginSelection): Promise<DetailedAddResult> {
+    const existingNames = new Set(config.plugins.map((plugin) => plugin.name));
+    if (selection.duplicatePolicy === "single") {
+      const candidate = selection.candidates[0]!;
+      if (existingNames.has(candidate.name)) {
+        throw new AddError(
+          `Plugin "${candidate.name}" already exists in agents.toml. Remove it first to re-add.`,
+        );
+      }
+      await addPluginsToConfig(configPath, [{
+        name: candidate.name,
+        source: sourceForStorage,
+        ...refOpts,
+        // Pin every discovered directory so later source inventory changes cannot alter selection.
+        path: candidate.path || ".",
+      }]);
+      await runInstall({ scope });
+      return { kind: "plugin", result: candidate.name };
+    }
+
+    const toAdd: PluginCandidate[] = [];
+    for (const candidate of selection.candidates) {
+      if (existingNames.has(candidate.name)) {
+        if (selection.duplicatePolicy === "specified") {
+          console.warn(
+            chalk.yellow(`Skipping "${candidate.name}": already exists in agents.toml`),
+          );
+        }
+        continue;
+      }
+      toAdd.push(candidate);
+    }
+    if (toAdd.length === 0) {
+      const qualifier = selection.duplicatePolicy === "selected"
+        ? "selected"
+        : "specified";
+      throw new AddError(`All ${qualifier} plugins already exist in agents.toml.`);
+    }
+    await addPluginsToConfig(
+      configPath,
+      toAdd.map((candidate) => ({
+        name: candidate.name,
+        source: sourceForStorage,
+        ...refOpts,
+        path: candidate.path || ".",
+      })),
+    );
+    await runInstall({ scope });
+    return { kind: "plugin", result: toAdd.map((candidate) => candidate.name) };
   }
 
-  const acquired = await acquireSkills(
-    parsed,
-    scope,
-    effectiveRef,
-    !!namesOverride?.length,
-  );
+  const acquired = await acquireSource(parsed, scope, effectiveRef);
+  let plugins: PluginCandidate[] = [];
+  if (acquired.pluginEligible) {
+    try {
+      plugins = await discoverPlugins(acquired.rootDir);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new AddError(message);
+    }
+  }
+
+  // Plugin presence classifies the entire source; bundled and standalone skills stay hidden.
+  if (plugins.length > 0) {
+    if (scope.scope === "user") {
+      throw new AddError(
+        "Plugins are project-scope only. Rerun this command from a project without --user.",
+      );
+    }
+    if (namesOverride?.length) {
+      for (const name of namesOverride) {
+        if (!PLUGIN_NAME_PATTERN.test(name)) {
+          throw new AddError(
+            `Invalid plugin name "${name}". Plugin names must be 1-64 lowercase letters, numbers, hyphens, or dots, have alphanumeric ends, and not contain '--' or '..'.`,
+          );
+        }
+      }
+    }
+    const selection = await selectPlugins(
+      plugins,
+      namesOverride,
+      sourceForStorage,
+      interactive,
+      all,
+    );
+    if (acquired.local) {
+      const managedPluginsDir = await physicalPath(scope.pluginsDir);
+      let enclosingCandidate: PluginCandidate | undefined;
+      for (const candidate of selection.candidates) {
+        const candidateDir = await realpath(candidate.dir);
+        if (
+          containsPath(candidateDir, managedPluginsDir) ||
+          containsPath(managedPluginsDir, candidateDir)
+        ) {
+          enclosingCandidate = candidate;
+          break;
+        }
+      }
+      if (enclosingCandidate) {
+        throw new AddError(
+          `Plugin "${enclosingCandidate.name}" source overlaps this project's managed plugin directory. ` +
+            "Use a plugin source elsewhere inside the project, outside .agents/plugins.",
+        );
+      }
+    }
+    return persistPlugins(selection);
+  }
+
+  if (namesOverride?.length) {
+    for (const name of namesOverride) {
+      if (!VALID_SKILL_NAME.test(name)) {
+        throw new AddError(
+          `Invalid skill name "${name}". Names must start with alphanumeric and contain only alphanumeric, dots, underscores, or hyphens.`,
+        );
+      }
+    }
+  }
+  if (all) {return persistSkills({ type: "wildcard" });}
   const selection = await selectSkills(
     acquired,
     namesOverride,
     sourceForStorage,
     interactive,
   );
-  return persist(selection);
+  return persistSkills(selection);
+}
+
+export async function runAdd(opts: AddOptions): Promise<string | string[]> {
+  return (await executeAdd(opts)).result;
 }
 
 export default async function add(
@@ -382,21 +649,20 @@ export default async function add(
   if (!specifier) {
     console.error(
       chalk.red(
-        "Usage: npx @sentry/dotagents add <specifier> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]",
+        "Usage: npx @sentry/dotagents add <source> [<name>...] [--name <name>...] [--ref <ref>] [--all]",
       ),
     );
     process.exitCode = 1;
     return;
   }
 
-  // Collect skill names from positional args and flags
   const positionalNames = positionals.slice(1);
   const flagNames = [...(values["name"] ?? []), ...(values["skill"] ?? [])];
 
   if (positionalNames.length > 0 && flagNames.length > 0) {
     console.error(
       chalk.red(
-        "Cannot mix positional skill names with --skill/--name flags. Use one or the other.",
+        "Cannot mix positional names with --name/--skill flags. Use one or the other.",
       ),
     );
     process.exitCode = 1;
@@ -410,10 +676,9 @@ export default async function add(
     const scope = flags?.user
       ? resolveScope("user")
       : resolveDefaultScope(resolve("."));
-    await ensureUserScopeBootstrapped(scope);
     const interactive =
       process.stdout.isTTY === true && !names && !values["all"];
-    const result = await runAdd({
+    const { kind, result } = await executeAdd({
       scope,
       specifier,
       ref: values["ref"],
@@ -421,12 +686,12 @@ export default async function add(
       all: values["all"],
       interactive,
     });
-    if (result === "*") {
+    if (kind === "skill" && result === "*") {
       console.log(chalk.green(`Added all skills from ${specifier}`));
     } else if (Array.isArray(result)) {
-      console.log(chalk.green(`Added skills: ${result.join(", ")}`));
+      console.log(chalk.green(`Added ${kind}s: ${result.join(", ")}`));
     } else {
-      console.log(chalk.green(`Added skill: ${result}`));
+      console.log(chalk.green(`Added ${kind}: ${result}`));
     }
   } catch (err) {
     if (err instanceof AddCancelledError) {return;}

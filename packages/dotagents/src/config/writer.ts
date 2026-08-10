@@ -4,6 +4,7 @@ import type {
   WildcardSkillDependency,
   TrustConfig,
   McpConfig,
+  PluginConfig,
 } from "./schema.js";
 import { sourcesMatch } from "@sentry/dotagents-lib";
 
@@ -34,6 +35,32 @@ export async function addSkillToConfig(
 
   const newContent = `${content.trimEnd()}\n\n${section.trimEnd()}\n`;
   await writeFile(filePath, newContent, "utf-8");
+}
+
+/** Appends preflighted plugin declarations with a single config-file mutation. */
+export async function addPluginsToConfig(
+  filePath: string,
+  plugins: Array<Pick<PluginConfig, "name" | "source" | "ref" | "path">>,
+): Promise<void> {
+  if (plugins.length === 0) {
+    throw new Error("Cannot append an empty plugin batch.");
+  }
+  const content = await readFile(filePath, "utf-8");
+  const entries = plugins.map((plugin) => {
+    const entry: Record<string, string> = {
+      name: plugin.name,
+      source: plugin.source,
+    };
+    if (plugin.ref) {entry["ref"] = plugin.ref;}
+    if (plugin.path) {entry["path"] = plugin.path;}
+    return entry;
+  });
+  const section = stringify({ plugins: entries });
+  await writeFile(
+    filePath,
+    `${content.trimEnd()}\n\n${section.trimEnd()}\n`,
+    "utf-8",
+  );
 }
 
 /**

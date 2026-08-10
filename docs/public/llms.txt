@@ -317,7 +317,7 @@ Rules:
 - `allow_all = true` = all sources allowed (explicit intent)
 - `[trust]` present without `allow_all` = allowlist mode (source must match at least one rule)
 - Local `path:` sources are always allowed
-- Trust is validated before any network operations in `add` for skills and `install` for configured skills, subagents, and plugins
+- Trust is validated before any network operations in `add` for dependencies and `install` for configured skills, subagents, and plugins
 
 ## CLI Commands
 
@@ -350,21 +350,24 @@ Install and refresh dependencies from `agents.toml`. Resolves sources, copies sk
 ### add
 
 ```
-npx @sentry/dotagents add <source> [<skill>...] [--skill <name>...] [--ref <ref>] [--all]
+npx @sentry/dotagents add <source> [<name>...] [--name <name>...] [--ref <ref>] [--all]
 ```
 
-Add one or more skill dependencies and install them. Specify skill names as positional arguments or with `--skill` flags.
+Add and install plugins or skills. Git and local sources are classified once: if any valid plugin is found, the entire source is plugin-only and skills in it are ignored; otherwise normal skill discovery runs. Malformed plugin-shaped content fails without falling back to skills. Local plugin sources that overlap the project's managed `.agents/plugins` directory are rejected before configuration changes. Well-known HTTPS catalogs remain skill-only.
 
 | Flag | Description |
 |------|-------------|
-| `<skill>...` | Positional skill names to add |
-| `--skill <name>` | Specify which skill(s) to add (repeatable, alias: `--name`) |
+| `<name>...` | Positional plugin or skill names to add |
+| `--name <name>` | Specify dependencies to add (repeatable) |
+| `--skill <name>` | Compatibility alias for `--name`; does not force skill mode |
 | `--ref <ref>` | Pin to a specific tag, branch, or commit |
-| `--all` | Add all skills from the source as a wildcard entry (`name = "*"`) |
+| `--all` | Add every current plugin explicitly, or all skills as a wildcard (`name = "*"`) |
 
-When a repo has one skill, it is added automatically. When multiple skills are found without names or `--all`, interactive mode shows a picker (TTY) or lists them (non-TTY).
+When a source has one dependency of the selected kind, it is added automatically. Multiple dependencies use a picker in a TTY or are listed with selection guidance in non-interactive mode. Plugin adds are project-only; `--user add` rejects a detected plugin source before changing user state.
 
-When adding multiple skills, any that already exist in `agents.toml` are skipped with a warning. The command only fails if all specified skills already exist. Positional names and `--skill` flags cannot be mixed.
+When adding multiple dependencies, names already declared for that kind are skipped with a warning. The command fails if all specified names already exist. Positional names and `--name`/`--skill` flags cannot be mixed. Plugin `--all` is a snapshot of current candidates; skill `--all` remains a wildcard that can include future upstream skills.
+
+Plugin declarations persist the exact discovered source path (`.` for a source-root plugin), preventing later source inventory changes from changing selection.
 
 ### remove
 

@@ -33,4 +33,15 @@ describe("getCommandHelp", () => {
   it("does not intercept normal command arguments", () => {
     expect(getCommandHelp("add", ["getsentry/skills", "find-bugs"])).toBeUndefined();
   });
+
+  it("describes dependency-neutral plugin-first add behavior", () => {
+    const help = getCommandHelp("add", ["--help"]);
+
+    expect(help).toContain("add <source> [name...]");
+    expect(help).toContain("Discover plugins first, otherwise skills");
+    expect(help).toContain("--name <name>");
+    expect(help).toContain("Compatibility alias");
+    expect(help).toContain("Add plugins explicitly, or all skills as a wildcard");
+    expect(help).not.toContain("--plugin");
+  });
 });

@@ -14,15 +14,15 @@ Install or refresh dependencies declared in agents.toml.
 Options:
   --frozen        Deprecated compatibility flag; normal install still runs
   --help, -h      Show this help message`,
-  add: `Usage: npx @sentry/dotagents [--user] add <source> [skill...] [options]
+  add: `Usage: npx @sentry/dotagents [--user] add <source> [name...] [options]
 
-Add skill dependencies to agents.toml and install them immediately.
+Discover plugins first, otherwise skills, then add and install the selected dependencies.
 
 Options:
-  --skill <name>  Skill name to add; repeatable
-  --name <name>   Alias for --skill; repeatable
+  --name <name>   Dependency name to add; repeatable
+  --skill <name>  Compatibility alias for --name; repeatable
   --ref <ref>     Git tag, branch, or commit
-  --all           Add every discovered skill as a wildcard dependency
+  --all           Add plugins explicitly, or all skills as a wildcard dependency
   --help, -h      Show this help message`,
   remove: `Usage: npx @sentry/dotagents [--user] remove <name|source> [options]
 

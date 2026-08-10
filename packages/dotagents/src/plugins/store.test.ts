@@ -4,6 +4,7 @@ import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  discoverPlugins,
   installPluginBundle,
   isSameProjectPluginConfig,
   loadInstalledPlugins,
@@ -607,7 +608,7 @@ describe("plugin store", () => {
     }
   });
 
-  it("continues conventional discovery when the source root manifest is malformed", async () => {
+  it("keeps named resolution tolerant of an unrelated malformed root plugin", async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
     try {
       const sourceRoot = join(projectRoot, "source");
@@ -620,18 +621,17 @@ describe("plugin store", () => {
         "utf-8",
       );
 
-      const resolved = await resolvePlugin(
+      await expect(discoverPlugins(sourceRoot)).rejects.toThrow(join(sourceRoot, "plugin.json"));
+      await expect(resolvePlugin(
         { name: "review-tools", source: "path:source" },
         { stateDir: join(projectRoot, "state"), projectRoot },
-      );
-
-      expect(resolved.plugin.pluginDir).toBe(pluginDir);
+      )).resolves.toMatchObject({ plugin: { pluginDir } });
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }
   });
 
-  it("continues recursive discovery through a directory with a malformed manifest", async () => {
+  it("keeps named resolution tolerant of an unrelated malformed conventional candidate", async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
     try {
       const sourceRoot = join(projectRoot, "source");
@@ -645,12 +645,11 @@ describe("plugin store", () => {
         "utf-8",
       );
 
-      const resolved = await resolvePlugin(
+      await expect(discoverPlugins(sourceRoot)).rejects.toThrow(join(containerDir, "plugin.json"));
+      await expect(resolvePlugin(
         { name: "review-tools", source: "path:source" },
         { stateDir: join(projectRoot, "state"), projectRoot },
-      );
-
-      expect(resolved.plugin.pluginDir).toBe(pluginDir);
+      )).resolves.toMatchObject({ plugin: { pluginDir } });
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }
@@ -665,6 +664,239 @@ describe("plugin store", () => {
         { name: "review-tools", source: "path:." },
         { stateDir: join(projectRoot, "state"), projectRoot },
       )).rejects.toThrow('Plugin "review-tools" not found');
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("discovers root, conventional, native, and local marketplace plugins with safe paths", async () => {
+    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-catalog-"));
+    try {
+      const canonicalDir = join(sourceRoot, ".agents", "plugins", "canonical");
+      const conventionalDir = join(sourceRoot, "plugins", "conventional");
+      const marketplaceDir = join(sourceRoot, "catalog", "marketplace");
+      await mkdir(join(sourceRoot, ".codex-plugin"), { recursive: true });
+      await mkdir(canonicalDir, { recursive: true });
+      await mkdir(conventionalDir, { recursive: true });
+      await mkdir(marketplaceDir, { recursive: true });
+      await writeFile(
+        join(sourceRoot, ".codex-plugin", "plugin.json"),
+        JSON.stringify({ name: "root-plugin" }),
+      );
+      await writeFile(join(canonicalDir, "plugin.json"), JSON.stringify({ name: "canonical" }));
+      await writeFile(join(conventionalDir, "plugin.json"), JSON.stringify({ name: "conventional" }));
+      await writeFile(join(marketplaceDir, "plugin.json"), JSON.stringify({ name: "marketplace" }));
+      await writeFile(
+        join(sourceRoot, "marketplace.json"),
+        JSON.stringify({
+          name: "test",
+          plugins: [
+            { name: "marketplace", source: "./catalog/marketplace" },
+            { name: "conventional", source: "./plugins/conventional" },
+          ],
+        }),
+      );
+
+      const candidates = await discoverPlugins(sourceRoot);
+
+      expect(candidates.map((candidate) => ({
+        name: candidate.manifest.name,
+        path: candidate.path,
+        nativeSource: candidate.nativeSource,
+      }))).toEqual(expect.arrayContaining([
+        { name: "root-plugin", path: "", nativeSource: "codex" },
+        { name: "canonical", path: ".agents/plugins/canonical", nativeSource: undefined },
+        { name: "conventional", path: "plugins/conventional", nativeSource: undefined },
+        { name: "marketplace", path: "catalog/marketplace", nativeSource: undefined },
+      ]));
+      expect(candidates).toHaveLength(4);
+    } finally {
+      await rm(sourceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("returns an empty catalog when a source has skills but no plugin markers", async () => {
+    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-catalog-"));
+    try {
+      await mkdir(join(sourceRoot, "skills", "review"), { recursive: true });
+      await writeFile(join(sourceRoot, "skills", "review", "SKILL.md"), "# Review\n");
+
+      await expect(discoverPlugins(sourceRoot)).resolves.toEqual([]);
+    } finally {
+      await rm(sourceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("deduplicates a contained symlink alias and its physical plugin directory", async () => {
+    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-catalog-"));
+    try {
+      const pluginsDir = join(sourceRoot, "plugins");
+      const pluginDir = join(pluginsDir, "review-tools");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }));
+      await symlink("review-tools", join(pluginsDir, "review-tools-alias"));
+
+      const candidates = await discoverPlugins(sourceRoot);
+
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]!.name).toBe("review-tools");
+    } finally {
+      await rm(sourceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves distinct marketplace aliases for one nameless legacy plugin", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-catalog-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const pluginDir = join(sourceRoot, "shared-plugin");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(join(pluginDir, "plugin.json"), "{}");
+      await writeFile(join(sourceRoot, "marketplace.json"), JSON.stringify({
+        name: "aliases",
+        plugins: [
+          { name: "alpha", source: "./shared-plugin" },
+          { name: "beta", source: "./shared-plugin" },
+        ],
+      }));
+
+      const candidates = await discoverPlugins(sourceRoot);
+      const alpha = await resolvePlugin(
+        { name: "alpha", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+      const beta = await resolvePlugin(
+        { name: "beta", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+
+      expect(candidates.map((candidate) => candidate.name).toSorted()).toEqual(["alpha", "beta"]);
+      expect(alpha.plugin.pluginDir).toBe(pluginDir);
+      expect(beta.plugin.pluginDir).toBe(pluginDir);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves first-match ordering for repeated marketplace selectors", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-catalog-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const pluginDir = join(sourceRoot, "review-tools");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(join(pluginDir, "plugin.json"), "{}");
+      await writeFile(join(sourceRoot, "marketplace.json"), JSON.stringify({
+        name: "ordered",
+        plugins: [
+          { name: "review-tools", source: "./review-tools" },
+          { name: "review-tools", source: "../outside" },
+        ],
+      }));
+
+      await expect(resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      )).resolves.toMatchObject({ plugin: { pluginDir } });
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("still scans below a manifestless marketplace target during named resolution", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-catalog-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const pluginDir = join(sourceRoot, "plugins", "collection", "review-tools");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(
+        join(pluginDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools" }),
+      );
+      await writeFile(join(sourceRoot, "marketplace.json"), JSON.stringify({
+        name: "catalog",
+        plugins: [{ name: "collection", source: "./plugins/collection" }],
+      }));
+
+      await expect(discoverPlugins(sourceRoot)).rejects.toThrow(
+        'Marketplace plugin "collection"',
+      );
+      await expect(resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      )).resolves.toMatchObject({ plugin: { pluginDir } });
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects malformed marketplace files with their path", async () => {
+    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-catalog-"));
+    try {
+      const marketplacePath = join(sourceRoot, "marketplace.json");
+      await writeFile(marketplacePath, "{");
+
+      await expect(discoverPlugins(sourceRoot)).rejects.toThrow(marketplacePath);
+    } finally {
+      await rm(sourceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects plugin bundle symlinks during strict discovery", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-catalog-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const pluginDir = join(sourceRoot, "plugins", "review-tools");
+      const outsideFile = join(projectRoot, "secret.txt");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }));
+      await writeFile(outsideFile, "secret");
+      await symlink(outsideFile, join(pluginDir, "secret-link"));
+
+      await expect(discoverPlugins(sourceRoot)).rejects.toThrow(
+        "Plugin bundle symlink resolves outside the plugin directory",
+      );
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects local marketplace entries without a plugin manifest", async () => {
+    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-catalog-"));
+    try {
+      await mkdir(join(sourceRoot, "missing-manifest"), { recursive: true });
+      await writeFile(join(sourceRoot, "marketplace.json"), JSON.stringify({
+        name: "broken",
+        plugins: [{ name: "broken", source: "./missing-manifest" }],
+      }));
+
+      await expect(discoverPlugins(sourceRoot)).rejects.toThrow(
+        /Marketplace plugin "broken".*has no supported plugin manifest.*missing-manifest/,
+      );
+    } finally {
+      await rm(sourceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("uses an explicit dot path to select a same-named root plugin", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-catalog-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const canonicalDir = join(sourceRoot, ".agents", "plugins", "shared");
+      await mkdir(canonicalDir, { recursive: true });
+      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({ name: "shared" }));
+      await writeFile(join(canonicalDir, "plugin.json"), JSON.stringify({ name: "shared" }));
+
+      const explicitRoot = await resolvePlugin(
+        { name: "shared", source: "path:source", path: "." },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+      const implicit = await resolvePlugin(
+        { name: "shared", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+
+      expect(explicitRoot.plugin.pluginDir).toBe(sourceRoot);
+      expect(implicit.plugin.pluginDir).toBe(canonicalDir);
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }
