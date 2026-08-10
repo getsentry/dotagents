@@ -1,4 +1,10 @@
 # Changelog
+## 2.2.0
+
+### New Features ✨
+
+- (opencode) Project plugin MCP servers by @gricha in [#154](https://github.com/getsentry/dotagents/pull/154)
+
 ## 2.1.0
 
 ### New Features ✨
