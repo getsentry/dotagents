@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
 import chalk from "chalk";
@@ -103,6 +103,18 @@ function containsPath(parentDir: string, childDir: string): boolean {
   const childPath = relative(resolve(parentDir), resolve(childDir));
   return childPath === "" ||
     (childPath !== ".." && !childPath.startsWith(`..${sep}`) && !isAbsolute(childPath));
+}
+
+async function physicalPath(path: string): Promise<string> {
+  let existingPath = resolve(path);
+  const missingSegments: string[] = [];
+  while (!existsSync(existingPath)) {
+    const parentPath = dirname(existingPath);
+    if (parentPath === existingPath) {return existingPath;}
+    missingSegments.unshift(basename(existingPath));
+    existingPath = parentPath;
+  }
+  return resolve(await realpath(existingPath), ...missingSegments);
 }
 
 async function acquireSource(
@@ -572,10 +584,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
       all,
     );
     if (acquired.local) {
-      const managedPluginsDir = resolve(
-        await realpath(scope.root),
-        relative(resolve(scope.root), resolve(scope.pluginsDir)),
-      );
+      const managedPluginsDir = await physicalPath(scope.pluginsDir);
       let enclosingCandidate: PluginCandidate | undefined;
       for (const candidate of selection.candidates) {
         const candidateDir = await realpath(candidate.dir);
@@ -590,7 +599,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
       if (enclosingCandidate) {
         throw new AddError(
           `Plugin "${enclosingCandidate.name}" source overlaps this project's managed plugin directory. ` +
-            "Use a plugin directory outside the project root.",
+            "Use a plugin source elsewhere inside the project, outside .agents/plugins.",
         );
       }
     }

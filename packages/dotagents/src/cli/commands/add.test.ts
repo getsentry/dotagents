@@ -675,6 +675,35 @@ describe("runAdd (local sources)", () => {
     expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe("version = 1\n");
   });
 
+  it("rejects a source inside a symlinked managed plugin directory", async () => {
+    const managedAgentsDir = join(projectRoot, "managed-agents");
+    const pluginDir = join(managedAgentsDir, "plugins", "local-tools");
+    await rm(join(projectRoot, ".agents"), { recursive: true });
+    await writePlugin(pluginDir, "local-tools");
+    await symlink(managedAgentsDir, join(projectRoot, ".agents"), "dir");
+
+    await expect(runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:managed-agents/plugins/local-tools",
+    })).rejects.toThrow("source overlaps this project's managed plugin directory");
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe("version = 1\n");
+  });
+
+  it("adds a local plugin before the managed agents directory exists", async () => {
+    const pluginDir = join(projectRoot, "plugin-source", "review-tools");
+    await rm(join(projectRoot, ".agents"), { recursive: true });
+    await writePlugin(pluginDir, "review-tools");
+    mockRunInstall();
+
+    await expect(runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:plugin-source/review-tools",
+    })).resolves.toBe("review-tools");
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toContain(
+      'name = "review-tools"',
+    );
+  });
+
   it("keeps marketplace aliases distinct in the interactive plugin picker", async () => {
     const sourceDir = join(projectRoot, "aliased-plugin-picker");
     const pluginDir = join(sourceDir, "shared-plugin");
