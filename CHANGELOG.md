@@ -1,4 +1,21 @@
 # Changelog
+## 2.0.0
+
+### New Features ✨
+
+- (cli) Add plugin-aware dependency installation by @gricha in [#152](https://github.com/getsentry/dotagents/pull/152)
+- (plugins) Add Agent Plugins compiler and native import by @dcramer in [#113](https://github.com/getsentry/dotagents/pull/113)
+- (skills) Scope wildcard discovery by path by @gricha in [#144](https://github.com/getsentry/dotagents/pull/144)
+- Improve dotagents agent workflows by @gricha in [#148](https://github.com/getsentry/dotagents/pull/148)
+
+### Bug Fixes 🐛
+
+- (docs) Restore GFM tables after Astro 6.4 by @sentry-junior in [#147](https://github.com/getsentry/dotagents/pull/147)
+
+### Internal Changes 🔧
+
+- (docs) Bump starlight theme to 0.8.0 by @sentry-junior in [#145](https://github.com/getsentry/dotagents/pull/145)
+
 ## 1.19.0
 
 ### Bug Fixes 🐛
