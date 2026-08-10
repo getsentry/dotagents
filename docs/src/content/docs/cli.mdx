@@ -458,7 +458,10 @@ translated into unrelated clients' formats.
 | `targets` | string[] | No | Optional subset of configured agents. |
 
 Generated plugin outputs include Claude/Cursor/Codex marketplaces and native
-manifests, Grok plugin directories, OpenCode skill links, and Pi skill links.
+manifests, Grok plugin directories, OpenCode skill links and portable MCP
+entries, and Pi skill links. OpenCode MCP keys use
+`plugin.<plugin>.<server>`; dotagents expands `${PLUGIN_ROOT}` and
+`${PLUGIN_DATA}` and preserves unrelated entries in the shared config.
 Generalized legacy bundles can also project Markdown agents into OpenCode;
 standard extension agents are preserved but not projected yet. dotagents rejects
 plugin sources that resolve to the same project's
@@ -490,8 +493,8 @@ back to user scope automatically.
 
 User plugins install into `~/.agents/plugins/`. Claude and Cursor marketplaces
 are generated below `~/.agents/`, Codex uses `~/.agents/plugins/marketplace.json`,
-OpenCode skills use `~/.config/opencode/skills/`, and Pi skills use
-`~/.agents/skills/`.
+OpenCode skills use `~/.config/opencode/skills/` and plugin MCP entries use
+`~/.config/opencode/opencode.json`, and Pi skills use `~/.agents/skills/`.
 
 ## Environment Variables
 

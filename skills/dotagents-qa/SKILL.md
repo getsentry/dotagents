@@ -1,7 +1,7 @@
 ---
 name: dotagents-qa
 description: QA dotagents changes and published releases in Docker, including CLI lifecycles, user/global scope, real plugins, and Claude, Codex, OpenCode, or Pi projections. Use when behavior, packaging, scopes, or harness integration needs runtime proof.
-spec_hash: df3db16f11bb
+spec_hash: 5ea75cc3362b
 ---
 
 # dotagents QA
@@ -87,9 +87,9 @@ When plugin compatibility is in scope, inspect current manifests and test:
 
 - `getsentry/agent-plugin`;
 - `vercel/vercel-plugin`;
-- a selected plugin such as `frontend-design` from `anthropics/claude-plugins-official`.
+- one high-signal plugin selected from the current manifest in `anthropics/claude-plugins-official`.
 
-In a proposed compatibility plan, name all three repositories and explain that selectors, versions, commits, and component counts come from manifest inspection at execution time.
+In a proposed compatibility plan, name all three repositories but defer the Anthropic plugin selector until manifest inspection at execution time. Derive all selectors, versions, commits, and component counts from that inspection.
 
 Use a fresh project per source. Record source commits. Do not guess repository names, selectors, versions, component counts, or layouts.
 
@@ -99,7 +99,7 @@ Keep per-harness fixtures isolated. In particular, do not enable Pi in the OpenC
 
 - Claude: validate generated plugin and marketplace manifests, then marketplace add, install, list, and details.
 - Codex: add the project or user marketplace root, list available plugins, install, and list enabled plugins.
-- OpenCode: run the exact command `opencode debug skill` and assert exact projected skill names and locations.
+- OpenCode: run `opencode debug skill` and `opencode debug config`; assert exact projected skill names and locations plus every portable plugin MCP entry under `plugin.<plugin>.<server>` with expanded paths and environment.
 - Pi: in a separate Pi-only fixture, verify expected skill links, resolved targets, and `.dotagents-managed/<skill>` ownership markers.
 
 These no-auth checks prove validation, registration, installation, or resource discovery. They do not prove model-backed invocation. Never claim a plugin skill or subagent executed without a model interaction and visible evidence.

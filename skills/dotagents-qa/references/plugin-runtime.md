@@ -29,8 +29,9 @@ files and repair behavior.
 - Grok Build runs `plugin list` and `plugin details` when its CLI is installed.
 
 Cursor remains covered by the isolated per-harness integration contract because its
-desktop CLI has no plugin validation or marketplace command. OpenCode resource
-projection has a separate task, but it is not plugin E2E evidence.
+desktop CLI has no plugin validation or marketplace command. OpenCode skill and
+portable MCP projection have a separate task, but they are not native plugin
+installation evidence.
 
 ## Claude Code
 
@@ -74,11 +75,14 @@ Manual final check with model auth:
 Codex plugin install proof is strong; plugin component invocation still needs a
 model-backed prompt because the plugin management CLI does not execute skills.
 
-## OpenCode projection (not plugin E2E)
+## OpenCode projection (not native plugin E2E)
 
 ```bash
 node skills/dotagents-qa/scripts/qa-example.mjs opencode-projections
 ```
 
-This confirms OpenCode discovers the generated plugin skill symlink. It does
-not prove OpenCode consumes the Agent Plugins bundle or installs a plugin.
+This confirms OpenCode discovers the generated plugin skill symlink and loads
+the flattened portable stdio and remote MCP entries through
+`opencode debug config`. It also verifies `${PLUGIN_ROOT}` and `${PLUGIN_DATA}`
+expansion. It does not prove OpenCode consumes or installs an Agent Plugins
+bundle natively, nor that an MCP server completed an authenticated request.

@@ -13,23 +13,32 @@ export interface McpDeclaration {
   /** For HTTP servers */
   url?: string;
   headers?: Record<string, string>;
+  /** Whether target-native environment references should be generated in HTTP values. */
+  interpolateEnvRefs?: boolean;
   /** Environment variable names (values come from the user's env) */
   env?: string[];
+  /** Literal environment values supplied by an adapter. */
+  envValues?: Record<string, string>;
+  /** Working directory for stdio servers when the target supports it. */
+  cwd?: string;
 }
 
 interface McpDeclarationBase {
   name: string;
   env?: string[];
+  envValues?: Record<string, string>;
 }
 
 interface StdioMcpDeclaration extends McpDeclarationBase {
   command: string;
   args?: string[];
+  cwd?: string;
 }
 
 interface HttpMcpDeclaration extends McpDeclarationBase {
   url: string;
   headers?: Record<string, string>;
+  interpolateEnvRefs?: boolean;
 }
 
 /** Validated internal form used while rendering MCP target configs. */

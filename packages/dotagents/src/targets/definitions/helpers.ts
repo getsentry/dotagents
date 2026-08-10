@@ -4,10 +4,11 @@ import type { HookDeclaration, McpDeclaration } from "../types.js";
 export function envRecord(
   env: string[] | undefined,
   template: (key: string) => string,
+  values?: Record<string, string>,
 ): Record<string, string> | undefined {
-  if (!env || env.length === 0) {return undefined;}
-  const rec: Record<string, string> = {};
-  for (const key of env) {rec[key] = template(key);}
+  if ((!env || env.length === 0) && !values) {return undefined;}
+  const rec: Record<string, string> = { ...values };
+  for (const key of env ?? []) {rec[key] = template(key);}
   return rec;
 }
 
@@ -65,12 +66,18 @@ export function httpServer(
   template?: (varName: string) => string,
 ): [string, unknown] {
   const tpl = template ?? ((k: string) => `\${${k}}`);
+  const url = s.interpolateEnvRefs === false
+    ? s.url!
+    : interpolateEnvRefs(s.url!, tpl);
+  const headers = s.interpolateEnvRefs === false
+    ? s.headers
+    : interpolateHeaders(s.headers, tpl);
   return [
     s.name,
     {
       ...(type && { type }),
-      url: interpolateEnvRefs(s.url!, tpl),
-      ...(s.headers && { headers: interpolateHeaders(s.headers, tpl) }),
+      url,
+      ...(headers && { headers }),
     },
   ];
 }

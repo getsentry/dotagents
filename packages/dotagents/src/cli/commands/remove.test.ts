@@ -18,6 +18,7 @@ import { writeLockfile } from "../../lockfile/writer.js";
 import { loadConfig } from "../../config/loader.js";
 import { resolveScope } from "../../scope.js";
 import { DOTAGENTS_MANAGED_PLUGIN_MARKER } from "../../plugins/store.js";
+import { AGENT_PLUGIN_SCHEMA } from "../../plugins/schema.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -270,6 +271,55 @@ source = "path:plugins/review-tools"
     expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(false);
     expect(existsSync(join(projectRoot, ".agents", "plugins", "marketplace.json"))).toBe(false);
     expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
+  });
+
+  it("removes portable OpenCode MCP without touching unrelated config", async () => {
+    const pluginSource = join(projectRoot, "plugins", "review-tools");
+    await mkdir(pluginSource, { recursive: true });
+    await writeFile(join(pluginSource, "plugin.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+      version: "1.0.0",
+    }));
+    await writeFile(join(pluginSource, "mcp.json"), JSON.stringify({
+      $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+      mcpServers: {
+        review: {
+          type: "streamable-http",
+          url: "https://example.com/review-mcp",
+        },
+      },
+    }));
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1
+agents = ["opencode"]
+
+[[plugins]]
+name = "review-tools"
+source = "path:plugins/review-tools"
+`,
+    );
+    const openCodePath = join(projectRoot, ".opencode", "opencode.jsonc");
+    await mkdir(dirname(openCodePath), { recursive: true });
+    await writeFile(openCodePath, JSON.stringify({
+      mcp: {
+        manual: { type: "remote", url: "https://example.com/manual" },
+      },
+    }));
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    expect(JSON.parse(await readFile(openCodePath, "utf-8")).mcp)
+      .toHaveProperty("plugin.review-tools.review");
+    expect(existsSync(join(projectRoot, ".agents", "plugin-mcp", "opencode.json"))).toBe(true);
+
+    await runRemove({ scope, name: "review-tools" });
+
+    expect(JSON.parse(await readFile(openCodePath, "utf-8")).mcp).toEqual({
+      manual: { type: "remote", url: "https://example.com/manual" },
+    });
+    expect(existsSync(join(projectRoot, ".agents", "plugin-mcp", "opencode.json"))).toBe(false);
   });
 
   it("preserves runtime outputs when another installed plugin is broken", async () => {

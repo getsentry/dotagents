@@ -281,6 +281,30 @@ async function runOpenCodePluginProof() {
   if (!skills.includes("plugin-qa") || !skills.includes("DOTAGENTS_PLUGIN_QA_FIXTURE")) {
     throw new Error("OpenCode debug skill did not include projected plugin skill");
   }
+  const config = execJson("opencode", ["debug", "config"], fixtureEnv);
+  const local = config.mcp?.["plugin.qa-tools.fixture-stdio"];
+  const remote = config.mcp?.["plugin.qa-tools.fixture-http"];
+  const pluginRoot = realpathSync(join(projectDir, ".agents", "plugins", "qa-tools"));
+  const pluginData = realpathSync(join(projectDir, ".agents", "plugin-data", "qa-tools"));
+  if (JSON.stringify(local) !== JSON.stringify({
+    type: "local",
+    command: ["node", join(pluginRoot, "server.mjs")],
+    cwd: pluginRoot,
+    environment: {
+      PLUGIN_ROOT: pluginRoot,
+      PLUGIN_DATA: pluginData,
+      FIXTURE_CACHE: join(pluginData, "cache"),
+    },
+  })) {
+    throw new Error("OpenCode debug config did not include the expanded plugin stdio MCP server");
+  }
+  if (JSON.stringify(remote) !== JSON.stringify({
+    type: "remote",
+    url: "https://example.com/${DEPLOYMENT}/mcp",
+    headers: { "X-Fixture": "Bearer ${TOKEN}" },
+  })) {
+    throw new Error("OpenCode debug config did not include the plugin HTTP MCP server");
+  }
 }
 
 function prepareClientHarness(agent) {

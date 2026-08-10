@@ -264,12 +264,12 @@ compatibility implementation (see the remaining gaps in `specs/plugins.md`):
 | Cursor | `.cursor-plugin/marketplace.json`; `.agents/plugins/<name>/.cursor-plugin/plugin.json` |
 | Codex | `.agents/plugins/marketplace.json`; `.agents/plugins/<name>/.codex-plugin/plugin.json` |
 | Grok Build | `.grok/plugins/<name>/` managed copy |
-| OpenCode | Plugin `skills/` symlinked into `.opencode/skills/`; generalized legacy plugin Markdown `agents/` symlinked into `.opencode/agents/`. Standard extension agents are preserved but not projected yet. |
+| OpenCode | Plugin `skills/` symlinked into `.opencode/skills/`; portable `mcp.json` servers merged into `.opencode/opencode.jsonc` under `plugin.<plugin>.<server>` keys; generalized legacy plugin Markdown `agents/` symlinked into `.opencode/agents/`. Standard extension agents are preserved but not projected yet. |
 | Pi | Plugin `skills/` symlinked into `.agents/skills/` when `pi` is a configured plugin target |
 
 Generated plugin JSON is stable: keys are sorted, plugin entries are sorted by name, and files end with one trailing newline. Generated marketplaces and Claude/Cursor/Codex manifests use adjacent `.dotagents-managed` sidecars; OpenCode/Pi component symlinks use marker files in reserved sibling `.dotagents-managed/` directories. This keeps ownership explicit without changing client-owned JSON or consuming a valid component name. Legacy `metadata.managedBy` output remains recognizable during migration. Managed Grok copies and component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when their on-disk `.dotagents-managed` marker proves ownership.
 
-User scope installs canonical plugins into `~/.agents/plugins/<name>/`. It generates Claude and Cursor marketplaces below `~/.agents/`, a Codex marketplace at `~/.agents/plugins/marketplace.json` whose local paths are rooted at the user's home, OpenCode skill and legacy-agent projections below `~/.config/opencode/`, and Pi skill projections below `~/.agents/skills/`.
+User scope installs canonical plugins into `~/.agents/plugins/<name>/`. It generates Claude and Cursor marketplaces below `~/.agents/`, a Codex marketplace at `~/.agents/plugins/marketplace.json` whose local paths are rooted at the user's home, OpenCode skill and legacy-agent projections below `~/.config/opencode/`, portable plugin MCP entries in `~/.config/opencode/opencode.json`, and Pi skill projections below `~/.agents/skills/`.
 
 #### Supported Agents
 

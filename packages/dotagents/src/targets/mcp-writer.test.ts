@@ -7,6 +7,7 @@ import { parse as parseJSONC } from "jsonc-parser";
 import { parse as parseTOML } from "smol-toml";
 import {
   projectMcpResolver,
+  reconcileManagedMcpConfig,
   reconcileMcpConfigs,
   verifyMcpConfigs,
   writeMcpConfigs,
@@ -102,6 +103,105 @@ describe("writeMcpConfigs", () => {
       command: ["npx", "-y", "@mcp/server-github"],
       environment: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
     });
+  });
+
+  it("writes literal environment values and cwd for adapter-provided OpenCode servers", async () => {
+    await writeMcpConfigs(["opencode"], [{
+      name: "plugin.qa.local",
+      command: "node",
+      args: ["/plugins/qa/server.mjs"],
+      cwd: "/plugins/qa",
+      envValues: {
+        PLUGIN_ROOT: "/plugins/qa",
+        PLUGIN_DATA: "/data/qa",
+      },
+    }], projectMcpResolver(dir));
+
+    const content = JSON.parse(
+      await readFile(join(dir, ".opencode", "opencode.jsonc"), "utf-8"),
+    );
+    expect(content.mcp["plugin.qa.local"]).toEqual({
+      type: "local",
+      command: ["node", "/plugins/qa/server.mjs"],
+      cwd: "/plugins/qa",
+      environment: {
+        PLUGIN_ROOT: "/plugins/qa",
+        PLUGIN_DATA: "/data/qa",
+      },
+    });
+  });
+
+  it("reconciles and prunes an owned MCP subset without touching user JSONC", async () => {
+    const filePath = join(dir, ".opencode", "opencode.jsonc");
+    const statePath = join(dir, ".agents", "plugin-mcp", "opencode.json");
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, [
+      "{",
+      "  // Keep this setting and server",
+      '  "theme": "dark",',
+      '  "mcp": {',
+      '    "manual": { "type": "local", "command": ["manual"] },',
+      "  },",
+      "}",
+      "",
+    ].join("\n"));
+
+    await reconcileManagedMcpConfig({
+      agentId: "opencode",
+      servers: [{ name: "plugin.qa.remote", url: "https://example.com/mcp" }],
+      target: { filePath, shared: true },
+      statePath,
+      mode: "apply",
+    });
+    let raw = await readFile(filePath, "utf-8");
+    expect(raw).toContain("// Keep this setting and server");
+    expect((parseJSONC(raw) as { mcp: Record<string, unknown> }).mcp["plugin.qa.remote"]).toEqual({
+      type: "remote",
+      url: "https://example.com/mcp",
+    });
+    expect(JSON.parse(await readFile(statePath, "utf-8"))).toEqual({
+      version: 1,
+      servers: ["plugin.qa.remote"],
+    });
+
+    await reconcileManagedMcpConfig({
+      agentId: "opencode",
+      servers: [],
+      target: { filePath, shared: true },
+      statePath,
+      mode: "apply",
+    });
+    raw = await readFile(filePath, "utf-8");
+    const parsed = parseJSONC(raw) as { theme: string; mcp: Record<string, unknown> };
+    expect(raw).toContain("// Keep this setting and server");
+    expect(parsed.theme).toBe("dark");
+    expect(parsed.mcp["manual"]).toEqual({ type: "local", command: ["manual"] });
+    expect(parsed.mcp["plugin.qa.remote"]).toBeUndefined();
+    expect(existsSync(statePath)).toBe(false);
+  });
+
+  it("does not overwrite an unmanaged flattened MCP collision", async () => {
+    const filePath = join(dir, ".opencode", "opencode.jsonc");
+    const statePath = join(dir, ".agents", "plugin-mcp", "opencode.json");
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, JSON.stringify({
+      mcp: { "plugin.qa.remote": { type: "local", command: ["mine"] } },
+    }));
+
+    const result = await reconcileManagedMcpConfig({
+      agentId: "opencode",
+      servers: [{ name: "plugin.qa.remote", url: "https://example.com/mcp" }],
+      target: { filePath, shared: true },
+      statePath,
+      mode: "apply",
+    });
+
+    expect(result.skipped).toHaveLength(1);
+    expect(JSON.parse(await readFile(filePath, "utf-8")).mcp["plugin.qa.remote"]).toEqual({
+      type: "local",
+      command: ["mine"],
+    });
+    expect(existsSync(statePath)).toBe(false);
   });
 
   it.each([
@@ -335,6 +435,31 @@ describe("writeMcpConfigs", () => {
       type: "remote",
       url: "https://{env:API_HOST}/mcp",
       headers: { "X-Api-Key": "{env:API_KEY}", Authorization: "Bearer {env:TOKEN}" },
+    });
+  });
+
+  it("preserves literal HTTP placeholder-like values for adapter declarations", async () => {
+    const literal = { ...HTTP_SERVER_WITH_ENV_REFS, interpolateEnvRefs: false };
+    await writeMcpConfigs(["opencode", "codex"], [literal], projectMcpResolver(dir));
+
+    const openCode = JSON.parse(
+      await readFile(join(dir, ".opencode", "opencode.jsonc"), "utf-8"),
+    );
+    expect(openCode.mcp["authed-api"]).toEqual({
+      type: "remote",
+      url: "https://${API_HOST}/mcp",
+      headers: { "X-Api-Key": "${API_KEY}", Authorization: "Bearer ${TOKEN}" },
+    });
+
+    const codex = parseTOML(
+      await readFile(join(dir, ".codex", "config.toml"), "utf-8"),
+    ) as Record<string, Record<string, Record<string, unknown>>>;
+    expect(codex["mcp_servers"]!["authed-api"]).toEqual({
+      url: "https://${API_HOST}/mcp",
+      http_headers: {
+        "X-Api-Key": "${API_KEY}",
+        Authorization: "Bearer ${TOKEN}",
+      },
     });
   });
 

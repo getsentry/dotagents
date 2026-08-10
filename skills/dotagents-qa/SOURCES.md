@@ -13,7 +13,7 @@
 | `packages/dotagents/src/cli/commands/{add,install,sync,remove,doctor}.ts` | complete plugin lifecycle behavior and repair surfaces |
 | `packages/dotagents/src/plugins/store.ts` | plugin discovery, source resolution, canonical install, and installed-bundle loading |
 | `packages/dotagents/src/plugins/runtime/layout.ts` | project versus user/global runtime destinations |
-| `packages/dotagents/src/plugins/runtime/{marketplace,writer}.ts` | generated marketplaces, manifests, projections, verification, and pruning |
+| `packages/dotagents/src/plugins/runtime/{marketplace,opencode-mcp,writer}.ts` | generated marketplaces, manifests, OpenCode MCP projection, verification, and pruning |
 | `skills/dotagents-qa/Dockerfile` | non-root QA image and installed Claude, Codex, OpenCode, and Pi CLIs |
 | `skills/dotagents-qa/scripts/qa-example.mjs` | checked-in deterministic example and plugin harness assertions |
 
@@ -29,7 +29,7 @@
 - Require project and user/global lifecycle coverage when plugin scope behavior changes, including both flag spellings.
 - Test Sentry, Vercel, and one selected Anthropic marketplace plugin as the high-signal compatibility set.
 - Keep OpenCode and Pi proofs isolated because both can observe `.agents/skills` and contaminate one another.
-- Use native no-auth Claude/Codex management commands, OpenCode resource discovery, and Pi link inspection without claiming model invocation.
+- Use native no-auth Claude/Codex management commands, OpenCode skill and MCP resource discovery, and Pi link inspection without claiming model invocation.
 - Run focused regressions plus `pnpm check`, `pnpm qa:example`, and `pnpm qa:plugins` for plugin/runtime changes.
 - Require inspection of generated files and command output that demonstrate the changed behavior, not only exit codes.
 - Keep authentication out of ordinary QA; model-backed invocation is a separate, explicitly authorized layer.

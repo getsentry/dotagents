@@ -15,7 +15,7 @@ const vscode: AgentDefinition = {
   serializeServer(s) {
     if (s.url) {return httpServer(s, "http", (k) => `\${env:${k}}`);}
 
-    const env = envRecord(s.env, (k) => `\${input:${k}}`);
+    const env = envRecord(s.env, (k) => `\${input:${k}}`, s.envValues);
     return [
       s.name,
       { type: "stdio", command: s.command, args: s.args ?? [], ...(env && { env }) },

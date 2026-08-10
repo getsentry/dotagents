@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
@@ -33,6 +33,26 @@ export interface McpReconcileResult {
   issues: McpReconcileIssue[];
   unresolved: McpReconcileIssue[];
   written: string[];
+}
+
+interface ManagedMcpState {
+  version: 1;
+  servers: string[];
+}
+
+export interface ManagedMcpReconcileOptions {
+  agentId: string;
+  servers: McpDeclaration[];
+  target: McpResolvedTarget;
+  statePath: string;
+  protectedNames?: Iterable<string>;
+  mode: "inspect" | "apply";
+}
+
+export interface ManagedMcpReconcileResult extends McpReconcileResult {
+  managed: string[];
+  removed: string[];
+  skipped: McpReconcileIssue[];
 }
 
 /**
@@ -149,6 +169,129 @@ export async function reconcileMcpConfigs(
   return { issues, unresolved, written };
 }
 
+/**
+ * Reconcile one adapter-owned subset of a shared MCP config.
+ *
+ * Ownership is stored outside the client config so unrelated entries remain
+ * untouched and stale adapter entries can be pruned deterministically.
+ */
+export async function reconcileManagedMcpConfig(
+  options: ManagedMcpReconcileOptions,
+): Promise<ManagedMcpReconcileResult> {
+  const { agentId, target, statePath, mode } = options;
+  const agent = getAgent(agentId);
+  if (!agent) {
+    return { issues: [], unresolved: [], written: [], managed: [], removed: [], skipped: [] };
+  }
+
+  const stateResult = await readManagedMcpState(statePath);
+  if (stateResult.issue) {
+    const issue = { agent: agentId, issue: stateResult.issue };
+    return { issues: [issue], unresolved: [issue], written: [], managed: [], removed: [], skipped: [] };
+  }
+
+  const previous = new Set(stateResult.state?.servers ?? []);
+  const protectedNames = new Set(options.protectedNames ?? []);
+  const desired = renderServers(
+    agent.serializeServer,
+    options.servers.map(normalizeMcpDeclaration),
+  );
+  const issues: McpReconcileIssue[] = [];
+  const unresolved: McpReconcileIssue[] = [];
+  const written: string[] = [];
+  const removed: string[] = [];
+  const skipped: McpReconcileIssue[] = [];
+
+  if (!existsSync(target.filePath)) {
+    const managed = Object.keys(desired).filter((name) => !protectedNames.has(name)).toSorted();
+    for (const name of Object.keys(desired)) {
+      if (protectedNames.has(name)) {
+        const issue = { agent: agentId, issue: `MCP server "${name}" conflicts with a declared server and was not projected.` };
+        issues.push(issue);
+        skipped.push(issue);
+      }
+    }
+    if (managed.length > 0) {
+      issues.push({ agent: agentId, issue: `MCP config missing: ${target.filePath}` });
+      if (mode === "apply") {
+        const expected = Object.fromEntries(managed.map((name) => [name, desired[name]]));
+        await writeDocument(target.filePath, agent.mcp, { [agent.mcp.rootKey]: expected });
+        written.push(target.filePath);
+        if (await writeManagedMcpState(statePath, managed)) {written.push(statePath);}
+      }
+    } else if (mode === "apply" && stateResult.state) {
+      await rm(statePath, { force: true });
+      removed.push(statePath);
+    }
+    return { issues, unresolved, written, managed, removed, skipped };
+  }
+
+  let existing: Record<string, unknown>;
+  let existingServers: Record<string, unknown>;
+  try {
+    existing = await readExisting(target.filePath, agent.mcp);
+    existingServers = readServerRoot(existing, agent.mcp.rootKey, target.filePath);
+  } catch {
+    const issue = { agent: agentId, issue: `Failed to read MCP config: ${target.filePath}` };
+    return { issues: [issue], unresolved: [issue], written, managed: [], removed, skipped };
+  }
+
+  const managed: string[] = [];
+  const expected: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(desired)) {
+    if (protectedNames.has(name)) {
+      const issue = { agent: agentId, issue: `MCP server "${name}" conflicts with a declared server and was not projected.` };
+      issues.push(issue);
+      skipped.push(issue);
+      continue;
+    }
+    if (name in existingServers && !previous.has(name)) {
+      const issue = { agent: agentId, issue: `MCP server "${name}" already exists in ${target.filePath} and is not managed by dotagents plugins.` };
+      issues.push(issue);
+      skipped.push(issue);
+      continue;
+    }
+    managed.push(name);
+    expected[name] = value;
+  }
+  managed.sort();
+
+  const stale = [...previous]
+    .filter((name) => !managed.includes(name) && !protectedNames.has(name))
+    .toSorted();
+  for (const name of stale) {
+    if (name in existingServers) {
+      issues.push({ agent: agentId, issue: `Managed MCP server "${name}" is stale in ${target.filePath}` });
+    }
+  }
+  issues.push(...desiredIssues(agentId, target.filePath, existingServers, expected));
+
+  if (mode === "apply") {
+    const targetChanged = stale.some((name) => name in existingServers) ||
+      desiredIssues(agentId, target.filePath, existingServers, expected).length > 0;
+    if (targetChanged) {
+      await writeManagedReconciledDocument(
+        target.filePath,
+        agent.mcp,
+        existing,
+        existingServers,
+        expected,
+        stale,
+      );
+      written.push(target.filePath);
+      removed.push(...stale.filter((name) => name in existingServers));
+    }
+    if (managed.length > 0) {
+      if (await writeManagedMcpState(statePath, managed)) {written.push(statePath);}
+    } else if (stateResult.state) {
+      await rm(statePath, { force: true });
+      removed.push(statePath);
+    }
+  }
+
+  return { issues, unresolved, written, managed, removed, skipped };
+}
+
 // --- Internal helpers ---
 
 function normalizeMcpDeclaration(mcp: McpDeclaration): NormalizedMcpDeclaration {
@@ -157,7 +300,11 @@ function normalizeMcpDeclaration(mcp: McpDeclaration): NormalizedMcpDeclaration 
       name: mcp.name,
       url: mcp.url,
       ...(mcp.headers && { headers: mcp.headers }),
+      ...(mcp.interpolateEnvRefs !== undefined && {
+        interpolateEnvRefs: mcp.interpolateEnvRefs,
+      }),
       ...(mcp.env?.length && { env: mcp.env }),
+      ...(mcp.envValues && { envValues: mcp.envValues }),
     };
   }
   if (!mcp.command) {
@@ -168,6 +315,8 @@ function normalizeMcpDeclaration(mcp: McpDeclaration): NormalizedMcpDeclaration 
     command: mcp.command,
     ...(mcp.args && { args: mcp.args }),
     ...(mcp.env?.length && { env: mcp.env }),
+    ...(mcp.envValues && { envValues: mcp.envValues }),
+    ...(mcp.cwd && { cwd: mcp.cwd }),
   };
 }
 
@@ -260,6 +409,69 @@ async function writeReconciledDocument(
     raw = applyJsoncEdits(raw, edits);
   }
   await writeFileIfChanged(filePath, raw.endsWith("\n") ? raw : `${raw}\n`);
+}
+
+async function writeManagedReconciledDocument(
+  filePath: string,
+  spec: McpConfigSpec,
+  document: Record<string, unknown>,
+  existingServers: Record<string, unknown>,
+  expectedServers: Record<string, unknown>,
+  removedNames: string[],
+): Promise<void> {
+  if (spec.format !== "jsonc") {
+    const servers = { ...existingServers };
+    for (const name of removedNames) {delete servers[name];}
+    Object.assign(servers, expectedServers);
+    await writeDocument(filePath, spec, { ...document, [spec.rootKey]: servers });
+    return;
+  }
+
+  let raw = await readFile(filePath, "utf-8");
+  for (const name of removedNames) {
+    raw = applyJsoncEdits(raw, modifyJsonc(raw, [spec.rootKey, name], undefined, {
+      formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
+    }));
+  }
+  for (const [name, server] of Object.entries(expectedServers)) {
+    raw = applyJsoncEdits(raw, modifyJsonc(raw, [spec.rootKey, name], server, {
+      formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
+    }));
+  }
+  await writeFileIfChanged(filePath, raw.endsWith("\n") ? raw : `${raw}\n`);
+}
+
+async function readManagedMcpState(
+  statePath: string,
+): Promise<{ state?: ManagedMcpState; issue?: string }> {
+  if (!existsSync(statePath)) {return {};}
+  try {
+    const value: unknown = JSON.parse(await readFile(statePath, "utf-8"));
+    if (!isRecord(value) || value["version"] !== 1 || !Array.isArray(value["servers"]) ||
+      !value["servers"].every((name) => typeof name === "string")) {
+      return { issue: `Invalid managed MCP state: ${statePath}` };
+    }
+    return {
+      state: {
+        version: 1,
+        servers: [...new Set(value["servers"] as string[])].toSorted(),
+      },
+    };
+  } catch {
+    return { issue: `Failed to read managed MCP state: ${statePath}` };
+  }
+}
+
+async function writeManagedMcpState(statePath: string, servers: string[]): Promise<boolean> {
+  const content = `${JSON.stringify({ version: 1, servers: servers.toSorted() }, null, 2)}\n`;
+  try {
+    if (await readFile(statePath, "utf-8") === content) {return false;}
+  } catch (err) {
+    if (!isNotFoundError(err)) {throw err;}
+  }
+  await mkdir(dirname(statePath), { recursive: true });
+  await writeFile(statePath, content, "utf-8");
+  return true;
 }
 
 function serialize(doc: Record<string, unknown>, format: "json" | "jsonc" | "toml"): string {

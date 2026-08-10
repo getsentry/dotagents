@@ -246,7 +246,9 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
   if (config.plugins.length > 0 && pluginErrors.length === 0) {
     const installed = await loadInstalledPlugins(scope.pluginsDir, config.plugins);
     const runtimeIssues = installed.issues.length === 0
-      ? await verifyPluginOutputs(config.agents, installed.plugins, pluginRuntimeLayout(scope))
+      ? await verifyPluginOutputs(config.agents, installed.plugins, pluginRuntimeLayout(scope), {
+          reservedMcpNames: config.mcp.map((server) => server.name),
+        })
       : installed.issues.map(({ name, issue }) => ({ agent: "dotagents", name, issue }));
     if (runtimeIssues.length > 0) {
       checks.push({

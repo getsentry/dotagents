@@ -1093,8 +1093,21 @@ source = "path:./.agents/plugins/local-tools/source"
       await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
       await writeFile(
         join(sourceDir, "plugin.json"),
-        JSON.stringify({ name: "review-tools", version: "1.0.0" }),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_SCHEMA,
+          name: "review-tools",
+          version: "1.0.0",
+        }),
       );
+      await writeFile(join(sourceDir, "mcp.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+        mcpServers: {
+          sentry: {
+            type: "streamable-http",
+            url: "https://mcp.sentry.dev/mcp",
+          },
+        },
+      }));
       await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
       await writeFile(
         scope.configPath,
@@ -1116,6 +1129,24 @@ source = "path:plugin-source/review-tools"
       expect(await readlink(join(userHome, ".config", "opencode", "skills", "review"))).toContain(
         join("user-agents", "plugins", "review-tools", "skills", "review"),
       );
+      expect(JSON.parse(await readFile(
+        join(userHome, ".config", "opencode", "opencode.json"),
+        "utf-8",
+      ))).toMatchObject({
+        mcp: {
+          "plugin.review-tools.sentry": {
+            type: "remote",
+            url: "https://mcp.sentry.dev/mcp",
+          },
+        },
+      });
+      expect(JSON.parse(await readFile(
+        join(scope.root, "plugin-mcp", "opencode.json"),
+        "utf-8",
+      ))).toEqual({
+        version: 1,
+        servers: ["plugin.review-tools.sentry"],
+      });
     } finally {
       if (previousHome === undefined) {
         delete process.env["DOTAGENTS_HOME"];

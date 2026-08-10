@@ -55,8 +55,8 @@ export async function writePluginManifests(
   plugin: PluginDeclaration,
   agents: string[],
   warnings: PluginWriteWarning[],
+  standardMcp: LoadedStandardMcp,
 ): Promise<number> {
-  const standardMcp = await loadStandardMcp(plugin, warnings);
   const portableSkills = (isStandardPluginManifest(plugin.manifest) || plugin.nativeSource !== undefined) &&
     await isDirectory(join(plugin.pluginDir, "skills"));
   let written = 0;
@@ -233,10 +233,15 @@ function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWa
   return manifest;
 }
 
-async function loadStandardMcp(
+export interface LoadedStandardMcp {
+  config?: PluginMcpConfig;
+  issues: string[];
+}
+
+export async function loadStandardMcp(
   plugin: PluginDeclaration,
   warnings: PluginWriteWarning[],
-): Promise<{ config?: PluginMcpConfig; issues: string[] }> {
+): Promise<LoadedStandardMcp> {
   if (!isStandardPluginManifest(plugin.manifest)) {return { issues: [] };}
   const filePath = join(plugin.pluginDir, "mcp.json");
   if (!existsSync(filePath)) {return { issues: [] };}

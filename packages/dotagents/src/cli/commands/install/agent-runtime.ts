@@ -87,6 +87,7 @@ export async function writePluginRuntime(
     config.agents,
     plugins,
     pluginRuntimeLayout(scope),
+    { reservedMcpNames: config.mcp.map((server) => server.name) },
   );
   return result.warnings;
 }
