@@ -1,4 +1,10 @@
 # Changelog
+## 2.1.0
+
+### New Features ✨
+
+- (cli) Support user-scoped plugins by @gricha in [#153](https://github.com/getsentry/dotagents/pull/153)
+
 ## 2.0.0
 
 ### New Features ✨
