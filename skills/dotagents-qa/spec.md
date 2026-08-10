@@ -7,7 +7,7 @@ Provide change-specific and release-specific QA for dotagents inside an isolated
 ## Triggers
 
 - **SHOULD** apply when a dotagents change or release may affect install, add, remove, sync, list, doctor, scope resolution, package behavior, skills, plugins, MCP, hooks, subagents, or harness projections.
-- **SHOULD** apply when the user asks for Docker QA, real plugin compatibility, published-package verification, or native Claude/Codex/OpenCode/Pi proof.
+- **SHOULD** apply when the user asks for Docker QA, real plugin compatibility, published-package verification, or native Claude, Codex, OpenCode, or Pi proof.
 - **SHOULD NOT** apply to ordinary dotagents usage questions, architecture explanation without runtime validation, or unrelated repository QA.
 
 ## Behaviors
@@ -19,7 +19,7 @@ The agent SHALL identify the exact build or published version under test, the be
 #### Scenario: Published release request
 
 - **WHEN** the user asks to test `@sentry/dotagents@2.0.0`
-- **THEN** the agent verifies and installs that registry version in Docker and distinguishes its results from any later local-build fix validation
+- **THEN** the agent verifies and installs that registry version in Docker and distinguishes its results from any later packed-local-build fix validation
 
 ### Behavior: Enforce Docker isolation
 
@@ -64,7 +64,7 @@ The agent SHALL isolate Claude, Codex, OpenCode, and Pi evidence so one harness'
 #### Scenario: Four-harness plugin matrix
 
 - **WHEN** a plugin targets Claude, Codex, OpenCode, and Pi
-- **THEN** Claude validates and installs its generated marketplace, Codex adds and installs its generated marketplace, OpenCode reports projected skills through `opencode debug skill`, and Pi receives separately verified skill links without claiming model invocation
+- **THEN** Claude validates and installs its generated marketplace, Codex adds and installs its generated marketplace, OpenCode reports projected skills through `opencode debug skill` and flattened portable plugin MCP through `opencode debug config`, and Pi receives separately verified skill links without claiming model invocation
 
 ### Behavior: Report evidence and limits
 

@@ -15,16 +15,22 @@ export interface McpDeclaration {
   headers?: Record<string, string>;
   /** Environment variable names (values come from the user's env) */
   env?: string[];
+  /** Literal environment values supplied by an adapter. */
+  envValues?: Record<string, string>;
+  /** Working directory for stdio servers when the target supports it. */
+  cwd?: string;
 }
 
 interface McpDeclarationBase {
   name: string;
   env?: string[];
+  envValues?: Record<string, string>;
 }
 
 interface StdioMcpDeclaration extends McpDeclarationBase {
   command: string;
   args?: string[];
+  cwd?: string;
 }
 
 interface HttpMcpDeclaration extends McpDeclarationBase {

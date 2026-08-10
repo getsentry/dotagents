@@ -26,12 +26,13 @@ const opencode: AgentDefinition = {
   serializeServer(s) {
     if (s.url) {return httpServer(s, "remote", (k) => `{env:${k}}`);}
 
-    const env = envRecord(s.env, (k) => `\${${k}}`);
+    const env = envRecord(s.env, (k) => `\${${k}}`, s.envValues);
     return [
       s.name,
       {
         type: "local",
         command: [s.command!, ...(s.args ?? [])],
+        ...(s.cwd && { cwd: s.cwd }),
         ...(env && { environment: env }),
       },
     ];

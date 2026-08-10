@@ -338,9 +338,12 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       config.agents,
       pluginDecls,
       runtimeLayout,
+      { reservedMcpNames: config.mcp.map((server) => server.name) },
     );
     pluginsRepaired = pluginResult.written + prunedPluginOutputs.length + prunedInstalledPlugins.length;
-    pluginIssues = await verifyPluginOutputs(config.agents, pluginDecls, runtimeLayout);
+    pluginIssues = await verifyPluginOutputs(config.agents, pluginDecls, runtimeLayout, {
+      reservedMcpNames: config.mcp.map((server) => server.name),
+    });
 
     for (const warning of pluginResult.warnings) {
       issues.push({

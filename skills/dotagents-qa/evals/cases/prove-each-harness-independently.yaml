@@ -2,4 +2,4 @@ behavior: prove-each-harness-independently
 prompt: |
   Before I hand over the generated plugin fixture, design the no-auth proof for Claude Code, Codex, OpenCode, and Pi. I care especially about avoiding cross-harness false positives. Do not run commands yet.
 checks:
-  - judge: The plan gives Claude and Codex separate native validation or marketplace/install/list proof, uses OpenCode debug skill with exact locations, uses a separate Pi fixture with managed-link and marker proof, prevents OpenCode/Pi contamination, and does not claim model invocation.
+  - judge: The plan gives Claude and Codex separate native validation or marketplace/install/list proof, uses OpenCode debug skill with exact locations and OpenCode debug config with flattened plugin MCP names and expanded stdio paths, uses a separate Pi fixture with managed-link and marker proof, prevents OpenCode/Pi contamination, and does not claim model invocation.

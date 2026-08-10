@@ -8,8 +8,9 @@ Working Draft v1.0.0 as reviewed on August 6, 2026.
 
 The implementation includes a partial first compatibility stage: it accepts and
 normalizes Agent Plugins v1 manifests, validates MCP files, preserves portable
-source files, projects portable skills/MCP into generated native manifests, and
-continues accepting legacy generalized manifests and marketplace discovery.
+source files, projects portable skills/MCP into generated native manifests,
+flattens portable MCP into OpenCode, and continues accepting legacy generalized
+manifests and marketplace discovery.
 Client extension adapters and native MCP import remain follow-up work.
 
 ## Design Principle
@@ -464,15 +465,17 @@ With the current adapters, an install for
 .agents/plugins/marketplace.json             # generated Codex registration
 .agents/plugins/review-tools/.codex-plugin/plugin.json
 .opencode/skills/review                      # managed symlink
+.opencode/opencode.jsonc                     # managed plugin.* MCP entries
+.agents/plugin-mcp/opencode.json             # flattened MCP ownership state
+.agents/plugin-data/review-tools/            # persistent stdio MCP data
 .agents/skills/review                        # managed Pi skill symlink
 ```
 
-Future registered extension and flattened-MCP adapters may additionally
-produce client-owned resources such as:
+Registered extension adapters may additionally produce client-owned resources
+such as:
 
 ```text
 .opencode/agents/reviewer.md
-.opencode/opencode.jsonc
 ```
 
 Important consequences:
@@ -566,17 +569,14 @@ Migration should happen in compatibility stages:
 
 The current branch still needs follow-up implementation for:
 
-1. normalizing validated `mcp.json` servers into the shared MCP declaration
-   model for clients that cannot consume the portable file directly,
-2. registering authoritative client extension namespaces and projecting their
+1. registering authoritative client extension namespaces and projecting their
    client-owned resources,
-3. moving legacy `agents`, `commands`, `rules`, hooks, and other behavior into client
+2. moving legacy `agents`, `commands`, `rules`, hooks, and other behavior into client
    namespaces,
-4. removing canonical marketplace input assumptions from discovery,
-5. adding migration warnings for legacy plugin bundles,
-6. reporting ignored standard manifest fields and malformed extensions,
-7. adding explicit native MCP-to-portable importers, and
-8. adding persistent `PLUGIN_DATA` handling for flattened MCP adapters.
+3. removing canonical marketplace input assumptions from discovery,
+4. adding migration warnings for legacy plugin bundles,
+5. reporting ignored standard manifest fields and malformed extensions, and
+6. adding explicit native MCP-to-portable importers.
 
 ## Non-goals
 

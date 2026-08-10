@@ -52,6 +52,8 @@ describe("writeAgentsGitignore", () => {
 
     const content = await readFile(join(agentsDir, ".gitignore"), "utf-8");
     expect(content).toContain("/plugins/review-tools/");
+    expect(content).toContain("/plugin-data/");
+    expect(content).toContain("/plugin-mcp/");
     expect(content).not.toContain("/plugins/marketplace.json");
   });
 

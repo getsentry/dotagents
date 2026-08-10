@@ -29,7 +29,7 @@ const codex: AgentDefinition = {
         ...(envHttpHeaders && { env_http_headers: envHttpHeaders }),
       }];
     }
-    const env = envRecord(s.env, (k) => `\${${k}}`);
+    const env = envRecord(s.env, (k) => `\${${k}}`, s.envValues);
     return [s.name, { command: s.command, args: s.args ?? [], ...(env && { env }) }];
   },
   hooks: undefined,

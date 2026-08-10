@@ -8,7 +8,7 @@ Inspect manifests before testing; do not guess names or layouts. The default hig
 
 - `getsentry/agent-plugin` — standalone Agent Plugins v1 bundle
 - `vercel/vercel-plugin` — large native Claude plugin with skills, hooks, MCP, commands, and agents
-- `anthropics/claude-plugins-official frontend-design` — a plugin selected from a large nested marketplace
+- `anthropics/claude-plugins-official` — select one high-signal plugin from its current nested marketplace after inspection
 
 Confirm current manifests and repository activity with `gh api`, `gh search code`, or cloned files. Use fewer plugins only when a source is unavailable and report that limitation.
 
@@ -68,9 +68,17 @@ Use an OpenCode-only plugin target, then run:
 opencode debug skill > /qa-out/opencode-skills.json
 jq '[.[] | select(.location | contains("/.opencode/skills/"))] | map(.name)' \
   /qa-out/opencode-skills.json
+opencode debug config > /qa-out/opencode-config.json
+jq '.mcp | with_entries(select(.key | startswith("plugin.")))' \
+  /qa-out/opencode-config.json
 ```
 
-Assert exact projected locations and skill names.
+Assert exact projected locations and skill names. For standard Agent Plugins v1
+bundles with `mcp.json`, also assert every flattened
+`plugin.<plugin-name>.<server-name>` entry. Check remote URLs and headers; for
+stdio servers, check the command, args, cwd, `${PLUGIN_ROOT}` and
+`${PLUGIN_DATA}` expansion, literal environment values, and persistent managed
+data directory.
 
 ### Pi
 
@@ -95,6 +103,9 @@ Expected default-home outputs:
 - Claude marketplace: `$HOME/.agents/.claude-plugin/marketplace.json`
 - Codex marketplace: `$HOME/.agents/plugins/marketplace.json`
 - OpenCode skills: `$HOME/.config/opencode/skills/<skill>`
+- OpenCode MCP config: `$HOME/.config/opencode/opencode.json`
+- OpenCode MCP ownership: `$DOTAGENTS_HOME/plugin-mcp/opencode.json`
+- OpenCode plugin data: `$DOTAGENTS_HOME/plugin-data/<plugin>`
 - Pi skills: `$HOME/.agents/skills/<skill>`
 
 Native user proof:
@@ -110,11 +121,12 @@ codex plugin add <name>@dotagents-local --json
 
 cd /sandbox/neutral-project
 opencode debug skill
+opencode debug config
 ```
 
-When `DOTAGENTS_HOME` is not `$HOME/.agents`, add the Codex marketplace from `$DOTAGENTS_HOME`; dotagents emits its adapter catalog below `$DOTAGENTS_HOME/.agents/plugins/` so Codex can discover it.
+When `DOTAGENTS_HOME` is not `$HOME/.agents`, add the Codex marketplace from `$DOTAGENTS_HOME`; dotagents emits its adapter catalog below `$DOTAGENTS_HOME/.agents/plugins/` so Codex can discover it. Assert user-scope plugin MCP from a neutral project so project config cannot supply a false pass.
 
-Delete one marketplace and one component link, run `dotagents --user sync`, and prove repair. Remove the plugin using the other flag spelling and prove all canonical and generated state is gone.
+Delete one marketplace, one component link, and one managed OpenCode MCP entry or ownership record; run `dotagents --user sync` and prove repair. Remove the plugin using the other flag spelling and prove all canonical and generated state is gone while unrelated OpenCode config remains.
 
 ## Reporting
 

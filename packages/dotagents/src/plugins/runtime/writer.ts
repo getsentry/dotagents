@@ -19,8 +19,9 @@ import {
   stableJson,
   writeManagedJsonIfChanged,
 } from "../managed-files.js";
-import { NATIVE_PLUGIN_MANIFEST_TARGETS, writePluginManifests } from "./manifests.js";
+import { loadStandardMcp, NATIVE_PLUGIN_MANIFEST_TARGETS, writePluginManifests, type LoadedStandardMcp } from "./manifests.js";
 import { isSafeComponentPath } from "./component-paths.js";
+import { reconcileOpenCodePluginMcp } from "./opencode-mcp.js";
 import {
   normalizePluginRuntimeLayout,
   type PluginRuntimeLayout,
@@ -49,6 +50,10 @@ interface PluginSkillComponent {
 const OPENCODE_SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const SKILL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
+export interface PluginRuntimeOptions {
+  reservedMcpNames?: Iterable<string>;
+}
+
 /** Returns plugin skill names projected into `.agents/skills/` for Pi. */
 export async function projectedPiSkillNames(
   agentIds: string[],
@@ -71,11 +76,13 @@ export async function writePluginOutputs(
   agentIds: string[],
   plugins: PluginDeclaration[],
   root: PluginRuntimeRoot,
+  options: PluginRuntimeOptions = {},
 ): Promise<PluginWriteResult> {
   const layout = normalizePluginRuntimeLayout(root);
   const warnings: PluginWriteWarning[] = [];
   let written = 0;
   const selected = selectPlugins(agentIds, plugins);
+  const loadedMcp = new Map<string, LoadedStandardMcp>();
 
   for (const warning of targetWarnings(agentIds, plugins)) {
     warnings.push(warning);
@@ -87,7 +94,9 @@ export async function writePluginOutputs(
 
   for (const plugin of selected) {
     const agents = selectedAgentIds(agentIds, plugin);
-    written += await writePluginManifests(plugin, agents, warnings);
+    const standardMcp = await loadStandardMcp(plugin, warnings);
+    loadedMcp.set(plugin.name, standardMcp);
+    written += await writePluginManifests(plugin, agents, warnings, standardMcp);
     if (agents.includes("grok") && await writeGrokProjection(layout, plugin, warnings)) {
       written++;
     }
@@ -95,6 +104,16 @@ export async function writePluginOutputs(
 
   written += await writeComponentProjections("opencode", agentIds, selected, layout, warnings);
   written += await writeComponentProjections("pi", agentIds, selected, layout, warnings);
+  const opencodeMcp = await reconcileOpenCodePluginMcp(
+    agentIds,
+    plugins,
+    loadedMcp,
+    layout,
+    options.reservedMcpNames ?? [],
+    "apply",
+    warnings,
+  );
+  written += opencodeMcp.written + opencodeMcp.pruned.length;
 
   return { warnings, written };
 }
@@ -104,9 +123,10 @@ export async function reconcilePluginOutputs(
   agentIds: string[],
   plugins: PluginDeclaration[],
   root: PluginRuntimeRoot,
+  options: PluginRuntimeOptions = {},
 ): Promise<{ result: PluginWriteResult; pruned: string[] }> {
   const pruned = await prunePluginOutputs(agentIds, plugins, root);
-  const result = await writePluginOutputs(agentIds, plugins, root);
+  const result = await writePluginOutputs(agentIds, plugins, root, options);
   return { result, pruned };
 }
 
@@ -115,10 +135,16 @@ export async function verifyPluginOutputs(
   agentIds: string[],
   plugins: PluginDeclaration[],
   root: PluginRuntimeRoot,
+  options: PluginRuntimeOptions = {},
 ): Promise<PluginVerifyIssue[]> {
   const layout = normalizePluginRuntimeLayout(root);
   const issues: PluginVerifyIssue[] = [];
   const selected = selectPlugins(agentIds, plugins);
+  const mcpWarnings: PluginWriteWarning[] = [];
+  const loadedMcp = new Map<string, LoadedStandardMcp>();
+  for (const plugin of selected) {
+    loadedMcp.set(plugin.name, await loadStandardMcp(plugin, mcpWarnings));
+  }
 
   for (const output of marketplaceOutputs(agentIds, layout, selected)) {
     if (!existsSync(output.filePath)) {
@@ -162,6 +188,18 @@ export async function verifyPluginOutputs(
       issues.push({ agent: link.agent, name: link.name, issue: `Pi plugin ${link.kind} projection missing: ${link.destPath}` });
     }
   }
+
+  issues.push(...mcpWarnings.map(({ agent, name, message }) => ({ agent, name, issue: message })));
+  const opencodeMcp = await reconcileOpenCodePluginMcp(
+    agentIds,
+    plugins,
+    loadedMcp,
+    layout,
+    options.reservedMcpNames ?? [],
+    "inspect",
+    [],
+  );
+  issues.push(...opencodeMcp.issues);
 
   return issues;
 }

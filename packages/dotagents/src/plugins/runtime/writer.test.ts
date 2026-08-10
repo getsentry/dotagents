@@ -3,6 +3,7 @@ import { lstat, mkdtemp, mkdir, readFile, readlink, rm, symlink, writeFile } fro
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { parse as parseJSONC } from "jsonc-parser";
 import type { PluginDeclaration } from "../types.js";
 import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest } from "../schema.js";
 import {
@@ -563,6 +564,87 @@ describe("plugin writer", () => {
       join(alpha.pluginDir, "agents", "plugin-reviewer.md"),
     );
     expect(await verifyPluginOutputs(["opencode"], [alpha], root)).toEqual([]);
+  });
+
+  it("flattens portable plugin MCP into OpenCode and prunes only managed state", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: {
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "alpha-tools",
+        version: "1.0.0",
+      },
+    });
+    await writeFile(join(alpha.pluginDir, "mcp.json"), JSON.stringify({
+      $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+      mcpServers: {
+        local: {
+          type: "stdio",
+          command: "node",
+          args: ["${PLUGIN_ROOT}/server.mjs", "${OTHER}"],
+          env: { CACHE_DIR: "${PLUGIN_DATA}/cache" },
+          cwd: "${PLUGIN_ROOT}",
+        },
+        remote: {
+          type: "streamable-http",
+          url: "https://example.com/mcp",
+          headers: { "X-Fixture": "dotagents" },
+        },
+      },
+    }));
+    const opencodePath = join(root, ".opencode", "opencode.jsonc");
+    await mkdir(dirname(opencodePath), { recursive: true });
+    await writeFile(opencodePath, [
+      "{",
+      "  // Preserve user config",
+      '  "theme": "dark",',
+      '  "mcp": { "manual": { "type": "local", "command": ["manual"] } },',
+      "}",
+      "",
+    ].join("\n"));
+
+    const result = await writePluginOutputs(["opencode"], [alpha], root);
+
+    expect(result.warnings).toEqual([]);
+    const raw = await readFile(opencodePath, "utf-8");
+    expect(raw).toContain("// Preserve user config");
+    const config = parseJSONC(raw) as { mcp: Record<string, unknown> };
+    expect(config.mcp["manual"]).toEqual({ type: "local", command: ["manual"] });
+    expect(config.mcp["plugin.alpha-tools.remote"]).toEqual({
+      type: "remote",
+      url: "https://example.com/mcp",
+      headers: { "X-Fixture": "dotagents" },
+    });
+    const dataDir = join(root, ".agents", "plugin-data", "alpha-tools");
+    expect(config.mcp["plugin.alpha-tools.local"]).toEqual({
+      type: "local",
+      command: ["node", join(alpha.pluginDir, "server.mjs"), "${OTHER}"],
+      cwd: alpha.pluginDir,
+      environment: {
+        CACHE_DIR: `${dataDir}/cache`,
+        PLUGIN_DATA: dataDir,
+        PLUGIN_ROOT: alpha.pluginDir,
+      },
+    });
+    expect(existsSync(join(dataDir, ".dotagents-managed"))).toBe(true);
+    expect(JSON.parse(await readFile(
+      join(root, ".agents", "plugin-mcp", "opencode.json"),
+      "utf-8",
+    ))).toEqual({
+      version: 1,
+      servers: ["plugin.alpha-tools.local", "plugin.alpha-tools.remote"],
+    });
+    expect(await verifyPluginOutputs(["opencode"], [alpha], root)).toEqual([]);
+
+    await writePluginOutputs([], [], root);
+
+    const prunedRaw = await readFile(opencodePath, "utf-8");
+    expect(prunedRaw).toContain("// Preserve user config");
+    const prunedConfig = parseJSONC(prunedRaw) as {
+      mcp: Record<string, unknown>;
+    };
+    expect(prunedConfig.mcp).toEqual({ manual: { type: "local", command: ["manual"] } });
+    expect(existsSync(dataDir)).toBe(false);
+    expect(existsSync(join(root, ".agents", "plugin-mcp", "opencode.json"))).toBe(false);
   });
 
   it("keeps component ownership markers outside the valid skill-name namespace", async () => {
