@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { realpath } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
 import chalk from "chalk";
@@ -96,6 +97,12 @@ interface PluginSelection {
 interface DetailedAddResult {
   kind: "skill" | "plugin";
   result: string | string[];
+}
+
+function containsPath(parentDir: string, childDir: string): boolean {
+  const childPath = relative(resolve(parentDir), resolve(childDir));
+  return childPath === "" ||
+    (childPath !== ".." && !childPath.startsWith(`..${sep}`) && !isAbsolute(childPath));
 }
 
 async function acquireSource(
@@ -336,20 +343,25 @@ async function selectPlugins(
     return { candidates, duplicatePolicy: "selected" };
   }
 
-  const byPath = new Map(candidates.map((candidate) => [candidate.path, candidate]));
-  const selectedPaths = await clack.multiselect({
+  const pickerCandidates = candidates.toSorted((a, b) =>
+    a.name.localeCompare(b.name) || a.path.localeCompare(b.path)
+  );
+  const selectedIndices = await clack.multiselect({
     message: "Select which plugins to add:",
-    options: candidates
-      .toSorted((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path))
-      .map((candidate) => ({
+    options: pickerCandidates
+      .map((candidate, index) => ({
         label: candidate.name,
-        value: candidate.path,
+        value: index,
         hint: candidate.path ? chalk.dim(`(${candidate.path})`) : "Source root",
       })),
     required: true,
   });
-  if (clack.isCancel(selectedPaths)) {throw new AddCancelledError();}
-  const selected = selectedPaths.map((path) => byPath.get(path)!);
+  if (clack.isCancel(selectedIndices)) {throw new AddCancelledError();}
+  const selected = selectedIndices.map((index) => {
+    const candidate = pickerCandidates[index];
+    if (!candidate) {throw new AddError("Invalid plugin selection.");}
+    return candidate;
+  });
   assertUniquePluginNames(selected, source);
   return {
     candidates: selected,
@@ -369,6 +381,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
   const specifier = stripLeadingAt(rawSpecifier);
   const namesOverride = rawNames ? [...new Set(rawNames)] : rawNames;
   const { configPath } = scope;
+  // Defer user bootstrap until classification so rejected plugins cannot mutate user state.
   const needsUserBootstrap = scope.scope === "user" && !existsSync(configPath);
   const config = needsUserBootstrap
     ? agentsConfigSchema.parse({ version: 1 })
@@ -486,7 +499,8 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
         name: candidate.name,
         source: sourceForStorage,
         ...refOpts,
-        ...(candidate.path ? { path: candidate.path } : {}),
+        // Pin every discovered directory so later source inventory changes cannot alter selection.
+        path: candidate.path || ".",
       }]);
       await runInstall({ scope });
       return { kind: "plugin", result: candidate.name };
@@ -516,7 +530,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
         name: candidate.name,
         source: sourceForStorage,
         ...refOpts,
-        ...(candidate.path ? { path: candidate.path } : {}),
+        path: candidate.path || ".",
       })),
     );
     await runInstall({ scope });
@@ -534,6 +548,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
     }
   }
 
+  // Plugin presence classifies the entire source; bundled and standalone skills stay hidden.
   if (plugins.length > 0) {
     if (scope.scope === "user") {
       throw new AddError(
@@ -556,6 +571,29 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
       interactive,
       all,
     );
+    if (acquired.local) {
+      const managedPluginsDir = resolve(
+        await realpath(scope.root),
+        relative(resolve(scope.root), resolve(scope.pluginsDir)),
+      );
+      let enclosingCandidate: PluginCandidate | undefined;
+      for (const candidate of selection.candidates) {
+        const candidateDir = await realpath(candidate.dir);
+        if (
+          containsPath(candidateDir, managedPluginsDir) ||
+          containsPath(managedPluginsDir, candidateDir)
+        ) {
+          enclosingCandidate = candidate;
+          break;
+        }
+      }
+      if (enclosingCandidate) {
+        throw new AddError(
+          `Plugin "${enclosingCandidate.name}" source overlaps this project's managed plugin directory. ` +
+            "Use a plugin directory outside the project root.",
+        );
+      }
+    }
     return persistPlugins(selection);
   }
 
@@ -609,7 +647,6 @@ export default async function add(
     return;
   }
 
-  // Collect dependency names from positional args and flags.
   const positionalNames = positionals.slice(1);
   const flagNames = [...(values["name"] ?? []), ...(values["skill"] ?? [])];
 

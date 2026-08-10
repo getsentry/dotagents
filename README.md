@@ -60,7 +60,7 @@ All commands accept `--user` to operate on user scope (`~/.agents/`) instead of 
 
 ## Source Formats
 
-Skills can come from GitHub, GitLab, any git server, well-known HTTPS skill sources, or local directories. Git and local sources are checked for plugins first. If any plugin is found, `add` treats the entire source as plugin-only; standalone and bundled skills in that source are not offered. Well-known HTTPS sources remain skill-only:
+Skills can come from GitHub, GitLab, any git server, well-known HTTPS skill sources, or local directories. Git and local sources are checked for plugins first. If any plugin is found, `add` treats the entire source as plugin-only; standalone and bundled skills in that source are not offered. Malformed plugin-shaped content is an error rather than a fallback to skills. Local plugin sources that overlap the project's managed `.agents/plugins` directory are rejected before configuration changes. Well-known HTTPS sources remain skill-only:
 
 ```toml
 [[skills]]

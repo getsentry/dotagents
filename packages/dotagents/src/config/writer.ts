@@ -42,7 +42,9 @@ export async function addPluginsToConfig(
   filePath: string,
   plugins: Array<Pick<PluginConfig, "name" | "source" | "ref" | "path">>,
 ): Promise<void> {
-  if (plugins.length === 0) {return;}
+  if (plugins.length === 0) {
+    throw new Error("Cannot append an empty plugin batch.");
+  }
   const content = await readFile(filePath, "utf-8");
   const entries = plugins.map((plugin) => {
     const entry: Record<string, string> = {

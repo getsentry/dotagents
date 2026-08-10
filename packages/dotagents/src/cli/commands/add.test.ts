@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, writeFile, rm, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, readFile, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import * as clack from "@clack/prompts";
@@ -96,6 +96,9 @@ describe("runAdd", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     delete process.env["DOTAGENTS_STATE_DIR"];
+    delete process.env["GIT_CONFIG_COUNT"];
+    delete process.env["GIT_CONFIG_KEY_0"];
+    delete process.env["GIT_CONFIG_VALUE_0"];
     await rm(tmpDir, { recursive: true });
   });
 
@@ -261,6 +264,10 @@ describe("runAdd", () => {
   });
 
   it("stores the original source spelling and installs once", async () => {
+    const shorthand = "local/source-spelling";
+    process.env["GIT_CONFIG_COUNT"] = "1";
+    process.env["GIT_CONFIG_KEY_0"] = `url.file://${repoDir}.insteadOf`;
+    process.env["GIT_CONFIG_VALUE_0"] = `https://github.com/${shorthand}`;
     const installSpy = vi.spyOn(installModule, "runInstall").mockResolvedValue({
       installed: [],
       installedPlugins: [],
@@ -274,14 +281,34 @@ describe("runAdd", () => {
 
     const result = await runAdd({
       scope: resolveScope("project", projectRoot),
-      specifier: `git:${repoDir}`,
+      specifier: shorthand,
       all: true,
     });
 
     expect(result).toBe("*");
     expect(installSpy).toHaveBeenCalledOnce();
     const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
-    expect(toml).toContain(`source = "git:${repoDir}"`);
+    expect(toml).toContain(`source = "${shorthand}"`);
+    expect(toml).not.toContain(`source = "https://github.com/${shorthand}"`);
+  });
+
+  it("classifies an acquired git repository as a plugin source", async () => {
+    await writePlugin(join(repoDir, "plugins", "git-plugin"), "git-plugin");
+    await exec("git", ["add", "."], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "add plugin"], { cwd: repoDir });
+    mockRunInstall();
+
+    const result = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: `git:${repoDir}`,
+      names: ["git-plugin"],
+    });
+
+    expect(result).toBe("git-plugin");
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml).toContain("[[plugins]]");
+    expect(toml).toContain('path = "plugins/git-plugin"');
+    expect(toml).not.toContain("[[skills]]");
   });
 
   it("selects explicit well-known names like git catalog names", async () => {
@@ -521,6 +548,7 @@ describe("runAdd (local sources)", () => {
     const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
     expect(toml).toContain("[[plugins]]");
     expect(toml).toContain('name = "review-plugin"');
+    expect(toml).toContain('path = "."');
     expect(toml).not.toContain("[[skills]]");
     expect(install).toHaveBeenCalledOnce();
   });
@@ -580,7 +608,7 @@ describe("runAdd (local sources)", () => {
     })).rejects.toThrow(/Multiple plugins found.*alpha, beta.*--name/);
 
     vi.mocked(clack.select).mockResolvedValue("pick");
-    vi.mocked(clack.multiselect).mockResolvedValue(["plugins/beta"]);
+    vi.mocked(clack.multiselect).mockResolvedValue([1]);
     vi.mocked(clack.isCancel).mockReturnValue(false);
     mockRunInstall();
     const result = await runAdd({
@@ -593,6 +621,88 @@ describe("runAdd (local sources)", () => {
     expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toContain(
       'path = "plugins/beta"',
     );
+  });
+
+  it("pins an interactively selected source-root plugin with a dot path", async () => {
+    const sourceDir = join(projectRoot, "root-plugin-picker");
+    await writePlugin(sourceDir, "shared");
+    await writePlugin(join(sourceDir, ".agents", "plugins", "shared"), "shared");
+    vi.mocked(clack.select).mockResolvedValue("pick");
+    vi.mocked(clack.multiselect).mockResolvedValue([0]);
+    vi.mocked(clack.isCancel).mockReturnValue(false);
+    mockRunInstall();
+
+    const result = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:root-plugin-picker",
+      interactive: true,
+    });
+
+    expect(result).toBe("shared");
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toContain(
+      'path = "."',
+    );
+  });
+
+  it("rejects a local plugin source that contains the managed install directory", async () => {
+    await writePlugin(projectRoot, "project-root");
+
+    await expect(runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:.",
+    })).rejects.toThrow("source overlaps this project's managed plugin directory");
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe("version = 1\n");
+  });
+
+  it("rejects a symlinked local source that resolves to the project root", async () => {
+    await writePlugin(projectRoot, "project-root");
+    await symlink(projectRoot, join(projectRoot, "source-link"), "dir");
+
+    await expect(runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:source-link",
+    })).rejects.toThrow("source overlaps this project's managed plugin directory");
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe("version = 1\n");
+  });
+
+  it("rejects a local plugin source inside the managed install directory", async () => {
+    await writePlugin(join(projectRoot, ".agents", "plugins", "local-tools"), "local-tools");
+
+    await expect(runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:.agents/plugins/local-tools",
+    })).rejects.toThrow("source overlaps this project's managed plugin directory");
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe("version = 1\n");
+  });
+
+  it("keeps marketplace aliases distinct in the interactive plugin picker", async () => {
+    const sourceDir = join(projectRoot, "aliased-plugin-picker");
+    const pluginDir = join(sourceDir, "shared-plugin");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), "{}");
+    await writeFile(join(sourceDir, "marketplace.json"), JSON.stringify({
+      name: "aliases",
+      plugins: [
+        { name: "alpha", source: "./shared-plugin" },
+        { name: "beta", source: "./shared-plugin" },
+      ],
+    }));
+    vi.mocked(clack.select).mockResolvedValue("pick");
+    vi.mocked(clack.multiselect).mockResolvedValue([0, 1]);
+    vi.mocked(clack.isCancel).mockReturnValue(false);
+    mockRunInstall();
+
+    const result = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:aliased-plugin-picker",
+      interactive: true,
+    });
+
+    expect(result).toEqual(["alpha", "beta"]);
+    const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(toml).toContain('name = "alpha"');
+    expect(toml).toContain('name = "beta"');
+    expect(toml.match(/path = "shared-plugin"/g)).toHaveLength(2);
   });
 
   it("adds every discovered plugin explicitly with --all", async () => {

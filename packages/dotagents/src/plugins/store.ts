@@ -54,12 +54,31 @@ interface ResolvedGitPlugin {
 
 export type ResolvedPlugin = ResolvedLocalPlugin | ResolvedGitPlugin;
 
+type PluginCandidateOrigin = "explicit" | "root" | "marketplace" | "canonical" | "conventional";
+
 export interface PluginCandidate {
   name: string;
   dir: string;
   path: string;
   manifest: PluginManifest;
   nativeSource?: NativePluginSource;
+  origin: PluginCandidateOrigin;
+}
+
+interface PluginCatalog {
+  candidates: PluginCandidate[];
+  unsupportedMarketplaceSources: Map<string, string[]>;
+  marketplaceOutcomes: Map<string, Array<
+    | { candidate: PluginCandidate }
+    | { error: Error }
+  >>;
+  issues: Array<{
+    name?: string;
+    path?: string;
+    origin: Exclude<PluginCandidateOrigin, "explicit">;
+    error: Error;
+    blocksNamedResolution: boolean;
+  }>;
 }
 
 const MARKETPLACE_PATHS = [
@@ -372,61 +391,108 @@ async function resolvePluginCandidate(
 ): Promise<PluginCandidate | null> {
   if (config.path) {
     const dir = await resolveInside(sourceDir, config.path, "Plugin path");
-    return loadPluginCandidate(sourceDir, dir, { name: config.name });
+    return loadPluginCandidate(sourceDir, dir, { name: config.name }, "Plugin source", "explicit");
   }
 
-  const candidates = await discoverPlugins(sourceDir);
+  const catalog = await discoverPluginCatalog(sourceDir);
+  const { candidates } = catalog;
   const canonicalPath = posix.join(".agents", "plugins", config.name);
   const canonical = candidates.find((candidate) => candidate.path === canonicalPath);
   if (canonical && candidateMatches(config.name, canonical)) {
     return canonical;
   }
 
-  const unsupportedMarketplaceSources: string[] = [];
-  const marketplacePaths = await discoverMarketplaceCandidatePaths(
-    sourceDir,
-    config.name,
-    unsupportedMarketplaceSources,
+  const canonicalIssue = catalog.issues.find(
+    (issue) => issue.origin === "canonical" && issue.path === canonicalPath,
   );
-  const fromMarketplace = candidates.find(
-    (candidate) => marketplacePaths.includes(candidate.path) && candidateMatches(config.name, candidate),
-  );
-  if (fromMarketplace) {return fromMarketplace;}
+  if (canonicalIssue) {throw canonicalIssue.error;}
 
-  const unique = rankedCandidates(config.name, candidates);
+  const marketplaceOutcome = catalog.marketplaceOutcomes.get(config.name)?.[0];
+  if (marketplaceOutcome && "error" in marketplaceOutcome) {
+    throw marketplaceOutcome.error;
+  }
+  if (marketplaceOutcome) {return marketplaceOutcome.candidate;}
+
+  const conventionalIssue = catalog.issues.find(
+    (issue) => issue.origin === "conventional" &&
+      issue.blocksNamedResolution && issue.name === config.name,
+  );
+  if (conventionalIssue) {throw conventionalIssue.error;}
+
+  const unique = rankedCandidates(
+    config.name,
+    candidates.filter((candidate) => candidate.origin !== "marketplace"),
+  );
   if (unique.length > 1) {
     throw new Error(
       `Plugin "${config.name}" is ambiguous in ${config.source}: ${unique.map((m) => m.path).join(", ")}`,
     );
   }
+  const unsupportedMarketplaceSources = catalog.unsupportedMarketplaceSources.get(config.name) ?? [];
   if (unique.length === 0 && unsupportedMarketplaceSources.length > 0) {
     throw new Error(
       `Plugin "${config.name}" not found in ${config.source}. Matching marketplace entries use unsupported source types: ${[...new Set(unsupportedMarketplaceSources)].join(", ")}. Only local marketplace sources are supported.`,
     );
   }
+  const rootIssue = catalog.issues.find((issue) => issue.origin === "root");
+  if (unique.length === 0 && rootIssue) {throw rootIssue.error;}
   return unique[0] ?? null;
 }
 
-/** Enumerates every valid plugin in a local or acquired repository source. */
+/** Discovers valid plugins from supported source locations. */
 export async function discoverPlugins(sourceDir: string): Promise<PluginCandidate[]> {
+  const catalog = await discoverPluginCatalog(sourceDir);
+  if (catalog.issues[0]) {throw catalog.issues[0].error;}
+  for (const candidate of catalog.candidates) {
+    await assertPluginBundleSymlinksContained(candidate.dir);
+  }
+  return catalog.candidates;
+}
+
+async function discoverPluginCatalog(sourceDir: string): Promise<PluginCatalog> {
   const candidates: PluginCandidate[] = [];
+  const issues: PluginCatalog["issues"] = [];
 
-  const root = await loadPluginCandidate(sourceDir, sourceDir);
-  if (root) {candidates.push(root);}
+  try {
+    const root = await loadPluginCandidate(sourceDir, sourceDir, {}, "Plugin source", "root");
+    if (root) {candidates.push(root);}
+  } catch (err) {
+    issues.push({
+      path: "",
+      origin: "root",
+      error: err instanceof Error ? err : new Error(String(err)),
+      blocksNamedResolution: false,
+    });
+  }
 
-  candidates.push(...await discoverFromMarketplaces(sourceDir));
+  const marketplace = await discoverFromMarketplaces(sourceDir);
+  candidates.push(...marketplace.candidates);
+  issues.push(...marketplace.issues);
   candidates.push(...await scanPluginDirectories(
     sourceDir,
     join(sourceDir, ".agents", "plugins"),
     2,
     "Canonical plugin source",
+    "canonical",
+    issues,
+    marketplace.referencedDirs,
   ));
   candidates.push(...await scanPluginDirectories(
     sourceDir,
     join(sourceDir, "plugins"),
+    2,
+    "Plugin source",
+    "conventional",
+    issues,
+    marketplace.referencedDirs,
   ));
 
-  return dedupeCandidates(candidates);
+  return {
+    candidates: await dedupeCandidates(candidates),
+    unsupportedMarketplaceSources: marketplace.unsupportedSources,
+    marketplaceOutcomes: marketplace.outcomes,
+    issues,
+  };
 }
 
 /**
@@ -436,8 +502,18 @@ export async function discoverPlugins(sourceDir: string): Promise<PluginCandidat
  */
 async function discoverFromMarketplaces(
   sourceDir: string,
-): Promise<PluginCandidate[]> {
+): Promise<{
+  candidates: PluginCandidate[];
+  unsupportedSources: Map<string, string[]>;
+  outcomes: PluginCatalog["marketplaceOutcomes"];
+  issues: PluginCatalog["issues"];
+  referencedDirs: Set<string>;
+}> {
   const candidates: PluginCandidate[] = [];
+  const unsupportedSources = new Map<string, string[]>();
+  const outcomes: PluginCatalog["marketplaceOutcomes"] = new Map();
+  const issues: PluginCatalog["issues"] = [];
+  const referencedDirs = new Set<string>();
   for (const marketplacePath of MARKETPLACE_PATHS) {
     const filePath = join(sourceDir, marketplacePath);
     if (!existsSync(filePath)) {continue;}
@@ -445,69 +521,74 @@ async function discoverFromMarketplaces(
     let marketplace: ReturnType<typeof parsePluginMarketplace>;
     try {
       marketplace = parsePluginMarketplace(await readJson(filePath), filePath);
-    } catch {
+    } catch (err) {
+      issues.push({
+        origin: "marketplace",
+        error: err instanceof Error ? err : new Error(String(err)),
+        blocksNamedResolution: false,
+      });
       continue;
     }
     const root = typeof marketplace.metadata?.pluginRoot === "string"
       ? marketplace.metadata.pluginRoot
       : ".";
     for (const entry of marketplace.plugins) {
-      const path = localMarketplacePath(entry);
-      if (!path) {continue;}
-      const marketplaceRoot = dirname(filePath);
-      const pluginDir = await resolveMarketplaceSource(
-        sourceDir,
-        marketplaceRoot,
-        join(root, path),
-        "Marketplace plugin source",
-      );
-      const candidate = await loadPluginCandidate(
-        sourceDir,
-        pluginDir,
-        marketplaceManifestOverlay(entry),
-        "Marketplace plugin source",
-      );
-      if (candidate) {candidates.push(candidate);}
-    }
-  }
-  return candidates;
-}
-
-async function discoverMarketplaceCandidatePaths(
-  sourceDir: string,
-  name: string,
-  unsupportedSources: string[],
-): Promise<string[]> {
-  const paths: string[] = [];
-  for (const marketplacePath of MARKETPLACE_PATHS) {
-    const filePath = join(sourceDir, marketplacePath);
-    if (!existsSync(filePath)) {continue;}
-
-    let marketplace: ReturnType<typeof parsePluginMarketplace>;
-    try {
-      marketplace = parsePluginMarketplace(await readJson(filePath), filePath);
-    } catch {
-      continue;
-    }
-    const root = typeof marketplace.metadata?.pluginRoot === "string"
-      ? marketplace.metadata.pluginRoot
-      : ".";
-    for (const entry of marketplace.plugins) {
-      if (entry.name !== name) {continue;}
-
       const path = localMarketplacePath(entry);
       if (!path) {
-        unsupportedSources.push(marketplaceSourceType(entry));
+        const sources = unsupportedSources.get(entry.name) ?? [];
+        sources.push(marketplaceSourceType(entry));
+        unsupportedSources.set(entry.name, sources);
         continue;
       }
-
       const marketplaceRoot = dirname(filePath);
-      const pluginDir = await resolveMarketplaceSource(sourceDir, marketplaceRoot, join(root, path), "Marketplace plugin source");
-      paths.push(relativePath(sourceDir, pluginDir));
+      let pluginDir: string;
+      let candidate: PluginCandidate | null;
+      try {
+        pluginDir = await resolveMarketplaceSource(
+          sourceDir,
+          marketplaceRoot,
+          join(root, path),
+          "Marketplace plugin source",
+        );
+        candidate = await loadPluginCandidate(
+          sourceDir,
+          pluginDir,
+          marketplaceManifestOverlay(entry),
+          "Marketplace plugin source",
+          "marketplace",
+        );
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        issues.push({
+          name: entry.name,
+          origin: "marketplace",
+          error,
+          blocksNamedResolution: true,
+        });
+        const namedOutcomes = outcomes.get(entry.name) ?? [];
+        namedOutcomes.push({ error });
+        outcomes.set(entry.name, namedOutcomes);
+        continue;
+      }
+      if (!candidate) {
+        issues.push({
+          name: entry.name,
+          origin: "marketplace",
+          error: new Error(
+            `Marketplace plugin "${entry.name}" in ${filePath} has no supported plugin manifest at ${relativePath(sourceDir, pluginDir)}.`,
+          ),
+          blocksNamedResolution: false,
+        });
+        continue;
+      }
+      referencedDirs.add(resolve(pluginDir));
+      candidates.push(candidate);
+      const namedOutcomes = outcomes.get(entry.name) ?? [];
+      namedOutcomes.push({ candidate });
+      outcomes.set(entry.name, namedOutcomes);
     }
   }
-
-  return paths;
+  return { candidates, unsupportedSources, outcomes, issues, referencedDirs };
 }
 
 async function scanPluginDirectories(
@@ -515,6 +596,9 @@ async function scanPluginDirectories(
   dir: string,
   depth = 2,
   label = "Plugin source",
+  origin: PluginCandidateOrigin = "conventional",
+  issues: PluginCatalog["issues"] = [],
+  skippedDirs: ReadonlySet<string> = new Set(),
 ): Promise<PluginCandidate[]> {
   if (depth <= 0 || !await isDirectory(dir)) {return [];}
 
@@ -523,12 +607,33 @@ async function scanPluginDirectories(
   for (const entry of entries) {
     if ((!entry.isDirectory() && !entry.isSymbolicLink()) || entry.name.startsWith(".")) {continue;}
     const childDir = join(dir, entry.name);
-    const candidate = await loadPluginCandidate(sourceRoot, childDir, {}, label);
+    if (skippedDirs.has(resolve(childDir))) {continue;}
+    let candidate: PluginCandidate | null;
+    try {
+      candidate = await loadPluginCandidate(sourceRoot, childDir, {}, label, origin);
+    } catch (err) {
+      issues.push({
+        name: entry.name,
+        path: relativePath(sourceRoot, childDir),
+        origin: origin === "canonical" ? "canonical" : "conventional",
+        error: err instanceof Error ? err : new Error(String(err)),
+        blocksNamedResolution: true,
+      });
+      candidate = null;
+    }
     if (candidate) {
       matches.push(candidate);
       continue;
     }
-    matches.push(...await scanPluginDirectories(sourceRoot, childDir, depth - 1, label));
+    matches.push(...await scanPluginDirectories(
+      sourceRoot,
+      childDir,
+      depth - 1,
+      label,
+      origin,
+      issues,
+      skippedDirs,
+    ));
   }
   return matches;
 }
@@ -547,6 +652,7 @@ async function loadPluginCandidate(
   pluginDir: string,
   overlay: Partial<LegacyPluginManifest> = {},
   label = "Plugin source",
+  origin: PluginCandidateOrigin = "root",
 ): Promise<PluginCandidate | null> {
   if (!existsSync(pluginDir)) {return null;}
   await assertInsideSourceRoot(sourceRoot, pluginDir, label);
@@ -576,6 +682,7 @@ async function loadPluginCandidate(
     path: relativePath(sourceRoot, pluginDir),
     manifest: combined,
     nativeSource: loaded?.nativeSource,
+    origin,
   };
 }
 
@@ -717,18 +824,17 @@ function candidateMatches(name: string, candidate: PluginCandidate): boolean {
 
 /** Applies discovery precedence: directory-name matches win before manifest-name fallback. */
 function rankedCandidates(name: string, candidates: PluginCandidate[]): PluginCandidate[] {
-  const unique = dedupeCandidates(candidates);
-  const directoryMatches = unique.filter((candidate) => basename(candidate.dir) === name);
+  const directoryMatches = candidates.filter((candidate) => basename(candidate.dir) === name);
   return directoryMatches.length > 0
     ? directoryMatches
-    : unique.filter((candidate) => candidate.name === name);
+    : candidates.filter((candidate) => candidate.name === name);
 }
 
-function dedupeCandidates(candidates: PluginCandidate[]): PluginCandidate[] {
+async function dedupeCandidates(candidates: PluginCandidate[]): Promise<PluginCandidate[]> {
   const seen = new Set<string>();
   const result: PluginCandidate[] = [];
   for (const candidate of candidates) {
-    const key = resolve(candidate.dir);
+    const key = `${await realpath(candidate.dir)}\0${candidate.name}`;
     if (seen.has(key)) {continue;}
     seen.add(key);
     result.push(candidate);

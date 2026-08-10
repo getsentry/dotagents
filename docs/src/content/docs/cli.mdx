@@ -79,8 +79,10 @@ dotagents add <source> [<name>...] [--name <name>...] [--ref <ref>] [--all]
 Add and install plugins or skills. For git and local sources, dotagents discovers
 plugins first. If it finds any, the whole source is treated as plugin-only and
 skills in that source are ignored. Otherwise the existing skill discovery flow
-is used. Well-known HTTPS catalogs are always skill-only. A single dependency is
-selected automatically; multiple dependencies use a picker in interactive mode.
+is used. Malformed plugin-shaped content fails without falling back to skills.
+Local plugin sources that overlap the project's managed `.agents/plugins`
+directory are rejected before configuration changes. Well-known HTTPS catalogs are always skill-only. A single dependency is selected
+automatically; multiple dependencies use a picker in interactive mode.
 
 Shorthand `owner/repo` resolves through `defaultRepositorySource` in
 `agents.toml`.
@@ -91,6 +93,9 @@ Options:
 - `--skill <name>` is a compatibility alias for `--name` and does not force skill mode.
 - `--ref <ref>` pins to a specific tag, branch, or commit.
 - `--all` writes every currently discovered plugin explicitly in plugin mode. In skill mode it adds the existing wildcard entry (`name = "*"`), which can include future upstream skills.
+
+Plugin declarations record the exact discovered source path (`.` for a plugin
+at the source root), so later additions to the source cannot change selection.
 
 Do not mix positional names and `--skill` or `--name` flags in the same
 command.

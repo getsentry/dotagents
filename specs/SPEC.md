@@ -143,7 +143,7 @@ allow_all = true
 - `git_domains` entries match by prefix: `gitlab.com` matches all repos on GitLab, `gitlab.com/myorg` matches repos under that org, `gitlab.com/myorg/repo` matches only that repo
 - Local `path:` sources are always allowed (already sandboxed to project root)
 
-Trust is checked before any network work in `dotagents add` for skills and `dotagents install` for configured skills, subagents, and plugins.
+Trust is checked before any network work in `dotagents add` for dependencies and `dotagents install` for configured skills, subagents, and plugins.
 
 #### `[project]`
 
@@ -538,7 +538,7 @@ dotagents add getsentry/skills --skill find-bugs --skill code-review
 dotagents add getsentry/warden warden-skill --ref v1.0.0
 dotagents add getsentry/skills --all
 dotagents add getsentry/agent-plugins review-tools
-dotagents add path:../agent-plugins --all
+dotagents add path:./agent-plugins --all
 dotagents add path:../shared-skills/my-skill
 dotagents add myorg/single-skill-repo   # auto-detects if repo has one skill
 ```
@@ -557,7 +557,8 @@ dotagents add myorg/single-skill-repo   # auto-detects if repo has one skill
    - Plugin `--all` selects every current plugin explicitly
    - Skill `--all` keeps the wildcard entry that can include future upstream skills
 6. Preflight every requested name and duplicate before changing config. A single duplicate errors; multi-name additions skip duplicates and fail only when all are already declared.
-7. Append explicit `[[plugins]]` entries (including a safe non-root `path`) or the selected `[[skills]]` entries
+   - Reject local plugin sources that overlap the project's managed `.agents/plugins` directory before changing config
+7. Append explicit `[[plugins]]` entries (including the exact safe `path`, with `.` for a source-root plugin) or the selected `[[skills]]` entries
 8. Run install exactly once and update `agents.lock`
 
 Plugins are project-only. If user scope is active and plugin discovery succeeds,

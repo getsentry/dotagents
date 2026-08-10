@@ -263,6 +263,15 @@ describe("writer", () => {
       expect(content).toContain('ref = "release/v1"');
       expect(content).toContain('path = "plugins/review-tools"');
       expect(content).not.toContain('path = ""');
+      expect((await loadConfig(configPath)).plugins).toEqual([
+        {
+          name: "review-tools",
+          source: 'git:https://example.com/org/"review-tools"',
+          ref: "release/v1",
+          path: "plugins/review-tools",
+        },
+        { name: "root-plugin", source: "path:./plugins" },
+      ]);
     });
   });
 
