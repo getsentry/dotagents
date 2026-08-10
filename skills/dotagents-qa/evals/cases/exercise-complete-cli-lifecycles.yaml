@@ -1,0 +1,5 @@
+behavior: exercise-complete-cli-lifecycles
+prompt: |
+  Design the exact CLI lifecycle test for --user and --global plugins, including recovery and uninstall. I will provide the checkout afterward; for now, give me the executable test sequence and assertions without running it.
+checks:
+  - judge: The sequence covers init, add, install, list, doctor, deliberate managed-output damage, sync repair, and remove cleanup; uses both flag spellings interchangeably; and asserts config, lockfile, canonical bundle, marketplace, and global harness projection paths.

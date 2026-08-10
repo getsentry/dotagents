@@ -299,7 +299,7 @@ Generated project-scope plugin outputs:
 
 Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated marketplaces and Claude/Cursor/Codex manifests use adjacent `.dotagents-managed` sidecars so client-owned JSON remains schema-native; legacy `metadata.managedBy` output remains recognizable during migration. Managed Grok copies and OpenCode/Pi component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when their on-disk `.dotagents-managed` marker proves ownership.
 
-Plugin declarations are project-scope only for now. `install --user` rejects `[[plugins]]` entries and `sync --user` reports them as unsupported because user-scope runtime plugin projections are not generated yet.
+User-scope plugins install under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated below `~/.agents/`, Codex uses `~/.agents/plugins/marketplace.json` with paths rooted at the user's home, OpenCode projections use `~/.config/opencode/`, and Pi skill projections use `~/.agents/skills/`.
 
 ### Trust
 
@@ -322,7 +322,7 @@ Rules:
 ## CLI Commands
 
 Global flags (before command name):
-- `--user` -- Operate on user scope (`~/.agents/`) instead of the current project
+- `--user`, `--global` -- Operate on user scope (`~/.agents/`) instead of the current project
 - `--help`, `-h` -- Show help
 - `--version`, `-V` -- Show version
 
@@ -345,7 +345,7 @@ Create `agents.toml` and `.agents/skills/` directory. Automatically includes the
 npx @sentry/dotagents install
 ```
 
-Install and refresh dependencies from `agents.toml`. Resolves sources, copies skills, installs subagents and project-scope plugins, writes the lockfile, creates symlinks, and generates MCP, hook, subagent, and plugin configs. There is no separate update command. The deprecated `--frozen` flag prints a warning and performs the same normal install; use explicit `ref` values to pin sources. `install --user` rejects plugin declarations because user-scope plugin projections are not generated yet.
+Install and refresh dependencies from `agents.toml`. Resolves sources, copies skills, installs subagents and plugins in the active scope, writes the lockfile, creates symlinks, and generates MCP, hook, subagent, and plugin configs. There is no separate update command. The deprecated `--frozen` flag prints a warning and performs the same normal install; use explicit `ref` values to pin sources.
 
 ### add
 
@@ -363,11 +363,11 @@ Add and install plugins or skills. Git and local sources are classified once: if
 | `--ref <ref>` | Pin to a specific tag, branch, or commit |
 | `--all` | Add every current plugin explicitly, or all skills as a wildcard (`name = "*"`) |
 
-When a source has one dependency of the selected kind, it is added automatically. Multiple dependencies use a picker in a TTY or are listed with selection guidance in non-interactive mode. Plugin adds are project-only; `--user add` rejects a detected plugin source before changing user state.
+When a source has one dependency of the selected kind, it is added automatically. Multiple dependencies use a picker in a TTY or are listed with selection guidance in non-interactive mode. Plugin adds support project and user scope.
 
 When adding multiple dependencies, names already declared for that kind are skipped with a warning. The command fails if all specified names already exist. Positional names and `--name`/`--skill` flags cannot be mixed. Plugin `--all` is a snapshot of current candidates; skill `--all` remains a wildcard that can include future upstream skills.
 
-Plugin declarations persist the exact discovered source path (`.` for a source-root plugin), preventing later source inventory changes from changing selection.
+Plugin declarations persist the exact discovered source path (`.` for a source-root plugin), preventing later source inventory changes from changing selection. If config mutation or installation fails, `add` restores the previous `agents.toml` content so the failed dependency is not left declared.
 
 ### remove
 
@@ -469,7 +469,7 @@ Skills from wildcard entries are marked with a wildcard indicator.
 npx @sentry/dotagents doctor [--fix]
 ```
 
-Check project health: gitignore setup, installed skills and plugins, symlinks, and legacy config fields. Use `--fix` to auto-repair issues; use `sync` to repair generated runtime config drift.
+Check project health: gitignore setup, installed skills and plugins, plugin runtime projections, symlinks, and legacy config fields. Use `--fix` to auto-repair issues; use `sync` to repair generated runtime config drift.
 
 | Flag | Description |
 |------|-------------|
@@ -499,13 +499,14 @@ Operates on the current project directory. Requires `agents.toml` at the project
 - Skills: `<project>/.agents/skills/`
 - Lockfile: `<project>/agents.lock`
 
-### User Scope (`--user`)
+### User Scope (`--user` or `--global`)
 
 Operates on the user's home directory. For skills shared across all projects.
 
 - Config: `~/.agents/agents.toml`
 - Skills: `~/.agents/skills/`
 - Lockfile: `~/.agents/agents.lock`
+- Plugins: `~/.agents/plugins/`
 - Override location: `DOTAGENTS_HOME` environment variable
 
 User-scope symlinks: `~/.claude/skills/` for Claude and Cursor.

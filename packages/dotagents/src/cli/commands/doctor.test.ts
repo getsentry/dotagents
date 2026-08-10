@@ -189,7 +189,7 @@ source = "path:external-review-tools"
     expect(check?.message).toContain("1 symlink(s)");
   });
 
-  it("reports user-scope plugins as unsupported", async () => {
+  it("reports missing user-scope plugins as installable", async () => {
     const previousHome = process.env["DOTAGENTS_HOME"];
     const userRoot = join(tmpDir, "user-agents");
     process.env["DOTAGENTS_HOME"] = userRoot;
@@ -209,8 +209,42 @@ source = "getsentry/plugins"
       const result = await runDoctor({ scope });
       const check = result.checks.find((c) => c.name === "installed plugins");
       expect(check?.status).toBe("error");
-      expect(check?.message).toContain("User-scope plugins are not supported yet");
-      expect(check?.message).not.toContain("Run 'npx @sentry/dotagents install'");
+      expect(check?.message).toContain("1 plugin(s) not installed: review-tools");
+      expect(check?.message).toContain("Run 'npx @sentry/dotagents install'");
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env["DOTAGENTS_HOME"];
+      } else {
+        process.env["DOTAGENTS_HOME"] = previousHome;
+      }
+    }
+  });
+
+  it("detects missing user-scope plugin runtime projections", async () => {
+    const previousHome = process.env["DOTAGENTS_HOME"];
+    const userRoot = join(tmpDir, "user-agents");
+    process.env["DOTAGENTS_HOME"] = userRoot;
+    const scope = resolveScope("user");
+    const pluginDir = join(scope.pluginsDir, "review-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }));
+    await writeFile(
+      scope.configPath,
+      `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "review-tools"
+source = "getsentry/plugins"
+`,
+    );
+
+    try {
+      const result = await runDoctor({ scope });
+      const check = result.checks.find((c) => c.name === "plugin runtime");
+      expect(check?.status).toBe("warn");
+      expect(check?.message).toContain("Plugin marketplace missing");
+      expect(check?.message).toContain("dotagents sync");
     } finally {
       if (previousHome === undefined) {
         delete process.env["DOTAGENTS_HOME"];

@@ -34,6 +34,7 @@ import {
   pruneInstalledPlugins,
 } from "../../plugins/store.js";
 import { projectedPiSkillNames, prunePluginOutputs } from "../../plugins/runtime/writer.js";
+import { pluginRuntimeLayout } from "../../plugins/runtime/layout.js";
 
 export class RemoveError extends Error {
   constructor(message: string) {
@@ -257,9 +258,7 @@ async function removePluginArtifacts(
       managedPluginNames.add(name);
     }
   }
-  if (scope.scope === "project") {
-    await pruneInstalledPlugins(scope.pluginsDir, managedPluginNames);
-  }
+  await pruneInstalledPlugins(scope.pluginsDir, managedPluginNames);
 
   if (lockfile) {
     for (const name of pluginNames) {
@@ -268,19 +267,21 @@ async function removePluginArtifacts(
     await writeLockfile(scope.lockPath, lockfile);
   }
 
-  if (scope.scope === "project") {
-    const config = await loadConfig(scope.configPath);
-    const remainingPluginConfigs = config.plugins
-      .filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
-      .filter((plugin) => existsSync(join(scope.pluginsDir, plugin.name)));
-    const installedPlugins = await loadInstalledPlugins(scope.pluginsDir, remainingPluginConfigs);
-    if (installedPlugins.issues.length === 0) {
-      await prunePluginOutputs(config.agents, installedPlugins.plugins, scope.root);
-    } else {
-      console.log(chalk.yellow(
-        `Warning: Plugin runtime cleanup was skipped because these remaining plugins could not be loaded: ${installedPlugins.issues.map((issue) => issue.name).join(", ")}.`,
-      ));
-    }
+  const config = await loadConfig(scope.configPath);
+  const remainingPluginConfigs = config.plugins
+    .filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
+    .filter((plugin) => existsSync(join(scope.pluginsDir, plugin.name)));
+  const installedPlugins = await loadInstalledPlugins(scope.pluginsDir, remainingPluginConfigs);
+  if (installedPlugins.issues.length === 0) {
+    await prunePluginOutputs(
+      config.agents,
+      installedPlugins.plugins,
+      pluginRuntimeLayout(scope),
+    );
+  } else {
+    console.log(chalk.yellow(
+      `Warning: Plugin runtime cleanup was skipped because these remaining plugins could not be loaded: ${installedPlugins.issues.map((issue) => issue.name).join(", ")}.`,
+    ));
   }
 
   await updateProjectGitignore(scope);

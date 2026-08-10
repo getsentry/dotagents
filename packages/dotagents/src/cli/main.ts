@@ -23,7 +23,7 @@ type Command = keyof typeof COMMANDS;
 function printUsage(): void {
   console.log(`dotagents - shared tooling for coding agents
 
-Usage: npx @sentry/dotagents [--user] <command> [options]
+Usage: npx @sentry/dotagents [--user|--global] <command> [options]
 
 Commands:
   init        Initialize agents.toml and .agents/skills/
@@ -38,15 +38,14 @@ Commands:
 
 Options:
   --user      Operate on user-scope (~/.agents/) instead of project
+  --global    Alias for --user
   --help, -h  Show this help message
   --version   Show version`);
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
-  const args = [...argv];
-  const userIndex = args.indexOf("--user");
-  const isUser = userIndex !== -1;
-  if (isUser) {args.splice(userIndex, 1);}
+  const isUser = argv.some((arg) => arg === "--user" || arg === "--global");
+  const args = argv.filter((arg) => arg !== "--user" && arg !== "--global");
 
   const first = args[0];
   if (!first || first === "--help" || first === "-h") {

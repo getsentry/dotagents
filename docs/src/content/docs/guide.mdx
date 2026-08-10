@@ -141,16 +141,18 @@ Project skills live in `agents.toml` and are shared with your team. Personal
 skills apply to all your projects. Use them for tools and workflows only you
 need.
 
-Use `--user` to manage personal skills:
+Use `--user` (or its `--global` alias) to manage personal skills and plugins:
 
 ```shell
 dotagents --user init
 dotagents --user add getsentry/skills --all
 dotagents --user install
+dotagents --global add getsentry/agent-plugin
 ```
 
-Personal skills live in `~/.agents/` and symlink to `~/.claude/skills/` for
-Claude and Cursor. Override the location with `DOTAGENTS_HOME`.
+Personal skills and canonical plugins live in `~/.agents/`. Plugin projections
+target the global Claude, Codex, OpenCode, and Pi locations. Override the
+dotagents location with `DOTAGENTS_HOME`.
 
 When you run dotagents outside a git repo without an `agents.toml`, it falls
 back to user scope automatically.

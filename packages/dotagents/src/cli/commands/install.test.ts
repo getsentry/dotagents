@@ -1080,16 +1080,26 @@ source = "path:./.agents/plugins/local-tools/source"
     expect(existsSync(sourceDir)).toBe(true);
   });
 
-  it("rejects user-scope plugin declarations", async () => {
+  it("installs user-scope plugins and writes global runtime projections", async () => {
     const previousHome = process.env["DOTAGENTS_HOME"];
+    const previousOsHome = process.env["HOME"];
     const dotagentsHome = join(tmpDir, "user-agents");
+    const userHome = join(tmpDir, "home");
     process.env["DOTAGENTS_HOME"] = dotagentsHome;
+    process.env["HOME"] = userHome;
     try {
       const scope = resolveScope("user");
-      await mkdir(scope.root, { recursive: true });
+      const sourceDir = join(scope.root, "plugin-source", "review-tools");
+      await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+      await writeFile(
+        join(sourceDir, "plugin.json"),
+        JSON.stringify({ name: "review-tools", version: "1.0.0" }),
+      );
+      await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
       await writeFile(
         scope.configPath,
         `version = 1
+agents = ["claude", "codex", "opencode", "pi"]
 
 [[plugins]]
 name = "review-tools"
@@ -1097,13 +1107,25 @@ source = "path:plugin-source/review-tools"
 `,
       );
 
-      await expect(runInstall({ scope })).rejects.toThrow(/User-scope plugins are not supported yet/);
-      expect(existsSync(scope.pluginsDir)).toBe(false);
+      const result = await runInstall({ scope });
+      expect(result.installedPlugins).toEqual(["review-tools"]);
+      expect(existsSync(join(scope.pluginsDir, "review-tools", "plugin.json"))).toBe(true);
+      expect(existsSync(join(scope.root, ".claude-plugin", "marketplace.json"))).toBe(true);
+      expect(existsSync(join(scope.root, ".agents", "plugins", "marketplace.json"))).toBe(true);
+      expect(await readlink(join(scope.skillsDir, "review"))).toBe("../plugins/review-tools/skills/review");
+      expect(await readlink(join(userHome, ".config", "opencode", "skills", "review"))).toContain(
+        join("user-agents", "plugins", "review-tools", "skills", "review"),
+      );
     } finally {
       if (previousHome === undefined) {
         delete process.env["DOTAGENTS_HOME"];
       } else {
         process.env["DOTAGENTS_HOME"] = previousHome;
+      }
+      if (previousOsHome === undefined) {
+        delete process.env["HOME"];
+      } else {
+        process.env["HOME"] = previousOsHome;
       }
     }
   });

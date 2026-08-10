@@ -299,7 +299,9 @@ their validated source-relative `path` (`.` for a source-root plugin), so
 subsequent installs select the same directory even if the repository gains more plugins.
 There is no plugin wildcard: `add --all` records a snapshot of every plugin
 currently discovered, while skill `--all` retains its dynamic wildcard meaning.
-CLI plugin add is project-scope only.
+CLI plugin add supports both project and user scope. User scope stores canonical
+bundles in `~/.agents/plugins/` and projects each target into its global runtime
+location.
 Local plugin sources that overlap the project's managed `.agents/plugins`
 directory are rejected before configuration changes.
 

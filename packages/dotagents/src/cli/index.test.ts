@@ -23,4 +23,20 @@ describe("CLI help dispatch", () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining("Reconcile local state"));
     log.mockRestore();
   });
+
+  it.each(["--user", "--global"])("passes %s as user scope", async (scopeFlag) => {
+    const { main } = await import("./main.js");
+
+    await main([scopeFlag, "sync"]);
+
+    expect(sync).toHaveBeenCalledWith([], { user: true });
+  });
+
+  it("accepts both user scope aliases together", async () => {
+    const { main } = await import("./main.js");
+
+    await main(["--user", "--global", "sync"]);
+
+    expect(sync).toHaveBeenCalledWith([], { user: true });
+  });
 });

@@ -45,13 +45,6 @@ export interface InstallResult {
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   const { scope } = opts;
   const config = await loadConfig(scope.configPath);
-  if (scope.scope === "user" && config.plugins.length > 0) {
-    throw new InstallError(
-      "User-scope plugins are not supported yet because plugin runtime projections are project-scoped. " +
-        "Declare plugins in a project agents.toml instead.",
-    );
-  }
-
   const lockfile = await loadLockfile(scope.lockPath);
   const skills = await installSkills(config, lockfile, scope);
   const subagents = await installSubagents(config, scope);

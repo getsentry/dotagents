@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, writeFile, rm, readFile, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -567,6 +566,24 @@ describe("runAdd (local sources)", () => {
     expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe("version = 1\n");
   });
 
+  it("does not fall back to skills when a named marketplace plugin has no manifest", async () => {
+    const sourceDir = join(projectRoot, "broken-marketplace-source");
+    await mkdir(join(sourceDir, "plugins", "review"), { recursive: true });
+    await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
+    await writeFile(join(sourceDir, "skills", "review", "SKILL.md"), SKILL_MD("review"));
+    await writeFile(join(sourceDir, "marketplace.json"), JSON.stringify({
+      name: "broken",
+      plugins: [{ name: "review", source: "./plugins/review" }],
+    }));
+
+    await expect(runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:broken-marketplace-source",
+      names: ["review"],
+    })).rejects.toThrow(/Marketplace plugin "review".*has no supported plugin manifest/);
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe("version = 1\n");
+  });
+
   it("preflights plugin names and persists exact paths and refs in one install", async () => {
     const sourceDir = join(projectRoot, "plugin-catalog");
     await writePlugin(join(sourceDir, "plugins", "alpha"), "alpha");
@@ -778,7 +795,7 @@ describe("runAdd (local sources)", () => {
     expect(install).toHaveBeenCalledOnce();
   });
 
-  it("rejects user-scope plugins before changing config or runtime state", async () => {
+  it("adds user-scope plugins and runs installation", async () => {
     const userRoot = join(tmpDir, "user-home");
     const sourceDir = join(userRoot, "plugin-source");
     await mkdir(userRoot, { recursive: true });
@@ -790,17 +807,32 @@ describe("runAdd (local sources)", () => {
     scope.lockPath = join(userRoot, "agents.lock");
     scope.pluginsDir = join(userRoot, "plugins");
 
+    const install = mockRunInstall();
     await expect(runAdd({
       scope,
       specifier: "path:plugin-source",
-    })).rejects.toThrow("Plugins are project-scope only");
+    })).resolves.toBe("project-only");
 
-    expect(await readFile(scope.configPath, "utf-8")).toBe("version = 1\n");
-    await expect(readFile(scope.lockPath, "utf-8")).rejects.toThrow();
-    await expect(readFile(join(scope.pluginsDir, "project-only", "plugin.json"), "utf-8")).rejects.toThrow();
+    expect(await readFile(scope.configPath, "utf-8")).toContain('name = "project-only"');
+    expect(install).toHaveBeenCalledWith({ scope });
   });
 
-  it("does not bootstrap a missing user config for a detected plugin", async () => {
+  it("restores agents.toml when plugin installation fails", async () => {
+    const sourceDir = join(projectRoot, "plugin-source");
+    await writePlugin(sourceDir, "review-tools");
+    const originalConfig = "version = 1\n# Keep this comment.\n";
+    await writeFile(join(projectRoot, "agents.toml"), originalConfig);
+    vi.spyOn(installModule, "runInstall").mockRejectedValue(new Error("install failed"));
+
+    await expect(runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:plugin-source",
+    })).rejects.toThrow("install failed");
+
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe(originalConfig);
+  });
+
+  it("bootstraps a missing user config for a detected plugin", async () => {
     const userRoot = join(tmpDir, "fresh-user-home");
     await writePlugin(join(userRoot, "plugin-source"), "project-only");
     const scope = resolveScope("user");
@@ -809,14 +841,14 @@ describe("runAdd (local sources)", () => {
     scope.lockPath = join(userRoot, "agents.lock");
     scope.pluginsDir = join(userRoot, "plugins");
 
+    const install = mockRunInstall();
     await expect(runAdd({
       scope,
       specifier: "path:plugin-source",
-    })).rejects.toThrow("Plugins are project-scope only");
+    })).resolves.toBe("project-only");
 
-    expect(existsSync(scope.configPath)).toBe(false);
-    expect(existsSync(scope.lockPath)).toBe(false);
-    expect(existsSync(scope.pluginsDir)).toBe(false);
+    expect(await readFile(scope.configPath, "utf-8")).toContain('name = "project-only"');
+    expect(install).toHaveBeenCalledWith({ scope });
   });
 
 });

@@ -6,12 +6,13 @@ description: dotagents CLI reference.
 ## Usage
 
 ```shell
-dotagents [--user] <command> [options]
+dotagents [--user|--global] <command> [options]
 ```
 
 ## Global Options
 
 - `--user` operates on user scope (`~/.agents/`) instead of the current project.
+- `--global` is an alias for `--user`.
 - `--help`, `-h` shows help.
 - `--version`, `-V` shows version.
 
@@ -35,7 +36,7 @@ agents can discover CLI guidance. It then runs `install` best-effort.
 Options:
 
 - `--agents <list>` comma-separated agent targets (`claude`, `cursor`, `codex`,
-  `vscode`, `opencode`).
+  `vscode`, `opencode`, `grok`, `pi`).
 - `--force` overwrites existing `agents.toml`.
 
 Examples:
@@ -57,10 +58,9 @@ dotagents install
 Install and refresh skill, subagent, and plugin dependencies from `agents.toml`.
 Resolves sources, copies canonical artifacts, writes the lockfile, creates
 symlinks, and generates MCP, hook, subagent, and plugin runtime configs. There
-is no separate update command. Plugins are project-scope only; `dotagents
---user install` rejects configs that declare `[[plugins]]`. The deprecated
-`--frozen` flag prints a warning and performs the same normal install; use
-explicit `ref` values to pin sources.
+is no separate update command. Plugins install into the active project or user
+scope. The deprecated `--frozen` flag prints a warning and performs the same
+normal install; use explicit `ref` values to pin sources.
 
 Example:
 
@@ -96,6 +96,8 @@ Options:
 
 Plugin declarations record the exact discovered source path (`.` for a plugin
 at the source root), so later additions to the source cannot change selection.
+If config mutation or installation fails, `add` restores the previous
+`agents.toml` content rather than leaving a failed dependency declared.
 
 Do not mix positional names and `--skill` or `--name` flags in the same
 command.
@@ -302,10 +304,10 @@ dotagents doctor [--fix]
 ```
 
 Check project health and fix issues. Verifies gitignore setup, installed
-skills/plugins, symlinks, and detects legacy config fields. Use `dotagents sync`
-to repair generated runtime configs. User-scope plugin declarations and
-same-project plugin declarations are reported because plugin runtime projections
-are project-scoped.
+skills/plugins, plugin runtime projections, symlinks, and legacy config fields.
+Use `dotagents sync` to repair generated runtime configs. Same-project plugin
+declarations are reported because a project cannot install a plugin onto its
+own managed destination.
 
 Options:
 
@@ -460,8 +462,8 @@ manifests, Grok plugin directories, OpenCode skill links, and Pi skill links.
 Generalized legacy bundles can also project Markdown agents into OpenCode;
 standard extension agents are preserved but not projected yet. dotagents rejects
 plugin sources that resolve to the same project's
-`.agents/plugins/<name>/` install destination, and user-scope plugins are not
-supported yet.
+`.agents/plugins/<name>/` install destination. User-scope plugins use
+`~/.agents/plugins/<name>/` and global harness projections.
 
 ## Scopes
 
@@ -472,7 +474,7 @@ Skills go to `.agents/skills/` and the lockfile goes to `agents.lock`.
 
 ### User Scope
 
-Manages skills shared across all projects. Files live in `~/.agents/`, and you
+Manages skills and plugins shared across all projects. Files live in `~/.agents/`, and you
 can override that with `DOTAGENTS_HOME`. Claude and Cursor share the
 `~/.claude/skills/` symlink.
 
@@ -480,13 +482,16 @@ can override that with `DOTAGENTS_HOME`. Claude and Cursor share the
 dotagents --user init
 dotagents --user add getsentry/skills --all
 dotagents --user install
+dotagents --global add getsentry/agent-plugin
 ```
 
 When no `agents.toml` exists and you are not inside a git repo, dotagents falls
 back to user scope automatically.
 
-Plugins remain project-only. If `--user add` detects a plugin source, it exits
-without changing the user config, lockfile, installed directories, or runtime output.
+User plugins install into `~/.agents/plugins/`. Claude and Cursor marketplaces
+are generated below `~/.agents/`, Codex uses `~/.agents/plugins/marketplace.json`,
+OpenCode skills use `~/.config/opencode/skills/`, and Pi skills use
+`~/.agents/skills/`.
 
 ## Environment Variables
 

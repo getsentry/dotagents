@@ -54,9 +54,9 @@ npx @sentry/dotagents install
 | `sync` | Reconcile state offline: adopt local skills, prune stale managed ones, repair configs |
 | `mcp` | Manage MCP server declarations |
 | `trust` | Manage trusted sources |
-| `doctor` | Check project health and fix issues |
+| `doctor` | Check project health, including plugin runtime projections, and fix supported issues |
 
-All commands accept `--user` to operate on user scope (`~/.agents/`) instead of the current project.
+All commands accept `--user` or its `--global` alias to operate on user scope (`~/.agents/`) instead of the current project.
 
 ## Source Formats
 
@@ -145,7 +145,7 @@ targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 
 The canonical portable format is an [Agent Plugins](https://agent-plugins.org/) v1 bundle: required `plugin.json`, optional `skills/`, optional `mcp.json`, and reverse-domain client extensions. dotagents preserves those portable source files under `.agents/plugins/<name>/` and generates isolated target harnesses. Generated JSON uses adjacent ownership sidecars, while component symlinks use markers in reserved `.dotagents-managed/` directories, so client-owned JSON remains unchanged. Legacy generalized and native Claude/Cursor/Codex manifests remain discoverable during migration; native imports preserve their owning manifest and expose only core metadata and Agent Skills to other clients. Standard bundles reject legacy root components so client-specific behavior cannot leak across harnesses.
 
-Plugin declarations are project-scope only for now. `dotagents --user add` rejects a detected plugin source without changing user configuration, and `dotagents --user install` rejects `[[plugins]]` entries because user-scope runtime plugin projections are not generated yet.
+User-scope plugins install canonical bundles under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated under `~/.agents/`, the Codex marketplace is generated at `~/.agents/plugins/marketplace.json`, OpenCode skills are linked into `~/.config/opencode/skills/`, and Pi skills are linked into `~/.agents/skills/`. `--global` is an alias for `--user`.
 
 Pi plugin targets are global skill projections rather than isolated plugin installs: a Pi-targeted plugin skill is added to `.agents/skills/` and is therefore visible to other clients that consume that shared directory.
 

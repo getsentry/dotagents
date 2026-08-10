@@ -1,26 +1,29 @@
-import { join, relative } from "node:path";
+import { relative } from "node:path";
 import type { PluginDeclaration } from "../types.js";
 import { selectedAgentIds } from "../targets.js";
 import { stableJson } from "../managed-files.js";
 import { legacyManifestString, manifestString } from "./manifest-values.js";
 import type { RuntimeOutput } from "./types.js";
+import { normalizePluginRuntimeLayout, type PluginRuntimeRoot } from "./layout.js";
 
 /** Lists managed plugin marketplace files that may be generated or pruned. */
-export function marketplaceOutputPaths(projectRoot: string): string[] {
+export function marketplaceOutputPaths(root: PluginRuntimeRoot): string[] {
+  const layout = normalizePluginRuntimeLayout(root);
   return [
-    join(projectRoot, ".agents", "plugins", "marketplace.json"),
-    join(projectRoot, ".claude-plugin", "marketplace.json"),
-    join(projectRoot, ".cursor-plugin", "marketplace.json"),
+    layout.codexMarketplacePath,
+    layout.claudeMarketplacePath,
+    layout.cursorMarketplacePath,
   ];
 }
 
 /** Builds target-specific marketplace JSON outputs for selected plugins. */
 export function marketplaceOutputs(
   agentIds: string[],
-  projectRoot: string,
+  root: PluginRuntimeRoot,
   plugins: PluginDeclaration[],
 ): RuntimeOutput[] {
   if (plugins.length === 0) {return [];}
+  const layout = normalizePluginRuntimeLayout(root);
 
   const outputs: RuntimeOutput[] = [];
   const claudePlugins = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes("claude"));
@@ -28,27 +31,27 @@ export function marketplaceOutputs(
   const codexPlugins = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes("codex"));
 
   if (claudePlugins.length > 0) {
-    const filePath = join(projectRoot, ".claude-plugin", "marketplace.json");
+    const filePath = layout.claudeMarketplacePath;
     outputs.push({
       agent: "claude",
       filePath,
-      content: stableJson(pathMarketplace(projectRoot, "dotagents", claudePlugins)),
+      content: stableJson(pathMarketplace(layout.claudeMarketplaceRoot, "dotagents", claudePlugins)),
     });
   }
   if (cursorPlugins.length > 0) {
-    const filePath = join(projectRoot, ".cursor-plugin", "marketplace.json");
+    const filePath = layout.cursorMarketplacePath;
     outputs.push({
       agent: "cursor",
       filePath,
-      content: stableJson(pathMarketplace(projectRoot, "dotagents", cursorPlugins)),
+      content: stableJson(pathMarketplace(layout.cursorMarketplaceRoot, "dotagents", cursorPlugins)),
     });
   }
   if (codexPlugins.length > 0) {
-    const filePath = join(projectRoot, ".agents", "plugins", "marketplace.json");
+    const filePath = layout.codexMarketplacePath;
     outputs.push({
       agent: "codex",
       filePath,
-      content: stableJson(codexMarketplace(projectRoot, "dotagents-local", codexPlugins)),
+      content: stableJson(codexMarketplace(layout.codexMarketplaceRoot, "dotagents-local", codexPlugins)),
     });
   }
 

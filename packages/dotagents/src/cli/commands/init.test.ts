@@ -113,6 +113,13 @@ describe("runInit", () => {
     expect(config.agents).toEqual(["claude", "cursor"]);
   });
 
+  it("accepts plugin-only Pi and Grok targets", async () => {
+    await runInit({ scope: resolveScope("project", dir), agents: ["pi", "grok"] });
+
+    const config = await loadConfig(join(dir, "agents.toml"));
+    expect(config.agents).toEqual(["pi", "grok"]);
+  });
+
   it("creates agent-specific symlinks when --agents is provided (cursor shares .claude)", async () => {
     await runInit({ scope: resolveScope("project", dir), agents: ["claude", "cursor"] });
 

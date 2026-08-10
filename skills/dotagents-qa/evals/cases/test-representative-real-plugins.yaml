@@ -1,0 +1,5 @@
+behavior: test-representative-real-plugins
+prompt: |
+  Plan a small, high-signal real-plugin compatibility pass for the new flow. Use Sentry, Vercel, and one other major source, but do not start network or Docker work until I provide the checkout.
+checks:
+  - judge: The plan resolves current manifests before choosing selectors and covers getsentry/agent-plugin, vercel/vercel-plugin, and one selected plugin from anthropics/claude-plugins-official, with a clear availability policy and no invented names, selectors, versions, or component counts.

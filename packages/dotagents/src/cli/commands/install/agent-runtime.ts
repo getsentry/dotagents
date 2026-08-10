@@ -11,6 +11,7 @@ import {
   userSubagentResolver,
 } from "../../../subagents/writer.js";
 import { reconcilePluginOutputs } from "../../../plugins/runtime/writer.js";
+import { pluginRuntimeLayout } from "../../../plugins/runtime/layout.js";
 import type { PluginDeclaration } from "../../../plugins/types.js";
 import type { SubagentDeclaration } from "../../../subagents/types.js";
 
@@ -76,13 +77,16 @@ export async function writeSubagentRuntime(
   return result.warnings;
 }
 
-/** Writes project-scoped plugin runtime projections. */
+/** Writes plugin runtime projections for the active scope. */
 export async function writePluginRuntime(
   config: AgentsConfig,
   scope: ScopeRoot,
   plugins: PluginDeclaration[],
 ): Promise<{ agent: string; name: string; message: string }[]> {
-  if (scope.scope !== "project") {return [];}
-  const { result } = await reconcilePluginOutputs(config.agents, plugins, scope.root);
+  const { result } = await reconcilePluginOutputs(
+    config.agents,
+    plugins,
+    pluginRuntimeLayout(scope),
+  );
   return result.warnings;
 }

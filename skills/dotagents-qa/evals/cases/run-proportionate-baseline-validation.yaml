@@ -1,0 +1,5 @@
+behavior: run-proportionate-baseline-validation
+prompt: |
+  I changed plugin installation and runtime projection code. Give me the bounded repository-validation command set and failure policy you would use before opening the PR. The checkout will arrive later, so do not execute anything yet.
+checks:
+  - judge: The plan includes focused regression coverage plus pnpm check, pnpm qa:example, and pnpm qa:plugins, requires a concrete task-specific reason for any omission, and treats failures as findings rather than bypassing them.

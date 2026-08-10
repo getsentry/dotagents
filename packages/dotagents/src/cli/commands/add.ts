@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { realpath } from "node:fs/promises";
+import { readFile, realpath, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
@@ -431,8 +431,19 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
     throw new AddError("Cannot use --all with --name. Use one or the other.");
   }
 
-  async function persistSkills(selection: SkillSelection): Promise<DetailedAddResult> {
+  async function persistAndInstall(mutateConfig: () => Promise<void>): Promise<void> {
     if (needsUserBootstrap) {await ensureUserScopeBootstrapped(scope);}
+    const previousConfig = await readFile(configPath, "utf-8");
+    try {
+      await mutateConfig();
+      await runInstall({ scope });
+    } catch (err) {
+      await writeFile(configPath, previousConfig, "utf-8");
+      throw err;
+    }
+  }
+
+  async function persistSkills(selection: SkillSelection): Promise<DetailedAddResult> {
     if (selection.type === "wildcard") {
       if (
         config.skills.some(
@@ -445,11 +456,12 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
           `A wildcard entry for "${sourceForStorage}" already exists in agents.toml.`,
         );
       }
-      await addWildcardToConfig(configPath, sourceForStorage, {
-        ...refOpts,
-        exclude: [],
+      await persistAndInstall(async () => {
+        await addWildcardToConfig(configPath, sourceForStorage, {
+          ...refOpts,
+          exclude: [],
+        });
       });
-      await runInstall({ scope });
       return { kind: "skill", result: "*" };
     }
 
@@ -460,11 +472,12 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
           `Skill "${name}" already exists in agents.toml. Remove it first to re-add.`,
         );
       }
-      await addSkillToConfig(configPath, name, {
-        source: sourceForStorage,
-        ...refOpts,
+      await persistAndInstall(async () => {
+        await addSkillToConfig(configPath, name, {
+          source: sourceForStorage,
+          ...refOpts,
+        });
       });
-      await runInstall({ scope });
       return { kind: "skill", result: name };
     }
 
@@ -488,13 +501,14 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
         `All ${qualifier} skills already exist in agents.toml.`,
       );
     }
-    for (const name of toAdd) {
-      await addSkillToConfig(configPath, name, {
-        source: sourceForStorage,
-        ...refOpts,
-      });
-    }
-    await runInstall({ scope });
+    await persistAndInstall(async () => {
+      for (const name of toAdd) {
+        await addSkillToConfig(configPath, name, {
+          source: sourceForStorage,
+          ...refOpts,
+        });
+      }
+    });
     return { kind: "skill", result: toAdd };
   }
 
@@ -507,14 +521,15 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
           `Plugin "${candidate.name}" already exists in agents.toml. Remove it first to re-add.`,
         );
       }
-      await addPluginsToConfig(configPath, [{
-        name: candidate.name,
-        source: sourceForStorage,
-        ...refOpts,
-        // Pin every discovered directory so later source inventory changes cannot alter selection.
-        path: candidate.path || ".",
-      }]);
-      await runInstall({ scope });
+      await persistAndInstall(async () => {
+        await addPluginsToConfig(configPath, [{
+          name: candidate.name,
+          source: sourceForStorage,
+          ...refOpts,
+          // Pin every discovered directory so later source inventory changes cannot alter selection.
+          path: candidate.path || ".",
+        }]);
+      });
       return { kind: "plugin", result: candidate.name };
     }
 
@@ -536,16 +551,17 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
         : "specified";
       throw new AddError(`All ${qualifier} plugins already exist in agents.toml.`);
     }
-    await addPluginsToConfig(
-      configPath,
-      toAdd.map((candidate) => ({
-        name: candidate.name,
-        source: sourceForStorage,
-        ...refOpts,
-        path: candidate.path || ".",
-      })),
-    );
-    await runInstall({ scope });
+    await persistAndInstall(async () => {
+      await addPluginsToConfig(
+        configPath,
+        toAdd.map((candidate) => ({
+          name: candidate.name,
+          source: sourceForStorage,
+          ...refOpts,
+          path: candidate.path || ".",
+        })),
+      );
+    });
     return { kind: "plugin", result: toAdd.map((candidate) => candidate.name) };
   }
 
@@ -553,7 +569,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
   let plugins: PluginCandidate[] = [];
   if (acquired.pluginEligible) {
     try {
-      plugins = await discoverPlugins(acquired.rootDir);
+      plugins = await discoverPlugins(acquired.rootDir, namesOverride);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new AddError(message);
@@ -562,11 +578,6 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
 
   // Plugin presence classifies the entire source; bundled and standalone skills stay hidden.
   if (plugins.length > 0) {
-    if (scope.scope === "user") {
-      throw new AddError(
-        "Plugins are project-scope only. Rerun this command from a project without --user.",
-      );
-    }
     if (namesOverride?.length) {
       for (const name of namesOverride) {
         if (!PLUGIN_NAME_PATTERN.test(name)) {
