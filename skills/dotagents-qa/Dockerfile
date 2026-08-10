@@ -22,9 +22,11 @@ RUN mkdir -p "$PNPM_HOME" "$COREPACK_HOME" \
 RUN npm install -g --no-audit --no-fund \
     @anthropic-ai/claude-code@latest \
     @openai/codex@latest \
+    @earendil-works/pi-coding-agent@latest \
     opencode-ai@latest \
   && claude --version \
   && codex --version \
+  && pi --version \
   && opencode --version
 
 WORKDIR /sandbox

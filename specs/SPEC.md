@@ -269,7 +269,7 @@ compatibility implementation (see the remaining gaps in `specs/plugins.md`):
 
 Generated plugin JSON is stable: keys are sorted, plugin entries are sorted by name, and files end with one trailing newline. Generated marketplaces and Claude/Cursor/Codex manifests use adjacent `.dotagents-managed` sidecars; OpenCode/Pi component symlinks use marker files in reserved sibling `.dotagents-managed/` directories. This keeps ownership explicit without changing client-owned JSON or consuming a valid component name. Legacy `metadata.managedBy` output remains recognizable during migration. Managed Grok copies and component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when their on-disk `.dotagents-managed` marker proves ownership.
 
-Plugins are currently project-scope only. `install --user` rejects `[[plugins]]` entries because user-scope runtime plugin projections are not generated yet.
+User scope installs canonical plugins into `~/.agents/plugins/<name>/`. It generates Claude and Cursor marketplaces below `~/.agents/`, a Codex marketplace at `~/.agents/plugins/marketplace.json` whose local paths are rooted at the user's home, OpenCode skill and legacy-agent projections below `~/.config/opencode/`, and Pi skill projections below `~/.agents/skills/`.
 
 #### Supported Agents
 
@@ -508,7 +508,7 @@ dotagents install
    b. Discover skill within the repo
    c. Copy skill directory into `.agents/skills/<name>/`
 3. Resolve configured subagents
-4. Resolve and install configured project-scope plugins into `.agents/plugins/<name>/`; reject user-scope plugin declarations
+4. Resolve and install configured plugins into `.agents/plugins/<name>/` for project scope or `~/.agents/plugins/<name>/` for user scope
 5. Write `agents.lock` with the current configured skills, subagents, and plugins
 6. Install configured subagents into `.agents/agents/`
 7. Regenerate `.agents/.gitignore`
@@ -560,11 +560,12 @@ dotagents add myorg/single-skill-repo   # auto-detects if repo has one skill
    - Reject local plugin sources that overlap the project's managed `.agents/plugins` directory before changing config
 7. Append explicit `[[plugins]]` entries (including the exact safe `path`, with `.` for a source-root plugin) or the selected `[[skills]]` entries
 8. Run install exactly once and update `agents.lock`
+   - If config mutation or installation fails, restore the pre-add `agents.toml` content so a failed add does not leave a declaration behind
 
-Plugins are project-only. If user scope is active and plugin discovery succeeds,
-`add` exits before changing user configuration, the lockfile, installed files,
-or generated runtime state. Mixed plugin-and-skill selection from one source is
-intentionally unsupported; plugin presence wins for the whole source.
+User scope uses the same discovery and lifecycle as project scope, with canonical
+bundles and runtime projections rooted in the user paths described above. Mixed
+plugin-and-skill selection from one source is intentionally unsupported; plugin
+presence wins for the whole source.
 
 **Flags:**
 - `--ref <ref>`: Pin to a specific tag/branch/commit
@@ -678,7 +679,8 @@ dotagents doctor [--fix]
 6. `.agents/skills/` directory exists
 7. All declared skills are installed
 8. All declared plugins are installed
-9. Symlinks are intact
+9. Generated plugin runtime artifacts are intact
+10. Symlinks are intact
 
 **Flags:**
 - `--fix`: Auto-fix issues where possible (add gitignore entries, remove legacy fields, create missing `.agents/.gitignore`)

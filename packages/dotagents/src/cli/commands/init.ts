@@ -15,6 +15,7 @@ import type { TrustConfig } from "../../config/schema.js";
 import { GitError, TrustError } from "@sentry/dotagents-lib";
 import { formatGitError, formatTrustError } from "../errors.js";
 import { runInstall } from "./install.js";
+import { allPluginOnlyAgentIds } from "../../plugins/targets.js";
 
 const BOOTSTRAP_SKILL = { name: "dotagents", source: "getsentry/dotagents" } as const;
 
@@ -37,7 +38,7 @@ export async function runInit(opts: InitOptions): Promise<void> {
   }
 
   // Validate agent IDs before writing config
-  const validIds = allAgentIds();
+  const validIds = [...allAgentIds(), ...allPluginOnlyAgentIds()];
   if (agents) {
     const unknown = agents.filter((id) => !validIds.includes(id));
     if (unknown.length > 0) {
@@ -201,7 +202,11 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
   const selectedAgents = prompt(
     await clack.multiselect({
       message: "Which agents do you use? (space to select, enter to confirm)",
-      options: allAgents().map((a) => ({ label: a.displayName, value: a.id })),
+      options: [
+        ...allAgents().map((a) => ({ label: a.displayName, value: a.id })),
+        { label: "Grok Build (plugins)", value: "grok" },
+        { label: "Pi (plugin skills)", value: "pi" },
+      ],
       required: true,
     }),
   );

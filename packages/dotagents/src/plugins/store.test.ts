@@ -507,6 +507,65 @@ describe("plugin store", () => {
     }
   });
 
+  it("prefers repository-root paths in nested Claude marketplaces", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const pluginDir = join(sourceRoot, "plugins", "frontend-design");
+      await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
+      await mkdir(join(pluginDir, ".claude-plugin"), { recursive: true });
+      await writeFile(
+        join(pluginDir, ".claude-plugin", "plugin.json"),
+        JSON.stringify({ name: "frontend-design" }),
+      );
+      await writeFile(
+        join(sourceRoot, ".claude-plugin", "marketplace.json"),
+        JSON.stringify({
+          name: "official",
+          plugins: [{ name: "frontend-design", source: "./plugins/frontend-design" }],
+        }),
+      );
+
+      const fromMarketplace = await resolvePlugin(
+        { name: "frontend-design", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+      expect(fromMarketplace.plugin.pluginDir).toBe(pluginDir);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores unrelated marketplace failures during named discovery", async () => {
+    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
+    try {
+      const pluginDir = join(sourceRoot, "plugins", "frontend-design");
+      await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
+      await mkdir(join(pluginDir, ".claude-plugin"), { recursive: true });
+      await writeFile(
+        join(pluginDir, ".claude-plugin", "plugin.json"),
+        JSON.stringify({ name: "frontend-design" }),
+      );
+      await writeFile(
+        join(sourceRoot, ".claude-plugin", "marketplace.json"),
+        JSON.stringify({
+          name: "official",
+          plugins: [
+            { name: "broken", source: "./plugins/broken" },
+            { name: "frontend-design", source: "./plugins/frontend-design" },
+          ],
+        }),
+      );
+
+      await expect(discoverPlugins(sourceRoot)).rejects.toThrow('Marketplace plugin "broken"');
+      await expect(discoverPlugins(sourceRoot, ["frontend-design"])).resolves.toMatchObject([
+        { name: "frontend-design", path: "plugins/frontend-design" },
+      ]);
+    } finally {
+      await rm(sourceRoot, { recursive: true, force: true });
+    }
+  });
+
   it("skips unsupported marketplace entries without dropping local entries", async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
     try {

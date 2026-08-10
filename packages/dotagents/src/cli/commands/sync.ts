@@ -18,6 +18,7 @@ import { projectSubagentResolver, reconcileSubagentConfigs, userSubagentResolver
 import { loadInstalledSubagents, pruneInstalledSubagents } from "../../subagents/store.js";
 import { isInPlacePluginSource, isSameProjectPluginConfig, loadInstalledPlugins, pruneInstalledPlugins } from "../../plugins/store.js";
 import { projectedPiSkillNames, reconcilePluginOutputs, verifyPluginOutputs } from "../../plugins/runtime/writer.js";
+import { pluginRuntimeLayout } from "../../plugins/runtime/layout.js";
 import { userMcpResolver } from "../../targets/paths.js";
 import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
@@ -78,12 +79,9 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
         .map((plugin) => plugin.name)
       : [],
   );
-  const userScopePluginNames = scope.scope === "user"
-    ? config.plugins.map((plugin) => plugin.name)
-    : [];
-  const runtimePluginConfigs = scope.scope === "user"
-    ? []
-    : config.plugins.filter((plugin) => !selfInstalledPluginNames.has(plugin.name));
+  const runtimePluginConfigs = config.plugins.filter(
+    (plugin) => !selfInstalledPluginNames.has(plugin.name),
+  );
 
   for (const name of selfInstalledPluginNames) {
     issues.push({
@@ -92,14 +90,6 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       message: `Plugin "${name}" resolves to .agents/plugins/${name}. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.`,
     });
   }
-  for (const name of userScopePluginNames) {
-    issues.push({
-      type: "plugins",
-      name,
-      message: `Plugin "${name}" is declared in user scope, but user-scope plugins are not supported yet. Declare plugins in a project agents.toml instead.`,
-    });
-  }
-
   // 1. Adopt orphaned skills (installed but not in agents.toml)
   if (existsSync(skillsDir)) {
     const adoptedLockEntries: Record<string, { source: string }> = {};
@@ -342,14 +332,15 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const prunedInstalledPlugins = await pruneInstalledPlugins(pluginsDir, staleManagedPluginNames);
   let pluginIssues: Awaited<ReturnType<typeof verifyPluginOutputs>> = [];
 
-  if (scope.scope === "project" && installedPluginResult.issues.length === 0) {
+  const runtimeLayout = pluginRuntimeLayout(scope);
+  if (installedPluginResult.issues.length === 0) {
     const { result: pluginResult, pruned: prunedPluginOutputs } = await reconcilePluginOutputs(
       config.agents,
       pluginDecls,
-      scope.root,
+      runtimeLayout,
     );
     pluginsRepaired = pluginResult.written + prunedPluginOutputs.length + prunedInstalledPlugins.length;
-    pluginIssues = await verifyPluginOutputs(config.agents, pluginDecls, scope.root);
+    pluginIssues = await verifyPluginOutputs(config.agents, pluginDecls, runtimeLayout);
 
     for (const warning of pluginResult.warnings) {
       issues.push({
@@ -358,7 +349,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
         message: warning.message,
       });
     }
-  } else if (scope.scope === "project") {
+  } else {
     pluginsRepaired = prunedInstalledPlugins.length;
   }
 

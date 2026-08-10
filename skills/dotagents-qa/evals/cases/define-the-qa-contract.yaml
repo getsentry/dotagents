@@ -1,0 +1,5 @@
+behavior: define-the-qa-contract
+prompt: |
+  We just published @sentry/dotagents@2.0.0. Before anyone starts the potentially long Docker run, give me the precise QA contract you would use. If that release fails and we patch it, explain how the follow-up build is tracked without mixing the evidence. Do not execute the plan yet.
+checks:
+  - judge: The proposed contract explicitly identifies the exact registry package as the initial subject, defines scopes, harnesses, isolated fixtures, and pass evidence, and keeps any later packed-local-build validation distinct from the published-release result.

@@ -395,6 +395,13 @@ async function resolvePluginCandidate(
   }
 
   const catalog = await discoverPluginCatalog(sourceDir);
+  return resolveNamedPluginCandidate(catalog, config);
+}
+
+function resolveNamedPluginCandidate(
+  catalog: PluginCatalog,
+  config: Pick<PluginConfig, "name" | "source">,
+): PluginCandidate | null {
   const { candidates } = catalog;
   const canonicalPath = posix.join(".agents", "plugins", config.name);
   const canonical = candidates.find((candidate) => candidate.path === canonicalPath);
@@ -440,13 +447,28 @@ async function resolvePluginCandidate(
 }
 
 /** Discovers valid plugins from supported source locations. */
-export async function discoverPlugins(sourceDir: string): Promise<PluginCandidate[]> {
+export async function discoverPlugins(
+  sourceDir: string,
+  requestedNames?: string[],
+): Promise<PluginCandidate[]> {
   const catalog = await discoverPluginCatalog(sourceDir);
-  if (catalog.issues[0]) {throw catalog.issues[0].error;}
-  for (const candidate of catalog.candidates) {
+  let candidates = catalog.candidates;
+  if (requestedNames?.length) {
+    const requested: PluginCandidate[] = [];
+    for (const name of requestedNames) {
+      const candidate = resolveNamedPluginCandidate(catalog, { name, source: sourceDir });
+      if (candidate) {requested.push(candidate);}
+    }
+    if (requested.length > 0) {
+      candidates = await dedupeCandidates(requested);
+    }
+  } else if (catalog.issues[0]) {
+    throw catalog.issues[0].error;
+  }
+  for (const candidate of candidates) {
     await assertPluginBundleSymlinksContained(candidate.dir);
   }
-  return catalog.candidates;
+  return candidates;
 }
 
 async function discoverPluginCatalog(sourceDir: string): Promise<PluginCatalog> {
@@ -497,8 +519,9 @@ async function discoverPluginCatalog(sourceDir: string): Promise<PluginCatalog> 
 
 /**
  * Reads marketplace selector files and resolves only explicit local sources.
- * Relative paths are anchored at the marketplace file directory, plus any
- * marketplace-level `metadata.pluginRoot` prefix.
+ * Relative paths prefer the repository root used by current Claude
+ * marketplaces, then fall back to the marketplace file directory for legacy
+ * catalogs. Both forms remain contained by the source root.
  */
 async function discoverFromMarketplaces(
   sourceDir: string,
@@ -541,22 +564,40 @@ async function discoverFromMarketplaces(
         continue;
       }
       const marketplaceRoot = dirname(filePath);
-      let pluginDir: string;
+      let pluginDir: string | undefined;
       let candidate: PluginCandidate | null;
       try {
-        pluginDir = await resolveMarketplaceSource(
-          sourceDir,
-          marketplaceRoot,
-          join(root, path),
-          "Marketplace plugin source",
-        );
-        candidate = await loadPluginCandidate(
-          sourceDir,
-          pluginDir,
-          marketplaceManifestOverlay(entry),
-          "Marketplace plugin source",
-          "marketplace",
-        );
+        candidate = null;
+        const resolutionErrors: Error[] = [];
+        const anchors = [...new Set([sourceDir, marketplaceRoot])];
+        for (const anchor of anchors) {
+          let resolvedDir: string;
+          try {
+            resolvedDir = await resolveMarketplaceSource(
+              sourceDir,
+              anchor,
+              join(root, path),
+              "Marketplace plugin source",
+            );
+          } catch (err) {
+            resolutionErrors.push(err instanceof Error ? err : new Error(String(err)));
+            continue;
+          }
+          const resolvedCandidate = await loadPluginCandidate(
+            sourceDir,
+            resolvedDir,
+            marketplaceManifestOverlay(entry),
+            "Marketplace plugin source",
+            "marketplace",
+          );
+          if (!resolvedCandidate) {continue;}
+          pluginDir = resolvedDir;
+          candidate = resolvedCandidate;
+          break;
+        }
+        if (!candidate && resolutionErrors.length === anchors.length) {
+          throw resolutionErrors[0]!;
+        }
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         issues.push({
@@ -575,13 +616,13 @@ async function discoverFromMarketplaces(
           name: entry.name,
           origin: "marketplace",
           error: new Error(
-            `Marketplace plugin "${entry.name}" in ${filePath} has no supported plugin manifest at ${relativePath(sourceDir, pluginDir)}.`,
+            `Marketplace plugin "${entry.name}" in ${filePath} has no supported plugin manifest at ${path}.`,
           ),
           blocksNamedResolution: false,
         });
         continue;
       }
-      referencedDirs.add(resolve(pluginDir));
+      referencedDirs.add(resolve(pluginDir!));
       candidates.push(candidate);
       const namedOutcomes = outcomes.get(entry.name) ?? [];
       namedOutcomes.push({ candidate });

@@ -21,6 +21,11 @@ import {
 } from "../managed-files.js";
 import { NATIVE_PLUGIN_MANIFEST_TARGETS, writePluginManifests } from "./manifests.js";
 import { isSafeComponentPath } from "./component-paths.js";
+import {
+  normalizePluginRuntimeLayout,
+  type PluginRuntimeLayout,
+  type PluginRuntimeRoot,
+} from "./layout.js";
 
 // Owns deterministic runtime plugin projections. Existing runtime artifacts are
 // overwritten only when they carry dotagents managed metadata or a managed marker.
@@ -65,8 +70,9 @@ export async function projectedPiSkillNames(
 export async function writePluginOutputs(
   agentIds: string[],
   plugins: PluginDeclaration[],
-  projectRoot: string,
+  root: PluginRuntimeRoot,
 ): Promise<PluginWriteResult> {
+  const layout = normalizePluginRuntimeLayout(root);
   const warnings: PluginWriteWarning[] = [];
   let written = 0;
   const selected = selectPlugins(agentIds, plugins);
@@ -75,20 +81,20 @@ export async function writePluginOutputs(
     warnings.push(warning);
   }
 
-  for (const output of marketplaceOutputs(agentIds, projectRoot, selected)) {
+  for (const output of marketplaceOutputs(agentIds, layout, selected)) {
     if (await writeManagedJsonOutput(output, warnings)) {written++;}
   }
 
   for (const plugin of selected) {
     const agents = selectedAgentIds(agentIds, plugin);
     written += await writePluginManifests(plugin, agents, warnings);
-    if (agents.includes("grok") && await writeGrokProjection(projectRoot, plugin, warnings)) {
+    if (agents.includes("grok") && await writeGrokProjection(layout, plugin, warnings)) {
       written++;
     }
   }
 
-  written += await writeComponentProjections("opencode", agentIds, selected, projectRoot, warnings);
-  written += await writeComponentProjections("pi", agentIds, selected, projectRoot, warnings);
+  written += await writeComponentProjections("opencode", agentIds, selected, layout, warnings);
+  written += await writeComponentProjections("pi", agentIds, selected, layout, warnings);
 
   return { warnings, written };
 }
@@ -97,10 +103,10 @@ export async function writePluginOutputs(
 export async function reconcilePluginOutputs(
   agentIds: string[],
   plugins: PluginDeclaration[],
-  projectRoot: string,
+  root: PluginRuntimeRoot,
 ): Promise<{ result: PluginWriteResult; pruned: string[] }> {
-  const pruned = await prunePluginOutputs(agentIds, plugins, projectRoot);
-  const result = await writePluginOutputs(agentIds, plugins, projectRoot);
+  const pruned = await prunePluginOutputs(agentIds, plugins, root);
+  const result = await writePluginOutputs(agentIds, plugins, root);
   return { result, pruned };
 }
 
@@ -108,12 +114,13 @@ export async function reconcilePluginOutputs(
 export async function verifyPluginOutputs(
   agentIds: string[],
   plugins: PluginDeclaration[],
-  projectRoot: string,
+  root: PluginRuntimeRoot,
 ): Promise<PluginVerifyIssue[]> {
+  const layout = normalizePluginRuntimeLayout(root);
   const issues: PluginVerifyIssue[] = [];
   const selected = selectPlugins(agentIds, plugins);
 
-  for (const output of marketplaceOutputs(agentIds, projectRoot, selected)) {
+  for (const output of marketplaceOutputs(agentIds, layout, selected)) {
     if (!existsSync(output.filePath)) {
       issues.push({ agent: output.agent, name: "marketplace", issue: `Plugin marketplace missing: ${output.filePath}` });
       continue;
@@ -138,19 +145,19 @@ export async function verifyPluginOutputs(
       }
     }
     if (agents.includes("grok")) {
-      const filePath = join(projectRoot, ".grok", "plugins", plugin.name);
+      const filePath = join(layout.grokPluginsDir, plugin.name);
       if (!existsSync(filePath)) {
         issues.push({ agent: "grok", name: plugin.name, issue: `Grok plugin projection missing: ${filePath}` });
       }
     }
   }
 
-  for (const link of await desiredComponentLinks("opencode", agentIds, selected, projectRoot, [])) {
+  for (const link of await desiredComponentLinks("opencode", agentIds, selected, layout, [])) {
     if (!await symlinkPointsTo(link.destPath, link.sourcePath) || !await isManagedComponentLink(link.destPath)) {
       issues.push({ agent: link.agent, name: link.name, issue: `OpenCode plugin ${link.kind} projection missing: ${link.destPath}` });
     }
   }
-  for (const link of await desiredComponentLinks("pi", agentIds, selected, projectRoot, [])) {
+  for (const link of await desiredComponentLinks("pi", agentIds, selected, layout, [])) {
     if (!await symlinkPointsTo(link.destPath, link.sourcePath) || !await isManagedComponentLink(link.destPath)) {
       issues.push({ agent: link.agent, name: link.name, issue: `Pi plugin ${link.kind} projection missing: ${link.destPath}` });
     }
@@ -163,13 +170,14 @@ export async function verifyPluginOutputs(
 export async function prunePluginOutputs(
   agentIds: string[],
   plugins: PluginDeclaration[],
-  projectRoot: string,
+  root: PluginRuntimeRoot,
 ): Promise<string[]> {
+  const layout = normalizePluginRuntimeLayout(root);
   const pruned: string[] = [];
   const desiredMarketplacePaths = new Set(
-    marketplaceOutputs(agentIds, projectRoot, plugins).map((output) => output.filePath),
+    marketplaceOutputs(agentIds, layout, plugins).map((output) => output.filePath),
   );
-  for (const filePath of marketplaceOutputPaths(projectRoot)) {
+  for (const filePath of marketplaceOutputPaths(layout)) {
     if (desiredMarketplacePaths.has(filePath)) {continue;}
     if (!await isManagedJsonFile(filePath)) {continue;}
     await removeManagedJsonFile(filePath);
@@ -181,7 +189,7 @@ export async function prunePluginOutputs(
       .filter((plugin) => selectedAgentIds(agentIds, plugin).includes("grok"))
       .map((plugin) => plugin.name),
   );
-  const grokDir = join(projectRoot, ".grok", "plugins");
+  const grokDir = layout.grokPluginsDir;
   if (existsSync(grokDir)) {
     const entries = await readdir(grokDir, { withFileTypes: true });
     for (const entry of entries) {
@@ -195,17 +203,17 @@ export async function prunePluginOutputs(
   }
 
   const desiredOpenCodeLinks = new Set(
-    (await desiredComponentLinks("opencode", agentIds, plugins, projectRoot, [])).map((link) => link.destPath),
+    (await desiredComponentLinks("opencode", agentIds, plugins, layout, [])).map((link) => link.destPath),
   );
-  pruned.push(...await pruneManagedComponentLinks(join(projectRoot, ".opencode", "skills"), desiredOpenCodeLinks));
-  pruned.push(...await pruneManagedComponentLinks(join(projectRoot, ".opencode", "agents"), desiredOpenCodeLinks));
+  pruned.push(...await pruneManagedComponentLinks(layout.opencodeSkillsDir, desiredOpenCodeLinks));
+  pruned.push(...await pruneManagedComponentLinks(layout.opencodeAgentsDir, desiredOpenCodeLinks));
 
   const desiredPiLinks = new Set(
-    (await desiredComponentLinks("pi", agentIds, plugins, projectRoot, [])).map((link) => link.destPath),
+    (await desiredComponentLinks("pi", agentIds, plugins, layout, [])).map((link) => link.destPath),
   );
-  pruned.push(...await pruneManagedComponentLinks(join(projectRoot, ".agents", "skills"), desiredPiLinks));
+  pruned.push(...await pruneManagedComponentLinks(layout.piSkillsDir, desiredPiLinks));
 
-  const canonicalPluginDir = join(projectRoot, ".agents", "plugins");
+  const canonicalPluginDir = layout.canonicalPluginsDir;
   if (existsSync(canonicalPluginDir)) {
     const entries = await readdir(canonicalPluginDir, { withFileTypes: true });
     for (const target of NATIVE_PLUGIN_MANIFEST_TARGETS) {
@@ -232,11 +240,11 @@ export async function prunePluginOutputs(
 
 /** Mirrors a plugin bundle into Grok's plugin directory with a managed marker. */
 async function writeGrokProjection(
-  projectRoot: string,
+  layout: PluginRuntimeLayout,
   plugin: PluginDeclaration,
   warnings: PluginWriteWarning[],
 ): Promise<boolean> {
-  const dest = join(projectRoot, ".grok", "plugins", plugin.name);
+  const dest = join(layout.grokPluginsDir, plugin.name);
   if (existsSync(dest)) {
     if (await isManagedProjection(dest)) {
       await rm(dest, { recursive: true, force: true });
@@ -361,11 +369,11 @@ async function writeComponentProjections(
   agent: ComponentProjectionAgent,
   agentIds: string[],
   plugins: PluginDeclaration[],
-  projectRoot: string,
+  layout: PluginRuntimeLayout,
   warnings: PluginWriteWarning[],
 ): Promise<number> {
   let written = 0;
-  for (const link of await desiredComponentLinks(agent, agentIds, plugins, projectRoot, warnings)) {
+  for (const link of await desiredComponentLinks(agent, agentIds, plugins, layout, warnings)) {
     if (await writeManagedComponentLink(link, warnings)) {written++;}
   }
   return written;
@@ -375,13 +383,13 @@ async function desiredComponentLinks(
   agent: ComponentProjectionAgent,
   agentIds: string[],
   plugins: PluginDeclaration[],
-  projectRoot: string,
+  layout: PluginRuntimeLayout,
   warnings: PluginWriteWarning[],
 ): Promise<ComponentLink[]> {
   const links = new Map<string, ComponentLink>();
   const selected = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes(agent));
   for (const plugin of selected) {
-    for (const link of await componentLinks(agent, projectRoot, plugin, warnings)) {
+    for (const link of await componentLinks(agent, layout, plugin, warnings)) {
       const existing = links.get(link.destPath);
       if (existing && existing.sourcePath !== link.sourcePath) {
         warnings.push({
@@ -399,15 +407,15 @@ async function desiredComponentLinks(
 
 async function componentLinks(
   agent: ComponentProjectionAgent,
-  projectRoot: string,
+  layout: PluginRuntimeLayout,
   plugin: PluginDeclaration,
   warnings: PluginWriteWarning[],
 ): Promise<ComponentLink[]> {
   const links: ComponentLink[] = [];
   for (const skillsDir of componentDirs(plugin, "skills", "skills", agent, warnings)) {
     const skillDestRoot = agent === "opencode"
-      ? join(projectRoot, ".opencode", "skills")
-      : join(projectRoot, ".agents", "skills");
+      ? layout.opencodeSkillsDir
+      : layout.piSkillsDir;
     links.push(...await skillComponentLinks(agent, plugin, skillsDir, skillDestRoot, warnings));
   }
 
@@ -417,7 +425,7 @@ async function componentLinks(
         agent,
         plugin,
         agentsDir,
-        join(projectRoot, ".opencode", "agents"),
+        layout.opencodeAgentsDir,
         warnings,
       ));
     }

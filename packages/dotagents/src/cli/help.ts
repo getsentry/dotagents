@@ -1,5 +1,5 @@
 const COMMAND_HELP: Record<string, string> = {
-  init: `Usage: npx @sentry/dotagents [--user] init [options]
+  init: `Usage: npx @sentry/dotagents [--user|--global] init [options]
 
 Initialize agents.toml and the managed .agents directory.
 
@@ -7,14 +7,14 @@ Options:
   --agents <ids>  Comma-separated agent IDs for non-interactive setup
   --force         Replace an existing configuration
   --help, -h      Show this help message`,
-  install: `Usage: npx @sentry/dotagents [--user] install [options]
+  install: `Usage: npx @sentry/dotagents [--user|--global] install [options]
 
 Install or refresh dependencies declared in agents.toml.
 
 Options:
   --frozen        Deprecated compatibility flag; normal install still runs
   --help, -h      Show this help message`,
-  add: `Usage: npx @sentry/dotagents [--user] add <source> [name...] [options]
+  add: `Usage: npx @sentry/dotagents [--user|--global] add <source> [name...] [options]
 
 Discover plugins first, otherwise skills, then add and install the selected dependencies.
 
@@ -24,34 +24,34 @@ Options:
   --ref <ref>     Git tag, branch, or commit
   --all           Add plugins explicitly, or all skills as a wildcard dependency
   --help, -h      Show this help message`,
-  remove: `Usage: npx @sentry/dotagents [--user] remove <name|source> [options]
+  remove: `Usage: npx @sentry/dotagents [--user|--global] remove <name|source> [options]
 
 Remove a skill or plugin, or remove every dependency from a source.
 
 Options:
   -y, --yes       Skip confirmation when excluding or removing by source
   --help, -h      Show this help message`,
-  sync: `Usage: npx @sentry/dotagents [--user] sync [options]
+  sync: `Usage: npx @sentry/dotagents [--user|--global] sync [options]
 
 Reconcile local state without fetching dependency updates.
 
 Options:
   --help, -h      Show this help message`,
-  list: `Usage: npx @sentry/dotagents [--user] list [options]
+  list: `Usage: npx @sentry/dotagents [--user|--global] list [options]
 
 Show declared skills and plugins with installation status.
 
 Options:
   --json          Print structured output
   --help, -h      Show this help message`,
-  doctor: `Usage: npx @sentry/dotagents [--user] doctor [options]
+  doctor: `Usage: npx @sentry/dotagents [--user|--global] doctor [options]
 
 Check configuration, managed state, symlinks, and generated files.
 
 Options:
   --fix           Apply supported repairs
   --help, -h      Show this help message`,
-  mcp: `Usage: npx @sentry/dotagents [--user] mcp <subcommand>
+  mcp: `Usage: npx @sentry/dotagents [--user|--global] mcp <subcommand>
 
 Manage MCP server declarations.
 
@@ -61,7 +61,7 @@ Subcommands:
   list            Show declared MCP servers
 
 Run 'npx @sentry/dotagents mcp <subcommand> --help' for details.`,
-  "mcp add": `Usage: npx @sentry/dotagents [--user] mcp add <name> (--command <cmd> | --url <url>) [options]
+  "mcp add": `Usage: npx @sentry/dotagents [--user|--global] mcp add <name> (--command <cmd> | --url <url>) [options]
 
 Add an MCP server declaration to agents.toml.
 
@@ -71,20 +71,20 @@ Options:
   --header <Key:Value>  HTTP header; repeatable and URL transport only
   --env <VAR>           Environment variable name; repeatable
   --help, -h            Show this help message`,
-  "mcp remove": `Usage: npx @sentry/dotagents [--user] mcp remove <name> [options]
+  "mcp remove": `Usage: npx @sentry/dotagents [--user|--global] mcp remove <name> [options]
 
 Remove an MCP server declaration from agents.toml.
 
 Options:
   --help, -h      Show this help message`,
-  "mcp list": `Usage: npx @sentry/dotagents [--user] mcp list [options]
+  "mcp list": `Usage: npx @sentry/dotagents [--user|--global] mcp list [options]
 
 Show MCP server declarations from agents.toml.
 
 Options:
   --json          Print structured output
   --help, -h      Show this help message`,
-  trust: `Usage: npx @sentry/dotagents [--user] trust <subcommand>
+  trust: `Usage: npx @sentry/dotagents [--user|--global] trust <subcommand>
 
 Manage trusted skill sources.
 
@@ -94,19 +94,19 @@ Subcommands:
   list            Show trusted sources
 
 Run 'npx @sentry/dotagents trust <subcommand> --help' for details.`,
-  "trust add": `Usage: npx @sentry/dotagents [--user] trust add <source> [options]
+  "trust add": `Usage: npx @sentry/dotagents [--user|--global] trust add <source> [options]
 
 Add a trusted GitHub org, owner/repo, or Git domain.
 
 Options:
   --help, -h      Show this help message`,
-  "trust remove": `Usage: npx @sentry/dotagents [--user] trust remove <source> [options]
+  "trust remove": `Usage: npx @sentry/dotagents [--user|--global] trust remove <source> [options]
 
 Remove a trusted source from agents.toml.
 
 Options:
   --help, -h      Show this help message`,
-  "trust list": `Usage: npx @sentry/dotagents [--user] trust list [options]
+  "trust list": `Usage: npx @sentry/dotagents [--user|--global] trust list [options]
 
 Show trusted sources from agents.toml.
 

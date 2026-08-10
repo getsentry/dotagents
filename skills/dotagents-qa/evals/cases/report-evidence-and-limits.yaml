@@ -1,0 +1,13 @@
+behavior: report-evidence-and-limits
+prompt: |
+  Turn these recorded results into a release decision summary. Do not run anything else:
+
+  - Docker image dotagents-qa:local, non-root node user, disposable homes under /sandbox
+  - Published @sentry/dotagents@2.0.0; Sentry source commit abc123; Claude 2.1.226
+  - `dotagents --user add getsentry/agent-plugin` failed because user plugins were unsupported
+  - Packed local artifact /qa-out/sentry-dotagents-2.0.0.tgz from branch feat/user-scope-plugins; same source commit and fixture
+  - `dotagents --user add getsentry/agent-plugin`, `dotagents --global list --json`, `dotagents --user doctor`, deliberate damage plus `dotagents --global sync`, and `dotagents --user remove sentry -y` passed
+  - Inspected /sandbox/user-agents/agents.toml, /sandbox/user-agents/agents.lock, /sandbox/user-agents/plugins/sentry/plugin.json, /sandbox/user-agents/.claude-plugin/marketplace.json, /sandbox/user-agents/.agents/plugins/marketplace.json, /sandbox/home/.config/opencode/skills/sentry, and /sandbox/user-agents/skills/sentry
+  - No credentials were copied; native management and filesystem discovery passed, but no model-backed invocation was attempted
+checks:
+  - judge: The report clearly separates the published-release failure from the packed-local-fix pass and includes the supplied versions, commands, paths, source commit, assertions, confirmed defect, skipped authenticated/model-backed checks, residual risk, and an actionable release recommendation without inventing results.
