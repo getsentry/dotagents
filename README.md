@@ -34,10 +34,6 @@ npx @sentry/dotagents add getsentry/skills --all
 npx @sentry/dotagents add getsentry/agent-plugins review-tools
 ```
 
-`add` is safe to repeat for the same dependency declaration. If it is already
-configured, dotagents keeps `agents.toml` unchanged and refreshes the installed
-skills, plugins, lockfile, and generated runtime files.
-
 This creates `~/.agents/agents.toml` and `~/.agents/agents.lock`, making the dependencies available across projects.
 
 Run `install` again whenever you want to refresh global managed state:

@@ -329,6 +329,24 @@ describe("runAdd", () => {
     expect(install).toHaveBeenCalledOnce();
   });
 
+  it("reports only conflicting skills in a mixed duplicate request", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "review"\nsource = "other/repo"\n`,
+    );
+
+    const error = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: `git:${repoDir}`,
+      names: ["pdf", "review"],
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(AddError);
+    expect((error as Error).message).toBe(
+      "Skills already exist in agents.toml with a different source or ref: review.",
+    );
+  });
+
   it("throws when --all is used with names", async () => {
     const scope = resolveScope("project", projectRoot);
     await expect(
@@ -916,6 +934,40 @@ describe("runAdd (local sources)", () => {
     });
     expect(result).toEqual(["beta"]);
     expect(install).toHaveBeenCalledOnce();
+  });
+
+  it("reports only conflicting plugins in a mixed duplicate request", async () => {
+    const sourceDir = join(projectRoot, "plugin-conflicts");
+    await writePlugin(join(sourceDir, "plugins", "alpha"), "alpha");
+    await writePlugin(join(sourceDir, "plugins", "beta"), "beta");
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      [
+        "version = 1",
+        "",
+        "[[plugins]]",
+        'name = "alpha"',
+        'source = "path:plugin-conflicts"',
+        'path = "plugins/alpha"',
+        "",
+        "[[plugins]]",
+        'name = "beta"',
+        'source = "path:plugin-conflicts"',
+        'path = "different/path"',
+        "",
+      ].join("\n"),
+    );
+
+    const error = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:plugin-conflicts",
+      names: ["alpha", "beta"],
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(AddError);
+    expect((error as Error).message).toBe(
+      "Plugins already exist in agents.toml with a different source, ref, or path: beta.",
+    );
   });
 
   it("adds user-scope plugins and runs installation", async () => {

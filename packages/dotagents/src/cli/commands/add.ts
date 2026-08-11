@@ -524,6 +524,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
 
     const toAdd: string[] = [];
     const exactDuplicates: string[] = [];
+    const conflictingDuplicates: string[] = [];
     for (const name of selection.names) {
       const existing = config.skills.find((skill) => skill.name === name);
       if (existing) {
@@ -532,6 +533,8 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
           existing.ref === effectiveRef
         ) {
           exactDuplicates.push(name);
+        } else {
+          conflictingDuplicates.push(name);
         }
         if (selection.duplicatePolicy === "specified") {
           console.warn(
@@ -547,11 +550,8 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
         await persistAndInstall(async () => {});
         return { kind: "skill", result: exactDuplicates, action: "refreshed" };
       }
-      const qualifier = selection.duplicatePolicy === "selected"
-        ? "selected"
-        : "specified";
       throw new AddError(
-        `All ${qualifier} skills already exist in agents.toml with a different source or ref.`,
+        `Skills already exist in agents.toml with a different source or ref: ${conflictingDuplicates.join(", ")}.`,
       );
     }
     await persistAndInstall(async () => {
@@ -599,6 +599,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
 
     const toAdd: PluginCandidate[] = [];
     const exactDuplicates: PluginCandidate[] = [];
+    const conflictingDuplicates: PluginCandidate[] = [];
     for (const candidate of selection.candidates) {
       const existing = existingByName.get(candidate.name);
       if (existing) {
@@ -608,6 +609,8 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
           (existing.path || ".") === (candidate.path || ".")
         ) {
           exactDuplicates.push(candidate);
+        } else {
+          conflictingDuplicates.push(candidate);
         }
         if (selection.duplicatePolicy === "specified") {
           console.warn(
@@ -627,11 +630,8 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
           action: "refreshed",
         };
       }
-      const qualifier = selection.duplicatePolicy === "selected"
-        ? "selected"
-        : "specified";
       throw new AddError(
-        `All ${qualifier} plugins already exist in agents.toml with a different source, ref, or path.`,
+        `Plugins already exist in agents.toml with a different source, ref, or path: ${conflictingDuplicates.map((candidate) => candidate.name).join(", ")}.`,
       );
     }
     await persistAndInstall(async () => {

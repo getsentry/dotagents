@@ -580,10 +580,10 @@ dotagents add myorg/single-skill-repo   # auto-detects if repo has one skill
    - Multiple dependencies use an interactive picker or non-interactive selection guidance
    - Plugin `--all` selects every current plugin explicitly
    - Skill `--all` keeps the wildcard entry that can include future upstream skills
-6. Preflight every requested name and duplicate before changing config. An exact duplicate (same kind, name, source, ref, and plugin path) leaves config unchanged and refreshes installation successfully. Conflicting single-name duplicates still error; multi-name additions skip existing names, and refresh when every requested declaration is an exact duplicate.
+6. Preflight duplicates before changing config. Exact declarations refresh installation; conflicting declarations error when nothing can be added.
    - Reject local plugin sources that overlap the project's managed `.agents/plugins` directory before changing config
 7. Append explicit `[[plugins]]` entries (including the exact safe `path`, with `.` for a source-root plugin) or the selected `[[skills]]` entries
-8. Run install exactly once and update `agents.lock`, including for an exact duplicate
+8. Run install exactly once and update `agents.lock`
    - If config mutation or installation fails, restore the pre-add `agents.toml` content so a failed add does not leave a declaration behind
 
 Global scope uses the same discovery and lifecycle as project scope, with canonical
