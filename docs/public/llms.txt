@@ -379,7 +379,7 @@ Add and install plugins or skills. Git and local sources are classified once: if
 
 When a source has one dependency of the selected kind, it is added automatically. Multiple dependencies use a picker in a TTY or are listed with selection guidance in non-interactive mode. Plugin adds support project and global scope.
 
-When adding multiple dependencies, names already declared for that kind are skipped with a warning. The command fails if all specified names already exist. Positional names and `--name`/`--skill` flags cannot be mixed. Plugin `--all` is a snapshot of current candidates; skill `--all` remains a wildcard that can include future upstream skills.
+When adding multiple dependencies, names already declared for that kind are skipped with a warning. Exact repeats leave `agents.toml` unchanged and refresh installation; conflicting declarations still error. Positional names and `--name`/`--skill` flags cannot be mixed. Plugin `--all` is a snapshot of current candidates; skill `--all` remains a wildcard that can include future upstream skills.
 
 Plugin declarations persist the exact discovered source path (`.` for a source-root plugin), preventing later source inventory changes from changing selection. If config mutation or installation fails, `add` restores the previous `agents.toml` content so the failed dependency is not left declared.
 

@@ -261,20 +261,37 @@ describe("runAdd", () => {
     expect(toml).not.toContain('name = "pdf"');
   });
 
-  it("preserves the single-name duplicate error", async () => {
+  it("refreshes an exactly matching single skill", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
     );
 
     const scope = resolveScope("project", projectRoot);
-    await expect(
-      runAdd({
-        scope,
-        specifier: `git:${repoDir}`,
-        names: ["pdf"],
-      }),
-    ).rejects.toThrow(AddError);
+    const install = mockRunInstall();
+    await expect(runAdd({
+      scope,
+      specifier: `git:${repoDir}`,
+      names: ["pdf"],
+    })).resolves.toBe("pdf");
+
+    expect(install).toHaveBeenCalledOnce();
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe(
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n`,
+    );
+  });
+
+  it("rejects a single skill with the same name from a different source", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      'version = 1\n\n[[skills]]\nname = "pdf"\nsource = "other/repo"\n',
+    );
+
+    await expect(runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: `git:${repoDir}`,
+      names: ["pdf"],
+    })).rejects.toThrow("different source or ref");
   });
 
   it("skips existing skills only for a multi-name request", async () => {
@@ -296,20 +313,38 @@ describe("runAdd", () => {
     expect(toml).toContain('name = "review"');
   });
 
-  it("throws when all specified skills already exist", async () => {
+  it("refreshes when all specified skills already exist exactly", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "review"\nsource = "git:${repoDir}"\n`,
     );
 
     const scope = resolveScope("project", projectRoot);
-    await expect(
-      runAdd({
-        scope,
-        specifier: `git:${repoDir}`,
-        names: ["pdf", "review"],
-      }),
-    ).rejects.toThrow(AddError);
+    const install = mockRunInstall();
+    await expect(runAdd({
+      scope,
+      specifier: `git:${repoDir}`,
+      names: ["pdf", "review"],
+    })).resolves.toEqual(["pdf", "review"]);
+    expect(install).toHaveBeenCalledOnce();
+  });
+
+  it("reports only conflicting skills in a mixed duplicate request", async () => {
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "pdf"\nsource = "git:${repoDir}"\n\n[[skills]]\nname = "review"\nsource = "other/repo"\n`,
+    );
+
+    const error = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: `git:${repoDir}`,
+      names: ["pdf", "review"],
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(AddError);
+    expect((error as Error).message).toBe(
+      "Skills already exist in agents.toml with a different source or ref: review.",
+    );
   });
 
   it("throws when --all is used with names", async () => {
@@ -324,22 +359,20 @@ describe("runAdd", () => {
     ).rejects.toThrow("Cannot use --all with --name. Use one or the other.");
   });
 
-  it("rejects an existing wildcard after source classification", async () => {
+  it("refreshes an existing wildcard after source classification", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
     );
 
     const scope = resolveScope("project", projectRoot);
-    await expect(
-      runAdd({
-        scope,
-        specifier: `git:${repoDir}`,
-        all: true,
-      }),
-    ).rejects.toThrow(
-      `A wildcard entry for "git:${repoDir}" already exists in agents.toml.`,
-    );
+    const install = mockRunInstall();
+    await expect(runAdd({
+      scope,
+      specifier: `git:${repoDir}`,
+      all: true,
+    })).resolves.toBe("*");
+    expect(install).toHaveBeenCalledOnce();
   });
 
   it("validates trust against expanded source, not raw shorthand", async () => {
@@ -876,7 +909,7 @@ describe("runAdd (local sources)", () => {
     expect(install).toHaveBeenCalledOnce();
   });
 
-  it("preserves single and multi-name duplicate behavior for plugins", async () => {
+  it("refreshes an exact plugin duplicate and still adds new requested plugins", async () => {
     const sourceDir = join(projectRoot, "plugin-duplicates");
     await writePlugin(join(sourceDir, "plugins", "alpha"), "alpha");
     await writePlugin(join(sourceDir, "plugins", "beta"), "beta");
@@ -885,13 +918,15 @@ describe("runAdd (local sources)", () => {
       'version = 1\n\n[[plugins]]\nname = "alpha"\nsource = "path:plugin-duplicates"\npath = "plugins/alpha"\n',
     );
 
+    const install = mockRunInstall();
     await expect(runAdd({
       scope: resolveScope("project", projectRoot),
       specifier: "path:plugin-duplicates",
       names: ["alpha"],
-    })).rejects.toThrow('Plugin "alpha" already exists');
+    })).resolves.toBe("alpha");
+    expect(install).toHaveBeenCalledOnce();
 
-    const install = mockRunInstall();
+    install.mockClear();
     const result = await runAdd({
       scope: resolveScope("project", projectRoot),
       specifier: "path:plugin-duplicates",
@@ -899,6 +934,40 @@ describe("runAdd (local sources)", () => {
     });
     expect(result).toEqual(["beta"]);
     expect(install).toHaveBeenCalledOnce();
+  });
+
+  it("reports only conflicting plugins in a mixed duplicate request", async () => {
+    const sourceDir = join(projectRoot, "plugin-conflicts");
+    await writePlugin(join(sourceDir, "plugins", "alpha"), "alpha");
+    await writePlugin(join(sourceDir, "plugins", "beta"), "beta");
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      [
+        "version = 1",
+        "",
+        "[[plugins]]",
+        'name = "alpha"',
+        'source = "path:plugin-conflicts"',
+        'path = "plugins/alpha"',
+        "",
+        "[[plugins]]",
+        'name = "beta"',
+        'source = "path:plugin-conflicts"',
+        'path = "different/path"',
+        "",
+      ].join("\n"),
+    );
+
+    const error = await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:plugin-conflicts",
+      names: ["alpha", "beta"],
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(AddError);
+    expect((error as Error).message).toBe(
+      "Plugins already exist in agents.toml with a different source, ref, or path: beta.",
+    );
   });
 
   it("adds user-scope plugins and runs installation", async () => {
@@ -921,6 +990,35 @@ describe("runAdd (local sources)", () => {
 
     expect(await readFile(scope.configPath, "utf-8")).toContain('name = "project-only"');
     expect(install).toHaveBeenCalledWith({ scope });
+  });
+
+  it("reinstalls an exact local plugin duplicate without changing config", async () => {
+    const sourceDir = join(projectRoot, "plugin-refresh");
+    await writePlugin(sourceDir, "refresh-tools");
+    await writeFile(join(sourceDir, "README.md"), "version one\n");
+    const scope = resolveScope("project", projectRoot);
+
+    await runAdd({ scope, specifier: "path:plugin-refresh" });
+    const configBefore = await readFile(scope.configPath, "utf-8");
+    expect(
+      await readFile(
+        join(projectRoot, ".agents", "plugins", "refresh-tools", "README.md"),
+        "utf-8",
+      ),
+    ).toBe("version one\n");
+
+    await writeFile(join(sourceDir, "README.md"), "version two\n");
+    await expect(
+      runAdd({ scope, specifier: "path:plugin-refresh" }),
+    ).resolves.toBe("refresh-tools");
+
+    expect(await readFile(scope.configPath, "utf-8")).toBe(configBefore);
+    expect(
+      await readFile(
+        join(projectRoot, ".agents", "plugins", "refresh-tools", "README.md"),
+        "utf-8",
+      ),
+    ).toBe("version two\n");
   });
 
   it("restores agents.toml when plugin installation fails", async () => {
@@ -1067,6 +1165,30 @@ describe("add() CLI parsing", () => {
     } finally {
       process.chdir(origCwd);
     }
+  });
+
+  it("reports an existing plugin as refreshed without setting an error", async () => {
+    await writePlugin(join(projectRoot, "plugin-source"), "cli-plugin");
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      'version = 1\n\n[[plugins]]\nname = "cli-plugin"\nsource = "path:plugin-source"\npath = "."\n',
+    );
+    const install = mockRunInstall();
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await add(["path:plugin-source"], {
+      scope: resolveScope("project", projectRoot),
+    });
+
+    expect(process.exitCode).toBeUndefined();
+    expect(install).toHaveBeenCalledOnce();
+    expect(error).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Plugin "cli-plugin" is already configured. Refreshed installation.',
+      ),
+    );
   });
 
   it("shows phase progress only in an interactive terminal", async () => {

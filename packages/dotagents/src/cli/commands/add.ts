@@ -96,7 +96,7 @@ type SkillSelection =
   | {
       type: "skills";
       names: string[];
-      /** Single names reject duplicates; specified names warn; prompted selections skip silently. */
+      /** Exact duplicates refresh; specified names warn; prompted selections skip silently. */
       duplicatePolicy: DuplicatePolicy;
     };
 
@@ -108,6 +108,7 @@ interface PluginSelection {
 interface DetailedAddResult {
   kind: "skill" | "plugin";
   result: string | string[];
+  action: "added" | "refreshed";
 }
 
 function containsPath(parentDir: string, childDir: string): boolean {
@@ -474,16 +475,19 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
 
   async function persistSkills(selection: SkillSelection): Promise<DetailedAddResult> {
     if (selection.type === "wildcard") {
-      if (
-        config.skills.some(
-          (skill) =>
-            isWildcardDep(skill) &&
-            sourcesMatch(skill.source, sourceForStorage),
-        )
-      ) {
-        throw new AddError(
-          `A wildcard entry for "${sourceForStorage}" already exists in agents.toml.`,
-        );
+      const existing = config.skills.find(
+        (skill) =>
+          isWildcardDep(skill) &&
+          sourcesMatch(skill.source, sourceForStorage),
+      );
+      if (existing) {
+        if (existing.ref !== effectiveRef) {
+          throw new AddError(
+            `A wildcard entry for "${sourceForStorage}" already exists in agents.toml with a different ref. Remove it first to re-add.`,
+          );
+        }
+        await persistAndInstall(async () => {});
+        return { kind: "skill", result: "*", action: "refreshed" };
       }
       await persistAndInstall(async () => {
         await addWildcardToConfig(configPath, sourceForStorage, {
@@ -491,15 +495,23 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
           exclude: [],
         });
       });
-      return { kind: "skill", result: "*" };
+      return { kind: "skill", result: "*", action: "added" };
     }
 
     if (selection.duplicatePolicy === "single") {
       const name = selection.names[0]!;
-      if (config.skills.some((skill) => skill.name === name)) {
-        throw new AddError(
-          `Skill "${name}" already exists in agents.toml. Remove it first to re-add.`,
-        );
+      const existing = config.skills.find((skill) => skill.name === name);
+      if (existing) {
+        if (
+          !sourcesMatch(existing.source, sourceForStorage) ||
+          existing.ref !== effectiveRef
+        ) {
+          throw new AddError(
+            `Skill "${name}" already exists in agents.toml with a different source or ref. Remove it first to re-add.`,
+          );
+        }
+        await persistAndInstall(async () => {});
+        return { kind: "skill", result: name, action: "refreshed" };
       }
       await persistAndInstall(async () => {
         await addSkillToConfig(configPath, name, {
@@ -507,12 +519,23 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
           ...refOpts,
         });
       });
-      return { kind: "skill", result: name };
+      return { kind: "skill", result: name, action: "added" };
     }
 
     const toAdd: string[] = [];
+    const exactDuplicates: string[] = [];
+    const conflictingDuplicates: string[] = [];
     for (const name of selection.names) {
-      if (config.skills.some((skill) => skill.name === name)) {
+      const existing = config.skills.find((skill) => skill.name === name);
+      if (existing) {
+        if (
+          sourcesMatch(existing.source, sourceForStorage) &&
+          existing.ref === effectiveRef
+        ) {
+          exactDuplicates.push(name);
+        } else {
+          conflictingDuplicates.push(name);
+        }
         if (selection.duplicatePolicy === "specified") {
           console.warn(
             chalk.yellow(`Skipping "${name}": already exists in agents.toml`),
@@ -523,11 +546,12 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
       toAdd.push(name);
     }
     if (toAdd.length === 0) {
-      const qualifier = selection.duplicatePolicy === "selected"
-        ? "selected"
-        : "specified";
+      if (exactDuplicates.length === selection.names.length) {
+        await persistAndInstall(async () => {});
+        return { kind: "skill", result: exactDuplicates, action: "refreshed" };
+      }
       throw new AddError(
-        `All ${qualifier} skills already exist in agents.toml.`,
+        `Skills already exist in agents.toml with a different source or ref: ${conflictingDuplicates.join(", ")}.`,
       );
     }
     await persistAndInstall(async () => {
@@ -538,17 +562,28 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
         });
       }
     });
-    return { kind: "skill", result: toAdd };
+    return { kind: "skill", result: toAdd, action: "added" };
   }
 
   async function persistPlugins(selection: PluginSelection): Promise<DetailedAddResult> {
-    const existingNames = new Set(config.plugins.map((plugin) => plugin.name));
+    const existingByName = new Map(
+      config.plugins.map((plugin) => [plugin.name, plugin]),
+    );
     if (selection.duplicatePolicy === "single") {
       const candidate = selection.candidates[0]!;
-      if (existingNames.has(candidate.name)) {
-        throw new AddError(
-          `Plugin "${candidate.name}" already exists in agents.toml. Remove it first to re-add.`,
-        );
+      const existing = existingByName.get(candidate.name);
+      if (existing) {
+        if (
+          !sourcesMatch(existing.source, sourceForStorage) ||
+          existing.ref !== effectiveRef ||
+          (existing.path || ".") !== (candidate.path || ".")
+        ) {
+          throw new AddError(
+            `Plugin "${candidate.name}" already exists in agents.toml with a different source, ref, or path. Remove it first to re-add.`,
+          );
+        }
+        await persistAndInstall(async () => {});
+        return { kind: "plugin", result: candidate.name, action: "refreshed" };
       }
       await persistAndInstall(async () => {
         await addPluginsToConfig(configPath, [{
@@ -559,12 +594,24 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
           path: candidate.path || ".",
         }]);
       });
-      return { kind: "plugin", result: candidate.name };
+      return { kind: "plugin", result: candidate.name, action: "added" };
     }
 
     const toAdd: PluginCandidate[] = [];
+    const exactDuplicates: PluginCandidate[] = [];
+    const conflictingDuplicates: PluginCandidate[] = [];
     for (const candidate of selection.candidates) {
-      if (existingNames.has(candidate.name)) {
+      const existing = existingByName.get(candidate.name);
+      if (existing) {
+        if (
+          sourcesMatch(existing.source, sourceForStorage) &&
+          existing.ref === effectiveRef &&
+          (existing.path || ".") === (candidate.path || ".")
+        ) {
+          exactDuplicates.push(candidate);
+        } else {
+          conflictingDuplicates.push(candidate);
+        }
         if (selection.duplicatePolicy === "specified") {
           console.warn(
             chalk.yellow(`Skipping "${candidate.name}": already exists in agents.toml`),
@@ -575,10 +622,17 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
       toAdd.push(candidate);
     }
     if (toAdd.length === 0) {
-      const qualifier = selection.duplicatePolicy === "selected"
-        ? "selected"
-        : "specified";
-      throw new AddError(`All ${qualifier} plugins already exist in agents.toml.`);
+      if (exactDuplicates.length === selection.candidates.length) {
+        await persistAndInstall(async () => {});
+        return {
+          kind: "plugin",
+          result: exactDuplicates.map((candidate) => candidate.name),
+          action: "refreshed",
+        };
+      }
+      throw new AddError(
+        `Plugins already exist in agents.toml with a different source, ref, or path: ${conflictingDuplicates.map((candidate) => candidate.name).join(", ")}.`,
+      );
     }
     await persistAndInstall(async () => {
       await addPluginsToConfig(
@@ -591,7 +645,11 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
         })),
       );
     });
-    return { kind: "plugin", result: toAdd.map((candidate) => candidate.name) };
+    return {
+      kind: "plugin",
+      result: toAdd.map((candidate) => candidate.name),
+      action: "added",
+    };
   }
 
   progress?.start(`Resolving ${specifier}`);
@@ -735,7 +793,7 @@ export default async function add(
     const progress = process.stdout.isTTY === true
       ? clack.spinner({ indicator: "timer" })
       : undefined;
-    const { kind, result } = await executeAdd({
+    const { kind, result, action } = await executeAdd({
       scope,
       specifier,
       ref: values["ref"],
@@ -744,6 +802,28 @@ export default async function add(
       interactive,
       progress,
     });
+    if (action === "refreshed") {
+      if (Array.isArray(result)) {
+        console.log(
+          chalk.green(
+            `${kind === "skill" ? "Skills" : "Plugins"} already configured: ${result.join(", ")}. Refreshed installation.`,
+          ),
+        );
+      } else if (kind === "skill" && result === "*") {
+        console.log(
+          chalk.green(
+            `All skills from ${specifier} are already configured. Refreshed installation.`,
+          ),
+        );
+      } else {
+        console.log(
+          chalk.green(
+            `${kind === "skill" ? "Skill" : "Plugin"} "${result}" is already configured. Refreshed installation.`,
+          ),
+        );
+      }
+      return;
+    }
     if (kind === "skill" && result === "*") {
       console.log(chalk.green(`Added all skills from ${specifier}`));
     } else if (Array.isArray(result)) {

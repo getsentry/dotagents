@@ -580,7 +580,7 @@ dotagents add myorg/single-skill-repo   # auto-detects if repo has one skill
    - Multiple dependencies use an interactive picker or non-interactive selection guidance
    - Plugin `--all` selects every current plugin explicitly
    - Skill `--all` keeps the wildcard entry that can include future upstream skills
-6. Preflight every requested name and duplicate before changing config. A single duplicate errors; multi-name additions skip duplicates and fail only when all are already declared.
+6. Preflight duplicates before changing config. Exact declarations refresh installation; conflicting declarations error when nothing can be added.
    - Reject local plugin sources that overlap the project's managed `.agents/plugins` directory before changing config
 7. Append explicit `[[plugins]]` entries (including the exact safe `path`, with `.` for a source-root plugin) or the selected `[[skills]]` entries
 8. Run install exactly once and update `agents.lock`

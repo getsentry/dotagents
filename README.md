@@ -67,7 +67,7 @@ Project commands other than `init` require `agents.toml` and never fall back to 
 | Command | Description |
 |---------|-------------|
 | `init` | Create `agents.toml` and `.agents/skills/` |
-| `add <source> [names...]` | Discover and add plugins, otherwise skills |
+| `add <source> [names...]` | Discover and add plugins, otherwise skills; exact repeats refresh installation |
 | `remove <name\|source> [-y]` | Remove a skill, plugin, or all dependencies from a source |
 | `install` | Install all dependencies from `agents.toml` |
 | `list` | Show declared skills, plugins, and their status |
