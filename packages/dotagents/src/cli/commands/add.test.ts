@@ -156,6 +156,35 @@ describe("runAdd", () => {
     expect(fetches).toHaveLength(0);
   });
 
+  it("restores the acquired commit after another dependency checks out a different ref", async () => {
+    await exec("git", ["branch", "stable", "HEAD"], { cwd: repoDir });
+    await writeFile(
+      join(repoDir, "pdf", "SKILL.md"),
+      `${SKILL_MD("pdf")}\nLatest main content\n`,
+    );
+    await exec("git", ["add", "pdf/SKILL.md"], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "update pdf on main"], { cwd: repoDir });
+    const { stdout: latestStdout } = await exec("git", ["rev-parse", "HEAD"], {
+      cwd: repoDir,
+    });
+    const latestCommit = latestStdout.trim();
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "review"\nsource = "git:${repoDir}"\nref = "stable"\n`,
+    );
+
+    await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: `git:${repoDir}`,
+      names: ["pdf"],
+    });
+
+    expect(
+      await readFile(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"), "utf-8"),
+    ).toContain("Latest main content");
+    expect(await readFile(join(projectRoot, "agents.lock"), "utf-8")).toContain(latestCommit);
+  });
+
   it("adds a single skill via names", async () => {
     const scope = resolveScope("project", projectRoot);
     const result = await runAdd({

@@ -14,7 +14,7 @@ import {
   resolvePlugin,
 } from "../../../plugins/store.js";
 import type { PluginDeclaration } from "../../../plugins/types.js";
-import { GitError, TrustError } from "@sentry/dotagents-lib";
+import { GitError, TrustError, type CacheReuse } from "@sentry/dotagents-lib";
 import { getCacheStateDir } from "../../cache.js";
 import { InstallError } from "./errors.js";
 
@@ -57,7 +57,7 @@ export async function installPlugins(
   config: AgentsConfig,
   lockfile: Lockfile | null,
   scope: ScopeRoot,
-  refreshSource: (source: string, ref?: string) => boolean = () => true,
+  reuse?: CacheReuse,
 ): Promise<InstallPluginsResult> {
   const plugins: PluginDeclaration[] = [];
   const pruned: string[] = [];
@@ -75,7 +75,7 @@ export async function installPlugins(
           minimumReleaseAge: config.minimum_release_age,
           minimumReleaseAgeExclude: config.minimum_release_age_exclude,
           trust: config.trust,
-          refresh: refreshSource(pluginConfig.source, pluginConfig.ref),
+          reuse,
         });
       } catch (err) {
         if (err instanceof GitError || err instanceof TrustError) {throw err;}

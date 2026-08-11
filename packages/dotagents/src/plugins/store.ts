@@ -12,6 +12,7 @@ import {
   validateTrustedSource,
   type RepositorySource,
   type TrustPolicy,
+  type CacheReuse,
 } from "@sentry/dotagents-lib";
 import { PLUGIN_NAME_PATTERN, type PluginConfig } from "../config/schema.js";
 import type { LockedPlugin } from "../lockfile/schema.js";
@@ -36,8 +37,8 @@ export interface PluginResolveOptions {
   minimumReleaseAge?: number;
   minimumReleaseAgeExclude?: string[];
   trust?: TrustPolicy;
-  /** Reuse an existing git checkout without fetching. Missing checkouts are still cloned. */
-  refresh?: boolean;
+  /** Exact git checkout acquired earlier in the current operation. */
+  reuse?: CacheReuse;
 }
 
 interface ResolvedLocalPlugin {
@@ -149,7 +150,7 @@ export async function resolvePlugin(
     cacheKey,
     ref,
     minimumReleaseAge: excluded ? undefined : opts.minimumReleaseAge,
-    refresh: opts.refresh,
+    reuse: opts.reuse,
   });
 
   const discovered = await resolvePluginCandidate(cached.repoDir, config);

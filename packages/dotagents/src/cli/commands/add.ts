@@ -85,6 +85,7 @@ interface AcquiredSource {
   pluginEligible: boolean;
   local: boolean;
   git: boolean;
+  commit?: string;
 }
 
 type DuplicatePolicy = "single" | "specified" | "selected";
@@ -164,7 +165,13 @@ async function acquireSource(
       : sanitizeCacheKey(url),
     ref: effectiveRef,
   });
-  return { rootDir: cached.repoDir, pluginEligible: true, local: false, git: true };
+  return {
+    rootDir: cached.repoDir,
+    pluginEligible: true,
+    local: false,
+    git: true,
+    commit: cached.commit,
+  };
 }
 
 async function verifyRequestedNames(
@@ -449,7 +456,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
       await mutateConfig();
       await runInstall({
         scope,
-        ...(refreshedSource ? { refreshedSource } : {}),
+        ...(reuse ? { reuse } : {}),
       });
       progress?.stop("Installation complete");
     } catch (err) {
@@ -598,8 +605,12 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
       ? err
       : new AddError(message);
   }
-  const refreshedSource = acquired.git
-    ? { source: sourceForStorage, ...(effectiveRef ? { ref: effectiveRef } : {}) }
+  const reuse = acquired.git && acquired.commit
+    ? {
+        repoDir: acquired.rootDir,
+        commit: acquired.commit,
+        ...(effectiveRef ? { ref: effectiveRef } : {}),
+      }
     : undefined;
 
   // Plugin presence classifies the entire source; bundled and standalone skills stay hidden.

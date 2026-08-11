@@ -63,7 +63,7 @@ export {
   sanitizeCacheKey,
   validateCacheKey,
 } from "./sources/cache.js";
-export type { CacheResult } from "./sources/cache.js";
+export type { CacheResult, CacheReuse } from "./sources/cache.js";
 export { ensureWellKnownCached } from "./sources/wellknown.js";
 export { resolveLocalSource, LocalSourceError } from "./sources/local.js";
 

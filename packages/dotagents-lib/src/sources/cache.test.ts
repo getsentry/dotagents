@@ -105,11 +105,19 @@ describe("ensureCached", () => {
     await exec("git", ["commit", "-m", "second"], { cwd: repoDir });
     await exec("git", ["push", "origin", "main"], { cwd: repoDir });
 
+    const updated = await ensureCached({
+      stateDir,
+      url: remoteDir,
+      cacheKey: "test/repo",
+    });
     const reused = await ensureCached({
       stateDir,
       url: remoteDir,
       cacheKey: "test/repo",
-      refresh: false,
+      reuse: {
+        repoDir: first.repoDir,
+        commit: first.commit,
+      },
     });
     const refreshed = await ensureCached({
       stateDir,
@@ -118,6 +126,7 @@ describe("ensureCached", () => {
     });
 
     expect(reused.commit).toBe(first.commit);
+    expect(updated.commit).not.toBe(first.commit);
     expect(refreshed.commit).not.toBe(first.commit);
   });
 
