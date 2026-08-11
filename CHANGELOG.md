@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.1
+
+### Bug Fixes 🐛
+
+- (cli) Refresh existing dependencies on add by @gricha in [#157](https://github.com/getsentry/dotagents/pull/157)
+
 ## 3.0.0
 
 ### Breaking Changes ⚠️

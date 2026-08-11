@@ -1,6 +1,6 @@
 {
   "name": "dotagents-monorepo",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Shared tooling for coding agents (workspace root)",
   "private": true,
   "type": "module",
