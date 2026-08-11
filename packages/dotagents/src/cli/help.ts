@@ -17,6 +17,7 @@ Options:
   add: `Usage: npx @sentry/dotagents [--project|--global|--user] add <source> [name...] [options]
 
 Discover plugins first, otherwise skills, then add and install the selected dependencies.
+Re-adding an identical declaration refreshes its installation successfully.
 
 Options:
   --name <name>   Dependency name to add; repeatable

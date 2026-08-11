@@ -34,6 +34,10 @@ npx @sentry/dotagents add getsentry/skills --all
 npx @sentry/dotagents add getsentry/agent-plugins review-tools
 ```
 
+`add` is safe to repeat for the same dependency declaration. If it is already
+configured, dotagents keeps `agents.toml` unchanged and refreshes the installed
+skills, plugins, lockfile, and generated runtime files.
+
 This creates `~/.agents/agents.toml` and `~/.agents/agents.lock`, making the dependencies available across projects.
 
 Run `install` again whenever you want to refresh global managed state:
@@ -67,7 +71,7 @@ Project commands other than `init` require `agents.toml` and never fall back to 
 | Command | Description |
 |---------|-------------|
 | `init` | Create `agents.toml` and `.agents/skills/` |
-| `add <source> [names...]` | Discover and add plugins, otherwise skills |
+| `add <source> [names...]` | Discover and add plugins, otherwise skills; exact repeats refresh installation |
 | `remove <name\|source> [-y]` | Remove a skill, plugin, or all dependencies from a source |
 | `install` | Install all dependencies from `agents.toml` |
 | `list` | Show declared skills, plugins, and their status |
