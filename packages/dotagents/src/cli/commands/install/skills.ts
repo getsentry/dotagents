@@ -41,7 +41,12 @@ async function expandSkills(
     trust?: Parameters<typeof validateTrustedSource>[1];
     defaultRepositorySource: RepositorySource;
   },
-  opts: { projectRoot: string; minimumReleaseAge?: number; minimumReleaseAgeExclude?: string[] },
+  opts: {
+    projectRoot: string;
+    minimumReleaseAge?: number;
+    minimumReleaseAgeExclude?: string[];
+    refreshSource: (source: string, ref?: string) => boolean;
+  },
 ): Promise<ExpandedSkill[]> {
   const regularDeps = config.skills.filter((d) => !isWildcardDep(d));
   const wildcardDeps = config.skills.filter(isWildcardDep);
@@ -69,6 +74,7 @@ async function expandSkills(
         defaultRepositorySource: config.defaultRepositorySource,
         minimumReleaseAge: opts.minimumReleaseAge,
         minimumReleaseAgeExclude: opts.minimumReleaseAgeExclude,
+        refresh: opts.refreshSource(wDep.source, wDep.ref),
       });
     } catch (err) {
       if (err instanceof GitError || err instanceof TrustError) {throw err;}
@@ -120,6 +126,7 @@ export async function installSkills(
   config: AgentsConfig,
   lockfile: Lockfile | null,
   scope: ScopeRoot,
+  refreshSource: (source: string, ref?: string) => boolean = () => true,
 ): Promise<InstallSkillsResult> {
   const lockEntries: Lockfile["skills"] = {};
   const installed: string[] = [];
@@ -138,6 +145,7 @@ export async function installSkills(
         projectRoot: scope.root,
         minimumReleaseAge: config.minimum_release_age,
         minimumReleaseAgeExclude: config.minimum_release_age_exclude,
+        refreshSource,
       },
     );
 
@@ -166,6 +174,7 @@ export async function installSkills(
             defaultRepositorySource: config.defaultRepositorySource,
             minimumReleaseAge: config.minimum_release_age,
             minimumReleaseAgeExclude: config.minimum_release_age_exclude,
+            refresh: refreshSource(dep.source, dep.ref),
           });
         } catch (err) {
           if (err instanceof GitError || err instanceof TrustError) {throw err;}

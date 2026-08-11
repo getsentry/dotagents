@@ -57,6 +57,7 @@ export async function installPlugins(
   config: AgentsConfig,
   lockfile: Lockfile | null,
   scope: ScopeRoot,
+  refreshSource: (source: string, ref?: string) => boolean = () => true,
 ): Promise<InstallPluginsResult> {
   const plugins: PluginDeclaration[] = [];
   const pruned: string[] = [];
@@ -74,6 +75,7 @@ export async function installPlugins(
           minimumReleaseAge: config.minimum_release_age,
           minimumReleaseAgeExclude: config.minimum_release_age_exclude,
           trust: config.trust,
+          refresh: refreshSource(pluginConfig.source, pluginConfig.ref),
         });
       } catch (err) {
         if (err instanceof GitError || err instanceof TrustError) {throw err;}

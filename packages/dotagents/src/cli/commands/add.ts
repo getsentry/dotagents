@@ -70,12 +70,21 @@ export interface AddOptions {
   names?: string[];
   all?: boolean;
   interactive?: boolean;
+  progress?: AddProgress;
+}
+
+export interface AddProgress {
+  start(message: string): void;
+  message(message: string): void;
+  stop(message: string): void;
+  error(message: string): void;
 }
 
 interface AcquiredSource {
   rootDir: string;
   pluginEligible: boolean;
   local: boolean;
+  git: boolean;
 }
 
 type DuplicatePolicy = "single" | "specified" | "selected";
@@ -124,7 +133,7 @@ async function acquireSource(
 ): Promise<AcquiredSource> {
   if (parsed.type === "local") {
     const rootDir = await resolveLocalSource(scope.root, parsed.path!);
-    return { rootDir, pluginEligible: true, local: true };
+    return { rootDir, pluginEligible: true, local: true, git: false };
   }
 
   if (parsed.type === "well-known") {
@@ -143,7 +152,7 @@ async function acquireSource(
         `No skills found at ${baseUrl}. If this is a git repository, use the git: prefix: git:${baseUrl}`,
       );
     }
-    return { rootDir: cached.cacheDir, pluginEligible: false, local: false };
+    return { rootDir: cached.cacheDir, pluginEligible: false, local: false, git: false };
   }
 
   const url = parsed.url!;
@@ -155,7 +164,7 @@ async function acquireSource(
       : sanitizeCacheKey(url),
     ref: effectiveRef,
   });
-  return { rootDir: cached.repoDir, pluginEligible: true, local: false };
+  return { rootDir: cached.repoDir, pluginEligible: true, local: false, git: true };
 }
 
 async function verifyRequestedNames(
@@ -389,6 +398,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
     names: rawNames,
     all,
     interactive,
+    progress,
   } = opts;
   const specifier = stripLeadingAt(rawSpecifier);
   const namesOverride = rawNames ? [...new Set(rawNames)] : rawNames;
@@ -434,10 +444,16 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
   async function persistAndInstall(mutateConfig: () => Promise<void>): Promise<void> {
     if (needsUserBootstrap) {await ensureUserScopeBootstrapped(scope);}
     const previousConfig = await readFile(configPath, "utf-8");
+    progress?.start("Installing components");
     try {
       await mutateConfig();
-      await runInstall({ scope });
+      await runInstall({
+        scope,
+        ...(refreshedSource ? { refreshedSource } : {}),
+      });
+      progress?.stop("Installation complete");
     } catch (err) {
+      progress?.error("Installation failed");
       await writeFile(configPath, previousConfig, "utf-8");
       throw err;
     }
@@ -565,16 +581,26 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
     return { kind: "plugin", result: toAdd.map((candidate) => candidate.name) };
   }
 
-  const acquired = await acquireSource(parsed, scope, effectiveRef);
+  progress?.start(`Resolving ${specifier}`);
+  let acquired: AcquiredSource;
   let plugins: PluginCandidate[] = [];
-  if (acquired.pluginEligible) {
-    try {
+  try {
+    acquired = await acquireSource(parsed, scope, effectiveRef);
+    progress?.message(`Inspecting ${specifier}`);
+    if (acquired.pluginEligible) {
       plugins = await discoverPlugins(acquired.rootDir, namesOverride);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      throw new AddError(message);
     }
+    progress?.stop("Source ready");
+  } catch (err) {
+    progress?.error("Source resolution failed");
+    const message = err instanceof Error ? err.message : String(err);
+    throw err instanceof TrustError || err instanceof GitError
+      ? err
+      : new AddError(message);
   }
+  const refreshedSource = acquired.git
+    ? { source: sourceForStorage, ...(effectiveRef ? { ref: effectiveRef } : {}) }
+    : undefined;
 
   // Plugin presence classifies the entire source; bundled and standalone skills stay hidden.
   if (plugins.length > 0) {
@@ -689,6 +715,9 @@ export default async function add(
       : resolveDefaultScope(resolve("."));
     const interactive =
       process.stdout.isTTY === true && !names && !values["all"];
+    const progress = process.stdout.isTTY === true
+      ? clack.spinner({ indicator: "timer" })
+      : undefined;
     const { kind, result } = await executeAdd({
       scope,
       specifier,
@@ -696,6 +725,7 @@ export default async function add(
       names,
       all: values["all"],
       interactive,
+      progress,
     });
     if (kind === "skill" && result === "*") {
       console.log(chalk.green(`Added all skills from ${specifier}`));

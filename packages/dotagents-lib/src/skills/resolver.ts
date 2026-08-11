@@ -327,6 +327,8 @@ export interface ResolveOpts {
   minimumReleaseAgeExclude?: string[];
   /** When provided, validate the source against the policy BEFORE any network access. */
   trust?: TrustPolicy;
+  /** Reuse an existing git checkout without fetching. Missing checkouts are still cloned. */
+  refresh?: boolean;
 }
 
 type AcquiredSkillSource =
@@ -386,6 +388,7 @@ async function acquireSkillSource(
     cacheKey,
     ref: resolvedRef,
     minimumReleaseAge: excluded ? undefined : opts.minimumReleaseAge,
+    refresh: opts.refresh,
   });
 
   return {

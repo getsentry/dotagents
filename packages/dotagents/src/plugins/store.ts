@@ -36,6 +36,8 @@ export interface PluginResolveOptions {
   minimumReleaseAge?: number;
   minimumReleaseAgeExclude?: string[];
   trust?: TrustPolicy;
+  /** Reuse an existing git checkout without fetching. Missing checkouts are still cloned. */
+  refresh?: boolean;
 }
 
 interface ResolvedLocalPlugin {
@@ -147,6 +149,7 @@ export async function resolvePlugin(
     cacheKey,
     ref,
     minimumReleaseAge: excluded ? undefined : opts.minimumReleaseAge,
+    refresh: opts.refresh,
   });
 
   const discovered = await resolvePluginCandidate(cached.repoDir, config);

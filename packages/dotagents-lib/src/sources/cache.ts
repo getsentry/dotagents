@@ -108,18 +108,21 @@ export async function ensureCached(opts: {
   ref?: string;
   /** When set, resolve to the newest commit at least this many minutes old. */
   minimumReleaseAge?: number;
+  /** Reuse an existing checkout without fetching. Missing checkouts are still cloned. */
+  refresh?: boolean;
 }): Promise<CacheResult> {
   validateCacheKey(opts.cacheKey);
   const repoDir = join(opts.stateDir, opts.cacheKey);
 
   return withCacheLock(repoDir, async () => {
-    if (isGitRepo(repoDir)) {
+    const cached = isGitRepo(repoDir);
+    if (cached && opts.refresh !== false) {
       if (opts.ref) {
         await fetchRef(repoDir, opts.ref);
       } else {
         await fetchAndReset(repoDir);
       }
-    } else {
+    } else if (!cached) {
       // Remove an interrupted or stale non-git cache dir before cloning.
       await rm(repoDir, { recursive: true, force: true });
       await mkdir(join(opts.stateDir, opts.cacheKey, ".."), { recursive: true });

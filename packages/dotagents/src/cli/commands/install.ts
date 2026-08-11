@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
-import { GitError, TrustError } from "@sentry/dotagents-lib";
+import { GitError, sourcesMatch, TrustError } from "@sentry/dotagents-lib";
 import { loadConfig } from "../../config/loader.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
@@ -29,6 +29,8 @@ export { InstallError };
 // writes have succeeded, then writes runtime projections and CLI output.
 export interface InstallOptions {
   scope: ScopeRoot;
+  /** Source already refreshed earlier in this command and safe to reuse. */
+  refreshedSource?: { source: string; ref?: string };
 }
 
 export interface InstallResult {
@@ -44,11 +46,15 @@ export interface InstallResult {
 
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   const { scope } = opts;
+  const refreshSource = (source: string, ref?: string): boolean =>
+    !opts.refreshedSource ||
+    !sourcesMatch(source, opts.refreshedSource.source) ||
+    ref !== opts.refreshedSource.ref;
   const config = await loadConfig(scope.configPath);
   const lockfile = await loadLockfile(scope.lockPath);
-  const skills = await installSkills(config, lockfile, scope);
+  const skills = await installSkills(config, lockfile, scope, refreshSource);
   const subagents = await installSubagents(config, scope);
-  const plugins = await installPlugins(config, lockfile, scope);
+  const plugins = await installPlugins(config, lockfile, scope, refreshSource);
   const newLock: Lockfile = {
     version: 1,
     skills: skills.lockEntries,
