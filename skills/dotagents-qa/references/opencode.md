@@ -62,7 +62,7 @@ Manual Docker probes can prove more when the branch affects OpenCode output:
   stdio command, args, cwd, and environment
 
 For lifecycle proof, preserve an unrelated MCP entry, damage a managed plugin
-MCP entry or its ownership state, run `dotagents sync`, and verify repair.
+MCP entry or its ownership state, run `dotagents --project sync`, and verify repair.
 Then remove the plugin and verify only its managed MCP entries, ownership state,
 and managed data directory are pruned.
 

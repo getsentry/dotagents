@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  default as trust,
   classifyTrustSource,
   runTrustAdd,
   runTrustRemove,
@@ -40,6 +41,7 @@ describe("trust", () => {
   });
 
   afterEach(async () => {
+    process.exitCode = undefined;
     delete process.env["DOTAGENTS_STATE_DIR"];
     await rm(tmpDir, { recursive: true });
   });
@@ -299,5 +301,14 @@ describe("trust", () => {
         { type: "git_domain", value: "git.corp.com" },
       ]);
     });
+  });
+
+  it("includes explicit project scope in nested usage errors", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await trust(["add"], { scope });
+
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("npx @sentry/dotagents --project trust add"));
+    error.mockRestore();
   });
 });

@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runMcpAdd, runMcpRemove, getMcpList, McpError, validateMcpName, parseHeader } from "./mcp.js";
+import mcp, { runMcpAdd, runMcpRemove, getMcpList, McpError, validateMcpName, parseHeader } from "./mcp.js";
 import { loadConfig } from "../../config/loader.js";
 import type { ScopeRoot } from "../../scope.js";
 
@@ -34,6 +34,7 @@ describe("mcp", () => {
   });
 
   afterEach(async () => {
+    process.exitCode = undefined;
     delete process.env["DOTAGENTS_STATE_DIR"];
     await rm(tmpDir, { recursive: true });
   });
@@ -171,5 +172,14 @@ describe("mcp", () => {
         env: [],
       });
     });
+  });
+
+  it("includes explicit project scope in nested usage errors", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await mcp(["add"], { scope });
+
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("npx @sentry/dotagents --project mcp add"));
+    error.mockRestore();
   });
 });

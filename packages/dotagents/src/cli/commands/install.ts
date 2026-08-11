@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { GitError, TrustError, type CacheReuse } from "@sentry/dotagents-lib";
@@ -6,8 +5,9 @@ import { loadConfig } from "../../config/loader.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import type { Lockfile } from "../../lockfile/schema.js";
-import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import type { ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
+import type { CommandContext } from "../context.js";
 import { formatGitError, formatTrustError } from "../errors.js";
 import { InstallError } from "./install/errors.js";
 import { installSkills } from "./install/skills.js";
@@ -96,7 +96,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
   };
 }
 
-export default async function install(args: string[], flags?: { user?: boolean }): Promise<void> {
+export default async function install(args: string[], context: CommandContext): Promise<void> {
   const { values } = parseArgs({
     args,
     options: {
@@ -106,7 +106,7 @@ export default async function install(args: string[], flags?: { user?: boolean }
   });
 
   try {
-    const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
+    const { scope } = context;
     await ensureUserScopeBootstrapped(scope);
     if (values["frozen"]) {
       console.log(chalk.yellow("Warning: --frozen is ignored and will be removed in the next major release. Install now follows normal agents.toml resolution; use explicit refs to pin sources."));
@@ -148,16 +148,16 @@ export default async function install(args: string[], flags?: { user?: boolean }
     }
   } catch (err) {
     if (err instanceof TrustError) {
-      console.error(chalk.red(formatTrustError(err)));
+      console.error(chalk.red(formatTrustError(err, context.scope)));
       process.exitCode = 1;
       return;
     }
     if (err instanceof GitError) {
-      console.error(chalk.red(formatGitError(err)));
+      console.error(chalk.red(formatGitError(err, context.scope)));
       process.exitCode = 1;
       return;
     }
-    if (err instanceof ScopeError || err instanceof InstallError) {
+    if (err instanceof InstallError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

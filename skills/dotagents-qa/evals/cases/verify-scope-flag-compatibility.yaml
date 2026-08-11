@@ -1,0 +1,5 @@
+behavior: exercise-complete-cli-lifecycles
+prompt: |
+  Design the exact CLI test for v3 scope-flag compatibility and conflicts. I will provide the checkout afterward; for now, give me the executable test sequence and assertions without running it.
+checks:
+  - judge: The sequence proves `--global` and `--user` select the same global state as the unqualified default, `--global --user` executes successfully exactly once, and either alias combined with `--project` fails before changing global or project files.

@@ -20,6 +20,8 @@ Releases are driven by [getsentry/craft](https://github.com/getsentry/craft) via
 4. Craft has two `npm` targets in `.craft.yml`, each filtered to one tarball via `includeNames`. Targets run in declared order: **`@sentry/dotagents-lib` first, then `@sentry/dotagents`**. By the time the host's publish starts, the lib is already on the registry, so an end-user `npm install @sentry/dotagents` mid-release will always resolve.
 5. Craft tags the commit and creates the GitHub release.
 
+For a breaking release such as v3, leave all package manifest versions unchanged in the feature PR. Trigger Craft with `major`; do not hand-edit versions. `scripts/bump-version.mjs` will update the root, host, and library manifests in lock-step, and the normal ordered targets publish the library before the host. Before triggering the release, ensure the changelog includes the final PR reference and the migration/rollback notes intended for the GitHub release.
+
 ## Why lock-step + ordered publish?
 
 A consumer running `npm install @sentry/dotagents` must install a published version of the lib. If the lib were unpublished or out-of-sync, the install would either fail or pull a mismatched pair. Three guardrails:

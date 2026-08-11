@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
 import chalk from "chalk";
@@ -6,8 +5,9 @@ import { loadConfig } from "../../config/loader.js";
 import type { AgentsConfig, McpConfig } from "../../config/schema.js";
 import { addMcpToConfig, removeMcpFromConfig } from "../../config/writer.js";
 import { runInstall } from "./install.js";
-import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import type { ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
+import { commandPrefix, type CommandContext } from "../context.js";
 
 export class McpError extends Error {
   constructor(message: string) {
@@ -239,11 +239,12 @@ async function mcpAdd(args: string[], scope: ScopeRoot): Promise<void> {
 
   const name = positionals[0];
   if (!name) {
+    const cmd = commandPrefix(scope);
     console.error(
-      chalk.red("Usage: npx @sentry/dotagents mcp add <name> --command <cmd> [--env <VAR>...]"),
+      chalk.red(`Usage: ${cmd} mcp add <name> --command <cmd> [--env <VAR>...]`),
     );
     console.error(
-      chalk.red("       npx @sentry/dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]"),
+      chalk.red(`       ${cmd} mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]`),
     );
     process.exitCode = 1;
     return;
@@ -278,7 +279,7 @@ async function mcpRemove(args: string[], scope: ScopeRoot): Promise<void> {
 
   const name = positionals[0];
   if (!name) {
-    console.error(chalk.red("Usage: npx @sentry/dotagents mcp remove <name>"));
+    console.error(chalk.red(`Usage: ${commandPrefix(scope)} mcp remove <name>`));
     process.exitCode = 1;
     return;
   }
@@ -316,8 +317,8 @@ async function mcpList(args: string[], scope: ScopeRoot): Promise<void> {
   }
 }
 
-function printMcpUsage(): void {
-  console.error(`Usage: npx @sentry/dotagents mcp <subcommand>
+function printMcpUsage(scope: ScopeRoot): void {
+  console.error(`Usage: ${commandPrefix(scope)} mcp <subcommand>
 
 Subcommands:
   add      Add an MCP server declaration
@@ -325,26 +326,16 @@ Subcommands:
   list     Show declared MCP servers`);
 }
 
-export default async function mcp(args: string[], flags?: { user?: boolean }): Promise<void> {
+export default async function mcp(args: string[], context: CommandContext): Promise<void> {
   const sub = args[0];
 
   if (!sub || sub === "--help" || sub === "-h") {
-    printMcpUsage();
+    printMcpUsage(context.scope);
     return;
   }
 
-  let scope: ScopeRoot;
-  try {
-    scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
-    await ensureUserScopeBootstrapped(scope);
-  } catch (err) {
-    if (err instanceof ScopeError) {
-      console.error(chalk.red(err.message));
-      process.exitCode = 1;
-      return;
-    }
-    throw err;
-  }
+  const { scope } = context;
+  await ensureUserScopeBootstrapped(scope);
 
   const subArgs = args.slice(1);
 
@@ -361,12 +352,12 @@ export default async function mcp(args: string[], flags?: { user?: boolean }): P
         break;
       default:
         console.error(chalk.red(`Unknown mcp subcommand: ${sub}`));
-        printMcpUsage();
+        printMcpUsage(scope);
         process.exitCode = 1;
     }
   } catch (err) {
     if (err instanceof McpCancelledError) {return;}
-    if (err instanceof ScopeError || err instanceof McpError) {
+    if (err instanceof McpError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

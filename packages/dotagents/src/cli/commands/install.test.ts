@@ -1537,7 +1537,7 @@ source = "path:plugin-source"
     let output = "";
     try {
       process.chdir(projectRoot);
-      await install(["--frozen"]);
+      await install(["--frozen"], { scope: resolveScope("project", projectRoot) });
     } finally {
       output = log.mock.calls.flat().join("\n");
       process.chdir(previousCwd);

@@ -4,7 +4,7 @@
 
 dotagents is shared tooling for coding agents. It manages agent skill dependencies using the [agentskills.io](https://agentskills.io) standard, and handles MCP servers, hooks, subagents, plugins, and symlinks so that multiple agent tools (Claude Code, Cursor, Codex, etc.) can be configured from a single `agents.toml`.
 
-Declare what you need, run `dotagents install`, and skills appear in `.agents/skills/` with symlinks into each tool's expected directory. Plugins install into `.agents/plugins/`. MCP, hook, subagent, and plugin configs are generated per agent.
+Declare what you need, run `dotagents install` for global state or `dotagents --project install` for repository-local state, and skills appear in the selected scope with integrations for each configured tool. MCP, hook, subagent, and plugin configs are generated per agent.
 
 > **Implementation note.** The skill-loading, source-fetching, and trust-validation primitives that drive the CLI are factored into a separate npm package, [`@sentry/dotagents-lib`](../packages/dotagents-lib/), versioned in lock-step with `@sentry/dotagents`. The `agents.toml` grammar and the `.agents/` convention described below remain entirely the host's responsibility — the lib only knows about source strings, SKILL.md, and the cache.
 
@@ -25,7 +25,7 @@ Agent skills, MCP servers, hooks, and subagents are configured differently for e
 
 ## agents.toml
 
-The manifest file. Lives at the project root.
+The manifest file. Lives at the selected scope root: `~/.agents/agents.toml` by default, or `agents.toml` at the project root with `--project`.
 
 ### Schema
 
@@ -141,7 +141,7 @@ allow_all = true
 - `[trust]` present without `allow_all` → only matching sources allowed (allow-list)
 - A source passes if it matches ANY rule (org OR repo OR domain/path prefix)
 - `git_domains` entries match by prefix: `gitlab.com` matches all repos on GitLab, `gitlab.com/myorg` matches repos under that org, `gitlab.com/myorg/repo` matches only that repo
-- Local `path:` sources are always allowed (already sandboxed to project root)
+- Local `path:` sources are always allowed (already sandboxed to the selected scope root)
 
 Trust is checked before any network work in `dotagents add` for dependencies and `dotagents install` for configured skills, subagents, and plugins.
 
@@ -232,7 +232,7 @@ Installed and generated files are marked as dotagents-managed with a generated h
 
 Generated paths:
 
-| Agent | Project Scope | User Scope | Format |
+| Agent | Project Scope | Global Scope | Format |
 |-------|---------------|------------|--------|
 | Claude Code | `.claude/agents/<name>.md` | `~/.claude/agents/<name>.md` | Markdown with YAML frontmatter |
 | Cursor | `.cursor/agents/<name>.md` | `~/.cursor/agents/<name>.md` | Markdown with YAML frontmatter |
@@ -269,7 +269,7 @@ compatibility implementation (see the remaining gaps in `specs/plugins.md`):
 
 Generated plugin JSON is stable: keys are sorted, plugin entries are sorted by name, and files end with one trailing newline. Generated marketplaces and Claude/Cursor/Codex manifests use adjacent `.dotagents-managed` sidecars; OpenCode/Pi component symlinks use marker files in reserved sibling `.dotagents-managed/` directories. This keeps ownership explicit without changing client-owned JSON or consuming a valid component name. Legacy `metadata.managedBy` output remains recognizable during migration. Managed Grok copies and component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when their on-disk `.dotagents-managed` marker proves ownership.
 
-User scope installs canonical plugins into `~/.agents/plugins/<name>/`. It generates Claude and Cursor marketplaces below `~/.agents/`, a Codex marketplace at `~/.agents/plugins/marketplace.json` whose local paths are rooted at the user's home, OpenCode skill and legacy-agent projections below `~/.config/opencode/`, portable plugin MCP entries in `~/.config/opencode/opencode.json`, and Pi skill projections below `~/.agents/skills/`.
+Global scope installs canonical plugins into `~/.agents/plugins/<name>/`. It generates Claude and Cursor marketplaces below `~/.agents/`, a Codex marketplace at `~/.agents/plugins/marketplace.json` whose local paths are rooted at the user's home, OpenCode skill and legacy-agent projections below `~/.config/opencode/`, portable plugin MCP entries in `~/.config/opencode/opencode.json`, and Pi skill projections below `~/.agents/skills/`.
 
 #### Supported Agents
 
@@ -369,7 +369,7 @@ ref = "main"
 
 #### `path:<relative-path>` -- local filesystem
 
-Relative to the project root. Copied (not symlinked) into `.agents/skills/` during install.
+Relative to the selected scope root. Copied (not symlinked) into that scope's `skills/` directory during install.
 
 ```toml
 [[skills]]
@@ -383,9 +383,9 @@ Local path skills are re-copied on each install.
 
 ## agents.lock
 
-The lockfile. Lives at the project root alongside `agents.toml`. TOML format.
+The lockfile. Lives at the selected scope root alongside `agents.toml`: `~/.agents/agents.lock` by default, or `agents.lock` at the project root with `--project`. TOML format.
 
-**This file is auto-generated.** Do not edit manually. Gitignored automatically (`dotagents init` adds it to `.gitignore`).
+**This file is auto-generated.** Do not edit manually. In project scope it is gitignored automatically (`dotagents --project init` adds it to `.gitignore`).
 
 ### Format
 
@@ -471,9 +471,31 @@ Plugin lock entries use the same source-resolution fields under `[plugins.<name>
 
 The CLI binary is `dotagents`. During development, run it with `pnpm dev -- <command>` or `tsx`. Published packages are built with `tsc` and run on Node.js 20+.
 
+### Scope selection
+
+The scope-aware commands `init`, `install`, `add`, `remove`, `sync`, `list`, `mcp`, `trust`, and `doctor` use global scope by default. Global state is rooted at `DOTAGENTS_HOME` when set and otherwise at `~/.agents/`; this selection does not depend on the current directory, Git repository, or a nearby `agents.toml`.
+
+Use `--project` to select repository-local state. Inside Git, the project root is the containing repository root. Outside Git, the current directory is the project root. `--project init` may create a new `agents.toml`; other project commands require one and fail without changing either scope when it is missing. There is no automatic copying, merging, or deletion between scopes.
+
+`--global` explicitly selects global scope. `--user` remains a compatibility alias for `--global`. Both global aliases may be supplied together. Combining `--project` with either global alias is an error before command execution or scope bootstrap. Scope flags are accepted before or after the command.
+
+| Scope | Config | Lockfile | Managed dependencies |
+| --- | --- | --- | --- |
+| Global (default) | `~/.agents/agents.toml` | `~/.agents/agents.lock` | `~/.agents/skills/`, `~/.agents/agents/`, `~/.agents/plugins/` |
+| Project (`--project`) | `<project>/agents.toml` | `<project>/agents.lock` | `<project>/.agents/skills/`, `<project>/.agents/agents/`, `<project>/.agents/plugins/` |
+
+Examples below are global unless they include `--project`. A complete project lifecycle is:
+
+```bash
+dotagents --project init
+dotagents --project add getsentry/skills find-bugs
+dotagents --project install
+dotagents --project doctor --fix
+```
+
 ### `dotagents init`
 
-Initialize a new project.
+Initialize global state by default, or a repository-local configuration with `--project`.
 
 ```
 dotagents init [--force] [--agents claude,cursor]
@@ -481,13 +503,15 @@ dotagents init [--force] [--agents claude,cursor]
 
 **Behavior:**
 1. Create `agents.toml` with `version = 1` and a bootstrap `dotagents` skill from `getsentry/dotagents`
-2. Create `.agents/skills/` directory
-3. Generate `.agents/.gitignore`
-4. Add `agents.lock` and `.agents/.gitignore` to the root `.gitignore`
+2. Create the selected scope's managed skills directory (`~/.agents/skills/` globally or `.agents/skills/` in project scope)
+3. In project scope, generate `.agents/.gitignore`
+4. In project scope, add `agents.lock` and `.agents/.gitignore` to the root `.gitignore`
 5. If symlink targets or agents are configured, set up symlinks
 6. Attempt to install the bootstrap skill (best-effort — warns on failure)
-7. (Interactive, project scope) Offer to install a git `post-merge` hook that runs `dotagents install` on pull (defaults to no). The hook tries `dotagents` first, falling back to `npx --yes @sentry/dotagents`.
+7. (Interactive, project scope inside Git) Offer to install a git `post-merge` hook that runs `dotagents --project install` on pull (defaults to no). The hook tries `dotagents` first, falling back to `npx --yes @sentry/dotagents`; both commands include `--project`.
 8. Print next steps
+
+Outside Git, `dotagents --project init` initializes the current directory and skips Git-only post-merge hook setup. Project init upgrades an existing marker-delimited legacy dotagents post-merge block to the explicit-project command while preserving unrelated hook content and file permissions.
 
 **Flags:**
 - `--force`: Overwrite existing `agents.toml`
@@ -506,13 +530,13 @@ dotagents install
 2. For each skill:
    a. Resolve source (check cache with TTL-based refresh, clone/fetch if needed)
    b. Discover skill within the repo
-   c. Copy skill directory into `.agents/skills/<name>/`
+   c. Copy the skill directory into the selected scope's managed skills directory
 3. Resolve configured subagents
-4. Resolve and install configured plugins into `.agents/plugins/<name>/` for project scope or `~/.agents/plugins/<name>/` for user scope
+4. Resolve and install configured plugins into `.agents/plugins/<name>/` for project scope or `~/.agents/plugins/<name>/` for global scope
 5. Write `agents.lock` with the current configured skills, subagents, and plugins
-6. Install configured subagents into `.agents/agents/`
-7. Regenerate `.agents/.gitignore`
-8. Warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
+6. Install configured subagents into the selected scope's managed agents directory
+7. In project scope, regenerate `.agents/.gitignore`
+8. In project scope, warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
 9. Create/verify symlinks (legacy `[symlinks]` and agent-specific)
 10. Write MCP config files for each declared agent
 11. Write hook config files for each declared agent that supports hooks
@@ -562,8 +586,8 @@ dotagents add myorg/single-skill-repo   # auto-detects if repo has one skill
 8. Run install exactly once and update `agents.lock`
    - If config mutation or installation fails, restore the pre-add `agents.toml` content so a failed add does not leave a declaration behind
 
-User scope uses the same discovery and lifecycle as project scope, with canonical
-bundles and runtime projections rooted in the user paths described above. Mixed
+Global scope uses the same discovery and lifecycle as project scope, with canonical
+bundles and runtime projections rooted in the global paths described above. Mixed
 plugin-and-skill selection from one source is intentionally unsupported; plugin
 presence wins for the whole source.
 
@@ -587,10 +611,10 @@ dotagents remove <name|source> [-y]
 If an explicit skill and plugin share the requested name, fail without changing either dependency. When their sources differ, source-based removal can disambiguate them.
 
 1. Remove matching `[[skills]]` or `[[plugins]]` entry from `agents.toml`
-2. Delete the managed installed artifact (`.agents/skills/<name>/` for skills or `.agents/plugins/<name>/` for managed plugins)
+2. Delete the artifact from the selected scope's managed skills or plugins directory
 3. Remove entry from the relevant `agents.lock` section
 4. Prune generated plugin runtime outputs when removing a plugin
-5. Regenerate `.agents/.gitignore`
+5. In project scope, regenerate `.agents/.gitignore`
 
 **Behavior (source removal):**
 When the argument matches a source specifier (e.g. `owner/repo`, a URL) rather than a dependency name, removes all skills and plugins from that source:
@@ -599,7 +623,7 @@ When the argument matches a source specifier (e.g. `owner/repo`, a URL) rather t
 3. Remove all matching `[[skills]]` and `[[plugins]]` entries from `agents.toml`
 4. Delete managed installed artifacts and lockfile entries
 5. Prune generated plugin runtime outputs for removed managed plugins
-6. Regenerate `.agents/.gitignore`
+6. In project scope, regenerate `.agents/.gitignore`
 
 **Flags:**
 - `-y`, `--yes`: Skip confirmation prompt
@@ -615,8 +639,8 @@ dotagents sync
 **Behavior:**
 1. Adopt orphaned local skills (installed but not in `agents.toml`, and not previously managed) into config
 2. Prune stale managed skills that were removed from config but still exist on disk locally
-3. Regenerate `.agents/.gitignore`
-4. Warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
+3. In project scope, regenerate `.agents/.gitignore`
+4. In project scope, warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
 5. Check for missing skills (in `agents.toml` but not installed)
 6. Create/verify/repair symlinks
 7. Verify and repair MCP config files for declared agents
@@ -664,7 +688,7 @@ When `defaultRepositorySource = "gitlab"`, shorthand sources (without dots) are 
 
 ### `dotagents doctor`
 
-Check project health and fix issues.
+Check the selected scope and fix supported issues.
 
 ```
 dotagents doctor [--fix]
@@ -674,16 +698,18 @@ dotagents doctor [--fix]
 1. `agents.toml` exists
 2. No legacy fields (`pin`, `gitignore`) in `agents.toml`
 3. No legacy fields (`commit`, `integrity`) in `agents.lock`
-4. Root `.gitignore` has required entries (`agents.lock`, `.agents/.gitignore`)
-5. `.agents/.gitignore` exists
-6. `.agents/skills/` directory exists
-7. All declared skills are installed
-8. All declared plugins are installed
-9. Generated plugin runtime artifacts are intact
-10. Symlinks are intact
+4. In project scope, the root `.gitignore` has required entries (`agents.lock`, `.agents/.gitignore`)
+5. In project scope, generated files are not tracked by Git
+6. In project scope, the managed post-merge hook does not contain legacy bare install commands
+7. In project scope, `.agents/.gitignore` exists
+8. The selected scope's managed skills directory exists
+9. All declared skills are installed
+10. All declared plugins are installed
+11. Generated plugin runtime artifacts are intact
+12. In project scope, symlinks are intact
 
 **Flags:**
-- `--fix`: Auto-fix issues where possible (add gitignore entries, remove legacy fields, create missing `.agents/.gitignore`)
+- `--fix`: Auto-fix issues where possible (add gitignore entries, remove legacy fields, create missing `.agents/.gitignore`, and repair legacy managed project hooks)
 
 ### `dotagents list`
 
@@ -711,7 +737,7 @@ How dotagents resolves a specifier to a concrete skill directory.
 ```
 Source string
   |
-  ├─ starts with "path:" -> Resolve relative to project root
+  ├─ starts with "path:" -> Resolve relative to selected scope root
   ├─ starts with "git:"  -> Parse URL, clone, discover skill by name
   └─ otherwise           -> Parse as owner/repo[@ref], clone from GitHub, discover skill by name
         |
@@ -753,7 +779,7 @@ The YAML frontmatter is parsed with the `yaml` package. `allowed-tools` can be a
 
 ## Gitignore Strategy
 
-dotagents always manages gitignore. Two files are added to the root `.gitignore` during `init`:
+In project scope, dotagents manages Git ignore state. Global commands do not modify repository Git files. Two files are added to the root `.gitignore` during `dotagents --project init`:
 - `agents.lock` — tracks managed skills, subagents, and plugins
 - `.agents/.gitignore` — excludes managed skill directories, canonical installed subagent files, and managed plugin bundles from git
 
@@ -776,19 +802,19 @@ Custom skills in `.agents/skills/my-local-skill/` and canonical local plugins in
 ### Regeneration
 
 `.agents/.gitignore` is regenerated on every:
-- `dotagents install`
-- `dotagents add`
-- `dotagents remove`
-- `dotagents sync`
+- `dotagents --project install`
+- `dotagents --project add`
+- `dotagents --project remove`
+- `dotagents --project sync`
 
 ### Health Checks
 
-`install` and `sync` warn if gitignore entries are missing but do not modify the root `.gitignore`. Run `dotagents doctor --fix` to add them.
+Project `install` and `sync` warn if gitignore entries are missing but do not modify the root `.gitignore`. Run `dotagents --project doctor --fix` to add them.
 
 ### Edge Cases
 
-- **Custom skill name collides with managed skill**: `dotagents add` refuses to install if `.agents/skills/<name>/` already exists and is tracked by git
-- **Someone commits a managed skill**: `dotagents sync` detects this and warns
+- **Custom skill name collides with managed skill**: `dotagents --project add` refuses to install if `.agents/skills/<name>/` already exists and is tracked by git
+- **Someone commits a managed skill**: `dotagents --project sync` detects this and warns
 
 ---
 

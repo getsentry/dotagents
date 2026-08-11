@@ -225,7 +225,7 @@ source = "org/plugins"
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     process.chdir(projectRoot);
 
-    await list(["--json"]);
+    await list(["--json"], { scope: resolveScope("project", projectRoot) });
 
     const printed = log.mock.calls[0]?.[0];
     expect(JSON.parse(String(printed))).toEqual({

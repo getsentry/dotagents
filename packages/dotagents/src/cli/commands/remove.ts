@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { rm } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
@@ -23,8 +23,9 @@ import { filterManagedPluginSkillNames } from "../../gitignore/skills.js";
 import { wildcardContainsLockedSkill } from "../../lockfile/wildcard.js";
 import { writeAgentsGitignore } from "../../gitignore/writer.js";
 import { sourcesMatch, parseOwnerRepoShorthand, isExplicitSourceSpecifier } from "@sentry/dotagents-lib";
-import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import type { ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
+import { commandPrefix, type CommandContext } from "../context.js";
 import { isInPlaceSkill } from "../../utils/fs.js";
 import {
   isInPlacePluginSource,
@@ -271,7 +272,11 @@ async function removePluginArtifacts(
   const remainingPluginConfigs = config.plugins
     .filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
     .filter((plugin) => existsSync(join(scope.pluginsDir, plugin.name)));
-  const installedPlugins = await loadInstalledPlugins(scope.pluginsDir, remainingPluginConfigs);
+  const installedPlugins = await loadInstalledPlugins(
+    scope.pluginsDir,
+    remainingPluginConfigs,
+    `${commandPrefix(scope)} install`,
+  );
   if (installedPlugins.issues.length === 0) {
     const { result } = await reconcilePluginOutputs(
       config.agents,
@@ -328,6 +333,7 @@ async function updateProjectGitignore(scope: ScopeRoot): Promise<void> {
   const installedPlugins = await loadInstalledPlugins(
     scope.pluginsDir,
     config.plugins.filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root)),
+    `${commandPrefix(scope)} install`,
   );
   await writeAgentsGitignore(
     scope.agentsDir,
@@ -355,7 +361,7 @@ async function promptYesNo(question: string): Promise<boolean> {
   });
 }
 
-export default async function remove(args: string[], flags?: { user?: boolean }): Promise<void> {
+export default async function remove(args: string[], context: CommandContext): Promise<void> {
   const { positionals, values } = parseArgs({
     args,
     allowPositionals: true,
@@ -367,7 +373,7 @@ export default async function remove(args: string[], flags?: { user?: boolean })
 
   const arg = positionals[0];
   if (!arg) {
-    console.error(chalk.red("Usage: npx @sentry/dotagents remove <name|source> [-y]"));
+    console.error(chalk.red(`Usage: ${commandPrefix(context.scope)} remove <name|source> [-y]`));
     process.exitCode = 1;
     return;
   }
@@ -375,7 +381,7 @@ export default async function remove(args: string[], flags?: { user?: boolean })
   const skipConfirm = values.yes as boolean;
 
   try {
-    const scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
+    const { scope } = context;
     await ensureUserScopeBootstrapped(scope);
 
     try {
@@ -460,7 +466,7 @@ export default async function remove(args: string[], flags?: { user?: boolean })
       console.log(chalk.green(`Removed from "${arg}": ${summary}`));
     }
   } catch (err) {
-    if (err instanceof ScopeError || err instanceof RemoveError) {
+    if (err instanceof RemoveError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

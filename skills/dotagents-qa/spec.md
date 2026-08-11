@@ -25,9 +25,9 @@ The agent SHALL identify the exact build or published version under test, the be
 
 The agent SHALL run package and runtime QA as a non-root user with `HOME`, `DOTAGENTS_STATE_DIR`, `DOTAGENTS_HOME`, and harness-specific config homes contained in Docker or disposable directories.
 
-#### Scenario: User scope plugin QA
+#### Scenario: Global scope plugin QA
 
-- **WHEN** testing `dotagents --user` or `dotagents --global`
+- **WHEN** testing unqualified global commands, `dotagents --user`, or `dotagents --global`
 - **THEN** the agent proves the resolved paths are inside the sandbox and does not copy host authentication unless a separately authorized model-backed proof requires it
 
 ### Behavior: Run proportionate baseline validation
@@ -45,8 +45,13 @@ The agent SHALL use CLI commands to cover initialization, add or declaration, in
 
 #### Scenario: Global plugin lifecycle
 
-- **WHEN** validating user-scope plugin support
-- **THEN** the agent tests both `--user` and `--global`, verifies global harness paths, deletes representative managed outputs, proves `sync` repairs them, and proves `remove` cleans them up
+- **WHEN** validating global plugin support
+- **THEN** the agent tests the unqualified default plus `--user` and `--global`, verifies global harness paths and project isolation, deletes representative managed outputs, proves `sync` repairs them, and proves `remove` cleans them up
+
+#### Scenario: Scope reversal release
+
+- **WHEN** validating the default-global major release
+- **THEN** the agent proves unqualified commands remain global inside a configured repository, `--project` remains isolated, aliases and conflicts behave exactly, non-Git project init works, and legacy managed hooks are diagnosed and repaired
 
 ### Behavior: Test representative real plugins
 

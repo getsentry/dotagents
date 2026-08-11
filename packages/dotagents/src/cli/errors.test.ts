@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { GitError, TrustError, type TrustPolicy } from "@sentry/dotagents-lib";
+import { resolveScope } from "../scope.js";
 import { formatGitError, formatTrustError } from "./errors.js";
+
+const globalScope = resolveScope("user");
 
 const policy: TrustPolicy = {
   allow_all: false,
@@ -19,7 +22,7 @@ describe("formatTrustError", () => {
       allowed: policy,
     });
 
-    const out = formatTrustError(err);
+    const out = formatTrustError(err, globalScope);
     expect(out).toContain("npx @sentry/dotagents trust add evil");
     expect(out).toContain("npx @sentry/dotagents trust add evil/repo");
   });
@@ -32,7 +35,7 @@ describe("formatTrustError", () => {
       allowed: policy,
     });
 
-    const out = formatTrustError(err);
+    const out = formatTrustError(err, globalScope);
     expect(out).toContain("npx @sentry/dotagents trust add git.evil.com");
   });
 
@@ -42,7 +45,7 @@ describe("formatTrustError", () => {
       kind: "git",
       allowed: policy,
     });
-    expect(formatTrustError(err)).toBe("Some unusual case.");
+    expect(formatTrustError(err, globalScope)).toBe("Some unusual case.");
   });
 });
 
@@ -54,7 +57,7 @@ describe("formatGitError", () => {
       sshUrl: "git@github.com:private/repo.git",
     });
 
-    const out = formatGitError(err);
+    const out = formatGitError(err, globalScope);
     expect(out).toContain("npx @sentry/dotagents add git@github.com:private/repo.git");
   });
 
@@ -63,11 +66,11 @@ describe("formatGitError", () => {
       kind: "other",
       url: "https://github.com/x/y.git",
     });
-    expect(formatGitError(err)).toBe("Failed to clone: some other error");
+    expect(formatGitError(err, globalScope)).toBe("Failed to clone: some other error");
   });
 
   it("returns the bare message when details are absent", () => {
     const err = new GitError("Plain message");
-    expect(formatGitError(err)).toBe("Plain message");
+    expect(formatGitError(err, globalScope)).toBe("Plain message");
   });
 });

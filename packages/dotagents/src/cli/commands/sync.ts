@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { readdir, rm } from "node:fs/promises";
 import chalk from "chalk";
@@ -20,8 +20,9 @@ import { isInPlacePluginSource, isSameProjectPluginConfig, loadInstalledPlugins,
 import { projectedPiSkillNames, reconcilePluginOutputs, verifyPluginOutputs } from "../../plugins/runtime/writer.js";
 import { pluginRuntimeLayout } from "../../plugins/runtime/layout.js";
 import { userMcpResolver } from "../../targets/paths.js";
-import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import type { ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
+import { commandPrefix, type CommandContext } from "../context.js";
 import { isInPlaceSkill, managedSkillPath } from "../../utils/fs.js";
 
 export interface SyncIssue {
@@ -48,6 +49,7 @@ export interface SyncResult {
 
 export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   const { scope } = opts;
+  const cmd = commandPrefix(scope);
   const { configPath, lockPath, agentsDir, skillsDir, pluginsDir } = scope;
   const subagentsDir = join(agentsDir, "agents");
 
@@ -189,6 +191,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     const installedPluginsForGitignore = await loadInstalledPlugins(
       pluginsDir,
       runtimePluginConfigs.filter((plugin) => existsSync(join(pluginsDir, plugin.name))),
+      `${cmd} install`,
     );
     await writeAgentsGitignore(
       agentsDir,
@@ -209,7 +212,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     // Health check: warn if agents.lock and .agents/.gitignore are not in root .gitignore
     const missing = await checkRootGitignoreEntries(scope.root);
     if (missing.length > 0) {
-      console.log(chalk.yellow(`Warning: ${missing.join(", ")} should be in .gitignore. Run 'npx @sentry/dotagents doctor --fix' to fix.`));
+      console.log(chalk.yellow(`Warning: ${missing.join(", ")} should be in .gitignore. Run '${cmd} doctor --fix' to fix.`));
     }
   }
 
@@ -219,7 +222,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       issues.push({
         type: "missing",
         name,
-        message: `"${name}" is in agents.toml but not installed. Run 'npx @sentry/dotagents install'.`,
+        message: `"${name}" is in agents.toml but not installed. Run '${cmd} install'.`,
       });
     }
   }
@@ -228,7 +231,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       issues.push({
         type: "missing",
         name: plugin.name,
-        message: `Plugin "${plugin.name}" is in agents.toml but not installed. Run 'npx @sentry/dotagents install'.`,
+        message: `Plugin "${plugin.name}" is in agents.toml but not installed. Run '${cmd} install'.`,
       });
     }
   }
@@ -280,7 +283,11 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
 
   // 7. Verify and repair custom subagent files
   let subagentsRepaired = 0;
-  const installedSubagentResult = await loadInstalledSubagents(subagentsDir, config.subagents);
+  const installedSubagentResult = await loadInstalledSubagents(
+    subagentsDir,
+    config.subagents,
+    `${cmd} install`,
+  );
   const prunedInstalledSubagents = await pruneInstalledSubagents(subagentsDir, config.subagents);
   const subagentDecls = installedSubagentResult.subagents;
   const subagentResolver = scope.scope === "user"
@@ -327,7 +334,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   // 8. Verify and repair plugin runtime projections
   let pluginsRepaired = 0;
   const installedPluginConfigs = runtimePluginConfigs.filter((plugin) => existsSync(join(pluginsDir, plugin.name)));
-  const installedPluginResult = await loadInstalledPlugins(pluginsDir, installedPluginConfigs);
+  const installedPluginResult = await loadInstalledPlugins(pluginsDir, installedPluginConfigs, `${cmd} install`);
   const pluginDecls = installedPluginResult.plugins;
   const prunedInstalledPlugins = await pruneInstalledPlugins(pluginsDir, staleManagedPluginNames);
   let pluginIssues: Awaited<ReturnType<typeof verifyPluginOutputs>> = [];
@@ -390,19 +397,9 @@ async function removeStaleManagedSkill(skillsDir: string, name: string): Promise
   return true;
 }
 
-export default async function sync(_args: string[], flags?: { user?: boolean }): Promise<void> {
-  let scope: ScopeRoot;
-  try {
-    scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
-    await ensureUserScopeBootstrapped(scope);
-  } catch (err) {
-    if (err instanceof ScopeError) {
-      console.error(chalk.red(err.message));
-      process.exitCode = 1;
-      return;
-    }
-    throw err;
-  }
+export default async function sync(_args: string[], context: CommandContext): Promise<void> {
+  const { scope } = context;
+  await ensureUserScopeBootstrapped(scope);
   const result = await runSync({ scope });
 
   if (result.adopted.length > 0) {

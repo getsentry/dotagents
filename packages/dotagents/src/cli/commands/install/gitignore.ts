@@ -8,6 +8,7 @@ import { isInPlacePluginSource } from "../../../plugins/store.js";
 import type { PluginDeclaration } from "../../../plugins/types.js";
 import { projectedPiSkillNames } from "../../../plugins/runtime/writer.js";
 import type { SubagentDeclaration } from "../../../subagents/types.js";
+import { commandPrefix } from "../../context.js";
 
 export interface InstallGitignoreArtifacts {
   installedSkillNames: string[];
@@ -61,6 +62,6 @@ export async function writeInstallGitignore(
 
   const missing = await checkRootGitignoreEntries(scope.root);
   if (missing.length > 0) {
-    console.log(chalk.yellow(`Warning: ${missing.join(", ")} should be in .gitignore. Run 'npx @sentry/dotagents doctor --fix' to fix.`));
+    console.log(chalk.yellow(`Warning: ${missing.join(", ")} should be in .gitignore. Run '${commandPrefix(scope)} doctor --fix' to fix.`));
   }
 }

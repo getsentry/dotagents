@@ -123,29 +123,16 @@ export class ScopeError extends Error {
   }
 }
 
-/**
- * Resolve scope when the user did NOT pass `--user`.
- *
- * - If inside a Git repository → use its root when `agents.toml` exists there.
- * - If `agents.toml` exists at a non-Git `projectRoot` → project scope.
- * - If we're not inside a git repo → user scope (with a notice).
- * - If the repository root has no agents.toml → throw with a helpful message.
- */
-export function resolveDefaultScope(projectRoot: string): ScopeRoot {
-  const gitRoot = findGitRoot(projectRoot);
-  if (gitRoot) {
-    if (existsSync(join(gitRoot, "agents.toml"))) {
-      return resolveScope("project", gitRoot);
-    }
+/** Resolve explicit project scope without falling back to global state. */
+export function resolveProjectScope(
+  projectRoot: string,
+  options: { requireConfig?: boolean } = {},
+): ScopeRoot {
+  const root = findGitRoot(projectRoot) ?? resolve(projectRoot);
+  if (options.requireConfig !== false && !existsSync(join(root, "agents.toml"))) {
     throw new ScopeError(
-      "No agents.toml found. Run 'npx @sentry/dotagents init' to set up this project, or use --user for user scope.",
+      "No agents.toml found. Run 'npx @sentry/dotagents --project init' to set up this project.",
     );
   }
-
-  if (existsSync(join(projectRoot, "agents.toml"))) {
-    return resolveScope("project", projectRoot);
-  }
-
-  console.error("No project found, using user scope (~/.agents/)");
-  return resolveScope("user");
+  return resolveScope("project", root);
 }

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { relative } from "node:path";
 import chalk from "chalk";
 import { generateDefaultConfig } from "../../config/writer.js";
 import { writeAgentsGitignore, ensureRootGitignoreEntries } from "../../gitignore/writer.js";
@@ -10,12 +10,19 @@ import { allAgentIds, allAgents } from "../../targets/registry.js";
 import { skillSymlinkTargets } from "../../targets/skill-symlinks.js";
 import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
-import { resolveScope, findGitDir, findGitRoot, type ScopeRoot } from "../../scope.js";
+import { findGitDir, type ScopeRoot } from "../../scope.js";
 import type { TrustConfig } from "../../config/schema.js";
 import { GitError, TrustError } from "@sentry/dotagents-lib";
 import { formatGitError, formatTrustError } from "../errors.js";
 import { runInstall } from "./install.js";
 import { allPluginOnlyAgentIds } from "../../plugins/targets.js";
+import { commandPrefix, type CommandContext } from "../context.js";
+import {
+  installPostMergeHook,
+  updateManagedPostMergeHook,
+} from "../post-merge-hook.js";
+
+export { installPostMergeHook } from "../post-merge-hook.js";
 
 const BOOTSTRAP_SKILL = { name: "dotagents", source: "getsentry/dotagents" } as const;
 
@@ -95,7 +102,7 @@ export async function runInit(opts: InitOptions): Promise<void> {
       // carries the auth-required SSH hint. Both deserve a hard fail with the
       // formatted message rather than the generic "could not install" copy.
       if (err instanceof TrustError || err instanceof GitError) {throw err;}
-      console.log(chalk.yellow("Could not install skills. Run `npx @sentry/dotagents install` to install them later."));
+      console.log(chalk.yellow(`Could not install skills. Run \`${commandPrefix(scope)} install\` to install them later.`));
     }
   }
 
@@ -128,7 +135,7 @@ function printSummary(
     }
   }
 
-  const cmd = scope.scope === "user" ? "npx @sentry/dotagents --user" : "npx @sentry/dotagents";
+  const cmd = commandPrefix(scope);
   console.log(
     `\n${chalk.bold("Next steps:")}\n  1. Add skills: ${cmd} add getsentry/skills find-bugs\n  2. Install: ${cmd} install`,
   );
@@ -142,39 +149,6 @@ export class InitError extends Error {
 }
 
 class CancelledError extends Error {}
-
-const POST_MERGE_MARKER = "# dotagents:post-merge";
-
-const POST_MERGE_SNIPPET = `
-${POST_MERGE_MARKER}
-if command -v dotagents >/dev/null 2>&1; then
-  dotagents install
-elif command -v npx >/dev/null 2>&1; then
-  npx --yes @sentry/dotagents install
-fi
-# dotagents:end
-`;
-
-export async function installPostMergeHook(gitDir: string): Promise<"created" | "exists"> {
-  const hooksDir = join(gitDir, "hooks");
-  await mkdir(hooksDir, { recursive: true });
-
-  const hookPath = join(hooksDir, "post-merge");
-
-  if (existsSync(hookPath)) {
-    const existing = await readFile(hookPath, "utf-8");
-    if (existing.includes(POST_MERGE_MARKER)) {
-      return "exists";
-    }
-    // Append to existing hook
-    await writeFile(hookPath, `${existing.trimEnd()}\n${POST_MERGE_SNIPPET}`, "utf-8");
-  } else {
-    await writeFile(hookPath, `#!/bin/sh\n${POST_MERGE_SNIPPET}`, "utf-8");
-  }
-
-  await chmod(hookPath, 0o755);
-  return "created";
-}
 
 const BANNER = `
      _       _                         _
@@ -247,36 +221,37 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
     trust,
   });
 
-  // Offer git post-merge hook (project scope only)
-  if (scope.scope === "project") {
-    const gitDir = findGitDir(scope.root);
-    if (gitDir) {
-      const setupHook = prompt(
-        await clack.confirm({
-          message: "Set up a git hook to auto-run `npx @sentry/dotagents install` on pull?",
-          initialValue: false,
-        }),
-      );
+  const gitDir = scope.scope === "project" ? findGitDir(scope.root) : undefined;
 
-      if (setupHook) {
-        try {
-          const result = await installPostMergeHook(gitDir);
-          if (result === "created") {
-            clack.log.success("Installed post-merge hook.");
-          } else {
-            clack.log.info("Post-merge hook already configured.");
-          }
-        } catch {
-          clack.log.warn("Could not install post-merge hook. You can set it up manually later.");
+  // Offer git post-merge hook (project scope only)
+  if (scope.scope === "project" && gitDir) {
+    const setupHook = prompt(
+      await clack.confirm({
+        message: "Set up a git hook to auto-run `npx @sentry/dotagents --project install` on pull?",
+        initialValue: false,
+      }),
+    );
+
+    if (setupHook) {
+      try {
+        const result = await installPostMergeHook(gitDir);
+        if (result === "created") {
+          clack.log.success("Installed post-merge hook.");
+        } else if (result === "updated") {
+          clack.log.success("Updated managed post-merge hook for project scope.");
+        } else {
+          clack.log.info("Post-merge hook already configured.");
         }
+      } catch {
+        clack.log.warn("Could not install post-merge hook. You can set it up manually later.");
       }
     }
   }
 
-  clack.outro("You're all set! Run `npx @sentry/dotagents add` to add more skills.");
+  clack.outro(`You're all set! Run \`${commandPrefix(scope)} add\` to add more skills.`);
 }
 
-export default async function init(args: string[], flags?: { user?: boolean }): Promise<void> {
+export default async function init(args: string[], context: CommandContext): Promise<void> {
   const { values } = parseArgs({
     args,
     options: {
@@ -286,18 +261,40 @@ export default async function init(args: string[], flags?: { user?: boolean }): 
     strict: true,
   });
 
-  const gitRoot = findGitRoot(resolve("."));
-  let scope: ScopeRoot;
-  if (flags?.user) {
-    scope = resolveScope("user");
-  } else if (gitRoot) {
-    scope = resolveScope("project", gitRoot);
-  } else {
-    console.error("No project found, using user scope (~/.agents/)");
-    scope = resolveScope("user");
-  }
+  const { scope } = context;
 
   try {
+    let hookUpdated = false;
+    if (scope.scope === "project") {
+      const gitDir = findGitDir(scope.root);
+      if (gitDir) {
+        try {
+          hookUpdated = await updateManagedPostMergeHook(gitDir);
+        } catch {
+          const message = `Could not update the managed post-merge hook. Run \`${commandPrefix(scope)} doctor --fix\` later.`;
+          if (process.stdout.isTTY) {
+            clack.log.warn(message);
+          } else {
+            console.warn(chalk.yellow(message));
+          }
+        }
+      }
+    }
+    if (hookUpdated) {
+      if (process.stdout.isTTY) {
+        clack.log.success("Updated managed post-merge hook for project scope.");
+      } else {
+        console.log(chalk.green("Updated managed post-merge hook for project scope."));
+      }
+      if (
+        existsSync(scope.configPath) &&
+        values["force"] !== true &&
+        values["agents"] === undefined
+      ) {
+        return;
+      }
+    }
+
     // Interactive mode: TTY with no --agents flag
     if (process.stdout.isTTY && values["agents"] === undefined) {
       await runInteractiveInit(scope, values["force"]);
@@ -312,12 +309,12 @@ export default async function init(args: string[], flags?: { user?: boolean }): 
   } catch (err) {
     if (err instanceof CancelledError) {return;}
     if (err instanceof TrustError) {
-      console.error(chalk.red(formatTrustError(err)));
+      console.error(chalk.red(formatTrustError(err, context.scope)));
       process.exitCode = 1;
       return;
     }
     if (err instanceof GitError) {
-      console.error(chalk.red(formatGitError(err)));
+      console.error(chalk.red(formatGitError(err, context.scope)));
       process.exitCode = 1;
       return;
     }

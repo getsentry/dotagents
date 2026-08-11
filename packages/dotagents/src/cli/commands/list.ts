@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
@@ -6,8 +6,9 @@ import { isWildcardDep } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { wildcardContainsLockedSkill } from "../../lockfile/wildcard.js";
 import { existsSync } from "node:fs";
-import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import type { ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
+import type { CommandContext } from "../context.js";
 
 export interface SkillStatus {
   name: string;
@@ -142,7 +143,7 @@ function formatPluginStatus(s: PluginStatus): string {
   }
 }
 
-export default async function list(args: string[], flags?: { user?: boolean }): Promise<void> {
+export default async function list(args: string[], context: CommandContext): Promise<void> {
   const { values } = parseArgs({
     args,
     options: {
@@ -151,18 +152,8 @@ export default async function list(args: string[], flags?: { user?: boolean }): 
     strict: true,
   });
 
-  let scope: ScopeRoot;
-  try {
-    scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
-    await ensureUserScopeBootstrapped(scope);
-  } catch (err) {
-    if (err instanceof ScopeError) {
-      console.error(chalk.red(err.message));
-      process.exitCode = 1;
-      return;
-    }
-    throw err;
-  }
+  const { scope } = context;
+  await ensureUserScopeBootstrapped(scope);
   const results = await runList({
     scope,
     json: values["json"],
