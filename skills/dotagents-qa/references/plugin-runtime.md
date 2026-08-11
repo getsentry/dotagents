@@ -17,7 +17,7 @@ pnpm qa:plugins
 ```
 
 `pnpm qa:example` proves the dotagents install/sync filesystem contract. It runs
-`install`, `list`, `doctor --fix`, `doctor`, and `sync`, then checks generated
+`--project install`, `--project list`, `--project doctor --fix`, `--project doctor`, and `--project sync`, then checks generated
 files and repair behavior.
 
 `pnpm qa:plugins` runs installed no-auth client proofs:

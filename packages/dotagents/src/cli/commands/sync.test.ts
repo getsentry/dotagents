@@ -397,7 +397,7 @@ source = "path:plugin-source/review-tools"
       {
         type: "missing",
         name: "review-tools",
-        message: `Plugin "review-tools" is in agents.toml but not installed. Run 'npx @sentry/dotagents install'.`,
+        message: `Plugin "review-tools" is in agents.toml but not installed. Run 'npx @sentry/dotagents --project install'.`,
       },
     ]);
   });

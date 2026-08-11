@@ -224,6 +224,7 @@ export async function installPluginBundle(
 export async function loadInstalledPlugins(
   pluginsDir: string,
   configs: PluginConfig[],
+  installCommand: string,
 ): Promise<{ plugins: PluginDeclaration[]; issues: Array<{ name: string; issue: string }> }> {
   const plugins: PluginDeclaration[] = [];
   const issues: Array<{ name: string; issue: string }> = [];
@@ -233,7 +234,7 @@ export async function loadInstalledPlugins(
     if (!existsSync(pluginDir)) {
       issues.push({
         name: config.name,
-        issue: `Plugin "${config.name}" is in agents.toml but not installed. Run 'npx @sentry/dotagents install'.`,
+        issue: `Plugin "${config.name}" is in agents.toml but not installed. Run '${installCommand}'.`,
       });
       continue;
     }

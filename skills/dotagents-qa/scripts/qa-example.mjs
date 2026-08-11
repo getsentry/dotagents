@@ -146,7 +146,7 @@ async function runSyncRepair() {
   rmSync(join(projectDir, ".grok", "plugins", "qa-tools"), { force: true, recursive: true });
   rmSync(join(projectDir, ".opencode", "skills", "plugin-qa"), { force: true, recursive: true });
   rmSync(join(projectDir, ".agents", "skills", "plugin-qa"), { force: true, recursive: true });
-  runCli(["sync"]);
+  runCli(["--project", "sync"]);
   assertFile(".mcp.json");
   assertSymlink(".claude/skills");
   assertFile(".claude/agents/code-reviewer.md");
@@ -313,7 +313,7 @@ function prepareClientHarness(agent) {
   const configPath = join(projectDir, "agents.toml");
   const config = readFileSync(configPath, "utf-8").replace(/^agents = .*$/m, `agents = ["${agent}"]`);
   writeFileSync(configPath, config);
-  runCli(["install"]);
+  runCli(["--project", "install"]);
   assertFile(".agents/plugins/qa-tools/plugin.json");
 }
 
@@ -323,14 +323,14 @@ async function runCodexRuntimeProof() {
 }
 
 async function installAndAssert() {
-  runCli(["install"]);
-  const list = runCli(["list"]);
+  runCli(["--project", "install"]);
+  const list = runCli(["--project", "list"]);
   writeFileSync(join(tmp, "list.out"), list);
   const listStatuses = await listSkills();
   assertSkillStatus(listStatuses, "review");
   assertSkillStatus(listStatuses, "commit");
-  runCli(["doctor", "--fix"]);
-  runCli(["doctor"]);
+  runCli(["--project", "doctor", "--fix"]);
+  runCli(["--project", "doctor"]);
 
   assertFile(".agents/skills/review/SKILL.md");
   assertFile(".agents/skills/commit/SKILL.md");

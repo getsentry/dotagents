@@ -1,0 +1,5 @@
+behavior: exercise-complete-cli-lifecycles
+prompt: |
+  Design the exact CLI test proving v3 unqualified commands use global state while explicit project commands remain isolated inside a configured Git repository. I will provide the checkout afterward; for now, give me the executable test sequence and assertions without running it.
+checks:
+  - judge: The sequence creates distinct global and project state, proves unqualified commands from inside the configured repository mutate only global state, and proves `--project` commands mutate only project state.

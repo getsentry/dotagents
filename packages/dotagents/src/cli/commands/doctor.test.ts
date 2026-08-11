@@ -172,7 +172,7 @@ source = "path:external-review-tools"
     expect(check?.message).toContain("local-tools");
     expect(check?.message).toContain("Same-project plugins cannot be installed into the same project");
     expect(check?.message).toContain("review-tools");
-    expect(check?.message).toContain("Run 'npx @sentry/dotagents install'");
+    expect(check?.message).toContain("Run 'npx @sentry/dotagents --project install'");
   });
 
   it("detects a missing agent skill symlink", async () => {
@@ -291,7 +291,42 @@ source = "getsentry/plugins"
     expect(check).toBeUndefined();
   });
 
+  it("diagnoses a legacy managed post-merge hook", async () => {
+    await mkdir(join(projectRoot, ".git", "hooks"), { recursive: true });
+    await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
+    await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+    await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");
+    await writeFile(
+      join(projectRoot, ".git", "hooks", "post-merge"),
+      "#!/bin/sh\n# dotagents:post-merge\n  dotagents install\n# dotagents:end\n",
+    );
+
+    const result = await runDoctor({ scope: resolveScope("project", projectRoot) });
+    const check = result.checks.find((candidate) => candidate.name === "post-merge hook scope");
+    expect(check?.status).toBe("warn");
+    expect(check?.message).toContain("--project doctor --fix");
+  });
+
   describe("--fix", () => {
+    it("repairs only the legacy managed post-merge block", async () => {
+      const hookPath = join(projectRoot, ".git", "hooks", "post-merge");
+      await mkdir(join(projectRoot, ".git", "hooks"), { recursive: true });
+      await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
+      await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+      await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");
+      await writeFile(
+        hookPath,
+        "#!/bin/sh\necho before\n# dotagents:post-merge\n  dotagents install\n  npx --yes @sentry/dotagents install\n# dotagents:end\necho after\n",
+      );
+
+      const result = await runDoctor({ scope: resolveScope("project", projectRoot), fix: true });
+      const hook = await readFile(hookPath, "utf-8");
+      expect(result.fixed).toBeGreaterThan(0);
+      expect(hook).toMatch(/^#!\/bin\/sh\necho before\n/);
+      expect(hook).toContain("dotagents --project install");
+      expect(hook).toMatch(/# dotagents:end\necho after\n$/);
+    });
+
     it("fixes missing root .gitignore entries", async () => {
       await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
       await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");

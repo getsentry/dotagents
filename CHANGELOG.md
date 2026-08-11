@@ -1,4 +1,25 @@
 # Changelog
+
+## 3.0.0
+
+### Breaking Changes ⚠️
+
+- **Scope-aware commands now target global state by default.** Unqualified `init`, `install`, `add`, `remove`, `sync`, `list`, `mcp`, `trust`, and `doctor` operate under `~/.agents/` (or `DOTAGENTS_HOME`) even when run inside a configured repository. Add `--project` to every repository-local invocation.
+- Existing project and global configuration, lockfiles, and managed directories are not copied, merged, renamed, or deleted automatically. The command's scope flag alone selects which state is used.
+- `--global` remains an optional explicit global spelling and `--user` remains a compatibility alias. Combining `--project` with either global alias is an error.
+
+| v2 intent and command | v3 command |
+| --- | --- |
+| Project init: `dotagents init` | `dotagents --project init` |
+| Project install/refresh: `dotagents install` | `dotagents --project install` |
+| Project add/remove: `dotagents add …` / `dotagents remove …` | `dotagents --project add …` / `dotagents --project remove …` |
+| Project repair/inspection: `dotagents sync`, `list`, or `doctor` | Add `--project` to the command |
+| Global operation: `dotagents --user …` or `dotagents --global …` | `dotagents …` (`--global` and `--user` still work) |
+
+Legacy dotagents-managed project post-merge hooks contain a bare install command whose meaning changes in v3. Run `dotagents --project doctor --fix` (or `dotagents --project init`) once in each affected repository. The repair replaces only the marker-delimited dotagents block and preserves unrelated hook content and permissions.
+
+If a release-blocking regression requires rollback, restore the last v2 release as npm's `latest` tag while preparing a v3 patch. No data conversion is required because v3 does not migrate files.
+
 ## 2.2.0
 
 ### New Features ✨
@@ -174,4 +195,3 @@
 
 - (deps) Bump smol-toml from 1.6.0 to 1.6.1 by @dependabot in [#82](https://github.com/getsentry/dotagents/pull/82)
 - Pin GitHub Actions to full-length commit SHAs by @joshuarli in [#81](https://github.com/getsentry/dotagents/pull/81)
-

@@ -53,7 +53,7 @@ describe("runInit", () => {
 
     try {
       process.chdir(child);
-      await init(["--agents", "claude"]);
+      await init(["--agents", "claude"], { scope: resolveScope("project", dir) });
     } finally {
       process.chdir(cwd);
     }
@@ -261,7 +261,7 @@ describe("installPostMergeHook", () => {
     expect(result).toBe("created");
     const content = await readFile(join(gitDir, "hooks", "post-merge"), "utf-8");
     expect(content).toMatch(/^#!\/bin\/sh\n/);
-    expect(content).toContain("dotagents install");
+    expect(content).toContain("dotagents --project install");
     expect(content).toContain("dotagents:post-merge");
   });
 
@@ -283,7 +283,7 @@ describe("installPostMergeHook", () => {
     expect(result).toBe("created");
     const content = await readFile(join(hooksDir, "post-merge"), "utf-8");
     expect(content).toContain("echo 'existing'");
-    expect(content).toContain("dotagents install");
+    expect(content).toContain("dotagents --project install");
     // Only one shebang
     expect(content.match(/^#!\/bin\/sh/gm)).toHaveLength(1);
   });
@@ -307,6 +307,38 @@ describe("installPostMergeHook", () => {
     await installPostMergeHook(gitDir);
 
     const content = await readFile(join(gitDir, "hooks", "post-merge"), "utf-8");
-    expect(content).toContain("npx --yes @sentry/dotagents install");
+    expect(content).toContain("npx --yes @sentry/dotagents --project install");
+  });
+});
+
+describe("init hook migration", () => {
+  let dir: string;
+
+  afterEach(async () => {
+    process.exitCode = undefined;
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("repairs a legacy managed hook even when config already exists", async () => {
+    dir = await mkdtemp(join(tmpdir(), "dotagents-init-migration-"));
+    const hookPath = join(dir, ".git", "hooks", "post-merge");
+    await mkdir(join(dir, ".git", "hooks"), { recursive: true });
+    await writeFile(join(dir, "agents.toml"), "version = 1\n");
+    await writeFile(
+      hookPath,
+      "#!/bin/sh\necho before\n# dotagents:post-merge\n  dotagents install\n  npx --yes @sentry/dotagents install\n# dotagents:end\necho after\n",
+    );
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await init([], { scope: resolveScope("project", dir) });
+
+    const hook = await readFile(hookPath, "utf-8");
+    expect(hook).toContain("dotagents --project install");
+    expect(hook).toMatch(/^#!\/bin\/sh\necho before\n/);
+    expect(hook).toMatch(/# dotagents:end\necho after\n$/);
+    expect(process.exitCode).toBe(1);
+    error.mockRestore();
+    log.mockRestore();
   });
 });

@@ -9,7 +9,7 @@
 | `specs/SPEC.md` | canonical skills, scopes, lifecycle commands, and generated harness behavior |
 | `specs/plugins.md` | plugin discovery, storage, targeting, projection, and CLI semantics |
 | `packages/dotagents/src/scope.ts` | project and user root/path resolution, including `DOTAGENTS_HOME` |
-| `packages/dotagents/src/cli/main.ts` | global `--user` and `--global` flag parsing |
+| `packages/dotagents/src/cli/main.ts` | default-global, explicit-project, alias, and conflict parsing |
 | `packages/dotagents/src/cli/commands/{add,install,sync,remove,doctor}.ts` | complete plugin lifecycle behavior and repair surfaces |
 | `packages/dotagents/src/plugins/store.ts` | plugin discovery, source resolution, canonical install, and installed-bundle loading |
 | `packages/dotagents/src/plugins/runtime/layout.ts` | project versus user/global runtime destinations |
@@ -26,7 +26,7 @@
 - Exclude `*.tsbuildinfo` with `dist` so TypeScript project references rebuild cleanly instead of reusing stale host incremental state.
 - Document `-i` for non-TTY Docker runs because stdin must stay attached when an agent feeds commands through a here-doc.
 - Distinguish exact published-package evidence from a later packed-local-build fix.
-- Require project and user/global lifecycle coverage when plugin scope behavior changes, including both flag spellings.
+- Require default-global and explicit-project lifecycle coverage when scope behavior changes, including aliases, conflicts, and cross-scope isolation.
 - Test Sentry, Vercel, and one selected Anthropic marketplace plugin as the high-signal compatibility set.
 - Keep OpenCode and Pi proofs isolated because both can observe `.agents/skills` and contaminate one another.
 - Use native no-auth Claude/Codex management commands, OpenCode skill and MCP resource discovery, and Pi link inspection without claiming model invocation.

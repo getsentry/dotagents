@@ -12,14 +12,14 @@ pnpm qa:example
 
 This builds the local CLI, copies `examples/full/` to a temp project, and verifies:
 
-- `install`, `list`, `doctor --fix`, and `doctor` complete successfully
+- `--project install`, `--project list`, `--project doctor --fix`, and `--project doctor` complete successfully
 - managed skills under `.agents/skills/`
 - Claude/Cursor skill symlink behavior
 - MCP files for Claude, Cursor, Codex, and OpenCode
 - hook files for Claude and Cursor
 - canonical installed subagent under `.agents/agents/`
 - generated subagent runtime files for Claude, Cursor, Codex, and OpenCode
-- `sync` repair after deleting representative generated files
+- `--project sync` repair after deleting representative generated files
 
 Use `node skills/dotagents-qa/scripts/qa-example.mjs all --keep` to keep the
 temp project for inspection. The script prints the project path.
@@ -30,4 +30,4 @@ This proves dotagents local CLI behavior and generated file placement. It does n
 
 ## When To Customize
 
-Start from `examples/full/` when a branch changes broad behavior. Create a custom temp fixture only when the example cannot express the changed surface, such as unusual source resolution, user scope, conflict handling, or packaging behavior.
+Start from `examples/full/` when a branch changes broad behavior. Create a custom temp fixture only when the example cannot express the changed surface, such as unusual source resolution, global/project isolation, scope conflicts, legacy hook repair, or packaging behavior.

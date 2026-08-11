@@ -118,7 +118,7 @@ describe("plugin store", () => {
       const result = await loadInstalledPlugins(pluginsDir, [{
         name: "review-tools",
         source: "path:source/review-tools",
-      }]);
+      }], "npx @sentry/dotagents install");
       expect(result.plugins).toEqual([]);
       expect(result.issues[0]?.issue).toContain("Installed plugin resolves outside source");
     } finally {
@@ -135,7 +135,7 @@ describe("plugin store", () => {
       const result = await loadInstalledPlugins(pluginsDir, [{
         name: "review-tools",
         source: "path:source/review-tools",
-      }]);
+      }], "npx @sentry/dotagents install");
       expect(result.plugins).toEqual([]);
       expect(result.issues[0]?.issue).toContain("has no plugin.json or supported native manifest");
     } finally {

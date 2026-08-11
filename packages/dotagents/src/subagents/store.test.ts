@@ -367,7 +367,7 @@ Review the current diff for Claude.
       markManagedMarkdownSubagent(SUBAGENT_MD("other-reviewer")),
     );
 
-    const result = await loadInstalledSubagents(installedDir, [subagentConfig()]);
+    const result = await loadInstalledSubagents(installedDir, [subagentConfig()], "npx @sentry/dotagents install");
 
     expect(result.subagents).toEqual([]);
     expect(result.issues).toHaveLength(1);
@@ -381,7 +381,7 @@ Review the current diff for Claude.
     await mkdir(installedDir, { recursive: true });
     await writeFile(join(installedDir, "code-reviewer.md"), SUBAGENT_MD("code-reviewer"));
 
-    const result = await loadInstalledSubagents(installedDir, [subagentConfig()]);
+    const result = await loadInstalledSubagents(installedDir, [subagentConfig()], "npx @sentry/dotagents install");
 
     expect(result.subagents).toEqual([]);
     expect(result.issues).toHaveLength(1);
@@ -580,7 +580,7 @@ Review the current diff.
       },
     }]);
 
-    const result = await loadInstalledSubagents(installedDir, [subagentConfig()]);
+    const result = await loadInstalledSubagents(installedDir, [subagentConfig()], "npx @sentry/dotagents install");
 
     expect(result.issues).toEqual([]);
     expect(result.subagents[0]!.native?.codex).toContain('sandbox_mode = "read-only"');

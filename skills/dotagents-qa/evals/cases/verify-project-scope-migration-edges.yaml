@@ -1,0 +1,5 @@
+behavior: exercise-complete-cli-lifecycles
+prompt: |
+  Design the exact CLI test for v3 project-scope migration edge cases: initializing outside Git and repairing an old managed post-merge hook. I will provide the checkout afterward; for now, give me the executable test sequence and assertions without running it.
+checks:
+  - judge: The sequence proves `--project init` outside Git uses the current directory and skips Git-only setup, then separately proves a legacy managed hook is diagnosed and repaired to explicit project scope while preserving unrelated hook content and executable mode.

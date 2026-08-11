@@ -1,13 +1,18 @@
 ---
 name: dotagents
-description: Manage dotagents dependencies and runtime config. Use when asked to "add a skill", "install skills", "remove a skill", "configure plugins", "configure subagents", "dotagents init", "agents.toml", "agents.lock", "sync skills", "list skills", "set up dotagents", "configure trust", "add MCP server", "add hook", "wildcard skills", "user scope", "dotagents doctor", or any dotagents-related task.
+description: Manage dotagents dependencies and runtime config. Use when asked to "add a skill", "install skills", "remove a skill", "configure plugins", "configure subagents", "dotagents init", "agents.toml", "agents.lock", "sync skills", "list skills", "set up dotagents", "configure trust", "add MCP server", "add hook", "wildcard skills", "global scope", "project scope", "dotagents doctor", or any dotagents-related task.
+spec_hash: 618e5a1625a1
 ---
 
-Manage dependencies declared in `agents.toml`. dotagents resolves skills, subagents, plugins, MCP servers, and hooks so agent tools (Claude Code, Cursor, Codex, Grok, VS Code, OpenCode, Pi) can use shared project config.
+Manage dependencies declared in `agents.toml`. dotagents resolves skills, subagents, plugins, MCP servers, and hooks so agent tools (Claude Code, Cursor, Codex, Grok, VS Code, OpenCode, Pi) can use shared global or project config.
 
 ## Running dotagents
 
-Always use `npx @sentry/dotagents` to run commands. For example: `npx @sentry/dotagents sync`.
+Always use `npx @sentry/dotagents` to run commands. Unqualified commands are global by default. Add `--project` whenever the user asks to manage the current repository. Do not infer project intent merely because the current directory contains `agents.toml`.
+
+Apply this literally: “add this skill” with no repository-local wording means `npx @sentry/dotagents add ...`, even inside a repository that has `agents.toml`. “Add this skill to this repository/project” means `npx @sentry/dotagents --project add ...`.
+
+Global `add` bootstraps `~/.agents/agents.toml` when it is missing. Do not run a separate global `init` or `install` before or after `add` unless the user independently requested it.
 
 ## References
 
@@ -22,7 +27,7 @@ Read the relevant reference when the task requires deeper detail:
 ## Quick Start
 
 ```bash
-# Initialize a new project (interactive TUI)
+# Initialize global state (interactive TUI)
 npx @sentry/dotagents init
 
 # Add a skill from GitHub
@@ -44,11 +49,21 @@ npx @sentry/dotagents install
 npx @sentry/dotagents list
 ```
 
+For repository-local management, keep `--project` on every command:
+
+```bash
+npx @sentry/dotagents --project init
+npx @sentry/dotagents --project add getsentry/skills find-bugs
+npx @sentry/dotagents --project install
+npx @sentry/dotagents --project list
+npx @sentry/dotagents --project doctor --fix
+```
+
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `npx @sentry/dotagents init` | Initialize `agents.toml` and `.agents/` directory |
+| `npx @sentry/dotagents init` | Initialize global config and managed directories |
 | `npx @sentry/dotagents install` | Install all dependencies from `agents.toml` |
 | `npx @sentry/dotagents add <specifier>` | Add a skill dependency |
 | `npx @sentry/dotagents remove <name>` | Remove a skill or plugin |
@@ -56,11 +71,17 @@ npx @sentry/dotagents list
 | `npx @sentry/dotagents list` | Show declared skills, plugins, and status |
 | `npx @sentry/dotagents mcp` | Add, remove, or list MCP server declarations |
 | `npx @sentry/dotagents trust` | Add, remove, or list trusted sources |
-| `npx @sentry/dotagents doctor` | Check project health and fix issues |
+| `npx @sentry/dotagents doctor` | Check global health and fix issues |
 
-All commands accept `--user` to operate on user scope (`~/.agents/`) instead of the current project.
+All commands default to global scope (`~/.agents/`). `--project` selects the current repository (or current directory outside Git). `--global` is an explicit global spelling, and `--user` is its compatibility alias. Never combine `--project` with a global alias.
 
 For full options and flags, read [references/cli-reference.md](references/cli-reference.md).
+
+## Safe Removal and Trust
+
+Use `remove` instead of manually deleting managed files or editing `agents.lock`. For a project dependency, keep explicit scope: `npx @sentry/dotagents --project remove <name>`. When a wildcard provides the skill, let `remove` add the name to the wildcard's `exclude` list so the next install does not restore it.
+
+When trust blocks a source, inspect syntax without mutation using `npx @sentry/dotagents trust add --help`. Then show the exact scoped command, such as `npx @sentry/dotagents trust add git.corp.example.com`, and explicitly ask approval before running it. Never enable `allow_all` or add a trusted source without explicit user intent.
 
 ## Source Formats
 
@@ -72,18 +93,19 @@ For full options and flags, read [references/cli-reference.md](references/cli-re
 | GitHub HTTPS | `https://github.com/owner/repo` | Full HTTPS URL |
 | Git URL | `git:https://git.corp.dev/team/skills` | Any non-GitHub git remote |
 | Well-known HTTPS | `https://cli.sentry.dev` | HTTP source using `.well-known/skills/` |
-| Local path | `path:./my-skills/custom` | Relative to project root |
+| Local path | `path:./my-skills/custom` | Relative to the selected scope root |
 
 ## Key Concepts
 
-- **`.agents/skills/`** is the canonical home for skills; **`.agents/plugins/`** is the canonical home for plugins
+- **Managed paths** live under `~/.agents/` globally or `.agents/` in project scope
 - **`agents.toml`** declares dependencies; **`agents.lock`** tracks managed skills, subagents, and plugins
-- **Symlinks**: `.claude/skills/`, `.cursor/skills/` point to `.agents/skills/`
+- **Symlinks**: agent skill directories point to the selected scope's managed skills directory
 - **Wildcards**: `name = "*"` installs all skills from a source, with optional `exclude` list
 - **Trust**: Optional `[trust]` section restricts which sources are allowed
 - **Hooks**: `[[hooks]]` declarations write tool-event hooks to each agent's config
 - **Subagents**: `[[subagents]]` declarations install portable or native subagent files
 - **Plugins**: `[[plugins]]` declarations install canonical bundles and generate runtime-specific plugin outputs
-- **Gitignore**: Managed skills, subagents, and plugin bundles are gitignored; custom in-place sources are tracked
-- **User scope**: `--user` flag manages skills in `~/.agents/` shared across all projects; plugins are project-scope only
+- **Gitignore**: In project scope, managed skills, subagents, and plugin bundles are gitignored; custom in-place sources are tracked
+- **Global scope**: the default; manages dependencies in `~/.agents/` shared across projects, including plugins
+- **Project scope**: `--project` manages repository-local `agents.toml`, `agents.lock`, and `.agents/`
 - **Updates**: Run `npx @sentry/dotagents install` to refresh managed skills, subagents, and plugins; there is no `update` command

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm, readFile, symlink } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import * as clack from "@clack/prompts";
@@ -43,6 +44,17 @@ function mockRunInstall() {
     subagentWarnings: [],
     pluginWarnings: [],
   });
+}
+
+function countGitFetches(tracePath: string): number {
+  if (!existsSync(tracePath)) {return 0;}
+  return readFileSync(tracePath, "utf-8")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { event: string; argv?: string[] })
+    .filter((event) => event.event === "start" && event.argv?.[1] === "fetch")
+    .length;
 }
 
 describe("runAdd", () => {
@@ -107,21 +119,26 @@ describe("runAdd", () => {
     const tracePath = join(tmpDir, "add-git-trace.json");
     process.env["GIT_TRACE2_EVENT"] = tracePath;
     const scope = resolveScope("project", projectRoot);
+    let fetchesBeforeInstall = -1;
 
     await runAdd({
       scope,
       specifier: `git:${repoDir}`,
       names: ["pdf"],
+      progress: {
+        start(message) {
+          if (message === "Installing components") {
+            fetchesBeforeInstall = countGitFetches(tracePath);
+          }
+        },
+        message() {},
+        stop() {},
+        error() {},
+      },
     });
 
-    const events = (await readFile(tracePath, "utf-8"))
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as { event: string; argv?: string[] });
-    const fetches = events.filter(
-      (event) => event.event === "start" && event.argv?.[1] === "fetch",
-    );
-    expect(fetches).toHaveLength(0);
+    expect(fetchesBeforeInstall).toBeGreaterThanOrEqual(0);
+    expect(countGitFetches(tracePath)).toBe(fetchesBeforeInstall);
 
     const installTracePath = join(tmpDir, "install-git-trace.json");
     process.env["GIT_TRACE2_EVENT"] = installTracePath;
@@ -139,21 +156,26 @@ describe("runAdd", () => {
   it("does not fetch a wildcard git source again during the nested install", async () => {
     const tracePath = join(tmpDir, "add-wildcard-git-trace.json");
     process.env["GIT_TRACE2_EVENT"] = tracePath;
+    let fetchesBeforeInstall = -1;
 
     await runAdd({
       scope: resolveScope("project", projectRoot),
       specifier: `git:${repoDir}`,
       all: true,
+      progress: {
+        start(message) {
+          if (message === "Installing components") {
+            fetchesBeforeInstall = countGitFetches(tracePath);
+          }
+        },
+        message() {},
+        stop() {},
+        error() {},
+      },
     });
 
-    const events = (await readFile(tracePath, "utf-8"))
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as { event: string; argv?: string[] });
-    const fetches = events.filter(
-      (event) => event.event === "start" && event.argv?.[1] === "fetch",
-    );
-    expect(fetches).toHaveLength(0);
+    expect(fetchesBeforeInstall).toBeGreaterThanOrEqual(0);
+    expect(countGitFetches(tracePath)).toBe(fetchesBeforeInstall);
   });
 
   it("restores the acquired commit after another dependency checks out a different ref", async () => {
@@ -987,12 +1009,11 @@ describe("add() CLI parsing", () => {
   });
 
   it("passes positional skill names to runAdd", async () => {
-    // We test the full CLI add() by running it against a real project dir
-    // The project root must be the cwd for resolveDefaultScope
+    // We test the full CLI add() against a resolved project scope.
     const origCwd = process.cwd();
     process.chdir(projectRoot);
     try {
-      await add([`git:${repoDir}`, "pdf", "review"]);
+      await add([`git:${repoDir}`, "pdf", "review"], { scope: resolveScope("project", projectRoot) });
       expect(process.exitCode).toBeUndefined();
 
       const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
@@ -1007,7 +1028,7 @@ describe("add() CLI parsing", () => {
     const origCwd = process.cwd();
     process.chdir(projectRoot);
     try {
-      await add([`git:${repoDir}`, "--skill", "pdf", "--skill", "review"]);
+      await add([`git:${repoDir}`, "--skill", "pdf", "--skill", "review"], { scope: resolveScope("project", projectRoot) });
       expect(process.exitCode).toBeUndefined();
 
       const toml = await readFile(join(projectRoot, "agents.toml"), "utf-8");
@@ -1022,7 +1043,7 @@ describe("add() CLI parsing", () => {
     const origCwd = process.cwd();
     process.chdir(projectRoot);
     try {
-      await add([`git:${repoDir}`, "pdf", "--skill", "review"]);
+      await add([`git:${repoDir}`, "pdf", "--skill", "review"], { scope: resolveScope("project", projectRoot) });
       expect(process.exitCode).toBe(1);
     } finally {
       process.chdir(origCwd);
@@ -1036,7 +1057,7 @@ describe("add() CLI parsing", () => {
     const origCwd = process.cwd();
     process.chdir(projectRoot);
     try {
-      await add(["path:plugin-source", "--skill", "cli-plugin"]);
+      await add(["path:plugin-source", "--skill", "cli-plugin"], { scope: resolveScope("project", projectRoot) });
 
       expect(process.exitCode).toBeUndefined();
       expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toContain(
@@ -1067,7 +1088,7 @@ describe("add() CLI parsing", () => {
     const origCwd = process.cwd();
     process.chdir(projectRoot);
     try {
-      await add(["path:plugin-source", "--skill", "cli-plugin"]);
+      await add(["path:plugin-source", "--skill", "cli-plugin"], { scope: resolveScope("project", projectRoot) });
 
       expect(clack.spinner).toHaveBeenCalledWith({ indicator: "timer" });
       expect(spinner.start.mock.calls).toEqual([

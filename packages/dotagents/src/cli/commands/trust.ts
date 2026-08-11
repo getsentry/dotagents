@@ -1,11 +1,11 @@
-import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import type { AgentsConfig, RepositorySource } from "../../config/schema.js";
 import { addTrustSource, removeTrustSource } from "../../config/writer.js";
-import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import type { ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
+import { commandPrefix, type CommandContext } from "../context.js";
 
 export class TrustCommandError extends Error {
   constructor(message: string) {
@@ -110,7 +110,7 @@ async function trustAdd(args: string[], scope: ScopeRoot): Promise<void> {
 
   const source = positionals[0];
   if (!source) {
-    console.error(chalk.red("Usage: npx @sentry/dotagents trust add <source>"));
+    console.error(chalk.red(`Usage: ${commandPrefix(scope)} trust add <source>`));
     console.error(chalk.red("  <source> can be: org, owner/repo, or domain.name"));
     process.exitCode = 1;
     return;
@@ -131,7 +131,7 @@ async function trustRemove(args: string[], scope: ScopeRoot): Promise<void> {
 
   const source = positionals[0];
   if (!source) {
-    console.error(chalk.red("Usage: npx @sentry/dotagents trust remove <source>"));
+    console.error(chalk.red(`Usage: ${commandPrefix(scope)} trust remove <source>`));
     process.exitCode = 1;
     return;
   }
@@ -176,8 +176,8 @@ async function trustList(args: string[], scope: ScopeRoot): Promise<void> {
   }
 }
 
-function printTrustUsage(): void {
-  console.error(`Usage: npx @sentry/dotagents trust <subcommand>
+function printTrustUsage(scope: ScopeRoot): void {
+  console.error(`Usage: ${commandPrefix(scope)} trust <subcommand>
 
 Subcommands:
   add      Add a trusted source (org, owner/repo, or domain)
@@ -185,26 +185,16 @@ Subcommands:
   list     Show trusted sources`);
 }
 
-export default async function trust(args: string[], flags?: { user?: boolean }): Promise<void> {
+export default async function trust(args: string[], context: CommandContext): Promise<void> {
   const sub = args[0];
 
   if (!sub || sub === "--help" || sub === "-h") {
-    printTrustUsage();
+    printTrustUsage(context.scope);
     return;
   }
 
-  let scope: ScopeRoot;
-  try {
-    scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
-    await ensureUserScopeBootstrapped(scope);
-  } catch (err) {
-    if (err instanceof ScopeError) {
-      console.error(chalk.red(err.message));
-      process.exitCode = 1;
-      return;
-    }
-    throw err;
-  }
+  const { scope } = context;
+  await ensureUserScopeBootstrapped(scope);
 
   const subArgs = args.slice(1);
 
@@ -221,11 +211,11 @@ export default async function trust(args: string[], flags?: { user?: boolean }):
         break;
       default:
         console.error(chalk.red(`Unknown trust subcommand: ${sub}`));
-        printTrustUsage();
+        printTrustUsage(scope);
         process.exitCode = 1;
     }
   } catch (err) {
-    if (err instanceof ScopeError || err instanceof TrustCommandError) {
+    if (err instanceof TrustCommandError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

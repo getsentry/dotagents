@@ -3,28 +3,42 @@
 ## Usage
 
 ```
-npx @sentry/dotagents [--user] <command> [options]
+npx @sentry/dotagents [--project|--global|--user] <command> [options]
 ```
 
 ### Global Flags
 
 | Flag | Description |
 |------|-------------|
-| `--user` | Operate on user scope (`~/.agents/`) instead of current project |
+| no scope flag | Operate on global scope (`~/.agents/`); the default in every directory |
+| `--project` | Operate on the containing Git repository, or current directory outside Git |
+| `--global` | Explicitly operate on global scope |
+| `--user` | Compatibility alias for `--global` |
 | `--help`, `-h` | Show help |
 | `--version`, `-V` | Show version |
+
+Scope flags may appear before or after the command. `--global --user` is allowed; combining `--project` with either global alias is an error before execution. Project commands other than `init` require `agents.toml` and never fall back globally. No files are migrated between scopes.
+
+All unqualified examples below are intentionally global. For repository-local work, use:
+
+```bash
+npx @sentry/dotagents --project init
+npx @sentry/dotagents --project add getsentry/skills find-bugs
+npx @sentry/dotagents --project install
+npx @sentry/dotagents --project doctor --fix
+```
 
 ## Commands
 
 ### `init`
 
-Initialize a new project with `agents.toml` and `.agents/` directory. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance, and attempts to install it.
+Initialize the selected scope. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance, and attempts to install it.
 
 ```bash
 npx @sentry/dotagents init
 npx @sentry/dotagents init --agents claude,cursor
 npx @sentry/dotagents init --force
-npx @sentry/dotagents --user init
+npx @sentry/dotagents --project init
 ```
 
 | Flag | Description |
@@ -36,6 +50,9 @@ npx @sentry/dotagents --user init
 1. Select agents (multiselect)
 2. Trust policy: allow all sources or restrict to trusted
 3. If restricted: enter trusted GitHub orgs/repos (comma-separated)
+4. In a Git project, optionally install a post-merge hook whose direct and npx fallback commands both run `--project install`
+
+Outside Git, `--project init` uses the current directory and skips Git-only hook setup. It also upgrades legacy marker-delimited project hooks while preserving unrelated content and executable permissions.
 
 ### `install`
 
@@ -50,13 +67,13 @@ npx @sentry/dotagents install
 2. Expand wildcard skill entries
 3. Validate trust for each skill, subagent, and plugin source
 4. Resolve skills, subagents, and plugins
-5. Copy canonical artifacts into `.agents/skills/`, `.agents/agents/`, and `.agents/plugins/`
+5. Copy canonical artifacts into the selected scope's managed skills, agents, and plugins directories
 6. Write/update lockfile
-7. Generate `.agents/.gitignore`
+7. In project scope, generate `.agents/.gitignore`
 8. Create/verify agent symlinks
 9. Write MCP, hook, subagent, and plugin runtime configs
 
-`dotagents --user install` rejects `[[plugins]]` because plugin runtime projections are project-scoped.
+Global and project installs both support plugins, with outputs rooted in their selected scope.
 
 ### `add <specifier> [skill...]`
 
@@ -106,7 +123,7 @@ Remove a skill or plugin dependency.
 npx @sentry/dotagents remove find-bugs
 ```
 
-Removes from `agents.toml`, deletes managed installed files, updates the lockfile, prunes generated plugin outputs when needed, and regenerates `.agents/.gitignore`. Passing a source removes all matching skills and plugins from that source.
+Removes from `agents.toml`, deletes files from the selected scope's managed directories, updates the lockfile, and prunes generated plugin outputs when needed. In project scope, it also regenerates `.agents/.gitignore`. Passing a source removes all matching skills and plugins from that source.
 
 If a skill and plugin share the same name, name-based removal is rejected. When their sources differ, pass the dependency's source to disambiguate.
 
@@ -114,7 +131,7 @@ For skills sourced from a wildcard entry (`name = "*"`), interactively prompts w
 
 ### `sync`
 
-Reconcile project state without network access: adopt local orphans, prune stale managed skills/subagents/plugins, and repair symlinks and generated configs.
+Reconcile selected-scope state without network access: adopt local orphans, prune stale managed skills/subagents/plugins, and repair symlinks and generated configs.
 
 ```bash
 npx @sentry/dotagents sync
@@ -122,7 +139,7 @@ npx @sentry/dotagents sync
 
 **Actions performed:**
 1. Adopt orphaned skills (installed but not declared in config)
-2. Regenerate `.agents/.gitignore`
+2. In project scope, regenerate `.agents/.gitignore`
 3. Prune stale managed skills, subagents, and plugins removed from config
 4. Check for missing skills and plugins
 5. Repair agent symlinks
@@ -130,11 +147,11 @@ npx @sentry/dotagents sync
 7. Verify/repair hook configs
 8. Verify/repair subagent and plugin runtime configs
 
-Reports issues as warnings or errors, including user-scope plugin declarations and same-project plugin declarations.
+Reports issues as warnings or errors, including invalid same-project plugin declarations.
 
 ### `doctor`
 
-Check project health and fix issues.
+Check selected-scope health and fix issues.
 
 ```bash
 npx @sentry/dotagents doctor
@@ -145,7 +162,7 @@ npx @sentry/dotagents doctor --fix
 |------|-------------|
 | `--fix` | Auto-fix issues where possible |
 
-**Checks:** gitignore setup, legacy config fields, installed skills/plugins, symlinks, and `.agents/.gitignore`. Use `dotagents sync` to repair generated runtime configs.
+**Checks:** applicable gitignore setup, legacy config fields, installed skills/plugins, symlinks, `.agents/.gitignore`, and legacy managed project hooks. Use the same scope on `sync` to repair generated runtime configs. Run `npx @sentry/dotagents --project doctor --fix` to migrate a legacy project hook.
 
 Useful when migrating to a new version of dotagents.
 

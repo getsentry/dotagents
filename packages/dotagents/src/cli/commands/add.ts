@@ -39,8 +39,9 @@ import {
 import { getCacheStateDir, HOST_SCAN_DIRS } from "../cache.js";
 import { formatGitError, formatTrustError } from "../errors.js";
 import { runInstall } from "./install.js";
-import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import type { ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
+import { commandPrefix, type CommandContext } from "../context.js";
 import {
   discoverPlugins,
   type PluginCandidate,
@@ -178,6 +179,7 @@ async function verifyRequestedNames(
   rootDir: string,
   names: string[],
   source: string,
+  command: string,
 ): Promise<void> {
   for (const name of names) {
     const found = await discoverSkill(rootDir, name, {
@@ -186,7 +188,7 @@ async function verifyRequestedNames(
     if (!found) {
       throw new AddError(
         `Skill "${name}" not found in ${source}. ` +
-          `Use 'npx @sentry/dotagents add ${source}' without --name to see available skills.`,
+          `Use '${command} add ${source}' without --name to see available skills.`,
       );
     }
   }
@@ -197,6 +199,7 @@ async function selectSkills(
   names: string[] | undefined,
   source: string,
   interactive: boolean | undefined,
+  command: string,
 ): Promise<SkillSelection> {
   if (acquired.local && !names?.length) {
     const meta = await loadSkillMd(join(acquired.rootDir, "SKILL.md"));
@@ -208,7 +211,7 @@ async function selectSkills(
   }
 
   if (names?.length) {
-    await verifyRequestedNames(acquired.rootDir, names, source);
+    await verifyRequestedNames(acquired.rootDir, names, source, command);
     return {
       type: "skills",
       names,
@@ -287,12 +290,13 @@ function pluginCandidateForName(
   candidates: PluginCandidate[],
   name: string,
   source: string,
+  command: string,
 ): PluginCandidate {
   const matches = candidates.filter((candidate) => candidate.name === name);
   if (matches.length === 0) {
     throw new AddError(
       `Plugin "${name}" not found in ${source}. ` +
-        `Use 'npx @sentry/dotagents add ${source}' without --name to see available plugins.`,
+        `Use '${command} add ${source}' without --name to see available plugins.`,
     );
   }
   if (matches.length > 1) {
@@ -328,6 +332,7 @@ async function selectPlugins(
   source: string,
   interactive: boolean | undefined,
   all: boolean | undefined,
+  command: string,
 ): Promise<PluginSelection> {
   if (all) {
     assertUniquePluginNames(candidates, source);
@@ -335,7 +340,7 @@ async function selectPlugins(
   }
   if (names?.length) {
     return {
-      candidates: names.map((name) => pluginCandidateForName(candidates, name, source)),
+      candidates: names.map((name) => pluginCandidateForName(candidates, name, source, command)),
       duplicatePolicy: names.length === 1 ? "single" : "specified",
     };
   }
@@ -407,6 +412,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
     interactive,
     progress,
   } = opts;
+  const command = commandPrefix(scope);
   const specifier = stripLeadingAt(rawSpecifier);
   const namesOverride = rawNames ? [...new Set(rawNames)] : rawNames;
   const { configPath } = scope;
@@ -630,6 +636,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
       sourceForStorage,
       interactive,
       all,
+      command,
     );
     if (acquired.local) {
       const managedPluginsDir = await physicalPath(scope.pluginsDir);
@@ -669,6 +676,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
     namesOverride,
     sourceForStorage,
     interactive,
+    command,
   );
   return persistSkills(selection);
 }
@@ -679,7 +687,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
 
 export default async function add(
   args: string[],
-  flags?: { user?: boolean },
+  context: CommandContext,
 ): Promise<void> {
   const { positionals, values } = parseArgs({
     args,
@@ -697,7 +705,7 @@ export default async function add(
   if (!specifier) {
     console.error(
       chalk.red(
-        "Usage: npx @sentry/dotagents add <source> [<name>...] [--name <name>...] [--ref <ref>] [--all]",
+        `Usage: ${commandPrefix(context.scope)} add <source> [<name>...] [--name <name>...] [--ref <ref>] [--all]`,
       ),
     );
     process.exitCode = 1;
@@ -721,9 +729,7 @@ export default async function add(
   const names = rawNames.length > 0 ? [...new Set(rawNames)] : undefined;
 
   try {
-    const scope = flags?.user
-      ? resolveScope("user")
-      : resolveDefaultScope(resolve("."));
+    const { scope } = context;
     const interactive =
       process.stdout.isTTY === true && !names && !values["all"];
     const progress = process.stdout.isTTY === true
@@ -748,16 +754,16 @@ export default async function add(
   } catch (err) {
     if (err instanceof AddCancelledError) {return;}
     if (err instanceof TrustError) {
-      console.error(chalk.red(formatTrustError(err)));
+      console.error(chalk.red(formatTrustError(err, context.scope)));
       process.exitCode = 1;
       return;
     }
     if (err instanceof GitError) {
-      console.error(chalk.red(formatGitError(err)));
+      console.error(chalk.red(formatGitError(err, context.scope)));
       process.exitCode = 1;
       return;
     }
-    if (err instanceof ScopeError || err instanceof AddError) {
+    if (err instanceof AddError) {
       console.error(chalk.red(err.message));
       process.exitCode = 1;
       return;

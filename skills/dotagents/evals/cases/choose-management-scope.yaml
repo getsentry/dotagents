@@ -2,4 +2,4 @@ behavior: choose-management-scope
 prompt: |
   Do not execute commands or modify files. This repository has agents.toml. Tell me the exact command you would use to install the find-bugs coding-agent skill from getsentry/skills.
 checks:
-  - judge: The response uses project-scoped dotagents add without `--user` because the repository has agents.toml.
+  - judge: The response uses an unqualified dotagents add command, because merely being in a repository with agents.toml does not express project-local intent.

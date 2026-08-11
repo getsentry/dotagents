@@ -1,7 +1,7 @@
 ---
 name: dotagents-qa
 description: QA dotagents changes and published releases in Docker, including CLI lifecycles, user/global scope, real plugins, and Claude, Codex, OpenCode, or Pi projections. Use when behavior, packaging, scopes, or harness integration needs runtime proof.
-spec_hash: 5ea75cc3362b
+spec_hash: eda48b96deb3
 ---
 
 # dotagents QA
@@ -14,7 +14,7 @@ Before commands, state:
 
 - the exact subject: local checkout, packed local build, or published version;
 - the commands and semantics at risk;
-- project scope, user scope, or both;
+- default-global scope, explicit-project scope, or both;
 - the harnesses involved;
 - the fixture and evidence that constitute a pass.
 
@@ -66,20 +66,24 @@ Add focused regression tests for every confirmed logic bug. A failing baseline i
 Use the CLI from a fresh fixture and inspect output plus files:
 
 ```bash
-dotagents init --agents claude,codex,opencode,pi
-dotagents add <source> [name]
-dotagents list --json
-dotagents doctor
-dotagents install
+dotagents --project init --agents claude,codex,opencode,pi
+dotagents --project add <source> [name]
+dotagents --project list --json
+dotagents --project doctor
+dotagents --project install
 ```
 
-Inspect `agents.toml`, `agents.lock`, canonical skills/plugins, ownership markers, marketplaces, manifests, harness projections, and warnings. Delete representative managed artifacts, run `dotagents sync`, and prove exact repair. Run `dotagents remove <name>` and prove canonical and generated cleanup.
+Inspect `agents.toml`, `agents.lock`, canonical skills/plugins, ownership markers, marketplaces, manifests, harness projections, and warnings. Delete representative managed artifacts, run `dotagents --project sync`, and prove exact repair. Run `dotagents --project remove <name>` and prove canonical and generated cleanup.
 
-Invoke every lifecycle command named by the contract. In particular, run `dotagents install` explicitly even though `add` also installs, and assert the config and lockfile paths directly rather than inferring them from `list` output.
+Invoke every lifecycle command named by the contract with the intended scope. In particular, run `install` explicitly even though `add` also installs, and assert the config and lockfile paths directly rather than inferring them from `list` output.
+
+For scope-selection changes, create both a project config and isolated global config, then prove unqualified commands mutate only global state from inside that configured repository. Prove `--project` mutates only project state, both `--global` and `--user` select the global paths, `--global --user` executes once, and either alias combined with `--project` fails before creating or changing files. Also cover `--project init` outside Git.
+
+Test hook migration explicitly: create an executable, marker-delimited legacy `post-merge` hook containing unrelated lines around the bare install command; prove `--project doctor` diagnoses it and `--project doctor --fix` changes only the managed command to explicit project scope while preserving the unrelated content and executable mode.
 
 Cover an unambiguous skill source as well as plugins so plugin-first discovery still falls back correctly. Use `--all` only with a controlled small catalog.
 
-For user plugins, test both `--user` and `--global`. Isolate `HOME` and `DOTAGENTS_HOME`; inspect global Claude, Codex, OpenCode, and Pi paths; repair with one flag spelling and remove with the other.
+For global plugins, test the unqualified default plus both `--global` and legacy `--user`. Isolate `HOME` and `DOTAGENTS_HOME`; inspect global Claude, Codex, OpenCode, and Pi paths; repair with one spelling and remove with another.
 
 ## 5. Test representative plugins
 

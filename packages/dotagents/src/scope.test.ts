@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { dirname, join, resolve } from "node:path";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
@@ -7,7 +7,7 @@ import {
   isInsideGitRepo,
   findGitDir,
   findGitRoot,
-  resolveDefaultScope,
+  resolveProjectScope,
   ScopeError,
 } from "./scope.js";
 
@@ -161,7 +161,7 @@ describe("findGitRoot", () => {
   });
 });
 
-describe("resolveDefaultScope", () => {
+describe("resolveProjectScope", () => {
   let tempDir: string;
 
   afterEach(() => {
@@ -172,7 +172,7 @@ describe("resolveDefaultScope", () => {
   it("returns project scope when agents.toml exists", () => {
     tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
     writeFileSync(join(tempDir, "agents.toml"), "");
-    const s = resolveDefaultScope(tempDir);
+    const s = resolveProjectScope(tempDir);
     expect(s.scope).toBe("project");
     expect(s.root).toBe(tempDir);
   });
@@ -184,27 +184,32 @@ describe("resolveDefaultScope", () => {
     const child = join(tempDir, "packages", "app");
     mkdirSync(child, { recursive: true });
 
-    const s = resolveDefaultScope(child);
+    const s = resolveProjectScope(child);
 
     expect(s.scope).toBe("project");
     expect(s.root).toBe(tempDir);
   });
 
-  it("falls back to user scope when not in a git repo", () => {
+  it("uses the current directory for a non-Git project", () => {
     tempDir = mkNonGitTempDir();
-    process.env["DOTAGENTS_HOME"] = join(tempDir, "user-home");
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const s = resolveDefaultScope(tempDir);
-    expect(s.scope).toBe("user");
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining("user scope"));
-    spy.mockRestore();
+    writeFileSync(join(tempDir, "agents.toml"), "");
+    const s = resolveProjectScope(tempDir);
+    expect(s.scope).toBe("project");
+    expect(s.root).toBe(tempDir);
   });
 
-  it("throws ScopeError when in a git repo but no agents.toml", () => {
+  it("allows missing config when initializing a non-Git project", () => {
+    tempDir = mkNonGitTempDir();
+    const s = resolveProjectScope(tempDir, { requireConfig: false });
+    expect(s.scope).toBe("project");
+    expect(s.root).toBe(tempDir);
+  });
+
+  it("throws ScopeError when agents.toml is required but missing", () => {
     tempDir = mkdtempSync(join(tmpdir(), "scope-test-"));
     mkdirSync(join(tempDir, ".git"));
-    expect(() => resolveDefaultScope(tempDir)).toThrow(ScopeError);
-    expect(() => resolveDefaultScope(tempDir)).toThrow(/dotagents init/);
+    expect(() => resolveProjectScope(tempDir)).toThrow(ScopeError);
+    expect(() => resolveProjectScope(tempDir)).toThrow(/--project init/);
   });
 });
 

@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
@@ -12,7 +11,9 @@ import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { verifySymlinks } from "../../symlinks/manager.js";
 import { skillSymlinkTargets } from "../../targets/skill-symlinks.js";
-import { resolveScope, resolveDefaultScope, ScopeError, type ScopeRoot } from "../../scope.js";
+import { findGitDir, type ScopeRoot } from "../../scope.js";
+import { commandPrefix, type CommandContext } from "../context.js";
+import { inspectPostMergeHook, updateManagedPostMergeHook } from "../post-merge-hook.js";
 import { exec } from "@sentry/dotagents-lib";
 import { isInPlaceSkill } from "../../utils/fs.js";
 import { isInPlacePluginSource, isSameProjectPluginConfig, loadInstalledPlugins } from "../../plugins/store.js";
@@ -38,6 +39,7 @@ export interface DoctorResult {
 
 export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
   const { scope, fix } = opts;
+  const cmd = commandPrefix(scope);
   const checks: DoctorCheck[] = [];
   let fixed = 0;
 
@@ -46,7 +48,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     checks.push({
       name: "agents.toml",
       status: "error",
-      message: "agents.toml not found. Run 'npx @sentry/dotagents init' to create one.",
+      message: `agents.toml not found. Run '${cmd} init' to create one.`,
     });
     return { checks, fixed };
   }
@@ -148,7 +150,22 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     }
   }
 
-  // 6. .agents/.gitignore exists (project scope only)
+  // 6. Legacy generated post-merge hook commands (project scope only)
+  if (scope.scope === "project") {
+    const gitDir = findGitDir(scope.root);
+    if (gitDir && await inspectPostMergeHook(gitDir) === "legacy") {
+      checks.push({
+        name: "post-merge hook scope",
+        status: "warn",
+        message: `The managed post-merge hook uses a bare install command that targets global scope in v3. Run '${cmd} doctor --fix' to update it.`,
+        fix: async () => {
+          await updateManagedPostMergeHook(gitDir);
+        },
+      });
+    }
+  }
+
+  // 7. .agents/.gitignore exists (project scope only)
   if (scope.scope === "project") {
     if (existsSync(`${scope.agentsDir}/.gitignore`)) {
       checks.push({ name: ".agents/.gitignore", status: "ok", message: ".agents/.gitignore exists." });
@@ -159,11 +176,12 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
       checks.push({
         name: ".agents/.gitignore",
         status: "warn",
-        message: ".agents/.gitignore is missing. Run 'npx @sentry/dotagents install' or 'npx @sentry/dotagents sync' to regenerate.",
+        message: `.agents/.gitignore is missing. Run '${cmd} install' or '${cmd} sync' to regenerate.`,
         fix: async () => {
           const installedPlugins = await loadInstalledPlugins(
             scope.pluginsDir,
             config.plugins.filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root)),
+            `${cmd} install`,
           );
           await writeAgentsGitignore(
             scope.agentsDir,
@@ -184,25 +202,25 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     }
   }
 
-  // 7. Skills directory exists
+  // 8. Skills directory exists
   if (existsSync(scope.skillsDir)) {
     checks.push({ name: "skills directory", status: "ok", message: "Skills directory exists." });
   } else {
     checks.push({
       name: "skills directory",
       status: "warn",
-      message: ".agents/skills/ directory is missing. Run 'npx @sentry/dotagents install' to create it.",
+      message: `The managed skills directory is missing. Run '${cmd} install' to create it.`,
     });
   }
 
-  // 8. Declared skills are installed
+  // 9. Declared skills are installed
   const declaredNames = getDeclaredSkillNames(config, lockfile);
   const missingSkills = declaredNames.filter((name) => !existsSync(`${scope.skillsDir}/${name}`));
   if (missingSkills.length > 0) {
     checks.push({
       name: "installed skills",
       status: "error",
-      message: `${missingSkills.length} skill(s) not installed: ${missingSkills.join(", ")}. Run 'npx @sentry/dotagents install'.`,
+      message: `${missingSkills.length} skill(s) not installed: ${missingSkills.join(", ")}. Run '${cmd} install'.`,
     });
   } else if (declaredNames.length > 0) {
     checks.push({ name: "installed skills", status: "ok", message: `All ${declaredNames.length} declared skill(s) installed.` });
@@ -210,7 +228,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
     checks.push({ name: "installed skills", status: "ok", message: "No skills declared." });
   }
 
-  // 9. Declared plugins are installed
+  // 10. Declared plugins are installed
   const sameProjectPlugins = scope.scope === "project"
     ? config.plugins
       .filter((plugin) => isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root))
@@ -228,7 +246,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
   }
   if (missingPlugins.length > 0) {
     pluginErrors.push(
-      `${missingPlugins.length} plugin(s) not installed: ${missingPlugins.join(", ")}. Run 'npx @sentry/dotagents install'.`,
+      `${missingPlugins.length} plugin(s) not installed: ${missingPlugins.join(", ")}. Run '${cmd} install'.`,
     );
   }
   if (pluginErrors.length > 0) {
@@ -244,7 +262,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
   }
 
   if (config.plugins.length > 0 && pluginErrors.length === 0) {
-    const installed = await loadInstalledPlugins(scope.pluginsDir, config.plugins);
+    const installed = await loadInstalledPlugins(scope.pluginsDir, config.plugins, `${cmd} install`);
     const runtimeIssues = installed.issues.length === 0
       ? await verifyPluginOutputs(config.agents, installed.plugins, pluginRuntimeLayout(scope), {
           reservedMcpNames: config.mcp.map((server) => server.name),
@@ -254,14 +272,14 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
       checks.push({
         name: "plugin runtime",
         status: "warn",
-        message: `${runtimeIssues.length} plugin runtime artifact(s) broken or missing. Run 'npx @sentry/dotagents sync' to repair. ${runtimeIssues.map(({ issue }) => issue).join(" ")}`,
+        message: `${runtimeIssues.length} plugin runtime artifact(s) broken or missing. Run '${cmd} sync' to repair. ${runtimeIssues.map(({ issue }) => issue).join(" ")}`,
       });
     } else {
       checks.push({ name: "plugin runtime", status: "ok", message: "All plugin runtime artifacts intact." });
     }
   }
 
-  // 10. Symlinks (project scope only)
+  // 11. Symlinks (project scope only)
   if (scope.scope === "project" && existsSync(scope.agentsDir)) {
     const targets = skillSymlinkTargets(
       scope,
@@ -275,7 +293,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
         checks.push({
           name: "symlinks",
           status: "warn",
-          message: `${issues.length} symlink(s) broken or missing. Run 'npx @sentry/dotagents sync' to repair.`,
+          message: `${issues.length} symlink(s) broken or missing. Run '${cmd} sync' to repair.`,
         });
       } else {
         checks.push({ name: "symlinks", status: "ok", message: "All symlinks intact." });
@@ -382,7 +400,7 @@ function getManagedPluginNames(
   return [...names];
 }
 
-export default async function doctor(args: string[], flags?: { user?: boolean }): Promise<void> {
+export default async function doctor(args: string[], context: CommandContext): Promise<void> {
   const { values } = parseArgs({
     args,
     options: {
@@ -391,17 +409,7 @@ export default async function doctor(args: string[], flags?: { user?: boolean })
     strict: true,
   });
 
-  let scope: ScopeRoot;
-  try {
-    scope = flags?.user ? resolveScope("user") : resolveDefaultScope(resolve("."));
-  } catch (err) {
-    if (err instanceof ScopeError) {
-      console.error(chalk.red(err.message));
-      process.exitCode = 1;
-      return;
-    }
-    throw err;
-  }
+  const { scope } = context;
 
   const result = await runDoctor({ scope, fix: values["fix"] });
 
@@ -423,7 +431,7 @@ export default async function doctor(args: string[], flags?: { user?: boolean })
   } else if (hasIssues && !values["fix"]) {
     const fixable = result.checks.filter((c) => c.status !== "ok" && c.fix).length;
     if (fixable > 0) {
-      console.log(chalk.yellow(`\nRun 'npx @sentry/dotagents doctor --fix' to auto-fix ${fixable} issue(s).`));
+      console.log(chalk.yellow(`\nRun '${commandPrefix(scope)} doctor --fix' to auto-fix ${fixable} issue(s).`));
     }
   } else if (!hasIssues) {
     console.log(chalk.green("\nAll checks passed."));

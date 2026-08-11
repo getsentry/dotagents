@@ -194,6 +194,7 @@ export async function writeInstalledSubagents(
 export async function loadInstalledSubagents(
   subagentsDir: string,
   configs: SubagentConfig[],
+  installCommand: string,
 ): Promise<{ subagents: SubagentDeclaration[]; issues: InstalledSubagentLoadIssue[] }> {
   const subagents: SubagentDeclaration[] = [];
   const issues: InstalledSubagentLoadIssue[] = [];
@@ -203,7 +204,7 @@ export async function loadInstalledSubagents(
     if (!existsSync(filePath)) {
       issues.push({
         name: config.name,
-        issue: `Subagent "${config.name}" is in agents.toml but not installed. Run 'npx @sentry/dotagents install'.`,
+        issue: `Subagent "${config.name}" is in agents.toml but not installed. Run '${installCommand}'.`,
       });
       continue;
     }

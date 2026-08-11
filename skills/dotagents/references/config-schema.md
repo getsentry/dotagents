@@ -188,7 +188,7 @@ targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 
 ## Lockfile (agents.lock)
 
-Auto-generated. Do not edit manually. Gitignored automatically.
+Auto-generated. Do not edit manually. In project scope, it is gitignored automatically; global scope does not modify repository Git files.
 
 ```toml
 version = 1
@@ -228,4 +228,4 @@ Local path skills, subagents, and plugins have `source` only.
 | Variable | Purpose |
 |----------|---------|
 | `DOTAGENTS_STATE_DIR` | Override cache location (default: `~/.local/dotagents`) |
-| `DOTAGENTS_HOME` | Override user-scope location (default: `~/.agents`) |
+| `DOTAGENTS_HOME` | Override global-scope location (default: `~/.agents`) |

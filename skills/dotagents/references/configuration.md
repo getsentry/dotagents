@@ -36,7 +36,7 @@ path = "plugins/sentry-skills/skills/find-bugs"
 | GitLab HTTPS | `https://gitlab.com/group/repo` | URL used directly |
 | Git URL | `git:https://git.corp.dev/team/skills` | Any non-GitHub git remote |
 | Well-known HTTPS | `https://cli.sentry.dev` | HTTP source using `.well-known/skills/` |
-| Local | `path:./my-skills/custom` | Relative to project root |
+| Local | `path:./my-skills/custom` | Relative to the selected scope root |
 
 **Skill name rules:** Must start with alphanumeric, contain only `[a-zA-Z0-9._-]`.
 
@@ -52,7 +52,7 @@ path = "skills/engineering"
 exclude = ["deprecated-skill"]
 ```
 
-During `install`, dotagents recursively discovers skills under `path` and installs each one except those in `exclude`. Use `path = "."` for the complete source root. The path cannot escape the source root, and well-known HTTPS sources do not support wildcard path scoping. Each skill gets its own lockfile entry. Use `npx @sentry/dotagents add <source> --all` to create a wildcard entry from the CLI.
+During `install`, dotagents recursively discovers skills under `path` and installs each one except those in `exclude`. Use `path = "."` for the complete source root. The path cannot escape the source root, and well-known HTTPS sources do not support wildcard path scoping. Each skill gets its own lockfile entry. Use `npx @sentry/dotagents add <source> --all` globally or add `--project` for a repository-local wildcard.
 
 ## Trust
 
@@ -132,7 +132,7 @@ Hook configs are written per-agent:
 
 ## Subagents
 
-Declare portable or native subagent artifacts with `[[subagents]]`. dotagents installs canonical managed files under `.agents/agents/` and writes runtime-specific files for supported agents.
+Declare portable or native subagent artifacts with `[[subagents]]`. dotagents installs canonical files in the selected scope's managed agents directory and writes runtime-specific files for supported agents.
 
 ```toml
 [[subagents]]
@@ -144,7 +144,7 @@ targets = ["claude", "codex", "opencode"]
 
 ## Plugins
 
-Declare plugin bundles with `[[plugins]]`. dotagents installs canonical bundles under `.agents/plugins/<name>/` and generates runtime-specific plugin outputs for configured targets.
+Declare plugin bundles with `[[plugins]]`. dotagents installs canonical bundles in the selected scope's managed plugins directory and generates runtime-specific plugin outputs for configured targets.
 
 ```toml
 [[plugins]]
@@ -154,7 +154,7 @@ path = "plugins/review-tools"
 targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 ```
 
-Plugin declarations are project-scope only. User-scope plugin declarations are rejected.
+Plugin declarations work in global and project scope. Canonical bundles and runtime projections use the selected scope's paths.
 
 ## Agents
 
@@ -165,30 +165,36 @@ agents = ["claude", "cursor", "codex", "vscode", "grok", "opencode", "pi"]
 ```
 
 Each agent gets:
-- A `<agent-dir>/skills/` symlink pointing to `.agents/skills/` (Claude, Cursor)
-- Or native discovery from `.agents/skills/` (Codex, VS Code, OpenCode)
+- A `<agent-dir>/skills/` symlink pointing to the selected scope's managed skills directory (Claude, Cursor)
+- Or native discovery from the selected scope's managed skills directory (Codex, VS Code, OpenCode)
 - MCP server configs in the agent's config file
 - Hook configs (where supported)
 - Subagent and plugin runtime outputs (where supported)
 
 ## Scopes
 
-### Project Scope (default)
+### Global Scope (default)
 
-Operates on the current project. Requires `agents.toml` at the project root.
-
-### User Scope (`--user`)
-
-Operates on `~/.agents/` for skills shared across all projects. Override with `DOTAGENTS_HOME`.
+Operates on `DOTAGENTS_HOME` or `~/.agents/` in every directory. Unqualified commands select this scope. `--global` is the explicit spelling and `--user` is a compatibility alias.
 
 ```bash
-npx @sentry/dotagents --user init
-npx @sentry/dotagents --user add getsentry/skills --all
+npx @sentry/dotagents add getsentry/skills --all
+npx @sentry/dotagents install
 ```
 
-User-scope symlinks go to `~/.claude/skills/` and `~/.cursor/skills/`.
+Global symlinks include `~/.claude/skills/` for Claude and Cursor.
 
-When no `agents.toml` exists and you're not inside a git repo, dotagents falls back to user scope automatically.
+### Project Scope (`--project`)
+
+Operates on the containing Git repository root, or current directory outside Git. `--project init` may create `agents.toml`; other commands require it and never fall back globally.
+
+```bash
+npx @sentry/dotagents --project init
+npx @sentry/dotagents --project add getsentry/skills --all
+npx @sentry/dotagents --project install
+```
+
+Do not combine `--project` with `--global` or `--user`. dotagents never copies, merges, or removes config when switching scopes.
 
 ## Minimum Release Age
 
@@ -201,15 +207,15 @@ minimum_release_age_exclude = ["getsentry/*"]
 
 Use `minimum_release_age_exclude` for trusted sources that can bypass the age gate.
 
-## Gitignore
+## Project Gitignore
 
-dotagents always manages gitignore. It generates `.agents/.gitignore` listing managed skills, subagents, and plugins. In-place skills (`path:.agents/skills/...`) and in-place plugin sources are not gitignored since they must be tracked in git.
+In project scope, dotagents generates `.agents/.gitignore` listing managed skills, subagents, and plugins. In-place skills (`path:.agents/skills/...`) and in-place plugin sources are not gitignored since they must be tracked in git. Global scope does not modify repository gitignore files.
 
 Two files are added to the root `.gitignore` during `init`:
 - `agents.lock` — tracks managed skills, subagents, and plugins
 - `.agents/.gitignore` — excludes managed skill directories, subagent files, and plugin bundles
 
-If these entries are missing, `install` and `sync` warn. Run `npx @sentry/dotagents doctor --fix` to add them.
+If these entries are missing, project `install` and `sync` warn. Run `npx @sentry/dotagents --project doctor --fix` to add them.
 
 ## Caching
 
@@ -220,13 +226,13 @@ If these entries are missing, `install` and `sync` warn. Run `npx @sentry/dotage
 ## Troubleshooting
 
 **Skills not installing:**
-- Check `agents.toml` syntax with `npx @sentry/dotagents list`
+- Check project `agents.toml` syntax with `npx @sentry/dotagents --project list`
 - Verify source is accessible (`git clone` the URL manually)
 - Check trust config if using restricted mode
-- Run `npx @sentry/dotagents doctor` to check project health
+- Run `npx @sentry/dotagents --project doctor` to check project health
 
 **Symlinks broken:**
-- Run `npx @sentry/dotagents sync` to repair
+- Run `npx @sentry/dotagents --project sync` to repair project state
 
 **Configuration issues:**
-- Run `npx @sentry/dotagents doctor --fix` to auto-repair gitignore and legacy config fields
+- Run `npx @sentry/dotagents --project doctor --fix` to auto-repair project gitignore, legacy config fields, and managed hooks

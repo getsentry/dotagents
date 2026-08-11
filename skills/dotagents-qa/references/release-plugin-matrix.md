@@ -20,13 +20,13 @@ Use a fresh git project per source and initialize every relevant full agent plus
 mkdir -p /sandbox/cases/sentry
 cd /sandbox/cases/sentry
 git init -q
-dotagents init --agents claude,codex,opencode,pi
-dotagents add getsentry/agent-plugin
-dotagents list --json
-dotagents doctor
+dotagents --project init --agents claude,codex,opencode,pi
+dotagents --project add getsentry/agent-plugin
+dotagents --project list --json
+dotagents --project doctor
 ```
 
-Inspect `agents.toml`, `agents.lock`, `.agents/.gitignore`, the canonical plugin bundle, generated marketplaces/manifests, and component links. Delete representative managed outputs, run `dotagents sync`, and verify repair. Run `dotagents remove <name>` and verify canonical files, marketplaces, markers, and links are pruned.
+Inspect `agents.toml`, `agents.lock`, `.agents/.gitignore`, the canonical plugin bundle, generated marketplaces/manifests, and component links. Delete representative managed outputs, run `dotagents --project sync`, and verify repair. Run `dotagents --project remove <name>` and verify canonical files, marketplaces, markers, and links are pruned.
 
 Also cover a skill-only source or fixture so plugin-first detection still falls back to skill behavior. Test `--all` with a small controlled catalog, not a hundreds-entry public marketplace.
 
@@ -84,15 +84,15 @@ data directory.
 
 Use a Pi-only target and verify each managed link in `.agents/skills/` resolves to the canonical plugin skill and has its ownership marker. Pi has no equivalent no-auth skill inventory command, so do not claim model-backed loading from link proof alone.
 
-## User and global scope
+## Default global scope and aliases
 
-Test both flag spellings with isolated homes:
+Test the default plus both flag spellings with isolated homes. Run the unqualified lifecycle from inside a separate configured Git repository and prove the repository remains unchanged:
 
 ```bash
 export HOME=/sandbox/home
 export DOTAGENTS_HOME="$HOME/.agents"
-dotagents --global init --agents claude,codex,opencode,pi
-dotagents --user add getsentry/agent-plugin
+dotagents init --agents claude,codex,opencode,pi
+dotagents add getsentry/agent-plugin
 dotagents --global list --json
 dotagents --user doctor
 ```
@@ -126,7 +126,7 @@ opencode debug config
 
 When `DOTAGENTS_HOME` is not `$HOME/.agents`, add the Codex marketplace from `$DOTAGENTS_HOME`; dotagents emits its adapter catalog below `$DOTAGENTS_HOME/.agents/plugins/` so Codex can discover it. Assert user-scope plugin MCP from a neutral project so project config cannot supply a false pass.
 
-Delete one marketplace, one component link, and one managed OpenCode MCP entry or ownership record; run `dotagents --user sync` and prove repair. Remove the plugin using the other flag spelling and prove all canonical and generated state is gone while unrelated OpenCode config remains.
+Delete one marketplace, one component link, and one managed OpenCode MCP entry or ownership record; run `dotagents --user sync` and prove repair. Remove the plugin using the other flag spelling and prove all canonical and generated state is gone while unrelated OpenCode config remains. Also prove `--global --user` executes once and `--project` combined with either alias fails without mutating either scope.
 
 ## Reporting
 

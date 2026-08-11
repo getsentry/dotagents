@@ -44,4 +44,14 @@ describe("getCommandHelp", () => {
     expect(help).toContain("Add plugins explicitly, or all skills as a wildcard");
     expect(help).not.toContain("--plugin");
   });
+
+  it("gives exact scope guidance on command help", () => {
+    const help = getCommandHelp("install", ["--help"]);
+
+    expect(help).toContain(`Scope:
+  (no flag)  Global scope (~/.agents/); this is the default
+  --project  Current project (Git root, or current directory outside Git)
+  --global   Explicit global scope
+  --user     Compatibility alias for --global`);
+  });
 });
