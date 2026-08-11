@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { mkdir, rm } from "node:fs/promises";
 import { clone, fetchAndReset, fetchRef, headCommit, headCommitDate, findCommitOlderThan, checkout, isGitRepo } from "./git.js";
 
@@ -63,6 +63,13 @@ export interface CacheResult {
   commit: string;
 }
 
+/** Exact checkout state acquired earlier in the current operation. */
+export interface CacheReuse {
+  repoDir: string;
+  ref?: string;
+  commit: string;
+}
+
 const cacheLocks = new Map<string, Promise<void>>();
 
 async function withCacheLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
@@ -108,18 +115,26 @@ export async function ensureCached(opts: {
   ref?: string;
   /** When set, resolve to the newest commit at least this many minutes old. */
   minimumReleaseAge?: number;
+  /** Restore an exact checkout acquired earlier instead of fetching it again. */
+  reuse?: CacheReuse;
 }): Promise<CacheResult> {
   validateCacheKey(opts.cacheKey);
   const repoDir = join(opts.stateDir, opts.cacheKey);
 
   return withCacheLock(repoDir, async () => {
-    if (isGitRepo(repoDir)) {
+    const cached = isGitRepo(repoDir);
+    const canReuse = cached && opts.reuse &&
+      resolve(repoDir) === resolve(opts.reuse.repoDir) &&
+      opts.ref === opts.reuse.ref;
+    if (canReuse) {
+      await checkout(repoDir, opts.reuse!.commit);
+    } else if (cached) {
       if (opts.ref) {
         await fetchRef(repoDir, opts.ref);
       } else {
         await fetchAndReset(repoDir);
       }
-    } else {
+    } else if (!cached) {
       // Remove an interrupted or stale non-git cache dir before cloning.
       await rm(repoDir, { recursive: true, force: true });
       await mkdir(join(opts.stateDir, opts.cacheKey, ".."), { recursive: true });

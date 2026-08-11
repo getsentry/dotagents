@@ -12,6 +12,7 @@ import {
   validateTrustedSource,
   type RepositorySource,
   type TrustPolicy,
+  type CacheReuse,
 } from "@sentry/dotagents-lib";
 import { PLUGIN_NAME_PATTERN, type PluginConfig } from "../config/schema.js";
 import type { LockedPlugin } from "../lockfile/schema.js";
@@ -36,6 +37,8 @@ export interface PluginResolveOptions {
   minimumReleaseAge?: number;
   minimumReleaseAgeExclude?: string[];
   trust?: TrustPolicy;
+  /** Exact git checkout acquired earlier in the current operation. */
+  reuse?: CacheReuse;
 }
 
 interface ResolvedLocalPlugin {
@@ -147,6 +150,7 @@ export async function resolvePlugin(
     cacheKey,
     ref,
     minimumReleaseAge: excluded ? undefined : opts.minimumReleaseAge,
+    reuse: opts.reuse,
   });
 
   const discovered = await resolvePluginCandidate(cached.repoDir, config);

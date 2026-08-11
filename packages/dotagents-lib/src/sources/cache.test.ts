@@ -88,6 +88,48 @@ describe("ensureCached", () => {
     expect(second.commit).not.toBe(first.commit);
   });
 
+  it("can reuse an existing checkout without refreshing it", async () => {
+    await writeFile(join(repoDir, "README.md"), "first\n");
+    await exec("git", ["add", "README.md"], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
+    await exec("git", ["push", "origin", "main"], { cwd: repoDir });
+
+    const first = await ensureCached({
+      stateDir,
+      url: remoteDir,
+      cacheKey: "test/repo",
+    });
+
+    await writeFile(join(repoDir, "README.md"), "second\n");
+    await exec("git", ["add", "README.md"], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "second"], { cwd: repoDir });
+    await exec("git", ["push", "origin", "main"], { cwd: repoDir });
+
+    const updated = await ensureCached({
+      stateDir,
+      url: remoteDir,
+      cacheKey: "test/repo",
+    });
+    const reused = await ensureCached({
+      stateDir,
+      url: remoteDir,
+      cacheKey: "test/repo",
+      reuse: {
+        repoDir: first.repoDir,
+        commit: first.commit,
+      },
+    });
+    const refreshed = await ensureCached({
+      stateDir,
+      url: remoteDir,
+      cacheKey: "test/repo",
+    });
+
+    expect(reused.commit).toBe(first.commit);
+    expect(updated.commit).not.toBe(first.commit);
+    expect(refreshed.commit).not.toBe(first.commit);
+  });
+
   it("serializes concurrent first-time clones for the same cache key", async () => {
     await writeFile(join(repoDir, "README.md"), "first\n");
     await exec("git", ["add", "README.md"], { cwd: repoDir });

@@ -7,7 +7,7 @@ import {
   GITLAB_SSH_URL,
   type RepositorySource,
 } from "../sources/repository-source.js";
-import { ensureCached, sanitizeCacheKey } from "../sources/cache.js";
+import { ensureCached, sanitizeCacheKey, type CacheReuse } from "../sources/cache.js";
 import { ensureWellKnownCached } from "../sources/wellknown.js";
 import { resolveLocalSource } from "../sources/local.js";
 import { discoverSkill, discoverAllSkills, type DiscoveredSkill } from "./discovery.js";
@@ -327,6 +327,8 @@ export interface ResolveOpts {
   minimumReleaseAgeExclude?: string[];
   /** When provided, validate the source against the policy BEFORE any network access. */
   trust?: TrustPolicy;
+  /** Exact git checkout acquired earlier in the current operation. */
+  reuse?: CacheReuse;
 }
 
 type AcquiredSkillSource =
@@ -386,6 +388,7 @@ async function acquireSkillSource(
     cacheKey,
     ref: resolvedRef,
     minimumReleaseAge: excluded ? undefined : opts.minimumReleaseAge,
+    reuse: opts.reuse,
   });
 
   return {

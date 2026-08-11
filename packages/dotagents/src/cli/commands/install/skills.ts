@@ -13,6 +13,7 @@ import {
   sourcesMatch,
   TrustError,
   type ResolvedSkill,
+  type CacheReuse,
   validateTrustedSource,
 } from "@sentry/dotagents-lib";
 import { getCacheStateDir, HOST_SCAN_DIRS } from "../../cache.js";
@@ -41,7 +42,12 @@ async function expandSkills(
     trust?: Parameters<typeof validateTrustedSource>[1];
     defaultRepositorySource: RepositorySource;
   },
-  opts: { projectRoot: string; minimumReleaseAge?: number; minimumReleaseAgeExclude?: string[] },
+  opts: {
+    projectRoot: string;
+    minimumReleaseAge?: number;
+    minimumReleaseAgeExclude?: string[];
+    reuse?: CacheReuse;
+  },
 ): Promise<ExpandedSkill[]> {
   const regularDeps = config.skills.filter((d) => !isWildcardDep(d));
   const wildcardDeps = config.skills.filter(isWildcardDep);
@@ -69,6 +75,7 @@ async function expandSkills(
         defaultRepositorySource: config.defaultRepositorySource,
         minimumReleaseAge: opts.minimumReleaseAge,
         minimumReleaseAgeExclude: opts.minimumReleaseAgeExclude,
+        reuse: opts.reuse,
       });
     } catch (err) {
       if (err instanceof GitError || err instanceof TrustError) {throw err;}
@@ -120,6 +127,7 @@ export async function installSkills(
   config: AgentsConfig,
   lockfile: Lockfile | null,
   scope: ScopeRoot,
+  reuse?: CacheReuse,
 ): Promise<InstallSkillsResult> {
   const lockEntries: Lockfile["skills"] = {};
   const installed: string[] = [];
@@ -138,6 +146,7 @@ export async function installSkills(
         projectRoot: scope.root,
         minimumReleaseAge: config.minimum_release_age,
         minimumReleaseAgeExclude: config.minimum_release_age_exclude,
+        reuse,
       },
     );
 
@@ -166,6 +175,7 @@ export async function installSkills(
             defaultRepositorySource: config.defaultRepositorySource,
             minimumReleaseAge: config.minimum_release_age,
             minimumReleaseAgeExclude: config.minimum_release_age_exclude,
+            reuse,
           });
         } catch (err) {
           if (err instanceof GitError || err instanceof TrustError) {throw err;}

@@ -15,6 +15,7 @@ vi.mock("@clack/prompts", async (importOriginal) => {
     select: vi.fn(),
     multiselect: vi.fn(),
     isCancel: vi.fn(actual.isCancel),
+    spinner: vi.fn(),
   };
 });
 
@@ -98,7 +99,90 @@ describe("runAdd", () => {
     delete process.env["GIT_CONFIG_COUNT"];
     delete process.env["GIT_CONFIG_KEY_0"];
     delete process.env["GIT_CONFIG_VALUE_0"];
+    delete process.env["GIT_TRACE2_EVENT"];
     await rm(tmpDir, { recursive: true });
+  });
+
+  it("does not fetch a git source again during the nested install", async () => {
+    const tracePath = join(tmpDir, "add-git-trace.json");
+    process.env["GIT_TRACE2_EVENT"] = tracePath;
+    const scope = resolveScope("project", projectRoot);
+
+    await runAdd({
+      scope,
+      specifier: `git:${repoDir}`,
+      names: ["pdf"],
+    });
+
+    const events = (await readFile(tracePath, "utf-8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { event: string; argv?: string[] });
+    const fetches = events.filter(
+      (event) => event.event === "start" && event.argv?.[1] === "fetch",
+    );
+    expect(fetches).toHaveLength(0);
+
+    const installTracePath = join(tmpDir, "install-git-trace.json");
+    process.env["GIT_TRACE2_EVENT"] = installTracePath;
+    await installModule.runInstall({ scope });
+    const installEvents = (await readFile(installTracePath, "utf-8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { event: string; argv?: string[] });
+    const installFetches = installEvents.filter(
+      (event) => event.event === "start" && event.argv?.[1] === "fetch",
+    );
+    expect(installFetches).toHaveLength(1);
+  });
+
+  it("does not fetch a wildcard git source again during the nested install", async () => {
+    const tracePath = join(tmpDir, "add-wildcard-git-trace.json");
+    process.env["GIT_TRACE2_EVENT"] = tracePath;
+
+    await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: `git:${repoDir}`,
+      all: true,
+    });
+
+    const events = (await readFile(tracePath, "utf-8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { event: string; argv?: string[] });
+    const fetches = events.filter(
+      (event) => event.event === "start" && event.argv?.[1] === "fetch",
+    );
+    expect(fetches).toHaveLength(0);
+  });
+
+  it("restores the acquired commit after another dependency checks out a different ref", async () => {
+    await exec("git", ["branch", "stable", "HEAD"], { cwd: repoDir });
+    await writeFile(
+      join(repoDir, "pdf", "SKILL.md"),
+      `${SKILL_MD("pdf")}\nLatest main content\n`,
+    );
+    await exec("git", ["add", "pdf/SKILL.md"], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "update pdf on main"], { cwd: repoDir });
+    const { stdout: latestStdout } = await exec("git", ["rev-parse", "HEAD"], {
+      cwd: repoDir,
+    });
+    const latestCommit = latestStdout.trim();
+    await writeFile(
+      join(projectRoot, "agents.toml"),
+      `version = 1\n\n[[skills]]\nname = "review"\nsource = "git:${repoDir}"\nref = "stable"\n`,
+    );
+
+    await runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: `git:${repoDir}`,
+      names: ["pdf"],
+    });
+
+    expect(
+      await readFile(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"), "utf-8"),
+    ).toContain("Latest main content");
+    expect(await readFile(join(projectRoot, "agents.lock"), "utf-8")).toContain(latestCommit);
   });
 
   it("adds a single skill via names", async () => {
@@ -961,6 +1045,49 @@ describe("add() CLI parsing", () => {
       expect(log).toHaveBeenCalledWith(expect.stringContaining("Added plugin: cli-plugin"));
     } finally {
       process.chdir(origCwd);
+    }
+  });
+
+  it("shows phase progress only in an interactive terminal", async () => {
+    await writePlugin(join(projectRoot, "plugin-source"), "cli-plugin");
+    mockRunInstall();
+    const spinner = {
+      start: vi.fn(),
+      message: vi.fn(),
+      stop: vi.fn(),
+      error: vi.fn(),
+      cancel: vi.fn(),
+      clear: vi.fn(),
+      isCancelled: false,
+    };
+    vi.mocked(clack.spinner).mockReturnValue(spinner);
+    const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const origCwd = process.cwd();
+    process.chdir(projectRoot);
+    try {
+      await add(["path:plugin-source", "--skill", "cli-plugin"]);
+
+      expect(clack.spinner).toHaveBeenCalledWith({ indicator: "timer" });
+      expect(spinner.start.mock.calls).toEqual([
+        ["Resolving path:plugin-source"],
+        ["Installing components"],
+      ]);
+      expect(spinner.message).toHaveBeenCalledWith("Inspecting path:plugin-source");
+      expect(spinner.stop.mock.calls).toEqual([
+        ["Source ready"],
+        ["Installation complete"],
+      ]);
+      expect(spinner.error).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("Added plugin: cli-plugin"));
+    } finally {
+      process.chdir(origCwd);
+      if (originalIsTTY) {
+        Object.defineProperty(process.stdout, "isTTY", originalIsTTY);
+      } else {
+        delete (process.stdout as { isTTY?: boolean }).isTTY;
+      }
     }
   });
 });
