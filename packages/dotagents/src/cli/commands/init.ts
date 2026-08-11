@@ -264,14 +264,34 @@ export default async function init(args: string[], context: CommandContext): Pro
   const { scope } = context;
 
   try {
+    let hookUpdated = false;
     if (scope.scope === "project") {
       const gitDir = findGitDir(scope.root);
-      if (gitDir && await updateManagedPostMergeHook(gitDir)) {
-        if (process.stdout.isTTY) {
-          clack.log.success("Updated managed post-merge hook for project scope.");
-        } else {
-          console.log(chalk.green("Updated managed post-merge hook for project scope."));
+      if (gitDir) {
+        try {
+          hookUpdated = await updateManagedPostMergeHook(gitDir);
+        } catch {
+          const message = `Could not update the managed post-merge hook. Run \`${commandPrefix(scope)} doctor --fix\` later.`;
+          if (process.stdout.isTTY) {
+            clack.log.warn(message);
+          } else {
+            console.warn(chalk.yellow(message));
+          }
         }
+      }
+    }
+    if (hookUpdated) {
+      if (process.stdout.isTTY) {
+        clack.log.success("Updated managed post-merge hook for project scope.");
+      } else {
+        console.log(chalk.green("Updated managed post-merge hook for project scope."));
+      }
+      if (
+        existsSync(scope.configPath) &&
+        values["force"] !== true &&
+        values["agents"] === undefined
+      ) {
+        return;
       }
     }
 

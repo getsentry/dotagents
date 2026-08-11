@@ -337,8 +337,22 @@ describe("init hook migration", () => {
     expect(hook).toContain("dotagents --project install");
     expect(hook).toMatch(/^#!\/bin\/sh\necho before\n/);
     expect(hook).toMatch(/# dotagents:end\necho after\n$/);
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBeUndefined();
+    expect(error).not.toHaveBeenCalled();
     error.mockRestore();
     log.mockRestore();
+  });
+
+  it("continues initialization when legacy hook repair fails", async () => {
+    dir = await mkdtemp(join(tmpdir(), "dotagents-init-migration-error-"));
+    await mkdir(join(dir, ".git", "hooks", "post-merge"), { recursive: true });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await init(["--agents", "claude"], { scope: resolveScope("project", dir) });
+
+    expect(existsSync(join(dir, "agents.toml"))).toBe(true);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("--project doctor --fix"));
+    expect(process.exitCode).toBeUndefined();
+    warn.mockRestore();
   });
 });
