@@ -4,6 +4,7 @@
 
 ### Breaking Changes ⚠️
 
+- (cli) Default commands to global scope by @gricha in [#156](https://github.com/getsentry/dotagents/pull/156)
 - **Scope-aware commands now target global state by default.** Unqualified `init`, `install`, `add`, `remove`, `sync`, `list`, `mcp`, `trust`, and `doctor` operate under `~/.agents/` (or `DOTAGENTS_HOME`) even when run inside a configured repository. Add `--project` to every repository-local invocation.
 - Existing project and global configuration, lockfiles, and managed directories are not copied, merged, renamed, or deleted automatically. The command's scope flag alone selects which state is used.
 - `--global` remains an optional explicit global spelling and `--user` remains a compatibility alias. Combining `--project` with either global alias is an error.
