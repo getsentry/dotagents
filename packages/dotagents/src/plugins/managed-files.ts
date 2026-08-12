@@ -1,23 +1,24 @@
 import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { isSerializedObject, isSerializedValue, type SerializedValue } from "@sentry/dotagents-lib";
 
 const MANAGED_MARKER_SUFFIX = ".dotagents-managed";
 let markerCounter = 0;
 
 export function stableJson(value: unknown): string {
+  if (!isSerializedValue(value)) {throw new TypeError("Managed JSON must be serializable");}
   return `${JSON.stringify(sortJson(value), null, 2)}\n`;
 }
 
-function sortJson(value: unknown): unknown {
+function sortJson(value: SerializedValue): SerializedValue {
   if (Array.isArray(value)) {return value.map(sortJson);}
+  if (value instanceof Date) {return value;}
   if (!value || typeof value !== "object") {return value;}
-
-  const result: Record<string, unknown> = {};
-  const record = value as Record<string, unknown>;
-  for (const key of Object.keys(record).toSorted()) {
-    result[key] = sortJson(record[key]);
-  }
-  return result;
+  return Object.fromEntries(
+    Object.entries(value)
+      .toSorted(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+      .map(([key, entry]) => [key, entry === undefined ? undefined : sortJson(entry)]),
+  );
 }
 
 export async function writeJsonIfChanged(filePath: string, content: string): Promise<boolean> {
@@ -58,9 +59,10 @@ export async function isManagedJsonFile(filePath: string): Promise<boolean> {
     if (!isNotFoundError(err)) {throw err;}
   }
   try {
-    const parsed = JSON.parse(await readFile(filePath, "utf-8")) as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(await readFile(filePath, "utf-8"));
+    if (!isSerializedObject(parsed)) {return false;}
     const metadata = parsed["metadata"];
-    return !!metadata && typeof metadata === "object" && (metadata as Record<string, unknown>)["managedBy"] === "dotagents";
+    return isSerializedObject(metadata) && metadata["managedBy"] === "dotagents";
   } catch {
     return false;
   }

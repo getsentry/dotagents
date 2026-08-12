@@ -10,6 +10,7 @@ import {
   pluginManifestSchema,
   pluginMarketplaceSchema,
 } from "./schema.js";
+import type { SerializedObject } from "@sentry/dotagents-lib";
 
 describe("plugin manifest schema", () => {
   it("accepts Agent Plugins v1 manifests", () => {
@@ -126,6 +127,18 @@ describe("plugin manifest schema", () => {
     }, "plugin.json")).toThrow("Invalid plugin manifest");
   });
 
+  it("rejects non-serializable Agent Plugins manifests", () => {
+    expect(() => parsePluginManifest({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+      metadata: { count: Number.POSITIVE_INFINITY },
+    }, "plugin.json")).toThrow("expected a serializable object");
+    expect(() => parsePluginManifest(
+      JSON.parse('{"name":"review-tools","__proto__":{"polluted":true}}') as unknown,
+      "plugin.json",
+    )).toThrow("expected a serializable object");
+  });
+
   it("treats non-Agent schema metadata as legacy input", () => {
     const manifest = parsePluginManifest({
       $schema: "https://example.com/claude-plugin.schema.json",
@@ -157,11 +170,11 @@ describe("plugin manifest schema", () => {
     );
 
     expect(manifest.name).toBe("review-tools");
-    expect((manifest as Record<string, unknown>)["x-runtime"]).toEqual({
+    expect((manifest as SerializedObject)["x-runtime"]).toEqual({
       plugins: ["runtime/plugin.ts"],
       runtime: "bun",
     });
-    expect((manifest as Record<string, unknown>)["x-dotagents"]).toEqual({ stable: true });
+    expect((manifest as SerializedObject)["x-dotagents"]).toEqual({ stable: true });
   });
 
   it("rejects absolute and traversing component paths", () => {
@@ -286,6 +299,18 @@ describe("plugin MCP schema", () => {
 });
 
 describe("plugin marketplace schema", () => {
+  it("rejects non-serializable marketplace metadata", () => {
+    expect(() => parsePluginMarketplace({
+      name: "dotagents",
+      metadata: { count: Number.POSITIVE_INFINITY },
+      plugins: [],
+    }, "marketplace.json")).toThrow("expected a serializable object");
+    expect(() => parsePluginMarketplace(
+      JSON.parse('{"name":"dotagents","plugins":[],"__proto__":{"polluted":true}}') as unknown,
+      "marketplace.json",
+    )).toThrow("expected a serializable object");
+  });
+
   it("accepts codex-compatible local entries and preserves extension fields", () => {
     const marketplace = parsePluginMarketplace(
       {

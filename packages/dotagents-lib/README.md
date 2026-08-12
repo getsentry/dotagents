@@ -10,6 +10,7 @@ Reusable core for [SKILL.md](https://www.anthropic.com/engineering/skills) loadi
 - **Cache primitives** — `ensureCached`, `ensureWellKnownCached`. The lib has no default cache location; callers pass `stateDir` explicitly so hosts own their own conventions and env-var prefixes.
 - **Trust** — `validateTrustedSource`, `extractDomain`, `TrustError`, `TrustPolicy`.
 - **Source-host primitives** — `clone`, `fetchAndReset`, `fetchRef`, `headCommit`, `isGitRepo`, `GitError`, `exec`, `ExecError`.
+- **Serialized data** — `SerializedValue`, `SerializedObject`, `isSerializedValue`, and `isSerializedObject` define and validate recursive values that can safely cross configuration boundaries. Accepted values are strings, finite numbers, booleans, null, unmodified valid dates, dense arrays, and plain or null-prototype objects with enumerable data properties. Containers must be acyclic; object properties may be `undefined`.
 
 See `src/index.ts` for the full public surface.
 

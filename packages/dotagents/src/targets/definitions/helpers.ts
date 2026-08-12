@@ -1,4 +1,8 @@
 import type { HookDeclaration, McpDeclaration } from "../types.js";
+import type { SerializedObject, SerializedValue } from "@sentry/dotagents-lib";
+
+type CommandHook = { type: "command"; command: string };
+type ClaudeHookEntry = { matcher?: string; hooks: CommandHook[] };
 
 /** Build an agent-specific environment map from declared variable names. */
 export function envRecord(
@@ -64,7 +68,7 @@ export function httpServer(
   s: McpDeclaration,
   type?: string,
   template?: (varName: string) => string,
-): [string, unknown] {
+): [string, SerializedValue] {
   const tpl = template ?? ((k: string) => `\${${k}}`);
   const url = s.interpolateEnvRefs === false
     ? s.url!
@@ -91,10 +95,10 @@ export function httpServer(
  *   "Stop": [{ "hooks": [{ "type": "command", "command": "..." }] }]
  * }
  */
-export function serializeClaudeHooks(hooks: HookDeclaration[]): Record<string, unknown> {
-  const result: Record<string, unknown[]> = {};
+export function serializeClaudeHooks(hooks: HookDeclaration[]): SerializedObject {
+  const result: Partial<Record<HookDeclaration["event"], ClaudeHookEntry[]>> = {};
   for (const h of hooks) {
-    const entry = {
+    const entry: ClaudeHookEntry = {
       ...(h.matcher && { matcher: h.matcher }),
       hooks: [{ type: "command", command: h.command }],
     };

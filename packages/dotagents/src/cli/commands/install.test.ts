@@ -5,7 +5,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import install, { runInstall as runInstallCommand, InstallError, type InstallOptions, type InstallResult } from "./install.js";
 import { runSync } from "./sync.js";
-import { exec } from "@sentry/dotagents-lib";
+import { exec, type SerializedObject } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import type { Lockfile } from "../../lockfile/schema.js";
@@ -204,7 +204,7 @@ source = "path:plugin-source/review-tools"
       source: "path:plugin-source/review-tools",
     });
 
-    const codexMarketplace = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "marketplace.json"), "utf-8")) as Record<string, unknown>;
+    const codexMarketplace = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "marketplace.json"), "utf-8")) as SerializedObject;
     expect(codexMarketplace).toEqual({
       interface: {
         displayName: "Dotagents Plugins",
@@ -258,7 +258,7 @@ source = "path:plugin-source/review-tools"
     );
     expect(await readFile(join(projectRoot, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(claudeMarketplaceJson);
 
-    const claudeManifest = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".claude-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const claudeManifest = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".claude-plugin", "plugin.json"), "utf-8")) as SerializedObject;
     expect(claudeManifest["name"]).toBe("review-tools");
     expect(claudeManifest["skills"]).toBe("./skills");
     expect(claudeManifest["commands"]).toBe("./commands");
@@ -266,7 +266,7 @@ source = "path:plugin-source/review-tools"
     expect(claudeManifest["category"]).toBeUndefined();
     expect(claudeManifest["metadata"]).toBeUndefined();
 
-    const codexManifest = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const codexManifest = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"), "utf-8")) as SerializedObject;
     expect(codexManifest["name"]).toBe("review-tools");
     expect(codexManifest["skills"]).toBe("./skills");
     expect(codexManifest["commands"]).toBe("./commands");
@@ -597,7 +597,7 @@ source = "path:plugin-source/review-tools"
     const scope = resolveScope("project", projectRoot);
     await expect(runInstall({ scope })).rejects.toThrow(/install destination already exists and is not managed/);
 
-    const existingManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const existingManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as SerializedObject;
     expect(existingManifest["description"]).toBe("Hand written");
     },
   );
@@ -715,7 +715,7 @@ source = "path:plugin-source/review-tools"
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const installedManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const installedManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as SerializedObject;
     expect(installedManifest["description"]).toBe("Updated plugin");
     expect(existsSync(join(existingDir, "skills", "review", "SKILL.md"))).toBe(true);
     expect(existsSync(join(existingDir, "skills", "old-review", "SKILL.md"))).toBe(false);
@@ -749,7 +749,7 @@ source = "path:plugin-source/review-tools"
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const installedManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const installedManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as SerializedObject;
     expect(installedManifest["description"]).toBe("Recovered plugin");
     expect(existsSync(join(existingDir, "skills", "review", "SKILL.md"))).toBe(true);
     expect(existsSync(join(existingDir, "skills", "partial", "SKILL.md"))).toBe(false);
@@ -790,7 +790,7 @@ source = "path:plugin-source/review-tools"
     const scope = resolveScope("project", projectRoot);
     await expect(runInstall({ scope })).rejects.toThrow(/install destination already exists and is not managed/);
 
-    const installedManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const installedManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as SerializedObject;
     expect(installedManifest["description"]).toBe("In-place plugin");
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile!.plugins["review-tools"]).toEqual({
@@ -1206,7 +1206,7 @@ source = "path:plugin-source"
 
     const installed = JSON.parse(
       await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
-    ) as Record<string, unknown>;
+    ) as SerializedObject;
     expect(installed["description"]).toBe("Canonical plugin");
   });
 
@@ -1255,10 +1255,10 @@ source = "path:plugin-source"
 
     const installedManifest = JSON.parse(
       await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
-    ) as Record<string, unknown>;
+    ) as SerializedObject;
     const codexManifest = JSON.parse(
       await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"), "utf-8"),
-    ) as Record<string, unknown>;
+    ) as SerializedObject;
 
     expect(installedManifest).toEqual(sourceManifest);
     expect(codexManifest["description"]).toBe("Source description");
@@ -1309,7 +1309,7 @@ source = "path:plugin-source"
 
     const installedManifest = JSON.parse(
       await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
-    ) as Record<string, unknown>;
+    ) as SerializedObject;
     expect(installedManifest["description"]).toBe("Canonical marketplace plugin");
   });
 
@@ -1366,7 +1366,7 @@ source = "path:plugin-source"
 
     const installedManifest = JSON.parse(
       await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
-    ) as Record<string, unknown>;
+    ) as SerializedObject;
     expect(installedManifest["description"]).toBe(
       "Fallback local plugin",
     );
@@ -1412,7 +1412,7 @@ source = "path:plugin-source"
 
     const installedManifest = JSON.parse(
       await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
-    ) as Record<string, unknown>;
+    ) as SerializedObject;
     expect(installedManifest["description"]).toBe("Fallback local plugin");
   });
 

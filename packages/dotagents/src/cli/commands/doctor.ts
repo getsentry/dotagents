@@ -56,7 +56,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
   const config = await loadConfig(scope.configPath);
 
   // 2. Check for legacy fields in agents.toml (raw TOML parsing)
-  const rawConfig = parseTOML(await readFile(scope.configPath, "utf-8")) as Record<string, unknown>;
+  const rawConfig = parseTOML(await readFile(scope.configPath, "utf-8"));
 
   if ("pin" in rawConfig) {
     const fixFn = async () => {
@@ -98,11 +98,14 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
   // 3. Check for legacy fields in agents.lock
   const lockfile = await loadLockfile(scope.lockPath);
   if (lockfile && existsSync(scope.lockPath)) {
-    const rawLock = parseTOML(await readFile(scope.lockPath, "utf-8")) as Record<string, unknown>;
-    const rawSkills = (rawLock["skills"] ?? {}) as Record<string, Record<string, unknown>>;
-    const hasLegacyLockFields = Object.values(rawSkills).some(
-      (s) => "commit" in s || "integrity" in s,
-    );
+    const rawLock = parseTOML(await readFile(scope.lockPath, "utf-8"));
+    const rawSkills = rawLock["skills"];
+    const hasLegacyLockFields = rawSkills !== null && typeof rawSkills === "object" &&
+      !Array.isArray(rawSkills) && !(rawSkills instanceof Date) && Object.values(rawSkills).some(
+        (skill) => skill !== null && typeof skill === "object" &&
+          !Array.isArray(skill) && !(skill instanceof Date) &&
+          ("commit" in skill || "integrity" in skill),
+      );
 
     if (hasLegacyLockFields) {
       const fixFn = async () => {

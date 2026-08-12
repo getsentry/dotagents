@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { stripTrailingSlashes } from "../utils/fs.js";
+import { isSerializedObject } from "../utils/serialized.js";
 import { validateCacheKey } from "./cache.js";
 
 /** Skill names must be safe path segments: alphanumeric, dots, hyphens, underscores. */
@@ -50,20 +51,15 @@ export async function fetchWellKnownIndex(
 }
 
 function isValidIndex(data: unknown): data is WellKnownIndex {
-  if (!data || typeof data !== "object") {return false;}
-  const obj = data as Record<string, unknown>;
-  if (!Array.isArray(obj["skills"])) {return false;}
-  return (obj["skills"] as unknown[]).every(
-    (s: unknown) => {
-      if (!s || typeof s !== "object") {return false;}
-      const entry = s as Record<string, unknown>;
-      return (
-        typeof entry["name"] === "string" &&
-        Array.isArray(entry["files"]) &&
-        (entry["files"] as unknown[]).every((f) => typeof f === "string")
-      );
-    },
-  );
+  if (!isSerializedObject(data)) {return false;}
+  const skills = data["skills"];
+  if (!Array.isArray(skills)) {return false;}
+  return skills.every((entry) => (
+    isSerializedObject(entry) &&
+    typeof entry["name"] === "string" &&
+    Array.isArray(entry["files"]) &&
+    entry["files"].every((file) => typeof file === "string")
+  ));
 }
 
 export interface WellKnownCacheResult {

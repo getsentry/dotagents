@@ -1,10 +1,11 @@
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
-import { parse as parseTOML } from "smol-toml";
+import { parse as parseTOML, type TomlTableWithoutBigInt } from "smol-toml";
 import {
   applyDefaultRepositorySource,
   ensureCached,
+  isSerializedObject,
   isSourceExcluded,
   loadMarkdownFrontmatter,
   parseSource,
@@ -12,6 +13,7 @@ import {
   sanitizeCacheKey,
   validateTrustedSource,
   type RepositorySource,
+  type SerializedObject,
   type TrustPolicy,
 } from "@sentry/dotagents-lib";
 import { getAgent } from "../targets/registry.js";
@@ -390,16 +392,12 @@ async function loadCodexSubagentFile(
     throw new Error(`Codex subagent TOML not found: ${filePath}`);
   }
 
-  let parsed: unknown;
+  let parsed: TomlTableWithoutBigInt;
   try {
-    parsed = parseTOML(content);
+    parsed = parseTOML(content, { integersAsBigInt: false });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Invalid Codex subagent TOML in ${filePath}: ${message}`, { cause: err });
-  }
-
-  if (!isPlainObject(parsed)) {
-    throw new Error(`Codex subagent TOML must be an object: ${filePath}`);
   }
 
   const name = parsed["name"];
@@ -615,24 +613,20 @@ function inferNativeTarget(filePath: string): NativeSubagentTarget | undefined {
   return undefined;
 }
 
-function readNativeOverlays(meta: Record<string, unknown>): NativeSubagentContent {
+function readNativeOverlays(meta: SerializedObject): NativeSubagentContent {
   const raw = meta[DOTAGENTS_NATIVE_FIELD];
-  if (!isPlainObject(raw)) {return {};}
+  if (!isSerializedObject(raw)) {return {};}
 
   const native: NativeSubagentContent = {};
   for (const target of NATIVE_SUBAGENT_TARGETS) {
     const config = raw[target];
     if (typeof config === "string") {
       native[target] = config;
-    } else if (isPlainObject(config) && typeof config["content"] === "string") {
+    } else if (isSerializedObject(config) && typeof config["content"] === "string") {
       native[target] = config["content"];
     }
   }
   return native;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isNotFoundError(err: unknown): boolean {

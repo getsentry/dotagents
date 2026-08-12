@@ -553,7 +553,7 @@ description: What this skill does
 # Skill instructions here
 ```
 
-Required frontmatter fields: `name` (string), `description` (string).
+Required frontmatter fields: `name` (string), `description` (string). Frontmatter values must recursively contain only mappings, arrays, strings, finite numbers, booleans, null, or valid timestamps.
 
 ## Lockfile (agents.lock)
 

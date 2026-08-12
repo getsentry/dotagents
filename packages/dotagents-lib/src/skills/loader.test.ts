@@ -154,6 +154,19 @@ Content.
     expect(meta["metadata"]).toEqual({ author: "vercel", version: "1.0.0" });
   });
 
+  it("rejects non-serializable YAML frontmatter values", () => {
+    expect(() => parseMarkdownFrontmatterContent(
+      `---
+name: invalid-metadata
+description: Has invalid metadata
+score: .inf
+---
+Content.
+`,
+      "SKILL.md",
+    )).toThrow("Frontmatter must be a serializable YAML object");
+  });
+
   it("parses block scalar frontmatter values that contain separator lines", () => {
     const parsed = parseMarkdownFrontmatterContent(
       `---

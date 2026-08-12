@@ -1,5 +1,6 @@
 import type { HookEvent } from "../config/schema.js";
 import type { SubagentConfigSpec } from "../subagents/types.js";
+import type { SerializedObject, SerializedValue } from "@sentry/dotagents-lib";
 
 /**
  * Universal MCP server declaration from agents.toml [[mcp]] sections.
@@ -68,7 +69,7 @@ export interface McpConfigSpec {
  * Transforms a universal McpDeclaration into the agent-specific shape
  * for its config file. Returns [serverName, serverConfig] tuple.
  */
-export type McpSerializer = (server: McpDeclaration) => [string, unknown];
+export type McpSerializer = (server: McpDeclaration) => [string, SerializedValue];
 
 /**
  * Universal hook declaration from agents.toml [[hooks]] sections.
@@ -95,14 +96,14 @@ export interface HookConfigSpec {
    */
   shared: boolean;
   /** Extra top-level fields to include (e.g. Cursor's {version: 1}) */
-  extraFields?: Record<string, unknown>;
+  extraFields?: SerializedObject;
 }
 
 /**
  * Transforms universal HookDeclarations into the agent-specific shape.
  * Returns the full value for the rootKey.
  */
-export type HookSerializer = (hooks: HookDeclaration[]) => unknown;
+export type HookSerializer = (hooks: HookDeclaration[]) => SerializedValue;
 
 /**
  * Definition of an agent tool that dotagents manages.

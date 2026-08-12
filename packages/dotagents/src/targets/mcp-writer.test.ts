@@ -13,6 +13,7 @@ import {
   writeMcpConfigs,
 } from "./mcp-writer.js";
 import type { McpDeclaration } from "./types.js";
+import type { SerializedObject } from "@sentry/dotagents-lib";
 
 const STDIO_SERVER: McpDeclaration = {
   name: "github",
@@ -155,7 +156,7 @@ describe("writeMcpConfigs", () => {
     });
     let raw = await readFile(filePath, "utf-8");
     expect(raw).toContain("// Keep this setting and server");
-    expect((parseJSONC(raw) as { mcp: Record<string, unknown> }).mcp["plugin.qa.remote"]).toEqual({
+    expect((parseJSONC(raw) as { mcp: SerializedObject }).mcp["plugin.qa.remote"]).toEqual({
       type: "remote",
       url: "https://example.com/mcp",
     });
@@ -172,7 +173,7 @@ describe("writeMcpConfigs", () => {
       mode: "apply",
     });
     raw = await readFile(filePath, "utf-8");
-    const parsed = parseJSONC(raw) as { theme: string; mcp: Record<string, unknown> };
+    const parsed = parseJSONC(raw) as { theme: string; mcp: SerializedObject };
     expect(raw).toContain("// Keep this setting and server");
     expect(parsed.theme).toBe("dark");
     expect(parsed.mcp["manual"]).toEqual({ type: "local", command: ["manual"] });
@@ -268,7 +269,7 @@ describe("writeMcpConfigs", () => {
 
     // Codex
     const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
-    const codex = parseTOML(raw) as Record<string, Record<string, Record<string, unknown>>>;
+    const codex = parseTOML(raw) as Record<string, Record<string, SerializedObject>>;
     expect(codex["mcp_servers"]!["remote"]).toEqual({
       url: "https://mcp.example.com/sse",
       http_headers: { Authorization: "Bearer tok" },
@@ -287,6 +288,18 @@ describe("writeMcpConfigs", () => {
     // Should preserve existing keys
     expect(raw).toContain("model");
     expect(raw).toContain("mcp_servers");
+  });
+
+  it("preserves TOML special floats in shared config files", async () => {
+    const codexDir = join(dir, ".codex");
+    await mkdir(codexDir, { recursive: true });
+    await writeFile(join(codexDir, "config.toml"), "temperature = inf\n", "utf-8");
+
+    await writeMcpConfigs(["codex"], [STDIO_SERVER], projectMcpResolver(dir));
+
+    const config = parseTOML(await readFile(join(codexDir, "config.toml"), "utf-8"));
+    expect(config["temperature"]).toBe(Number.POSITIVE_INFINITY);
+    expect(config["mcp_servers"]).toBeDefined();
   });
 
   it("preserves user-configured servers in shared config files", async () => {
@@ -318,7 +331,7 @@ describe("writeMcpConfigs", () => {
     const nested = await readFile(nestedPath, "utf-8");
     expect(nested).toContain("// Keep this comment");
     expect(
-      (parseJSONC(nested) as Record<string, Record<string, unknown>>)["mcp"]!["github"],
+      (parseJSONC(nested) as Record<string, SerializedObject>)["mcp"]!["github"],
     ).toBeDefined();
     expect(JSON.parse(await readFile(legacyPath, "utf-8"))).toEqual({
       mcp: { legacy: { command: ["legacy"] } },
@@ -350,7 +363,7 @@ describe("writeMcpConfigs", () => {
     expect(raw).toContain("// Project theme must remain documented");
     expect(raw).toContain("// User-owned server");
     expect(raw).toMatch(/"github": \{[\s\S]*?\n    },\n  },\n}\n$/);
-    const content = parseJSONC(raw) as Record<string, Record<string, unknown>>;
+    const content = parseJSONC(raw) as Record<string, SerializedObject>;
     expect(content["mcp"]!["manual"]).toEqual({ type: "local", command: ["manual"] });
     expect(content["mcp"]!["github"]).toEqual({
       type: "local",
@@ -453,7 +466,7 @@ describe("writeMcpConfigs", () => {
 
     const codex = parseTOML(
       await readFile(join(dir, ".codex", "config.toml"), "utf-8"),
-    ) as Record<string, Record<string, Record<string, unknown>>>;
+    ) as Record<string, Record<string, SerializedObject>>;
     expect(codex["mcp_servers"]!["authed-api"]).toEqual({
       url: "https://${API_HOST}/mcp",
       http_headers: {
@@ -467,7 +480,7 @@ describe("writeMcpConfigs", () => {
     await writeMcpConfigs(["codex"], [HTTP_SERVER_WITH_ENV_REFS], projectMcpResolver(dir));
 
     const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
-    const content = parseTOML(raw) as Record<string, Record<string, Record<string, unknown>>>;
+    const content = parseTOML(raw) as Record<string, Record<string, SerializedObject>>;
     expect(content["mcp_servers"]!["authed-api"]).toEqual({
       url: "https://${API_HOST}/mcp",
       // Pure ref: X-Api-Key = "${API_KEY}" → env_http_headers.API_KEY = "X-Api-Key"

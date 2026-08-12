@@ -865,7 +865,7 @@ function normalizeManifest(
   name: string,
   manifest: PluginManifest,
 ): PluginManifest {
-  return { ...manifest, name };
+  return { ...manifest, name } as PluginManifest;
 }
 
 function candidateMatches(name: string, candidate: PluginCandidate): boolean {
@@ -1000,7 +1000,7 @@ function isNotDirectoryError(err: unknown): boolean {
   return err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOTDIR";
 }
 
-async function readJson(filePath: string): Promise<Record<string, unknown>> {
+async function readJson(filePath: string): Promise<unknown> {
   const raw = await readFile(filePath, "utf-8");
   let parsed: unknown;
   try {
@@ -1009,8 +1009,5 @@ async function readJson(filePath: string): Promise<Record<string, unknown>> {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Invalid JSON ${filePath}: ${message}`, { cause: err });
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`Expected JSON object in ${filePath}`);
-  }
-  return parsed as Record<string, unknown>;
+  return parsed;
 }

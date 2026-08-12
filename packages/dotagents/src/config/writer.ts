@@ -6,7 +6,7 @@ import type {
   McpConfig,
   PluginConfig,
 } from "./schema.js";
-import { sourcesMatch } from "@sentry/dotagents-lib";
+import { sourcesMatch, type SerializedObject } from "@sentry/dotagents-lib";
 
 export interface DefaultConfigOptions {
   agents?: string[];
@@ -128,7 +128,7 @@ export async function addWildcardToConfig(
 ): Promise<void> {
   const content = await readFile(filePath, "utf-8");
 
-  const entry: Record<string, unknown> = { name: "*", source };
+  const entry: SerializedObject = { name: "*", source };
   if (opts?.ref) {entry["ref"] = opts.ref;}
   if (opts?.exclude && opts.exclude.length > 0) {entry["exclude"] = opts.exclude;}
 
@@ -182,7 +182,7 @@ export async function addMcpToConfig(
 ): Promise<void> {
   const content = await readFile(filePath, "utf-8");
 
-  const obj: Record<string, unknown> = { name: entry.name };
+  const obj: SerializedObject = { name: entry.name };
   if (entry.command) {
     obj["command"] = entry.command;
     if (entry.args && entry.args.length > 0) {obj["args"] = entry.args;}

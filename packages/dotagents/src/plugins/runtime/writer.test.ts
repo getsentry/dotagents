@@ -12,6 +12,7 @@ import {
   verifyPluginOutputs,
   writePluginOutputs,
 } from "./writer.js";
+import type { SerializedObject } from "@sentry/dotagents-lib";
 
 describe("plugin writer", () => {
   let root: string;
@@ -32,7 +33,7 @@ describe("plugin writer", () => {
     await mkdir(join(pluginDir, "skills"), { recursive: true });
     await mkdir(join(pluginDir, "commands"), { recursive: true });
     await mkdir(join(pluginDir, "agents"), { recursive: true });
-    const manifest = overrides.manifest && isStandardPluginManifest(overrides.manifest)
+    const manifest = (overrides.manifest && isStandardPluginManifest(overrides.manifest)
       ? overrides.manifest
       : {
           name,
@@ -41,7 +42,7 @@ describe("plugin writer", () => {
           category: "Coding",
           author: { name: "Sentry" },
           ...overrides.manifest,
-        };
+        }) as PluginDeclaration["manifest"];
     return {
       name,
       source: `path:.agents/plugins/${name}`,
@@ -82,7 +83,7 @@ describe("plugin writer", () => {
 
     expect(result.warnings).toEqual([]);
     expect(result.written).toBe(9);
-    const codexMarketplace = JSON.parse(await readFile(join(root, ".agents", "plugins", "marketplace.json"), "utf-8")) as Record<string, unknown>;
+    const codexMarketplace = JSON.parse(await readFile(join(root, ".agents", "plugins", "marketplace.json"), "utf-8")) as SerializedObject;
     expect(codexMarketplace).toEqual({
       interface: {
         displayName: "Dotagents Plugins",
@@ -152,20 +153,20 @@ describe("plugin writer", () => {
     expect(resolve(root, claudeMarketplace["plugins"][0]!["source"])).toBe(alpha.pluginDir);
     expect(await readFile(join(root, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(claudeMarketplaceJson);
 
-    const claudeManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const claudeManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json"), "utf-8")) as SerializedObject;
     expect(claudeManifest["skills"]).toBe("./skills");
     expect(claudeManifest["commands"]).toBe("./commands");
     expect(claudeManifest["agents"]).toBeUndefined();
     expect(claudeManifest["category"]).toBeUndefined();
     expect(claudeManifest["metadata"]).toBeUndefined();
 
-    const cursorManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".cursor-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const cursorManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".cursor-plugin", "plugin.json"), "utf-8")) as SerializedObject;
     expect(cursorManifest["skills"]).toBe("./skills");
     expect(cursorManifest["commands"]).toBe("./commands");
     expect(cursorManifest["agents"]).toBe("./agents");
     expect(cursorManifest["metadata"]).toBeUndefined();
 
-    const codexManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const codexManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"), "utf-8")) as SerializedObject;
     expect(codexManifest["skills"]).toBe("./skills");
     expect(codexManifest["commands"]).toBe("./commands");
     expect(codexManifest["agents"]).toBe("./agents");
@@ -291,7 +292,7 @@ describe("plugin writer", () => {
     expect(existsSync(`${adapterMcpPath}.dotagents-managed`)).toBe(false);
     const manifest = JSON.parse(
       await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8"),
-    ) as Record<string, unknown>;
+    ) as SerializedObject;
     expect(manifest["mcpServers"]).toBeUndefined();
     expect(result.warnings.some((warning) => warning.message.includes("MCP adapter exists and is not managed"))).toBe(true);
   });
@@ -358,14 +359,14 @@ describe("plugin writer", () => {
 
     expect(result.warnings).toEqual([]);
     expect(result.written).toBe(4);
-    const claudeManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const claudeManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8")) as SerializedObject;
     expect(claudeManifest["agents"]).toBeUndefined();
     expect(claudeManifest["commands"]).toEqual(["./cmds/review.md"]);
     expect(claudeManifest["hooks"]).toBe("./config/hooks.json");
     expect(claudeManifest["mcpServers"]).toBe("./config/mcp.json");
     expect(claudeManifest["skills"]).toBe("./plugin-skills");
 
-    const cursorManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const cursorManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "utf-8")) as SerializedObject;
     expect(cursorManifest["agents"]).toBe("./custom-agents");
     expect(cursorManifest["commands"]).toEqual(["./cmds/review.md"]);
     expect(cursorManifest["hooks"]).toBe("./config/hooks.json");
@@ -401,9 +402,9 @@ describe("plugin writer", () => {
         message: 'Plugin component path "../outside" for "skills" is not a safe relative path and was skipped.',
       },
     ]);
-    const claudeManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
-    const cursorManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
-    const codexManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const claudeManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8")) as SerializedObject;
+    const cursorManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "utf-8")) as SerializedObject;
+    const codexManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8")) as SerializedObject;
     expect(claudeManifest["skills"]).toBeUndefined();
     expect(cursorManifest["skills"]).toBeUndefined();
     expect(codexManifest["skills"]).toBeUndefined();
@@ -425,7 +426,7 @@ describe("plugin writer", () => {
         message: 'Plugin component path "\\outside" for "skills" is not a safe relative path and was skipped.',
       },
     ]);
-    const codexManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8")) as Record<string, unknown>;
+    const codexManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8")) as SerializedObject;
     expect(codexManifest["skills"]).toBeUndefined();
   });
 
@@ -611,7 +612,7 @@ describe("plugin writer", () => {
     expect(result.warnings).toEqual([]);
     const raw = await readFile(opencodePath, "utf-8");
     expect(raw).toContain("// Preserve user config");
-    const config = parseJSONC(raw) as { mcp: Record<string, unknown> };
+    const config = parseJSONC(raw) as { mcp: SerializedObject };
     expect(config.mcp["manual"]).toEqual({ type: "local", command: ["manual"] });
     expect(config.mcp["plugin.alpha-tools.remote"]).toEqual({
       type: "remote",
@@ -657,7 +658,7 @@ describe("plugin writer", () => {
     const prunedRaw = await readFile(opencodePath, "utf-8");
     expect(prunedRaw).toContain("// Preserve user config");
     const prunedConfig = parseJSONC(prunedRaw) as {
-      mcp: Record<string, unknown>;
+      mcp: SerializedObject;
     };
     expect(prunedConfig.mcp).toEqual({ manual: { type: "local", command: ["manual"] } });
     expect(existsSync(dataDir)).toBe(false);

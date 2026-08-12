@@ -10,12 +10,15 @@ import { markManagedMarkdownSubagent, serializeMarkdownSubagent } from "../../su
  * Maps universal hook events to Cursor event names.
  * PreToolUse maps to both beforeShellExecution and beforeMCPExecution.
  */
-const CURSOR_EVENT_MAP: Record<HookEvent, string[]> = {
+const CURSOR_EVENT_MAP = {
   PreToolUse: ["beforeShellExecution", "beforeMCPExecution"],
   PostToolUse: ["afterFileEdit"],
   UserPromptSubmit: ["beforeSubmitPrompt"],
   Stop: ["stop"],
-};
+} as const satisfies Record<HookEvent, readonly string[]>;
+
+type CursorHookEvent = (typeof CURSOR_EVENT_MAP)[HookEvent][number];
+type CursorHookEntry = { command: string };
 
 const cursor: AgentDefinition = {
   ...claude,
@@ -44,11 +47,11 @@ const cursor: AgentDefinition = {
     return claude.serializeServer(s);
   },
   serializeHooks(hooks: HookDeclaration[]) {
-    const result: Record<string, unknown[]> = {};
+    const result: Partial<Record<CursorHookEvent, CursorHookEntry[]>> = {};
     for (const h of hooks) {
       const cursorEvents = CURSOR_EVENT_MAP[h.event];
       for (const ce of cursorEvents) {
-        const list = (result[ce] as unknown[]) ?? [];
+        const list = result[ce] ?? [];
         list.push({ command: h.command });
         result[ce] = list;
       }

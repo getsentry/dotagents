@@ -98,3 +98,5 @@ export type {
 // General-purpose utilities used by callers
 export { exec, ExecError } from "./utils/exec.js";
 export { copyDir, stripTrailingSlashes } from "./utils/fs.js";
+export { isSerializedObject, isSerializedValue } from "./utils/serialized.js";
+export type { SerializedObject, SerializedValue } from "./utils/serialized.js";

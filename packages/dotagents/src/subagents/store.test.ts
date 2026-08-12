@@ -131,6 +131,7 @@ describe("resolveSubagent", () => {
         'name = "code-reviewer"',
         'description = "Review code for correctness."',
         'developer_instructions = "Review the current diff."',
+        "temperature = inf",
         "",
       ].join("\n"),
     );
@@ -142,6 +143,7 @@ describe("resolveSubagent", () => {
 
     expect(resolved.subagent.name).toBe("code-reviewer");
     expect(resolved.subagent.native?.codex).toContain('name = "code-reviewer"');
+    expect(resolved.subagent.native?.codex).toContain("temperature = inf");
   });
 
   it("imports OpenCode markdown subagents using the filename as the name", async () => {
