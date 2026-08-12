@@ -1,0 +1,5 @@
+id: no-process-exit
+valid:
+  - process.exitCode = 1
+invalid:
+  - process.exit(1)

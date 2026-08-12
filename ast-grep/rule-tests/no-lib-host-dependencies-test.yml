@@ -1,0 +1,7 @@
+id: no-lib-host-dependencies
+valid:
+  - import { parseSource } from "@sentry/dotagents-lib"
+invalid:
+  - import { main } from "@sentry/dotagents"
+  - export { main } from "@sentry/dotagents/cli"
+  - const host = await import("@sentry/dotagents")

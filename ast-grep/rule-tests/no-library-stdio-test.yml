@@ -1,0 +1,6 @@
+id: no-library-stdio
+valid:
+  - onWarning?.("invalid input")
+invalid:
+  - console.log("loaded")
+  - process.stderr.write("failed")

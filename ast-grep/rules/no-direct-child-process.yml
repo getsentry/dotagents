@@ -1,0 +1,25 @@
+id: no-direct-child-process
+language: TypeScript
+severity: error
+message: Use the @sentry/dotagents-lib exec wrapper instead of accessing node:child_process directly.
+files:
+  - packages/*/src/**/*.ts
+ignores:
+  - packages/dotagents-lib/src/utils/exec.ts
+  - "**/*.test.ts"
+rule:
+  any:
+    - all:
+        - kind: import_statement
+        - has:
+            kind: string
+            regex: '^["'']node:child_process["'']$'
+    - all:
+        - kind: export_statement
+        - has:
+            kind: string
+            regex: '^["'']node:child_process["'']$'
+    - pattern: import($MODULE)
+constraints:
+  MODULE:
+    regex: '^["'']node:child_process["'']$'

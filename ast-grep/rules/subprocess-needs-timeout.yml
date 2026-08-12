@@ -1,0 +1,18 @@
+id: subprocess-needs-timeout
+language: TypeScript
+severity: error
+message: Subprocess calls must pass a timeout option so a stalled command cannot hang dotagents indefinitely.
+files:
+  - packages/dotagents-lib/src/utils/exec.ts
+rule:
+  any:
+    - pattern: execFile($$$ARGS)
+    - pattern: execFileSync($$$ARGS)
+    - pattern: spawn($$$ARGS)
+    - pattern: spawnSync($$$ARGS)
+  not:
+    has:
+      pattern:
+        context: "({ timeout: $TIMEOUT })"
+        selector: pair
+      stopBy: end
