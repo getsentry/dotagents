@@ -1,0 +1,6 @@
+id: no-direct-child-process
+valid:
+  - import { exec } from "@sentry/dotagents-lib"
+invalid:
+  - import { execFile } from "node:child_process"
+  - const childProcess = await import("node:child_process")

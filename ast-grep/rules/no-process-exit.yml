@@ -1,0 +1,8 @@
+id: no-process-exit
+language: TypeScript
+severity: error
+message: Set process.exitCode instead of calling process.exit so cleanup and output flushing can complete.
+files:
+  - packages/*/src/**/*.ts
+rule:
+  pattern: process.exit($$$ARGS)

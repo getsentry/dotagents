@@ -1,0 +1,13 @@
+id: no-library-stdio
+language: TypeScript
+severity: error
+message: Reusable library code must return data or use callbacks instead of writing directly to process streams.
+files:
+  - packages/dotagents-lib/src/**/*.ts
+ignores:
+  - "**/*.test.ts"
+rule:
+  any:
+    - pattern: console.$METHOD($$$ARGS)
+    - pattern: process.stdout.write($$$ARGS)
+    - pattern: process.stderr.write($$$ARGS)

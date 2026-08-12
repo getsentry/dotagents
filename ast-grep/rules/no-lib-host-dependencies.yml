@@ -1,0 +1,22 @@
+id: no-lib-host-dependencies
+language: TypeScript
+severity: error
+message: '@sentry/dotagents-lib must not depend on the @sentry/dotagents host package.'
+files:
+  - packages/dotagents-lib/src/**/*.ts
+rule:
+  any:
+    - all:
+        - kind: import_statement
+        - has:
+            kind: string
+            regex: '^["'']@sentry/dotagents(?:/[^"'']*)?["'']$'
+    - all:
+        - kind: export_statement
+        - has:
+            kind: string
+            regex: '^["'']@sentry/dotagents(?:/[^"'']*)?["'']$'
+    - pattern: import($MODULE)
+constraints:
+  MODULE:
+    regex: '^["'']@sentry/dotagents(?:/[^"'']*)?["'']$'

@@ -1,0 +1,8 @@
+id: subprocess-needs-timeout
+valid:
+  - |
+    execFile(command, args, { timeout: timeoutMs }, callback)
+invalid:
+  - execFile(command, args, callback)
+  - |
+    spawn(command, args, { stdio: "pipe" })
