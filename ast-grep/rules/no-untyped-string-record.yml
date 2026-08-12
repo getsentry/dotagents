@@ -1,0 +1,15 @@
+id: no-untyped-string-record
+language: TypeScript
+severity: error
+message: Do not use untyped string-keyed objects. Keep input unknown at the boundary, then narrow to a domain type or SerializedObject.
+files:
+  - packages/**/*.ts
+  - packages/**/*.tsx
+rule:
+  any:
+    - pattern:
+        context: "const value: Record<string, unknown> = {}"
+        selector: generic_type
+    - pattern:
+        context: "interface Value { [$KEY: string]: unknown }"
+        selector: index_signature

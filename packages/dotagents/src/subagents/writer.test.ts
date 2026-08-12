@@ -13,6 +13,7 @@ import {
 } from "./writer.js";
 import { DOTAGENTS_SUBAGENT_MARKER } from "./format.js";
 import type { SubagentDeclaration } from "./types.js";
+import type { SerializedObject } from "@sentry/dotagents-lib";
 
 const SUBAGENT: SubagentDeclaration = {
   name: "code-reviewer",
@@ -65,7 +66,7 @@ describe("writeSubagentConfigs", () => {
     const raw = await readFile(join(dir, ".codex", "agents", "code-reviewer.toml"), "utf-8");
     expect(raw).toContain(DOTAGENTS_SUBAGENT_MARKER);
 
-    const content = parseTOML(raw) as Record<string, unknown>;
+    const content = parseTOML(raw) as SerializedObject;
     expect(content["name"]).toBe("code-reviewer");
     expect(content["description"]).toBe("Review code for correctness and missing tests.");
     expect(content["developer_instructions"]).toBe("Review the current diff and return findings.");
@@ -92,7 +93,7 @@ describe("writeSubagentConfigs", () => {
     );
 
     const codexRaw = await readFile(join(dir, ".codex", "agents", "code-reviewer.toml"), "utf-8");
-    const codex = parseTOML(codexRaw) as Record<string, unknown>;
+    const codex = parseTOML(codexRaw) as SerializedObject;
     expect(codex["developer_instructions"]).toBe("Native Codex instructions.");
     expect(codex["sandbox_mode"]).toBe("read-only");
     expect(codexRaw).toContain("# upstream comment");

@@ -1,0 +1,21 @@
+id: no-untyped-string-record
+valid:
+  - |
+    const value: unknown = JSON.parse(input)
+  - |
+    const fields: SerializedObject = parseDocument(input)
+  - |
+    const headers: Record<string, string> = {}
+  - |
+    interface Fields { [key: string]: SerializedValue | undefined }
+invalid:
+  - |
+    const fields: Record<string, unknown> = {}
+  - |
+    function isObject(value: unknown): value is Record<string, unknown> { return true }
+  - |
+    const nested: Record<string, Record<string, unknown>> = {}
+  - |
+    interface Fields { [key: string]: unknown }
+  - |
+    type Fields = { [name: string]: unknown }

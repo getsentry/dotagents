@@ -772,6 +772,7 @@ Git operations (all non-interactive: `GIT_TERMINAL_PROMPT=0`, SSH `BatchMode=yes
 A valid skill directory must contain:
 - `SKILL.md` with YAML frontmatter (delimited by `---`)
 - Frontmatter must include `name` (string) and `description` (string)
+- Frontmatter values must recursively contain only mappings, arrays, strings, finite numbers, booleans, null, or valid timestamps
 
 The YAML frontmatter is parsed with the `yaml` package. `allowed-tools` can be a space-delimited string or a YAML list.
 

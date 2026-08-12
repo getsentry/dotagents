@@ -18,22 +18,22 @@ export async function writeLockfile(
   lockfile: WritableLockfile,
 ): Promise<void> {
   // Sort skills by name for deterministic output
-  const sortedSkills: Record<string, unknown> = {};
+  const sortedSkills: Lockfile["skills"] = {};
   for (const name of Object.keys(lockfile.skills).toSorted()) {
-    sortedSkills[name] = lockfile.skills[name];
+    sortedSkills[name] = lockfile.skills[name]!;
   }
-  const sortedSubagents: Record<string, unknown> = {};
+  const sortedSubagents: Lockfile["subagents"] = {};
   const subagents = lockfile.subagents ?? {};
   for (const name of Object.keys(subagents).toSorted()) {
-    sortedSubagents[name] = subagents[name];
+    sortedSubagents[name] = subagents[name]!;
   }
-  const sortedPlugins: Record<string, unknown> = {};
+  const sortedPlugins: Lockfile["plugins"] = {};
   const plugins = lockfile.plugins ?? {};
   for (const name of Object.keys(plugins).toSorted()) {
-    sortedPlugins[name] = plugins[name];
+    sortedPlugins[name] = plugins[name]!;
   }
 
-  const doc: Record<string, unknown> = {
+  const doc: WritableLockfile = {
     version: lockfile.version,
     skills: sortedSkills,
   };

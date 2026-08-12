@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { parse as parseYaml } from "yaml";
 import { isToolName, type ToolName } from "./tool-name.js";
+import { isSerializedObject, type SerializedObject } from "../utils/serialized.js";
 
 export class SkillLoadError extends Error {
   constructor(message: string) {
@@ -9,16 +10,15 @@ export class SkillLoadError extends Error {
   }
 }
 
-export interface SkillMeta {
+export interface SkillMeta extends SerializedObject {
   name: string;
   description: string;
   /** Parsed `allowed-tools` frontmatter, when present and well-formed. */
   allowedTools?: ToolName[];
-  [key: string]: unknown;
 }
 
 export interface MarkdownFrontmatter {
-  meta: Record<string, unknown>;
+  meta: SerializedObject;
   body: string;
   raw: string;
 }
@@ -96,12 +96,12 @@ export function parseMarkdownFrontmatterContent(
     throw new SkillLoadError(`Invalid YAML frontmatter in ${filePath}: ${message}`);
   }
 
-  if (!isPlainObject(parsed)) {
-    throw new SkillLoadError(`Frontmatter must be a YAML object: ${filePath}`);
+  if (!isSerializedObject(parsed)) {
+    throw new SkillLoadError(`Frontmatter must be a serializable YAML object: ${filePath}`);
   }
 
   return {
-    meta: parsed as Record<string, unknown>,
+    meta: parsed,
     body: content.slice(frontmatter.end).trim(),
     raw: content,
   };
@@ -132,10 +132,6 @@ function extractFrontmatter(content: string): { yaml: string; end: number } | nu
   }
 
   return null;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**

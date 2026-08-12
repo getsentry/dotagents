@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, rm, rmdir, stat, symlink, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { loadSkillMd } from "@sentry/dotagents-lib";
+import { loadSkillMd, type SerializedObject } from "@sentry/dotagents-lib";
 import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest, parsePluginMcp, type LegacyPluginManifest } from "../schema.js";
 import type { PluginDeclaration } from "../types.js";
 import { selectedAgentIds, selectPlugins, targetWarnings, usesLegacyPluginComponents } from "../targets.js";
@@ -337,8 +337,8 @@ async function writeGrokProjection(
   return true;
 }
 
-function portableCoreManifest(plugin: PluginDeclaration): Record<string, unknown> {
-  const manifest: Record<string, unknown> = {
+function portableCoreManifest(plugin: PluginDeclaration): SerializedObject {
+  const manifest: SerializedObject = {
     $schema: AGENT_PLUGIN_SCHEMA,
     name: plugin.name,
   };

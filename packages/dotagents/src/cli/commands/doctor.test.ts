@@ -60,7 +60,7 @@ describe("runDoctor", () => {
     // Write a lockfile with legacy fields (raw TOML, not via writeLockfile which drops them)
     await writeFile(
       join(projectRoot, "agents.lock"),
-      `version = 1\n\n[skills.pdf]\nsource = "org/repo"\nresolved_url = "https://github.com/org/repo.git"\nresolved_path = "pdf"\ncommit = "abc123"\nintegrity = "sha256-xxx"\n`,
+      `version = 1\n\n[skills.pdf]\nsource = "org/repo"\nresolved_url = "https://github.com/org/repo.git"\nresolved_path = "pdf"\ncommit = "abc123"\nintegrity = "sha256-xxx"\nscore = inf\nchecked = 2026-01-01T00:00:00Z\n`,
     );
     await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
     await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");

@@ -159,7 +159,7 @@ directory with that exact namespace.
 
 dotagents must validate new manifests against the upstream schema instead of a
 Codex-derived union schema. Unknown top-level fields are ignored
-without invalidating an otherwise valid manifest. Other schema violations are
+without invalidating an otherwise valid manifest when their values are recursively serializable. Other schema violations are
 fatal. A non-object `extensions` field is ignored. Valid extension
 objects are preserved, and only the adapter registered for that namespace may
 interpret them.

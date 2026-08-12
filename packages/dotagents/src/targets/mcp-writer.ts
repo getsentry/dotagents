@@ -13,9 +13,11 @@ import { getAgent } from "./registry.js";
 import type {
   McpDeclaration,
   McpConfigSpec,
+  McpSerializer,
   NormalizedMcpDeclaration,
 } from "./types.js";
 import type { McpConfig } from "../config/schema.js";
+import { isSerializedObject, type SerializedObject } from "@sentry/dotagents-lib";
 
 export interface McpResolvedTarget {
   filePath: string;
@@ -140,8 +142,8 @@ export async function reconcileMcpConfigs(
       continue;
     }
 
-    let existing: Record<string, unknown>;
-    let existingServers: Record<string, unknown>;
+    let existing: SerializedObject;
+    let existingServers: SerializedObject;
     try {
       existing = await readExisting(filePath, mcp);
       existingServers = readServerRoot(existing, mcp.rootKey, filePath);
@@ -226,8 +228,8 @@ export async function reconcileManagedMcpConfig(
     return { issues, unresolved, written, managed, removed, skipped };
   }
 
-  let existing: Record<string, unknown>;
-  let existingServers: Record<string, unknown>;
+  let existing: SerializedObject;
+  let existingServers: SerializedObject;
   try {
     existing = await readExisting(target.filePath, agent.mcp);
     existingServers = readServerRoot(existing, agent.mcp.rootKey, target.filePath);
@@ -237,7 +239,7 @@ export async function reconcileManagedMcpConfig(
   }
 
   const managed: string[] = [];
-  const expected: Record<string, unknown> = {};
+  const expected: SerializedObject = {};
   for (const [name, value] of Object.entries(desired)) {
     if (protectedNames.has(name)) {
       const issue = { agent: agentId, issue: `MCP server "${name}" conflicts with a declared server and was not projected.` };
@@ -321,17 +323,17 @@ function normalizeMcpDeclaration(mcp: McpDeclaration): NormalizedMcpDeclaration 
 }
 
 function renderServers(
-  serializeServer: (server: McpDeclaration) => [string, unknown],
+  serializeServer: McpSerializer,
   servers: NormalizedMcpDeclaration[],
-): Record<string, unknown> {
+): SerializedObject {
   return Object.fromEntries(servers.map(serializeServer));
 }
 
 function desiredIssues(
   agent: string,
   filePath: string,
-  existing: Record<string, unknown>,
-  expected: Record<string, unknown>,
+  existing: SerializedObject,
+  expected: SerializedObject,
 ): McpReconcileIssue[] {
   return Object.entries(expected).flatMap(([name, value]) => {
     if (!(name in existing)) {
@@ -345,26 +347,22 @@ function desiredIssues(
 }
 
 function readServerRoot(
-  document: Record<string, unknown>,
+  document: SerializedObject,
   rootKey: string,
   filePath: string,
-): Record<string, unknown> {
+): SerializedObject {
   const root = document[rootKey];
   if (root === undefined) {return {};}
-  if (!isRecord(root)) {
+  if (root === null || typeof root !== "object" || Array.isArray(root) || root instanceof Date) {
     throw new TypeError(`MCP config root must contain an object: ${filePath}`);
   }
   return root;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 async function writeDocument(
   filePath: string,
   spec: McpConfigSpec,
-  doc: Record<string, unknown>,
+  doc: SerializedObject,
 ): Promise<void> {
   await mkdir(dirname(filePath), { recursive: true });
   await writeFileIfChanged(filePath, serialize(doc, spec.format));
@@ -373,7 +371,7 @@ async function writeDocument(
 async function readExisting(
   filePath: string,
   spec: McpConfigSpec,
-): Promise<Record<string, unknown>> {
+): Promise<SerializedObject> {
   const raw = await readFile(filePath, "utf-8");
   const jsoncErrors: JsoncParseError[] = [];
   const parsed: unknown = spec.format === "toml"
@@ -384,17 +382,27 @@ async function readExisting(
   if (jsoncErrors.length > 0) {
     throw new SyntaxError(`Invalid JSONC in ${filePath}`);
   }
-  if (!isRecord(parsed)) {
+  if (spec.format === "toml") {
+    if (!isTomlObject(parsed)) {
+      throw new TypeError(`MCP config must contain an object: ${filePath}`);
+    }
+    return parsed;
+  }
+  if (!isSerializedObject(parsed)) {
     throw new TypeError(`MCP config must contain an object: ${filePath}`);
   }
   return parsed;
 }
 
+function isTomlObject(value: unknown): value is SerializedObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date);
+}
+
 async function writeReconciledDocument(
   filePath: string,
   spec: McpConfigSpec,
-  doc: Record<string, unknown>,
-  expectedServers: Record<string, unknown>,
+  doc: SerializedObject,
+  expectedServers: SerializedObject,
 ): Promise<void> {
   if (spec.format !== "jsonc") {
     await writeDocument(filePath, spec, doc);
@@ -414,9 +422,9 @@ async function writeReconciledDocument(
 async function writeManagedReconciledDocument(
   filePath: string,
   spec: McpConfigSpec,
-  document: Record<string, unknown>,
-  existingServers: Record<string, unknown>,
-  expectedServers: Record<string, unknown>,
+  document: SerializedObject,
+  existingServers: SerializedObject,
+  expectedServers: SerializedObject,
   removedNames: string[],
 ): Promise<void> {
   if (spec.format !== "jsonc") {
@@ -447,7 +455,7 @@ async function readManagedMcpState(
   if (!existsSync(statePath)) {return {};}
   try {
     const value: unknown = JSON.parse(await readFile(statePath, "utf-8"));
-    if (!isRecord(value) || value["version"] !== 1 || !Array.isArray(value["servers"]) ||
+    if (!isSerializedObject(value) || value["version"] !== 1 || !Array.isArray(value["servers"]) ||
       !value["servers"].every((name) => typeof name === "string")) {
       return { issue: `Invalid managed MCP state: ${statePath}` };
     }
@@ -474,7 +482,7 @@ async function writeManagedMcpState(statePath: string, servers: string[]): Promi
   return true;
 }
 
-function serialize(doc: Record<string, unknown>, format: "json" | "jsonc" | "toml"): string {
+function serialize(doc: SerializedObject, format: "json" | "jsonc" | "toml"): string {
   if (format === "toml") {
     return `${tomlStringify(doc)}\n`;
   }

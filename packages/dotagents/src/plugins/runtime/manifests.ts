@@ -13,6 +13,7 @@ import {
 } from "./manifest-values.js";
 import type { PluginWriteWarning } from "./types.js";
 import { isSafeComponentPath } from "./component-paths.js";
+import type { SerializedObject } from "@sentry/dotagents-lib";
 
 type ComponentManifestKey =
   | "skills"
@@ -106,8 +107,8 @@ export async function writePluginManifests(
   return written;
 }
 
-function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcpPath: string | undefined, portableSkills: boolean): Record<string, unknown> {
-  const manifest: Record<string, unknown> = {
+function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcpPath: string | undefined, portableSkills: boolean): SerializedObject {
+  const manifest: SerializedObject = {
     name: plugin.name,
   };
   copyManifestField(plugin.manifest, manifest, "version");
@@ -143,8 +144,8 @@ function claudeRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
   return manifest;
 }
 
-function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcpPath: string | undefined, portableSkills: boolean): Record<string, unknown> {
-  const manifest: Record<string, unknown> = {
+function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcpPath: string | undefined, portableSkills: boolean): SerializedObject {
+  const manifest: SerializedObject = {
     name: plugin.name,
   };
   copyManifestField(plugin.manifest, manifest, "version");
@@ -185,11 +186,15 @@ function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
   return manifest;
 }
 
-function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcpPath: string | undefined, portableSkills: boolean): Record<string, unknown> {
+function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcpPath: string | undefined, portableSkills: boolean): SerializedObject {
   const standard = isStandardPluginManifest(plugin.manifest);
   const legacyComponents = usesLegacyPluginComponents(plugin, "codex");
   const legacy = legacyComponents ? plugin.manifest as LegacyPluginManifest : undefined;
-  const manifest: Record<string, unknown> = standard || !legacyComponents ? { name: plugin.name } : { ...plugin.manifest, name: plugin.name };
+  const manifest: SerializedObject = { name: plugin.name };
+  if (!standard && legacyComponents) {
+    copySerializedFields(plugin.manifest, manifest);
+    manifest["name"] = plugin.name;
+  }
   if (standard || !legacyComponents) {
     copyManifestField(plugin.manifest, manifest, "version");
     copyManifestField(plugin.manifest, manifest, "description");
@@ -269,7 +274,7 @@ async function isDirectory(filePath: string): Promise<boolean> {
   }
 }
 
-function codexInterface(plugin: PluginDeclaration): Record<string, unknown> {
+function codexInterface(plugin: PluginDeclaration): SerializedObject {
   return {
     displayName: titleCase(plugin.name),
     shortDescription: manifestString(plugin.manifest, "description") ?? "",
@@ -285,15 +290,20 @@ function developerName(manifest: PluginManifest): string {
   return "Unknown";
 }
 
-function copyManifestField(source: PluginManifest, dest: Record<string, unknown>, key: keyof PluginManifest): void {
-  if (source[key] !== undefined) {
+function copyManifestField(source: PluginManifest, dest: SerializedObject, key: keyof PluginManifest): void {
+  const value = source[key];
+  if (value !== undefined) {dest[key] = value;}
+}
+
+function copySerializedFields(source: PluginManifest, dest: SerializedObject): void {
+  for (const key of Object.keys(source)) {
     dest[key] = source[key];
   }
 }
 
 function copyRuntimeComponentField(
   plugin: PluginDeclaration,
-  dest: Record<string, unknown>,
+  dest: SerializedObject,
   key: ComponentManifestKey,
   warnings: PluginWriteWarning[],
 ): boolean {

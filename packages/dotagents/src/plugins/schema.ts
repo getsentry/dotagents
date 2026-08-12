@@ -1,6 +1,7 @@
 import { z } from "zod/v4";
 import { validateHeaderName, validateHeaderValue } from "node:http";
 import { isIP } from "node:net";
+import { isSerializedObject, type SerializedObject } from "@sentry/dotagents-lib";
 
 export const AGENT_PLUGIN_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
 export const AGENT_PLUGIN_MCP_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json";
@@ -89,8 +90,8 @@ export const pluginManifestSchema = z.object({
   extensions: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
 }).passthrough();
 
-export type StandardPluginManifest = z.infer<typeof standardPluginManifestSchema>;
-export type LegacyPluginManifest = z.infer<typeof pluginManifestSchema> & { $schema?: never };
+export type StandardPluginManifest = z.infer<typeof standardPluginManifestSchema> & SerializedObject;
+export type LegacyPluginManifest = z.infer<typeof pluginManifestSchema> & SerializedObject & { $schema?: never };
 export type PluginManifest = StandardPluginManifest | LegacyPluginManifest;
 
 export function isStandardPluginManifest(manifest: PluginManifest): manifest is StandardPluginManifest {
@@ -264,17 +265,18 @@ export const pluginMarketplaceSchema = z.object({
   plugins: z.array(marketplacePluginEntrySchema),
 }).passthrough();
 
-export type PluginMarketplace = z.infer<typeof pluginMarketplaceSchema>;
+export type PluginMarketplace = z.infer<typeof pluginMarketplaceSchema> & SerializedObject;
 
 /** Parses an external plugin manifest and annotates schema errors with its file path. */
 export function parsePluginManifest(
   value: unknown,
   filePath: string,
 ): PluginManifest {
-  const recordValue = value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-  const schemaValue = recordValue?.["$schema"];
+  const recordValue = isSerializedObject(value) ? value : null;
+  if (!recordValue) {
+    throw new Error(`Invalid plugin manifest ${filePath}: expected a serializable object`);
+  }
+  const schemaValue = recordValue["$schema"];
   const normalizedSchemaValue = typeof schemaValue === "string"
     ? normalizeAgentPluginSchemaUrl(schemaValue)
     : null;
@@ -287,20 +289,18 @@ export function parsePluginManifest(
   }
   let input = value;
   if (isStandard) {
-    const record = { ...(value as Record<string, unknown>) };
+    const record = { ...recordValue };
     record["$schema"] = AGENT_PLUGIN_SCHEMA;
     const extensions = record["extensions"];
     if (extensions !== undefined && (extensions === null || typeof extensions !== "object" || Array.isArray(extensions))) {
       delete record["extensions"];
-    } else if (extensions !== undefined) {
+    } else if (isSerializedObject(extensions)) {
       record["extensions"] = Object.fromEntries(
-        Object.entries(extensions).filter(([, extension]) => (
-          extension !== null && typeof extension === "object" && !Array.isArray(extension)
-        )),
+        Object.entries(extensions).filter(([, extension]) => isSerializedObject(extension)),
       );
     }
     input = record;
-  } else if (recordValue && "$schema" in recordValue) {
+  } else if ("$schema" in recordValue) {
     const record = { ...recordValue };
     delete record["$schema"];
     input = record;
@@ -308,6 +308,9 @@ export function parsePluginManifest(
   const parsed = (isStandard ? standardPluginManifestSchema : pluginManifestSchema).safeParse(input);
   if (!parsed.success) {
     throw new Error(`Invalid plugin manifest ${filePath}: ${parsed.error.message}`);
+  }
+  if (!isSerializedObject(parsed.data)) {
+    throw new Error(`Invalid plugin manifest ${filePath}: expected a serializable object`);
   }
   return parsed.data;
 }
@@ -335,9 +338,15 @@ export function parsePluginMarketplace(
   value: unknown,
   filePath: string,
 ): PluginMarketplace {
+  if (!isSerializedObject(value)) {
+    throw new Error(`Invalid plugin marketplace ${filePath}: expected a serializable object`);
+  }
   const parsed = pluginMarketplaceSchema.safeParse(value);
   if (!parsed.success) {
     throw new Error(`Invalid plugin marketplace ${filePath}: ${parsed.error.message}`);
+  }
+  if (!isSerializedObject(parsed.data)) {
+    throw new Error(`Invalid plugin marketplace ${filePath}: expected a serializable object`);
   }
   return parsed.data;
 }

@@ -1,12 +1,15 @@
 import { basename, extname } from "node:path";
 import { parse as parseTOML } from "smol-toml";
-import { parseMarkdownFrontmatterContent } from "@sentry/dotagents-lib";
+import {
+  parseMarkdownFrontmatterContent,
+  type SerializedObject,
+} from "@sentry/dotagents-lib";
 import type { SubagentConfigSpec, SubagentIdentityStrategy } from "./types.js";
 
 export function subagentIdentityFromMarkdownMeta(
   strategy: SubagentIdentityStrategy,
   fileName: string | undefined,
-  meta: Record<string, unknown>,
+  meta: SerializedObject,
 ): string | null {
   const declaredName = typeof meta["name"] === "string" && meta["name"] ? meta["name"] : null;
 
@@ -65,7 +68,7 @@ export function readSubagentFileIdentity(
 export function subagentIdentityFromTomlContent(content: string): string | null {
   try {
     const parsed = parseTOML(content);
-    if (isPlainObject(parsed) && typeof parsed["name"] === "string" && parsed["name"]) {
+    if (typeof parsed["name"] === "string" && parsed["name"]) {
       return parsed["name"];
     }
   } catch {
@@ -76,8 +79,4 @@ export function subagentIdentityFromTomlContent(content: string): string | null 
 
 function subagentIdentityFromFileName(fileName: string): string {
   return basename(fileName, extname(fileName));
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { getAgent } from "./registry.js";
 import type { HookDeclaration, HookConfigSpec } from "./types.js";
 import type { HookConfig } from "../config/schema.js";
+import { isSerializedObject, type SerializedObject } from "@sentry/dotagents-lib";
 
 export interface HookResolvedTarget {
   filePath: string;
@@ -109,7 +110,7 @@ export async function reconcileHookConfigs(
       continue;
     }
 
-    let existing: Record<string, unknown> | undefined;
+    let existing: SerializedObject | undefined;
     try {
       existing = await readExisting(filePath);
     } catch (error) {
@@ -141,21 +142,17 @@ export async function reconcileHookConfigs(
 
 async function writeDocument(
   filePath: string,
-  document: Record<string, unknown>,
+  document: SerializedObject,
 ): Promise<void> {
   await mkdir(dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(document, null, 2)}\n`, "utf-8");
 }
 
-async function readExisting(filePath: string): Promise<Record<string, unknown>> {
+async function readExisting(filePath: string): Promise<SerializedObject> {
   const raw = await readFile(filePath, "utf-8");
   const document: unknown = JSON.parse(raw);
-  if (!isRecord(document)) {
+  if (!isSerializedObject(document)) {
     throw new TypeError(`Hook config must contain an object: ${filePath}`);
   }
   return document;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
