@@ -24,6 +24,7 @@ describe("serialized values", () => {
     expect(isSerializedValue(hiddenCallback)).toBe(false);
     const accessor = Object.defineProperty({}, "enabled", { get: () => true, enumerable: true });
     expect(isSerializedValue(accessor)).toBe(false);
+    expect(isSerializedValue(JSON.parse('{"__proto__":{"polluted":true}}') as unknown)).toBe(false);
     expect(isSerializedValue(new Map([["enabled", true]]))).toBe(false);
     expect(isSerializedValue(new (class Metadata { enabled = true; })())).toBe(false);
     const sparse: unknown[] = [];
@@ -37,11 +38,11 @@ describe("serialized values", () => {
     expect(isSerializedObject(value)).toBe(false);
   });
 
-  it("accepts deeply nested values without overflowing", () => {
+  it("rejects excessive nesting without overflowing", () => {
     let value: SerializedObject = {};
     for (let depth = 0; depth < 20_000; depth++) {
       value = { nested: value };
     }
-    expect(isSerializedObject(value)).toBe(true);
+    expect(isSerializedObject(value)).toBe(false);
   });
 });

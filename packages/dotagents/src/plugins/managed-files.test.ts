@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { isManagedJsonFile, managedJsonMarkerPath, stableJson, writeManagedJsonIfChanged } from "./managed-files.js";
+import type { SerializedObject } from "@sentry/dotagents-lib";
 
 describe("managed plugin JSON", () => {
   let root: string;
@@ -13,6 +14,12 @@ describe("managed plugin JSON", () => {
 
   it("rejects non-serializable managed JSON", () => {
     expect(() => stableJson({ callback: () => null })).toThrow("Managed JSON must be serializable");
+
+    let deeplyNested: SerializedObject = {};
+    for (let depth = 0; depth < 2_000; depth++) {
+      deeplyNested = { nested: deeplyNested };
+    }
+    expect(() => stableJson(deeplyNested)).toThrow("Managed JSON must be serializable");
   });
 
   it("replaces marker symlinks without writing through them", async () => {
