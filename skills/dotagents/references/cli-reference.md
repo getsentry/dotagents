@@ -43,7 +43,7 @@ npx @sentry/dotagents --project init
 
 | Flag | Description |
 |------|-------------|
-| `--agents <list>` | Comma-separated agent targets (claude, cursor, codex, vscode, opencode) |
+| `--agents <list>` | Comma-separated agent targets (claude, cursor, codex, vscode, grok, opencode, pi) |
 | `--force` | Overwrite existing `agents.toml` |
 
 **Interactive mode** (when TTY is available):
@@ -75,9 +75,11 @@ npx @sentry/dotagents install
 
 Global and project installs both support plugins, with outputs rooted in their selected scope.
 
-### `add <specifier> [skill...]`
+### `add <source> [name...]`
 
-Add one or more skill dependencies and install them.
+Discover and install plugins or skills. Git and local sources are checked for
+plugins first. If any plugin is found, the source is plugin-only; otherwise
+dotagents discovers skills. Well-known HTTPS sources are skill-only.
 
 ```bash
 npx @sentry/dotagents add getsentry/skills                          # Interactive selection if multiple skills
@@ -86,6 +88,8 @@ npx @sentry/dotagents add getsentry/skills find-bugs code-review    # Add multip
 npx @sentry/dotagents add getsentry/skills --name find-bugs         # Add by --name flag
 npx @sentry/dotagents add getsentry/skills --skill find-bugs        # --skill is an alias for --name
 npx @sentry/dotagents add getsentry/skills --all                    # Add all as wildcard
+npx @sentry/dotagents add getsentry/agent-plugins review-tools      # Add a plugin
+npx @sentry/dotagents add path:./agent-plugins --all                # Snapshot all current plugins
 npx @sentry/dotagents add getsentry/warden@v1.0.0                   # Pinned ref (inline)
 npx @sentry/dotagents add getsentry/skills --ref v2.0.0             # Pinned ref (flag)
 npx @sentry/dotagents add git:https://git.corp.dev/team/skills      # Non-GitHub git URL
@@ -95,10 +99,10 @@ npx @sentry/dotagents add path:./my-skills/custom                   # Local path
 
 | Flag | Description |
 |------|-------------|
-| `--name <name>` | Specify which skill to add (repeatable; alias: `--skill`) |
-| `--skill <name>` | Alias for `--name` (repeatable) |
+| `--name <name>` | Specify which dependency to add (repeatable) |
+| `--skill <name>` | Compatibility alias for `--name`; does not force skill mode |
 | `--ref <ref>` | Pin to a specific tag, branch, or commit |
-| `--all` | Add all skills from the source as a wildcard entry (`name = "*"`) |
+| `--all` | Add current plugins explicitly, or all skills as a wildcard (`name = "*"`) |
 
 **Specifier formats:**
 - `owner/repo` -- GitHub shorthand
@@ -109,11 +113,18 @@ npx @sentry/dotagents add path:./my-skills/custom                   # Local path
 - `https://<domain>` -- Well-known HTTP skill source
 - `path:../relative` -- Local filesystem path
 
-When a repo contains multiple skills, dotagents auto-discovers them. If only one skill is found, it's added automatically. If multiple are found and no names are given, an interactive picker is shown (TTY) or skills are listed (non-TTY).
+If one dependency is found, it is added automatically. If multiple are found
+and no names are given, an interactive picker is shown in a TTY or the choices
+are listed in non-interactive mode.
 
-When adding multiple skills, already-existing entries are skipped with a warning. An error is only raised if all specified skills already exist.
+When adding multiple dependencies, existing names are skipped with a warning.
+An exact repeat leaves `agents.toml` unchanged and refreshes installation;
+conflicting declarations fail. `add` installs immediately, so do not follow it
+with a redundant `install`.
 
-`--all` and `--name`/positional args are mutually exclusive.
+Plugin `--all` records a snapshot of the current plugins. Skill `--all` creates
+a wildcard that can include future upstream skills. `--all` and
+`--name`/positional args are mutually exclusive.
 
 ### `remove <name|source>`
 

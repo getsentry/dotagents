@@ -2,14 +2,14 @@
 
 ## Intent
 
-This skill makes an agent use dotagents as the dependency manager for coding-agent skills and related shared configuration. The agent should add, install, update, remove, and inspect skills through `agents.toml` and the dotagents CLI instead of copying skill directories into individual agent runtimes.
+This skill makes an agent use dotagents to manage coding-agent skills, plugins, and related shared configuration. The agent should add, install, update, remove, and inspect dependencies through `agents.toml` and the dotagents CLI instead of copying artifacts into individual agent runtimes.
 
 The skill teaches the difference between default-global and explicit-project scope, the lifecycle of `add`, `install`, and `sync`, and the safe handling of trust, wildcard dependencies, and advanced configuration.
 
 ## Triggers
 
-- **SHOULD** apply when the user asks to add, install, update, remove, list, share, or manage coding-agent skills with dotagents or `agents.toml`.
-- **SHOULD** apply when the repository contains `agents.toml` and the task concerns skills, MCP declarations, hooks, subagents, trust, or generated agent configuration.
+- **SHOULD** apply when the user asks to add, install, update, remove, list, share, or manage coding-agent skills or plugins with dotagents or `agents.toml`.
+- **SHOULD** apply when the repository contains `agents.toml` and the task concerns skills, plugins, MCP declarations, hooks, subagents, trust, or generated agent configuration.
 - **SHOULD** apply when the user asks to set up project-wide or personal/global skill management.
 - **SHOULD NOT** apply to normal application package dependencies such as npm, Python, Rust, or system packages.
 - **SHOULD NOT** apply when the user explicitly asks to install a standalone Codex skill through another skill installer rather than manage it with dotagents.
@@ -73,6 +73,21 @@ The agent SHALL prefer `dotagents add` over manually editing ordinary named skil
 - **WHEN** the user asks to track all current and future skills from a source
 - **THEN** the agent uses `add <source> --all` to create a wildcard dependency
 
+### Behavior: Add plugins through dotagents
+
+The agent SHALL use `dotagents add` for plugin sources, preserve the user's selected scope, and understand that git and local sources are classified as plugins before skills.
+
+#### Scenario: Add a project plugin
+
+- **WHEN** the user asks to add `review-tools` from `getsentry/agent-plugins` to the current repository
+- **THEN** the agent runs `npx --yes @sentry/dotagents@latest --project add getsentry/agent-plugins review-tools`
+- **AND** does not add a redundant `install` command because `add` installs immediately
+
+#### Scenario: Add every plugin from a source
+
+- **WHEN** the user asks to add all plugins currently published by a source
+- **THEN** the agent uses `add <source> --all` and treats it as a snapshot of current plugins, not a wildcard for future plugins
+
 ### Behavior: Configure advanced dependencies
 
 The agent SHALL edit `agents.toml` directly only for dependency options not represented by the `add` command, then run `install` to apply the change.
@@ -111,7 +126,7 @@ The agent SHALL preserve the user's selected global or project scope across each
 
 ### Behavior: Remove skills safely
 
-The agent SHALL use `dotagents remove` and preserve wildcard semantics rather than manually deleting installed directories or lockfile entries.
+The agent SHALL use `dotagents remove` for skills and plugins and preserve wildcard semantics rather than manually deleting installed directories or lockfile entries.
 
 #### Scenario: Remove a named dependency
 
@@ -156,4 +171,4 @@ The agent MUST NOT set `allow_all = true` or add a trusted source without explic
 
 The agent MUST NOT describe `sync` as an update command or use it when the user expects remote dependency changes to be fetched.
 
-<!-- skillet-version: 1.5.0 -->
+<!-- skillet-version: 1.7.0 -->
