@@ -1,7 +1,7 @@
 ---
 name: dotagents
 description: Manage dotagents dependencies and runtime config. Use when asked to "add a skill", "install skills", "remove a skill", "configure plugins", "configure subagents", "dotagents init", "agents.toml", "agents.lock", "sync skills", "list skills", "set up dotagents", "configure trust", "add MCP server", "add hook", "wildcard skills", "global scope", "project scope", "dotagents doctor", or any dotagents-related task.
-spec_hash: 618e5a1625a1
+spec_hash: 98920b9b8a05
 ---
 
 Manage dependencies declared in `agents.toml`. dotagents resolves skills, subagents, plugins, MCP servers, and hooks so agent tools (Claude Code, Cursor, Codex, Grok, VS Code, OpenCode, Pi) can use shared global or project config.
@@ -39,6 +39,9 @@ npx @sentry/dotagents add getsentry/skills find-bugs code-review commit
 # Add all skills from a repo
 npx @sentry/dotagents add getsentry/skills --all
 
+# Add a plugin
+npx @sentry/dotagents add getsentry/agent-plugins review-tools
+
 # Add a pinned skill
 npx @sentry/dotagents add getsentry/warden@v1.0.0
 
@@ -65,7 +68,7 @@ npx @sentry/dotagents --project doctor --fix
 |---------|-------------|
 | `npx @sentry/dotagents init` | Initialize global config and managed directories |
 | `npx @sentry/dotagents install` | Install all dependencies from `agents.toml` |
-| `npx @sentry/dotagents add <specifier>` | Add a skill dependency |
+| `npx @sentry/dotagents add <specifier> [names...]` | Discover and add plugins, otherwise skills |
 | `npx @sentry/dotagents remove <name>` | Remove a skill or plugin |
 | `npx @sentry/dotagents sync` | Reconcile state (adopt orphans, prune stale managed artifacts, repair configs) |
 | `npx @sentry/dotagents list` | Show declared skills, plugins, and status |
@@ -74,6 +77,17 @@ npx @sentry/dotagents --project doctor --fix
 | `npx @sentry/dotagents doctor` | Check global health and fix issues |
 
 All commands default to global scope (`~/.agents/`). `--project` selects the current repository (or current directory outside Git). `--global` is an explicit global spelling, and `--user` is its compatibility alias. Never combine `--project` with a global alias.
+
+## Adding Plugins
+
+Use the same `add` command for plugins. Git and local sources are checked for plugins first; when any plugin is found, that source is treated as plugin-only. Well-known HTTPS sources remain skill-only.
+
+```bash
+# Add a plugin to this repository
+npx @sentry/dotagents --project add getsentry/agent-plugins review-tools
+```
+
+`add` installs immediately, so do not follow it with a redundant `install`. For plugins, `--all` records a snapshot of every plugin currently found. For skills, `--all` creates a wildcard that can include future skills. Re-adding an identical declaration refreshes its installation without changing `agents.toml`; conflicting declarations still fail.
 
 For full options and flags, read [references/cli-reference.md](references/cli-reference.md).
 

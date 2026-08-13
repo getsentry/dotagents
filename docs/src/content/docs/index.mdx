@@ -38,7 +38,8 @@ targets = ["claude", "codex", "opencode"]
 
 [[plugins]]
 name = "review-tools"
-source = "getsentry/agent-pack"
+source = "getsentry/agent-plugins"
+path = "plugins/review-tools"
 targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
     </div>
   </section>
@@ -46,7 +47,7 @@ targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
   <section className="dotagents-section">
     <div className="dotagents-section-heading">
       <h2 id="why-dotagents">What dotagents manages</h2>
-      <p>Keep generated agent state out of git. Commit one TOML file, then let each developer install the same skills and config locally.</p>
+      <p>Use one global config for your personal setup, or commit one project config for your team. dotagents keeps generated agent state in the right scope.</p>
     </div>
 
     <div className="dotagents-card-grid">
@@ -79,8 +80,8 @@ targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
 
   <section className="dotagents-section dotagents-install-section">
     <div>
-      <h2 id="quick-start">Quick Start</h2>
-      <p>Run `init` at the root of your repository. Interactive setup asks which agent tools to configure, writes `agents.toml`, gitignores generated files, and declares the `dotagents` skill from `getsentry/dotagents`.</p>
+      <h2 id="quick-start">Quick Start: Global by Default</h2>
+      <p>Run `init` from any directory to create global config under `~/.agents/`. Add `--project` to every command when you want repository-local config instead.</p>
     </div>
 
     <div className="dotagents-terminal">
@@ -89,14 +90,14 @@ targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
         <span></span>
         <span></span>
       </div>
-      <pre><code>$ npx @sentry/dotagents init&#10;&#10;Created agents.toml&#10;Created .agents/skills/&#10;Updated .gitignore&#10;&#10;Next:&#10;  dotagents add getsentry/skills find-bugs&#10;  dotagents install</code></pre>
+      <pre><code>$ npx @sentry/dotagents init&#10;$ npx @sentry/dotagents add getsentry/skills find-bugs&#10;$ npx @sentry/dotagents add getsentry/agent-plugins review-tools</code></pre>
     </div>
   </section>
 
   <section className="dotagents-section">
     <div className="dotagents-section-heading">
       <h2 id="supported-agents">Supported Agents</h2>
-      <p>The `agents` array tells dotagents which tools to configure. Pi reads `.agents/skills/` directly and does not need generated config.</p>
+      <p>The `agents` array tells dotagents which tools to configure. Grok and Pi are plugin-only targets; Pi also reads `.agents/skills/` directly.</p>
     </div>
 
     | Agent | Config Dir | MCP Config | Hooks | Subagents |
@@ -112,8 +113,8 @@ targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
 
   <section className="dotagents-section">
     <div className="dotagents-section-heading">
-      <h2 id="adding-skills">Adding Skills</h2>
-      <p>dotagents discovers skills in a source. When a repo has one skill, it adds it automatically. When multiple are found, pass skill names or use `--all`.</p>
+      <h2 id="adding-skills">Adding Dependencies</h2>
+      <p>dotagents checks git and local sources for plugins first, then falls back to skills. Pass dependency names when a source contains more than one.</p>
     </div>
 
     ```shell
@@ -122,6 +123,9 @@ targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
 
     # Add all skills from a repo
     dotagents add getsentry/skills --all
+
+    # Add a plugin
+    dotagents add getsentry/agent-plugins review-tools
 
     # Pin to a specific ref
     dotagents add getsentry/warden@v1.0.0

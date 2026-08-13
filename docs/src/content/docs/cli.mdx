@@ -6,15 +6,22 @@ description: dotagents CLI reference.
 ## Usage
 
 ```shell
-dotagents [--user|--global] <command> [options]
+dotagents [--project|--global|--user] <command> [options]
 ```
+
+Commands use global scope under `~/.agents/` when no scope flag is present,
+even inside a configured repository. The unqualified examples below are global.
 
 ## Global Options
 
-- `--user` operates on user scope (`~/.agents/`) instead of the current project.
-- `--global` is an alias for `--user`.
+- `--project` operates on the containing Git repository, or the current directory outside Git.
+- `--global` explicitly selects global scope.
+- `--user` is a compatibility alias for `--global`.
 - `--help`, `-h` shows help.
 - `--version`, `-V` shows version.
+
+Project commands other than `init` require `agents.toml` and never fall back to
+global state. Do not combine `--project` with `--global` or `--user`.
 
 ## Commands
 
@@ -26,9 +33,9 @@ dotagents [--user|--global] <command> [options]
 dotagents init [--agents claude,cursor] [--force]
 ```
 
-Initialize a new project with `agents.toml` and `.agents/skills/`. Interactive
-mode prompts for agent targets and trust policy. Sets up gitignore entries
-automatically.
+Initialize the selected scope's config and managed directories. Interactive
+mode prompts for agent targets and trust policy. Project init also sets up
+gitignore entries.
 
 By default, `init` declares the `dotagents` skill from `getsentry/dotagents` so
 agents can discover CLI guidance. It then runs `install` best-effort.
@@ -44,7 +51,7 @@ Examples:
 ```shell
 dotagents init
 dotagents init --agents claude,cursor
-dotagents --user init
+dotagents --project init
 ```
 
 <a id="install"></a>
@@ -58,7 +65,7 @@ dotagents install
 Install and refresh skill, subagent, and plugin dependencies from `agents.toml`.
 Resolves sources, copies canonical artifacts, writes the lockfile, creates
 symlinks, and generates MCP, hook, subagent, and plugin runtime configs. There
-is no separate update command. Plugins install into the active project or user
+is no separate update command. Plugins install into the active global or project
 scope. The deprecated `--frozen` flag prints a warning and performs the same
 normal install; use explicit `ref` values to pin sources.
 
@@ -98,6 +105,8 @@ Plugin declarations record the exact discovered source path (`.` for a plugin
 at the source root), so later additions to the source cannot change selection.
 If config mutation or installation fails, `add` restores the previous
 `agents.toml` content rather than leaving a failed dependency declared.
+Exact repeats leave `agents.toml` unchanged and refresh installation;
+conflicting declarations still fail.
 
 Do not mix positional names and `--skill` or `--name` flags in the same
 command.
@@ -168,10 +177,10 @@ dotagents remove getsentry/skills -y
 dotagents sync
 ```
 
-Reconcile project state without network access. Adopts local orphaned skills,
-prunes stale managed skills, subagents, and plugins removed from config,
-regenerates gitignore, and repairs symlinks plus MCP/hook/subagent/plugin
-configs. Reports issues as warnings or errors.
+Reconcile the selected scope without network access. Adopts local orphaned
+skills, prunes stale managed skills, subagents, and plugins removed from config,
+and repairs symlinks plus MCP, hook, subagent, and plugin configs. Project scope
+also regenerates managed gitignore state. Reports issues as warnings or errors.
 
 <a id="mcp-add"></a>
 
@@ -303,11 +312,10 @@ dotagents trust list --json
 dotagents doctor [--fix]
 ```
 
-Check project health and fix issues. Verifies gitignore setup, installed
-skills/plugins, plugin runtime projections, symlinks, and legacy config fields.
-Use `dotagents sync` to repair generated runtime configs. Same-project plugin
-declarations are reported because a project cannot install a plugin onto its
-own managed destination.
+Check the selected scope and fix supported issues. Verifies installed skills
+and plugins, plugin runtime projections, and legacy config fields. Project scope
+also checks gitignore setup, symlinks, and managed hooks. Use `dotagents sync`
+in the same scope to repair generated runtime configs.
 
 Options:
 
@@ -350,7 +358,7 @@ Status output:
 | GitLab URL | `https://gitlab.com/group/repo` | Explicit GitLab source |
 | GitLab SSH | `git@gitlab.com:group/repo.git` | GitLab over SSH |
 | Well-known HTTPS | `https://cli.sentry.dev` | HTTP source using .well-known skill discovery |
-| Local | `path:./my-skills/custom` | Local directory, relative to project root |
+| Local | `path:./my-skills/custom` | Local directory, relative to the selected scope root |
 
 <a id="configuration"></a>
 
@@ -363,7 +371,7 @@ Status output:
 | `version` | integer | -- | Schema version. Always `1`. |
 | `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `grok`, `vscode`, `opencode`, `pi`. `grok` and `pi` are plugin-only targets. |
 | `subagents` | table[] | `[]` | Custom subagent declarations for Claude, Cursor, Codex, and OpenCode |
-| `plugins` | table[] | `[]` | Project-scoped plugin declarations for Claude, Cursor, Codex, Grok, OpenCode, and Pi. |
+| `plugins` | table[] | `[]` | Plugin declarations for Claude, Cursor, Codex, Grok, OpenCode, and Pi. |
 | `minimum_release_age` | integer | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install. |
 | `minimum_release_age_exclude` | string[] | `[]` | Sources that bypass the minimum release age gate. Supports org names, `org/repo`, and `org/*`. |
 | `defaultRepositorySource` | string | `github` | Host used for shorthand `owner/repo` sources. Valid values: `github` or `gitlab`. |
@@ -434,8 +442,8 @@ Generated files include a dotagents header marker. `install` and `sync` update m
 
 ### Plugins
 
-`[[plugins]]` entries install canonical plugin bundles into
-`.agents/plugins/<name>/` and generate runtime-specific outputs for configured
+`[[plugins]]` entries install canonical bundles into the selected scope's
+managed plugin directory and generate runtime-specific outputs for configured
 agents. Plugin sources support GitHub/GitLab shorthands, git URLs, and `path:`
 sources; HTTPS well-known sources are not supported for plugins.
 
@@ -465,40 +473,44 @@ entries, and Pi skill links. OpenCode MCP keys use
 Generalized legacy bundles can also project Markdown agents into OpenCode;
 standard extension agents are preserved but not projected yet. dotagents rejects
 plugin sources that resolve to the same project's
-`.agents/plugins/<name>/` install destination. User-scope plugins use
+`.agents/plugins/<name>/` install destination. Global plugins use
 `~/.agents/plugins/<name>/` and global harness projections.
 
 ## Scopes
 
-### Project Scope (default)
+### Global Scope (default)
 
-Operates on the current project. Requires `agents.toml` at the project root.
-Skills go to `.agents/skills/` and the lockfile goes to `agents.lock`.
-
-### User Scope
-
-Manages skills and plugins shared across all projects. Files live in `~/.agents/`, and you
-can override that with `DOTAGENTS_HOME`. Claude and Cursor share the
-`~/.claude/skills/` symlink.
+Operates on `DOTAGENTS_HOME` or `~/.agents/` in every directory. `--global`
+selects this scope explicitly; `--user` is a compatibility alias.
 
 ```shell
-dotagents --user init
-dotagents --user add getsentry/skills --all
-dotagents --user install
-dotagents --global add getsentry/agent-plugin
+dotagents init
+dotagents add getsentry/skills --all
+dotagents add getsentry/agent-plugins review-tools
+dotagents install
 ```
 
-When no `agents.toml` exists and you are not inside a git repo, dotagents falls
-back to user scope automatically.
-
-User plugins install into `~/.agents/plugins/`. Claude and Cursor marketplaces
+Global plugins install into `~/.agents/plugins/`. Claude and Cursor marketplaces
 are generated below `~/.agents/`, Codex uses `~/.agents/plugins/marketplace.json`,
-OpenCode skills use `~/.config/opencode/skills/` and plugin MCP entries use
-`~/.config/opencode/opencode.json`, and Pi skills use `~/.agents/skills/`.
+Grok uses `~/.grok/plugins/`, OpenCode skills use `~/.config/opencode/skills/`
+and plugin MCP entries use `~/.config/opencode/opencode.json`, and Pi skills use
+`~/.agents/skills/`.
+
+### Project Scope (`--project`)
+
+Operates on the containing Git repository root, or the current directory
+outside Git. Commands other than `init` require `agents.toml` and never fall
+back globally.
+
+```shell
+dotagents --project init
+dotagents --project add getsentry/skills --all
+dotagents --project install
+```
 
 ## Environment Variables
 
 | Variable | Description |
 | --- | --- |
 | `DOTAGENTS_STATE_DIR` | Override cache location. Default: `~/.local/dotagents`. |
-| `DOTAGENTS_HOME` | Override user-scope location. Default: `~/.agents`. |
+| `DOTAGENTS_HOME` | Override global-scope location. Default: `~/.agents`. |

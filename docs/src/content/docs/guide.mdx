@@ -1,102 +1,109 @@
 ---
 title: Guide
-description: Set up and use dotagents in your project.
+description: Set up global or project dependencies with dotagents.
 ---
 
-## Setup
+## Choose a Scope
 
-Run these commands at the root of your repository.
+Commands are global by default, even inside a repository. Global config lives
+under `~/.agents/` and applies across projects.
 
-### 1. Initialize
+Use `--project` on every command that should read or change repository-local
+state. Project commands use the Git root and never fall back to global config.
 
-Create `agents.toml` and the `.agents/skills/` directory. Interactive setup
-prompts for the agent tools you use, such as Claude, Cursor, Codex, VS Code, or
-OpenCode.
+## Global Setup
+
+Initialize global config and choose which agent tools to configure:
 
 ```shell
 npx @sentry/dotagents init
 ```
 
-This also adds `agents.lock` and `.agents/.gitignore` to your root
-`.gitignore`. These are generated files that should not be committed.
-
 By default, `init` declares the `dotagents` skill from `getsentry/dotagents` so
 agent tools can discover CLI guidance. It then runs `install` best-effort.
 
-### 2. Add Skills
-
-Install skills from GitHub repos, git URLs, well-known HTTPS sources, or local
-directories.
+Add skills or plugins:
 
 ```shell
-# Add a single skill
+# Add a skill
 dotagents add getsentry/skills find-bugs
+
+# Add a plugin
+dotagents add getsentry/agent-plugins review-tools
 
 # Add all skills from a repo
 dotagents add getsentry/skills --all
-
-# Pin to a specific ref
-dotagents add getsentry/warden@v1.0.0
-
-# Add from a well-known HTTPS source
-dotagents add https://cli.sentry.dev error-tracking
 ```
 
-Each skill is copied into `.agents/skills/` and symlinked to where your agent
-tools expect them. See the [CLI reference](/cli/#source-formats) for all source
-formats.
+Git and local sources are checked for plugins first. If no plugin is found,
+dotagents discovers skills. See the [CLI reference](/cli/#source-formats) for
+all source formats.
 
-### 3. Install
-
-After cloning the repo or pulling changes, run `install` to fetch or refresh
-managed skills and subagents. Managed `.agents/` files are gitignored, so
-collaborators run this command locally.
+Run `install` whenever you want to fetch or refresh all declared dependencies:
 
 ```shell
 dotagents install
 ```
 
-This is also the update path. There is no separate update command.
+There is no separate update command.
+
+## Project Setup
+
+Keep `--project` on every repository-local command:
+
+```shell
+# Initialize this repository
+dotagents --project init
+
+# Add a repository dependency
+dotagents --project add getsentry/skills find-bugs
+
+# Install after cloning or pulling
+dotagents --project install
+```
+
+Commit `agents.toml`. Collaborators use the project-scoped `install` command to
+recreate managed local state.
 
 ## What Gets Gitignored
 
-dotagents manages gitignore automatically. Two generated files are kept out of
-version control:
+In project scope, dotagents keeps two generated files out of version control:
 
-- `agents.lock` tracks which skills and subagents are managed.
-- `.agents/.gitignore` excludes managed skill directories and canonical installed subagent files.
+- `agents.lock` tracks managed skills, subagents, and plugins.
+- `.agents/.gitignore` excludes managed dependency files under `.agents/`.
 
-Custom skills you create directly in `.agents/skills/` are not gitignored. They
-are tracked by git normally, so collaborators get them without running install.
+Custom skills and project-authored plugin sources are tracked normally when
+they are not managed installed dependencies. Global commands never change a
+repository's Git ignore files.
 
 ## Trust Policies
 
 By default, any source is allowed. For teams, add a `[trust]` section to
-restrict which sources can provide skills and subagents. Trust is validated
-before any network operations.
+restrict skill, subagent, and plugin sources. Trust is validated before any
+network operations.
 
 ```shell
 # Trust a GitHub org
-dotagents trust add getsentry
+dotagents --project trust add getsentry
 
 # Trust a specific repo
-dotagents trust add external-org/specific-repo
+dotagents --project trust add external-org/specific-repo
 
 # Trust a self-hosted git server
-dotagents trust add git.corp.example.com
+dotagents --project trust add git.corp.example.com
 ```
 
 See the [Security page](/security/) for the full trust configuration reference.
 
 ## Auto-install with Git Hooks
 
-Since managed `.agents/` files are gitignored, run `dotagents install` after pulling. A
-`post-merge` hook automates this:
+Since managed `.agents/` files are gitignored, run `dotagents --project install`
+after pulling. A `post-merge` hook automates this:
 
 ```shell
 #!/bin/sh
 # .git/hooks/post-merge
-npx --yes @sentry/dotagents install || echo "dotagents install failed"
+npx --yes @sentry/dotagents --project install || echo "dotagents install failed"
 ```
 
 Make it executable:
@@ -111,8 +118,8 @@ Git hooks are not shared through git. Tools like
 
 ## Keeping Things in Sync
 
-Use `dotagents sync` for offline repair. It does not fetch anything from the
-network. Instead, it:
+Use `dotagents --project sync` for offline project repair. It does not fetch
+anything from the network. Instead, it:
 
 - Adopts local orphaned skills, meaning installed skills that are not declared.
 - Prunes stale managed skills, subagents, and plugins removed from config.
@@ -123,39 +130,27 @@ network. Instead, it:
 
 ## Diagnosing Issues
 
-Use `dotagents doctor` to check project health. It identifies configuration
+Use `dotagents --project doctor` to check project health. It identifies configuration
 issues and can fix them automatically.
 
 ```shell
-dotagents doctor        # check for issues
-dotagents doctor --fix  # auto-fix what it can
+dotagents --project doctor        # check for issues
+dotagents --project doctor --fix  # auto-fix what it can
 ```
 
 Checks for missing gitignore entries, legacy config fields, missing skills and
-plugins, and broken symlinks. Use `dotagents sync` to repair generated runtime
-config drift. Doctor is especially useful when migrating from an older version.
+plugins, and broken symlinks. Use `dotagents --project sync` to repair generated
+runtime config drift. Doctor is especially useful when migrating from an older
+version.
 
-## Personal Skills
+## Global Paths
 
-Project skills live in `agents.toml` and are shared with your team. Personal
-skills apply to all your projects. Use them for tools and workflows only you
-need.
+Global config, skills, plugins, and the lockfile live under `~/.agents/`. Plugin
+outputs are written to the global Claude, Cursor, Codex, Grok, OpenCode, and Pi
+locations. Override the dotagents root with `DOTAGENTS_HOME`.
 
-Use `--user` (or its `--global` alias) to manage personal skills and plugins:
-
-```shell
-dotagents --user init
-dotagents --user add getsentry/skills --all
-dotagents --user install
-dotagents --global add getsentry/agent-plugin
-```
-
-Personal skills and canonical plugins live in `~/.agents/`. Plugin projections
-target the global Claude, Codex, OpenCode, and Pi locations. Override the
-dotagents location with `DOTAGENTS_HOME`.
-
-When you run dotagents outside a git repo without an `agents.toml`, it falls
-back to user scope automatically.
+`--global` selects global scope explicitly. `--user` remains a compatibility
+alias.
 
 <a id="configuration"></a>
 

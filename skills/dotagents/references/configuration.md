@@ -156,6 +156,9 @@ targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 
 Plugin declarations work in global and project scope. Canonical bundles and runtime projections use the selected scope's paths.
 
+Global bundles live under `~/.agents/plugins/`. Runtime outputs use global
+Claude, Cursor, Codex, Grok (`~/.grok/plugins/`), OpenCode, and Pi locations.
+
 ## Agents
 
 The `agents` array controls which agent tools get symlinks and configs.
@@ -179,6 +182,7 @@ Operates on `DOTAGENTS_HOME` or `~/.agents/` in every directory. Unqualified com
 
 ```bash
 npx @sentry/dotagents add getsentry/skills --all
+npx @sentry/dotagents add getsentry/agent-plugins review-tools
 npx @sentry/dotagents install
 ```
 

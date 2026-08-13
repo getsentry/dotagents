@@ -66,7 +66,7 @@ Project commands other than `init` require `agents.toml` and never fall back to 
 
 | Command | Description |
 |---------|-------------|
-| `init` | Create `agents.toml` and `.agents/skills/` |
+| `init` | Create the selected scope's config and managed directories |
 | `add <source> [names...]` | Discover and add plugins, otherwise skills; exact repeats refresh installation |
 | `remove <name\|source> [-y]` | Remove a skill, plugin, or all dependencies from a source |
 | `install` | Install all dependencies from `agents.toml` |
@@ -165,7 +165,7 @@ targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 
 The canonical portable format is an [Agent Plugins](https://agent-plugins.org/) v1 bundle: required `plugin.json`, optional `skills/`, optional `mcp.json`, and reverse-domain client extensions. dotagents preserves those portable source files under `.agents/plugins/<name>/` and generates isolated target harnesses. OpenCode receives portable MCP servers under managed keys such as `plugin.<plugin>.<server>`; `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` are expanded into the installed bundle and persistent `.agents/plugin-data/` paths. Generated JSON uses adjacent ownership sidecars, while component symlinks use markers in reserved `.dotagents-managed/` directories, so client-owned JSON remains unchanged. Legacy generalized and native Claude/Cursor/Codex manifests remain discoverable during migration; native imports preserve their owning manifest and expose only core metadata and Agent Skills to other clients. Standard bundles reject legacy root components so client-specific behavior cannot leak across harnesses.
 
-Global plugins install canonical bundles under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated under `~/.agents/`, the Codex marketplace is generated at `~/.agents/plugins/marketplace.json`, OpenCode skills are linked into `~/.config/opencode/skills/`, portable MCP servers are merged into `~/.config/opencode/opencode.json`, and Pi skills are linked into `~/.agents/skills/`. `--user` remains a compatibility alias for `--global`.
+Global plugins install canonical bundles under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated under `~/.agents/`, the Codex marketplace is generated at `~/.agents/plugins/marketplace.json`, Grok plugins are copied into `~/.grok/plugins/`, OpenCode skills are linked into `~/.config/opencode/skills/`, portable MCP servers are merged into `~/.config/opencode/opencode.json`, and Pi skills are linked into `~/.agents/skills/`. `--user` remains a compatibility alias for `--global`.
 
 Pi plugin targets are global skill projections rather than isolated plugin installs: a Pi-targeted plugin skill is added to `.agents/skills/` and is therefore visible to other clients that consume that shared directory.
 
