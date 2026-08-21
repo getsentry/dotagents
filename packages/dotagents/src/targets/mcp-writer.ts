@@ -156,19 +156,21 @@ export async function reconcileMcpConfigs(
       if (mode === "apply") {
         const fallbackPath = promotedFallbacks.get(filePath);
         if (fallbackPath) {
+          let fallback: SerializedObject;
+          let fallbackServers: SerializedObject;
           try {
-            const fallback = await readExisting(fallbackPath, mcp);
-            const fallbackServers = readServerRoot(fallback, mcp.rootKey, fallbackPath);
-            await writeDocument(filePath, mcp, {
-              ...fallback,
-              [mcp.rootKey]: { ...fallbackServers, ...expectedServers },
-            }, target.mode);
+            fallback = await readExisting(fallbackPath, mcp);
+            fallbackServers = readServerRoot(fallback, mcp.rootKey, fallbackPath);
           } catch {
             const issue = { agent: id, issue: `Failed to read MCP config: ${fallbackPath}` };
             issues.push(issue);
             unresolved.push(issue);
             continue;
           }
+          await writeDocument(filePath, mcp, {
+            ...fallback,
+            [mcp.rootKey]: { ...fallbackServers, ...expectedServers },
+          }, target.mode);
         } else {
           await writeDocument(filePath, mcp, expected, target.mode);
         }
@@ -487,7 +489,14 @@ async function writeReconciledDocument(
     return;
   }
 
-  let raw = await readFile(filePath, "utf-8");
+  let raw: string;
+  try {
+    raw = await readFile(filePath, "utf-8");
+  } catch (err) {
+    if (!isNotFoundError(err)) {throw err;}
+    await writeDocument(filePath, spec, doc, mode);
+    return;
+  }
   for (const [name, server] of Object.entries(expectedServers)) {
     const edits = modifyJsonc(raw, [spec.rootKey, name], server, {
       formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
@@ -506,15 +515,24 @@ async function writeManagedReconciledDocument(
   removedNames: string[],
   mode?: number,
 ): Promise<void> {
+  const servers = { ...existingServers };
+  for (const name of removedNames) {delete servers[name];}
+  Object.assign(servers, expectedServers);
+  const next = { ...document, [spec.rootKey]: servers };
+
   if (spec.format !== "jsonc") {
-    const servers = { ...existingServers };
-    for (const name of removedNames) {delete servers[name];}
-    Object.assign(servers, expectedServers);
-    await writeDocument(filePath, spec, { ...document, [spec.rootKey]: servers }, mode);
+    await writeDocument(filePath, spec, next, mode);
     return;
   }
 
-  let raw = await readFile(filePath, "utf-8");
+  let raw: string;
+  try {
+    raw = await readFile(filePath, "utf-8");
+  } catch (err) {
+    if (!isNotFoundError(err)) {throw err;}
+    await writeDocument(filePath, spec, next, mode);
+    return;
+  }
   for (const name of removedNames) {
     raw = applyJsoncEdits(raw, modifyJsonc(raw, [spec.rootKey, name], undefined, {
       formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
