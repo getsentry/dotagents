@@ -43,7 +43,7 @@ agents can discover CLI guidance. It then runs `install` best-effort.
 Options:
 
 - `--agents <list>` comma-separated agent targets (`claude`, `cursor`, `codex`,
-  `vscode`, `opencode`, `grok`, `pi`).
+  `copilot`, `vscode`, `opencode`, `grok`, `pi`).
 - `--force` overwrites existing `agents.toml`.
 
 Examples:
@@ -369,7 +369,7 @@ Status output:
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `version` | integer | -- | Schema version. Always `1`. |
-| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `grok`, `vscode`, `opencode`, `pi`. `grok` and `pi` are plugin-only targets. |
+| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `copilot`, `grok`, `vscode`, `opencode`, `pi`. `grok` and `pi` are plugin-only targets. |
 | `subagents` | table[] | `[]` | Custom subagent declarations for Claude, Cursor, Codex, and OpenCode |
 | `plugins` | table[] | `[]` | Plugin declarations for Claude, Cursor, Codex, Grok, OpenCode, and Pi. |
 | `minimum_release_age` | integer | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install. |

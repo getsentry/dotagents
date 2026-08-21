@@ -1087,8 +1087,14 @@ source = "path:./.agents/plugins/local-tools/source"
     const userHome = join(tmpDir, "home");
     process.env["DOTAGENTS_HOME"] = dotagentsHome;
     process.env["HOME"] = userHome;
+    vi.resetModules();
     try {
-      const scope = resolveScope("user");
+      const [{ runInstall: runUserInstall }, { resolveScope: resolveUserScope }] =
+        await Promise.all([
+          import("./install.js"),
+          import("../../scope.js"),
+        ]);
+      const scope = resolveUserScope("user");
       const sourceDir = join(scope.root, "plugin-source", "review-tools");
       await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
       await writeFile(
@@ -1120,12 +1126,16 @@ source = "path:plugin-source/review-tools"
 `,
       );
 
-      const result = await runInstall({ scope });
+      const result = await runUserInstall({ scope });
       expect(result.installedPlugins).toEqual(["review-tools"]);
       expect(existsSync(join(scope.pluginsDir, "review-tools", "plugin.json"))).toBe(true);
       expect(existsSync(join(scope.root, ".claude-plugin", "marketplace.json"))).toBe(true);
       expect(existsSync(join(scope.root, ".agents", "plugins", "marketplace.json"))).toBe(true);
       expect(await readlink(join(scope.skillsDir, "review"))).toBe("../plugins/review-tools/skills/review");
+      expect((await lstat(join(userHome, ".claude", "skills"))).isSymbolicLink()).toBe(true);
+      expect(await readlink(join(userHome, ".claude", "skills"))).toBe(
+        relative(join(userHome, ".claude"), scope.skillsDir),
+      );
       expect(await readlink(join(userHome, ".config", "opencode", "skills", "review"))).toContain(
         join("user-agents", "plugins", "review-tools", "skills", "review"),
       );
@@ -1158,6 +1168,7 @@ source = "path:plugin-source/review-tools"
       } else {
         process.env["HOME"] = previousOsHome;
       }
+      vi.resetModules();
     }
   });
 

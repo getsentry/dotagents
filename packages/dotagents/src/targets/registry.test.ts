@@ -9,6 +9,7 @@ describe("allAgentIds", () => {
     expect(ids).toContain("codex");
     expect(ids).toContain("vscode");
     expect(ids).toContain("opencode");
+    expect(ids).toContain("copilot");
   });
 });
 

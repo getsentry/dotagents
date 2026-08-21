@@ -31,7 +31,7 @@ The manifest file. Lives at the selected scope root: `~/.agents/agents.toml` by 
 
 ```toml
 version = 1
-agents = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+agents = ["claude", "cursor", "codex", "copilot", "grok", "opencode", "pi"]
 
 [project]
 name = "my-project"              # Optional. For display purposes.
@@ -93,7 +93,7 @@ targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 |-------|----------|-------------|
 | `version` | Yes | Schema version. Always `1`. |
 | `defaultRepositorySource` | No | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. Defaults to `github`. |
-| `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `vscode`, `grok`, `opencode`, `pi`. Defaults to `[]`. When set, dotagents creates skills symlinks and runtime config files for each agent where supported. `grok` and `pi` are plugin-only targets. |
+| `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `copilot`, `vscode`, `grok`, `opencode`, `pi`. Defaults to `[]`. When set, dotagents creates skills symlinks and runtime config files for each agent where supported. `grok` and `pi` are plugin-only targets. |
 | `project` | No | Project metadata. |
 | `symlinks` | No | Symlink configuration (legacy — prefer `agents` for new projects). |
 | `skills` | No | Skill dependencies (array of tables). |
@@ -186,6 +186,7 @@ A server must have either `command` (stdio) or `url` (HTTP), but not both.
 | Agent | Output syntax |
 |-------|---------------|
 | Claude Code | `${VAR}` (unchanged) |
+| GitHub Copilot | `${VAR}` (unchanged) |
 | Cursor | `${env:VAR}` |
 | VS Code | `${env:VAR}` |
 | OpenCode | `{env:VAR}` |
@@ -281,8 +282,11 @@ Global scope installs canonical plugins into `~/.agents/plugins/<name>/`. It gen
 | `grok` | Grok Build | `.grok` | Not generated | Not generated | Not generated |
 | `vscode` | VS Code Copilot | `.vscode` | `.vscode/mcp.json` | JSON | Not supported |
 | `opencode` | OpenCode | `.opencode` | `.opencode/opencode.jsonc` | JSONC (shared) | `.opencode/agents/*.md` |
+| `copilot` | GitHub Copilot CLI/Desktop | `.copilot` | `.mcp.json` or `.github/mcp.json` | JSON | Not supported |
 
 Each agent has its own MCP config format. dotagents translates the universal `[[mcp]]` declarations into the format each tool expects during `install` and `sync`. Grok is currently supported for plugin projections only.
+
+GitHub Copilot accepts the same implicit stdio shape as Claude, so both targets produce stable shared `.mcp.json` output. For user scope, GitHub Copilot uses `COPILOT_HOME/mcp-config.json` when `COPILOT_HOME` is set and `~/.copilot/mcp-config.json` otherwise. On POSIX systems, dotagents creates and repairs this file with mode `0600`.
 
 ### Source Types
 
@@ -892,7 +896,7 @@ dotagents/
             doctor.ts
         targets/
           types.ts           # Target agent interfaces and MCP/hook declarations
-          registry.ts        # Target registry (claude, cursor, codex, vscode, opencode)
+          registry.ts        # Target registry (claude, cursor, codex, vscode, opencode, copilot)
           definitions/       # Per-target definitions
           mcp-writer.ts      # MCP config file generation per target
           hook-writer.ts     # Hook config file generation per target

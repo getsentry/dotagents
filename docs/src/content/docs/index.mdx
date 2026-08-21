@@ -97,7 +97,7 @@ targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
   <section className="dotagents-section">
     <div className="dotagents-section-heading">
       <h2 id="supported-agents">Supported Agents</h2>
-      <p>The `agents` array tells dotagents which tools to configure. Grok and Pi are plugin-only targets; Pi also reads `.agents/skills/` directly.</p>
+      <p>The `agents` array tells dotagents which tools to configure. Grok and Pi are plugin-only targets. Copilot and Pi read `.agents/skills/` directly.</p>
     </div>
 
     | Agent | Config Dir | MCP Config | Hooks | Subagents |
@@ -105,8 +105,11 @@ targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
     | `claude` | `.claude` | `.mcp.json` | `.claude/settings.json` | `.claude/agents/*.md` |
     | `cursor` | `.cursor` | `.cursor/mcp.json` | `.cursor/hooks.json` | `.cursor/agents/*.md` |
     | `codex` | `.codex` | `.codex/config.toml` | None | `.codex/agents/*.toml` |
+    | `copilot` | `.copilot` | `.mcp.json` | None | None |
     | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` | None |
     | `opencode` | `.opencode` | `.opencode/opencode.jsonc` | None | `.opencode/agents/*.md` |
+
+    GitHub Copilot reads user MCP configuration from `~/.copilot/mcp-config.json`. Projects use `.mcp.json`, or reuse `.github/mcp.json` when it exists.
 
     OpenCode reuses existing project config from `.opencode/opencode.jsonc`, `.opencode/opencode.json`, `opencode.jsonc`, or `opencode.json`, in that order. New projects use `.opencode/opencode.jsonc`.
   </section>
