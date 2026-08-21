@@ -273,6 +273,35 @@ describe("writeMcpConfigs", () => {
     });
   });
 
+  it.each([
+    ["claude", "copilot"],
+    ["copilot", "claude"],
+  ])("seeds shared .mcp.json from the copilot fallback for %s first", async (first, second) => {
+    const preferredPath = join(dir, ".mcp.json");
+    const fallbackPath = join(dir, ".github", "mcp.json");
+    const fallback = {
+      note: "keep",
+      mcpServers: { manual: { command: "manual", args: [] } },
+    };
+    await mkdir(dirname(fallbackPath), { recursive: true });
+    await writeFile(fallbackPath, JSON.stringify(fallback));
+
+    await writeMcpConfigs([first, second], [STDIO_SERVER], projectMcpResolver(dir));
+
+    expect(JSON.parse(await readFile(preferredPath, "utf-8"))).toEqual({
+      note: "keep",
+      mcpServers: {
+        manual: { command: "manual", args: [] },
+        github: {
+          command: "npx",
+          args: ["-y", "@mcp/server-github"],
+          env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
+        },
+      },
+    });
+    expect(JSON.parse(await readFile(fallbackPath, "utf-8"))).toEqual(fallback);
+  });
+
   it("writes the same shared .mcp.json for claude and copilot in either order", async () => {
     const firstDir = join(dir, "first");
     const secondDir = join(dir, "second");
