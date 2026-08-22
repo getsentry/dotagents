@@ -68,7 +68,7 @@ Add an MCP server declaration to agents.toml.
 
 Options:
   --command <cmd>       Stdio command including arguments
-  --url <url>           HTTP or SSE server URL
+  --url <url>           Streamable HTTP server URL
   --header <Key:Value>  HTTP header; repeatable and URL transport only
   --env <VAR>           Environment variable name; repeatable
   --help, -h            Show this help message`,

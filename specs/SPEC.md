@@ -64,10 +64,10 @@ env = ["GITHUB_TOKEN"]
 
 [[mcp]]
 name = "remote-api"
-url = "https://mcp.example.com/sse"
+url = "https://mcp.example.com/mcp"
 headers = { Authorization = "Bearer tok" }
 
-# HTTP server with secrets via env vars
+# Streamable HTTP server with secrets via env vars
 [[mcp]]
 name = "authed-api"
 url = "https://${API_HOST}/mcp"
@@ -175,11 +175,11 @@ MCP server declarations. Each entry defines an MCP server that dotagents will co
 | `name` | Yes | Server name (used as key in generated config files). |
 | `command` | Conditional | Command to run (stdio transport). Required if `url` is not set. |
 | `args` | No | Arguments for the command. Defaults to `[]`. |
-| `url` | Conditional | URL for HTTP/SSE transport. Required if `command` is not set. |
+| `url` | Conditional | URL for Streamable HTTP transport. Required if `command` is not set. |
 | `headers` | No | HTTP headers (only for `url` servers). Supports `${VAR}` syntax for env var interpolation. |
 | `env` | No | Array of environment variable names. Values are referenced from the user's environment. Defaults to `[]`. |
 
-A server must have either `command` (stdio) or `url` (HTTP), but not both.
+A server must have either `command` (stdio) or `url` (Streamable HTTP), but not both.
 
 **Environment variable interpolation.** Use `${VAR}` in header values and `url` to reference secrets from the environment (e.g. `headers = { X-Api-Key = "${API_KEY}" }`). Write `${VAR}` in `agents.toml` — dotagents translates it to each agent's native syntax when generating config files:
 

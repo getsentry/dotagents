@@ -193,13 +193,13 @@ dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]
 
 Add an MCP server declaration to `agents.toml` and run `install` to generate
 agent configs. Specify exactly one transport: `--command` for stdio or `--url`
-for HTTP.
+for Streamable HTTP.
 
 Options:
 
 - `--command "<cmd> [args...]"` is the command string to execute for stdio
   transport.
-- `--url <url>` is the server URL for HTTP transport.
+- `--url <url>` is the server URL for Streamable HTTP transport.
 - `--header <Key:Value>` adds an HTTP header. Repeatable. URL servers only.
 - `--env <VAR>` passes through an environment variable. Repeatable.
 
@@ -209,8 +209,8 @@ Examples:
 # Stdio server
 dotagents mcp add github --command "npx -y @modelcontextprotocol/server-github" --env GITHUB_TOKEN
 
-# HTTP server with auth header
-dotagents mcp add remote --url https://mcp.example.com/sse --header "Authorization:Bearer tok"
+# Streamable HTTP server with auth header
+dotagents mcp add remote --url https://mcp.example.com/mcp --header "Authorization:Bearer tok"
 ```
 
 <a id="mcp-remove"></a>

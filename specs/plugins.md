@@ -223,7 +223,9 @@ Rules:
    `plugin.json`; a mismatch disables MCP for the plugin but does not invalidate
    its skills.
 2. `mcpServers` is a required object. Its member names identify servers.
-3. Each server has a required `type`: `stdio`, `streamable-http`, or `sse`.
+3. Each server has a required `type`: `stdio`, `streamable-http`, or legacy
+   `sse`. New remote declarations should use `streamable-http`; `sse` remains
+   accepted for Agent Plugins v1 compatibility.
 4. A stdio `command` is one bare executable token or a plugin-relative path
    beginning with `./`. Placeholder expansion does not apply to `command`.
 5. `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` are the only portable placeholders.

@@ -154,7 +154,7 @@ async function mcpAddInteractive(name: string | undefined, scope: ScopeRoot): Pr
     message: "Transport",
     options: [
       { label: "Command (stdio)", value: "stdio" as const },
-      { label: "URL (HTTP)", value: "http" as const },
+      { label: "URL (Streamable HTTP)", value: "http" as const },
     ],
   });
   if (clack.isCancel(transport)) {throw new McpCancelledError();}
@@ -180,7 +180,7 @@ async function mcpAddInteractive(name: string | undefined, scope: ScopeRoot): Pr
   } else {
     const urlInput = await clack.text({
       message: "URL",
-      placeholder: "https://mcp.example.com/sse",
+      placeholder: "https://mcp.example.com/mcp",
       validate: (v) => {
         if (!v?.trim()) {return "URL is required.";}
       },

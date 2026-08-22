@@ -91,10 +91,10 @@ command = "npx"
 args = ["-y", "@modelcontextprotocol/server-github"]
 env = ["GITHUB_TOKEN"]
 
-# HTTP transport
+# Streamable HTTP transport
 [[mcp]]
 name = "remote-api"
-url = "https://mcp.example.com/sse"
+url = "https://mcp.example.com/mcp"
 headers = { Authorization = "Bearer token" }
 ```
 

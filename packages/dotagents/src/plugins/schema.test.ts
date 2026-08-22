@@ -283,6 +283,17 @@ describe("plugin MCP schema", () => {
     }
   });
 
+  it("accepts legacy SSE declarations required by Agent Plugins v1", () => {
+    const config = parsePluginMcp({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: {
+        legacy: { type: "sse", url: "https://example.com/events" },
+      },
+    }, "mcp.json");
+
+    expect(config.mcpServers["legacy"]?.type).toBe("sse");
+  });
+
   it("retains valid MCP servers beside invalid siblings", () => {
     const parsed = parsePluginMcpBestEffort({
       $schema: AGENT_PLUGIN_MCP_SCHEMA,
