@@ -1,10 +1,12 @@
 import { existsSync } from "node:fs";
 import { lstat, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import {
   applyDefaultRepositorySource,
   copyDir,
   ensureCached,
+  isSerializedObject,
   isSourceExcluded,
   parseSource,
   resolveLocalSource,
@@ -24,8 +26,12 @@ import {
   type LegacyPluginManifest,
   type PluginManifest,
 } from "./schema.js";
-import { isManagedJsonFile } from "./managed-files.js";
-import type { NativePluginSource, PluginDeclaration } from "./types.js";
+import { selectedAgentIds } from "./targets.js";
+import type {
+  AuthoredNativePluginInterfaces,
+  NativePluginSource,
+  PluginDeclaration,
+} from "./types.js";
 
 // Owns plugin source discovery and installation into the canonical project tree.
 // Resolved sources are never allowed to live inside the same project's
@@ -64,6 +70,8 @@ export interface PluginCandidate {
   dir: string;
   path: string;
   manifest: PluginManifest;
+  authoredNativeInterfaces: AuthoredNativePluginInterfaces;
+  legacyRoots: string[];
   nativeSource?: NativePluginSource;
   origin: PluginCandidateOrigin;
 }
@@ -93,15 +101,42 @@ const MARKETPLACE_PATHS = [
   ".plugin/marketplace.json",
 ] as const;
 
-const MANIFEST_PATHS: ReadonlyArray<{ path: string; nativeSource?: NativePluginSource }> = [
-  { path: "plugin.json" },
+const FALLBACK_MANIFEST_PATHS: ReadonlyArray<{ path: string; nativeSource?: NativePluginSource }> = [
   { path: ".codex-plugin/plugin.json", nativeSource: "codex" },
   { path: ".claude-plugin/plugin.json", nativeSource: "claude" },
   { path: ".cursor-plugin/plugin.json", nativeSource: "cursor" },
   { path: ".plugin/plugin.json" },
 ] as const;
 
+const NATIVE_MANIFEST_PATHS: ReadonlyArray<{
+  source: NativePluginSource;
+  path: string;
+}> = [
+  { source: "claude", path: ".claude-plugin/plugin.json" },
+  { source: "cursor", path: ".cursor-plugin/plugin.json" },
+  { source: "codex", path: ".codex-plugin/plugin.json" },
+] as const;
+
+export const HYBRID_LEGACY_ROOTS = [
+  ".agents",
+  ".claude",
+  ".cursor",
+  ".codex",
+  ".opencode",
+  "agents",
+  "apps",
+  "bin",
+  "commands",
+  "rules",
+  "hooks",
+  "monitors",
+  ".mcp.json",
+  ".lsp.json",
+  ".app.json",
+] as const;
+
 export const DOTAGENTS_MANAGED_PLUGIN_MARKER = ".dotagents-managed";
+export const DOTAGENTS_AUTHORED_INTERFACES_MARKER = ".dotagents-authored-interfaces";
 const DOTAGENTS_NATIVE_SOURCE_MARKER = ".dotagents-native-source";
 
 let tempInstallCounter = 0;
@@ -197,6 +232,7 @@ export async function installPluginBundle(
     const staged = { ...resolved.plugin, pluginDir: tempDir };
     await ensureCanonicalManifest(staged);
     await writeNativeSourceMarker(staged);
+    await writeAuthoredInterfacesMarker(staged);
     await writeManagedMarker(tempDir);
 
     if (existsSync(destDir)) {
@@ -225,6 +261,7 @@ export async function loadInstalledPlugins(
   pluginsDir: string,
   configs: PluginConfig[],
   installCommand: string,
+  agentIds: string[] = [],
 ): Promise<{ plugins: PluginDeclaration[]; issues: Array<{ name: string; issue: string }> }> {
   const plugins: PluginDeclaration[] = [];
   const issues: Array<{ name: string; issue: string }> = [];
@@ -241,21 +278,21 @@ export async function loadInstalledPlugins(
     try {
       await assertInsideSourceRoot(pluginsDir, pluginDir, "Installed plugin");
       await assertPluginBundleSymlinksContained(pluginDir);
-      const loaded = await loadManifest(pluginDir);
+      const loaded = await loadPluginInterfaces(pluginDir, true);
       if (!loaded) {
         throw new Error("Plugin bundle has no plugin.json or supported native manifest");
       }
       const manifest = loaded.manifest;
-      await validateStandardBundleLayout(pluginDir, manifest, true);
       assertPluginName(config.name, manifest, pluginDir);
-      plugins.push({
+      plugins.push(preparePluginForTargets({
         name: config.name,
         source: config.source,
         pluginDir,
         manifest: normalizeManifest(config.name, manifest),
-        nativeSource: await readNativeSourceMarker(pluginDir) ?? loaded?.nativeSource,
+        authoredNativeInterfaces: loaded.authoredNativeInterfaces,
+        nativeSource: loaded.nativeSource,
         targets: config.targets,
-      });
+      }, agentIds));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       issues.push({ name: config.name, issue: `Failed to load installed plugin "${config.name}": ${message}` });
@@ -396,11 +433,21 @@ async function resolvePluginCandidate(
 ): Promise<PluginCandidate | null> {
   if (config.path) {
     const dir = await resolveInside(sourceDir, config.path, "Plugin path");
-    return loadPluginCandidate(sourceDir, dir, { name: config.name }, "Plugin source", "explicit");
+    const candidate = await loadPluginCandidate(
+      sourceDir,
+      dir,
+      { name: config.name },
+      "Plugin source",
+      "explicit",
+    );
+    if (candidate) {await assertPluginBundleSymlinksContained(candidate.dir);}
+    return candidate;
   }
 
   const catalog = await discoverPluginCatalog(sourceDir);
-  return resolveNamedPluginCandidate(catalog, config);
+  const candidate = resolveNamedPluginCandidate(catalog, config);
+  if (candidate) {await assertPluginBundleSymlinksContained(candidate.dir);}
+  return candidate;
 }
 
 function resolveNamedPluginCandidate(
@@ -418,6 +465,11 @@ function resolveNamedPluginCandidate(
     (issue) => issue.origin === "canonical" && issue.path === canonicalPath,
   );
   if (canonicalIssue) {throw canonicalIssue.error;}
+
+  const namedRootIssue = catalog.issues.find(
+    (issue) => issue.origin === "root" && issue.name === config.name,
+  );
+  if (namedRootIssue) {throw namedRootIssue.error;}
 
   const marketplaceOutcome = catalog.marketplaceOutcomes.get(config.name)?.[0];
   if (marketplaceOutcome && "error" in marketplaceOutcome) {
@@ -485,6 +537,7 @@ async function discoverPluginCatalog(sourceDir: string): Promise<PluginCatalog> 
     if (root) {candidates.push(root);}
   } catch (err) {
     issues.push({
+      name: err instanceof NamedPluginManifestError ? err.pluginName : undefined,
       path: "",
       origin: "root",
       error: err instanceof Error ? err : new Error(String(err)),
@@ -707,10 +760,9 @@ async function loadPluginCandidate(
   if (!existsSync(pluginDir)) {return null;}
   await assertInsideSourceRoot(sourceRoot, pluginDir, label);
 
-  const loaded = await loadManifest(pluginDir);
+  const loaded = await loadPluginInterfaces(pluginDir, false);
   if (!loaded) {return null;}
   const manifest = loaded.manifest;
-  await validateStandardBundleLayout(pluginDir, manifest, false);
 
   const name = manifest && typeof manifest["name"] === "string"
     ? String(manifest["name"])
@@ -726,11 +778,23 @@ async function loadPluginCandidate(
         "Plugin names must be 1-64 lowercase letters, numbers, hyphens, or dots, have alphanumeric ends, and not contain '--' or '..'.",
     );
   }
+  try {
+    assertNativeInterfaceNames(name, loaded.authoredNativeInterfaces, relativePath(sourceRoot, pluginDir) || ".");
+  } catch (err) {
+    throw new NamedPluginManifestError(
+      err instanceof Error ? err.message : String(err),
+      name,
+    );
+  }
   return {
     name,
     dir: pluginDir,
     path: relativePath(sourceRoot, pluginDir),
     manifest: combined,
+    authoredNativeInterfaces: loaded.authoredNativeInterfaces,
+    legacyRoots: isStandardPluginManifest(combined)
+      ? HYBRID_LEGACY_ROOTS.filter((path) => existsSync(join(pluginDir, path)))
+      : [],
     nativeSource: loaded?.nativeSource,
     origin,
   };
@@ -746,48 +810,114 @@ function marketplaceManifestOverlay(
   return overlay;
 }
 
-async function loadManifest(
+async function loadPluginInterfaces(
   pluginDir: string,
-): Promise<{ manifest: PluginManifest; nativeSource?: NativePluginSource } | null> {
-  for (const candidate of MANIFEST_PATHS) {
+  installed: boolean,
+): Promise<{
+  manifest: PluginManifest;
+  authoredNativeInterfaces: AuthoredNativePluginInterfaces;
+  nativeSource?: NativePluginSource;
+} | null> {
+  const provenance = installed
+    ? await readInstalledPluginProvenance(pluginDir)
+    : undefined;
+  const authoredSources = provenance?.authoredSources;
+  const installedNativeSource = provenance?.nativeSource;
+  const rootPath = join(pluginDir, "plugin.json");
+  if (existsSync(rootPath)) {
+    const value = await readJson(rootPath);
+    let manifest: PluginManifest;
+    try {
+      manifest = parsePluginManifest(value, rootPath);
+    } catch (err) {
+      throw pluginManifestError(err, value);
+    }
+    return {
+      manifest,
+      authoredNativeInterfaces: await loadAuthoredNativeInterfaces(
+        pluginDir,
+        authoredSources,
+        installedNativeSource,
+      ),
+      nativeSource: installedNativeSource,
+    };
+  }
+  if (installed) {
+    throw new Error("Installed plugin bundle is missing plugin.json. Reinstall the plugin.");
+  }
+
+  for (const candidate of FALLBACK_MANIFEST_PATHS) {
     const filePath = join(pluginDir, candidate.path);
     if (!existsSync(filePath)) {continue;}
+    const value = await readJson(filePath);
+    let manifest: PluginManifest;
+    try {
+      manifest = parsePluginManifest(value, filePath);
+    } catch (err) {
+      throw pluginManifestError(err, value);
+    }
+    const authoredNativeInterfaces: AuthoredNativePluginInterfaces = {};
+    if (candidate.nativeSource) {
+      authoredNativeInterfaces[candidate.nativeSource] = {
+        path: candidate.path,
+        manifest,
+      };
+    }
     return {
-      manifest: parsePluginManifest(await readJson(filePath), filePath),
+      manifest,
+      authoredNativeInterfaces,
       nativeSource: candidate.nativeSource,
     };
   }
   return null;
 }
 
-async function validateStandardBundleLayout(
+async function loadAuthoredNativeInterfaces(
   pluginDir: string,
-  manifest: PluginManifest,
-  allowManagedAdapters: boolean,
-): Promise<void> {
-  if (!isStandardPluginManifest(manifest)) {return;}
-  const legacyRoots = [
-    "agents",
-    "commands",
-    "rules",
-    "hooks",
-    "monitors",
-    ".mcp.json",
-    ".lsp.json",
-    ".app.json",
-  ];
-  const found = legacyRoots.filter((path) => existsSync(join(pluginDir, path)));
-  for (const dir of [".claude-plugin", ".cursor-plugin", ".codex-plugin"]) {
-    if (!existsSync(join(pluginDir, dir))) {continue;}
-    const manifestPath = join(pluginDir, dir, "plugin.json");
-    if (allowManagedAdapters && await isManagedJsonFile(manifestPath)) {continue;}
-    found.push(dir);
+  authoredSources: ReadonlySet<NativePluginSource> | null | undefined,
+  installedNativeSource: NativePluginSource | undefined,
+): Promise<AuthoredNativePluginInterfaces> {
+  const interfaces: AuthoredNativePluginInterfaces = {};
+  for (const candidate of NATIVE_MANIFEST_PATHS) {
+    const filePath = join(pluginDir, candidate.path);
+    if (!existsSync(filePath)) {
+      if (authoredSources?.has(candidate.source)) {
+        throw new Error(
+          `Installed plugin records an authored ${nativeDisplayName(candidate.source)} interface, but ${candidate.path} is missing. Reinstall the plugin.`,
+        );
+      }
+      continue;
+    }
+    if (authoredSources && !authoredSources.has(candidate.source)) {continue;}
+    if (authoredSources === null && installedNativeSource !== candidate.source) {continue;}
+    try {
+      interfaces[candidate.source] = {
+        path: candidate.path,
+        manifest: parsePluginManifest(await readJson(filePath), filePath),
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      interfaces[candidate.source] = {
+        path: candidate.path,
+        error: message.replaceAll(filePath, candidate.path),
+      };
+    }
   }
-  if (found.length > 0) {
-    throw new Error(
-      `Agent Plugins v1 bundle contains legacy root components: ${found.join(", ")}. Move client-specific resources into reverse-domain extension directories.`,
-    );
+  return interfaces;
+}
+
+class NamedPluginManifestError extends Error {
+  constructor(message: string, readonly pluginName?: string) {
+    super(message);
   }
+}
+
+function pluginManifestError(err: unknown, value: unknown): Error {
+  const message = err instanceof Error ? err.message : String(err);
+  const name = isSerializedObject(value) && typeof value["name"] === "string"
+    ? value["name"]
+    : undefined;
+  return new NamedPluginManifestError(message, name);
 }
 
 async function removeSourceOwnershipMarkers(dir: string): Promise<void> {
@@ -796,6 +926,7 @@ async function removeSourceOwnershipMarkers(dir: string): Promise<void> {
     const filePath = join(dir, entry.name);
     if (
       entry.name === DOTAGENTS_MANAGED_PLUGIN_MARKER ||
+      entry.name === DOTAGENTS_AUTHORED_INTERFACES_MARKER ||
       entry.name === DOTAGENTS_NATIVE_SOURCE_MARKER ||
       entry.name.endsWith(".dotagents-managed")
     ) {
@@ -825,6 +956,69 @@ async function writeNativeSourceMarker(plugin: PluginDeclaration): Promise<void>
   }
 }
 
+async function writeAuthoredInterfacesMarker(plugin: PluginDeclaration): Promise<void> {
+  const filePath = join(plugin.pluginDir, DOTAGENTS_AUTHORED_INTERFACES_MARKER);
+  const sources = nativeSources().filter(
+    (source) => plugin.authoredNativeInterfaces?.[source] !== undefined,
+  );
+  if (sources.length === 0) {
+    await rm(filePath, { force: true });
+    return;
+  }
+  await writeFile(filePath, `${sources.join("\n")}\n`, "utf-8");
+}
+
+async function readAuthoredInterfaceSources(
+  pluginDir: string,
+): Promise<Set<NativePluginSource> | null> {
+  let content: string;
+  try {
+    content = await readFile(join(pluginDir, DOTAGENTS_AUTHORED_INTERFACES_MARKER), "utf-8");
+  } catch (err) {
+    if (isNotFoundError(err)) {return null;}
+    throw err;
+  }
+
+  const values = content.split("\n").filter(Boolean);
+  const sources = new Set<NativePluginSource>();
+  for (const value of values) {
+    if (!nativeSources().includes(value as NativePluginSource) || sources.has(value as NativePluginSource)) {
+      throw new Error(`Invalid authored plugin interface provenance: ${value || "<empty>"}`);
+    }
+    sources.add(value as NativePluginSource);
+  }
+  if (sources.size === 0) {
+    throw new Error("Invalid authored plugin interface provenance: empty marker");
+  }
+  return sources;
+}
+
+async function readInstalledPluginProvenance(pluginDir: string): Promise<{
+  authoredSources: Set<NativePluginSource> | null;
+  nativeSource: NativePluginSource | undefined;
+}> {
+  const authoredSources = await readAuthoredInterfaceSources(pluginDir);
+  const nativeSource = await readNativeSourceMarker(pluginDir);
+  if (
+    authoredSources && nativeSource &&
+    (authoredSources.size !== 1 || !authoredSources.has(nativeSource))
+  ) {
+    throw new Error("Installed plugin has conflicting native interface provenance. Reinstall the plugin.");
+  }
+  return { authoredSources, nativeSource };
+}
+
+/** Returns whether installed provenance reserves a native interface as source-authored. */
+export async function hasRecordedAuthoredPluginInterface(
+  pluginDir: string,
+  source: NativePluginSource,
+): Promise<boolean> {
+  const provenance = await readInstalledPluginProvenance(pluginDir);
+  return provenance.authoredSources
+    ? provenance.authoredSources.has(source)
+    : provenance.nativeSource === source;
+}
+
 async function readNativeSourceMarker(pluginDir: string): Promise<NativePluginSource | undefined> {
   try {
     const value = (await readFile(join(pluginDir, DOTAGENTS_NATIVE_SOURCE_MARKER), "utf-8")).trim();
@@ -845,9 +1039,132 @@ function toDeclaration(
     source: config.source,
     pluginDir: candidate.dir,
     manifest: normalizeManifest(config.name, candidate.manifest),
+    authoredNativeInterfaces: candidate.authoredNativeInterfaces,
+    compatibilityWarnings: compatibilityWarnings(
+      config.name,
+      candidate.manifest,
+      candidate.authoredNativeInterfaces,
+      candidate.legacyRoots,
+      [],
+    ),
     nativeSource: candidate.nativeSource,
     targets: config.targets,
   };
+}
+
+/** Validates selected native interfaces and computes deterministic compatibility warnings. */
+export function preparePluginForTargets(
+  plugin: PluginDeclaration,
+  agentIds: string[],
+): PluginDeclaration {
+  const interfaces = plugin.authoredNativeInterfaces ?? {};
+  assertNativeInterfaceNames(plugin.name, interfaces, plugin.pluginDir);
+  const selectedTargets = new Set(selectedAgentIds(agentIds, plugin));
+  for (const source of nativeSources()) {
+    const nativeInterface = interfaces[source];
+    if (!nativeInterface?.error || !selectedTargets.has(source)) {continue;}
+    throw new Error(
+      `Invalid authored ${nativeDisplayName(source)} plugin interface for "${plugin.name}" at ${nativeInterface.path}: ${nativeInterface.error}`,
+    );
+  }
+  const legacyRoots = isStandardPluginManifest(plugin.manifest)
+    ? HYBRID_LEGACY_ROOTS.filter((path) => existsSync(join(plugin.pluginDir, path)))
+    : [];
+  return {
+    ...plugin,
+    compatibilityWarnings: compatibilityWarnings(
+      plugin.name,
+      plugin.manifest,
+      interfaces,
+      legacyRoots,
+      selectedTargets,
+    ),
+  };
+}
+
+function assertNativeInterfaceNames(
+  expected: string,
+  interfaces: AuthoredNativePluginInterfaces,
+  context: string,
+): void {
+  for (const source of nativeSources()) {
+    const manifest = interfaces[source]?.manifest;
+    if (!manifest) {continue;}
+    const actual = manifest["name"];
+    if (typeof actual === "string" && actual !== expected) {
+      throw new Error(
+        `Authored ${nativeDisplayName(source)} plugin manifest name "${actual}" does not match portable plugin name "${expected}" in ${context}.`,
+      );
+    }
+  }
+}
+
+function compatibilityWarnings(
+  name: string,
+  manifest: PluginManifest,
+  interfaces: AuthoredNativePluginInterfaces,
+  legacyRoots: string[],
+  selectedTargets: ReadonlySet<string> | string[],
+): string[] {
+  if (!isStandardPluginManifest(manifest)) {return [];}
+  const warnings: string[] = [];
+  const sources = nativeSources().filter((source) => interfaces[source] !== undefined);
+  const validSources = sources.filter((source) => interfaces[source]?.manifest !== undefined);
+  if (sources.length > 0) {
+    warnings.push(
+      `Plugin "${name}" is a hybrid compatibility bundle: portable components remain shared; authored ${validSources.map(nativeDisplayName).join(", ") || "native"} interfaces govern only their matching clients.`,
+    );
+  } else if (legacyRoots.length > 0) {
+    warnings.push(
+      `Plugin "${name}" contains ignored legacy root resources: ${legacyRoots.join(", ")}. They are preserved but are not portable plugin components.`,
+    );
+  }
+  const selected = selectedTargets instanceof Set ? selectedTargets : new Set(selectedTargets);
+  if (
+    legacyRoots.length > 0 &&
+    sources.length > 0 &&
+    !validSources.some((source) => selected.has(source))
+  ) {
+    warnings.push(
+      `Plugin "${name}" contains ignored legacy root resources for the selected targets: ${legacyRoots.join(", ")}. They remain available only to a matching authored native interface.`,
+    );
+  }
+  for (const source of sources) {
+    const nativeInterface = interfaces[source]!;
+    if (nativeInterface.error && !selected.has(source)) {
+      warnings.push(
+        `Plugin "${name}" has a malformed authored ${nativeDisplayName(source)} interface that was ignored because ${nativeDisplayName(source)} is not selected: ${nativeInterface.error}`,
+      );
+      continue;
+    }
+    if (nativeInterface.manifest && metadataDiffers(manifest, nativeInterface.manifest)) {
+      warnings.push(
+        `Plugin "${name}" has differing portable and ${nativeDisplayName(source)} metadata; both are preserved and the authored ${nativeDisplayName(source)} manifest governs ${nativeDisplayName(source)}.`,
+      );
+    }
+  }
+  return warnings;
+}
+
+function metadataDiffers(portable: PluginManifest, native: PluginManifest): boolean {
+  const keys = [
+    "version",
+    "description",
+    "author",
+    "homepage",
+    "repository",
+    "license",
+    "keywords",
+  ] as const;
+  return keys.some((key) => !isDeepStrictEqual(portable[key], native[key]));
+}
+
+function nativeSources(): NativePluginSource[] {
+  return ["claude", "cursor", "codex"];
+}
+
+function nativeDisplayName(source: NativePluginSource): string {
+  return source === "claude" ? "Claude" : source === "cursor" ? "Cursor" : "Codex";
 }
 
 function assertPluginName(

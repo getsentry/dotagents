@@ -10,7 +10,7 @@ The implementation includes a partial first compatibility stage: it accepts and
 normalizes Agent Plugins v1 manifests, validates MCP files, preserves portable
 source files, projects portable skills/MCP into generated native manifests,
 flattens portable MCP into OpenCode, and continues accepting legacy generalized
-manifests and marketplace discovery.
+manifests, hybrid compatibility bundles, and marketplace discovery.
 Client extension adapters and native MCP import remain follow-up work.
 
 ## Design Principle
@@ -317,10 +317,14 @@ For each `[[plugins]]` declaration:
 4. Validate `plugin.json` against the Agent Plugins schema.
 5. Require the manifest name to match the configured name.
 6. Validate `skills/`, `mcp.json`, and referenced extension paths.
-7. Copy the complete bundle into `.agents/plugins/<name>/`.
+7. Record authored `.claude-plugin`, `.cursor-plugin`, and `.codex-plugin`
+   interfaces separately; require every parsed interface to use the portable
+   name and validate a native interface fully when its client is selected.
 8. Reject broken symlinks and symlinks that resolve outside the plugin root.
-9. Write the plugin lock entry.
-10. Run each selected target adapter.
+9. Complete plugin preflight before copying bundles or writing the lockfile.
+10. Copy the complete bundle into `.agents/plugins/<name>/`.
+11. Write the plugin lock entry.
+12. Run each selected target adapter.
 
 The installed canonical bundle should remain a valid Agent Plugin. Generated
 target artifacts should live in target-specific directories or in clearly
@@ -343,6 +347,36 @@ This is a conservative reverse import, not lossless conversion to Agent Plugins.
 Native MCP conversion and registered extension normalization require explicit
 client importers and remain future work.
 
+### Hybrid compatibility bundles
+
+Strict portable authoring still uses only `plugin.json`, `skills/`, `mcp.json`,
+and reverse-domain extension directories. For migration, dotagents also accepts
+a valid standard root alongside authored `.claude-plugin`, `.cursor-plugin`, or
+`.codex-plugin` manifests and legacy root resources.
+
+This is a compatibility input, not an expanded portable format. The standard
+root remains authoritative for identity, portable metadata, skills, MCP, and
+generated adapters. A selected client's authored native manifest governs only
+that client and is preserved byte-for-byte; dotagents neither merges portable
+fields into it nor translates its commands, agents, hooks, rules, MCP, or other
+native behavior elsewhere. Targets without an authored interface receive the
+normal adapter generated from the portable core.
+
+Parsed root and native manifests must agree on `name`. Metadata differences are
+reported without rewriting either source. A malformed selected native interface
+fails preflight, while a malformed unselected interface remains contained and
+inert with a warning. An invalid standard root never falls back to native or
+legacy parsing. OpenCode and Pi receive only supported portable projections;
+Grok copies omit recognized native manifest directories and legacy component
+roots. `install`, `sync`, `list`, and `doctor` report the same compatibility
+diagnostics from the installed bundle.
+
+Canonical installs record source-authored native interface membership in the
+reserved `.dotagents-authored-interfaces` file. Source-supplied ownership files
+are removed before this marker is written. Installed rescans use that explicit
+provenance instead of treating every unmarked native manifest as authored, so a
+file created later retains the normal unmanaged-collision behavior.
+
 ## Internal Normalization
 
 Adapters should consume one normalized structure rather than each reparsing
@@ -356,6 +390,7 @@ interface NormalizedPlugin {
   skills: AgentSkill[];
   mcpServers: McpDeclaration[];
   extensions: Record<string, Record<string, unknown>>;
+  authoredNativeInterfaces: Partial<Record<"claude" | "cursor" | "codex", NativeInterfaceState>>;
   nativeSource?: "claude" | "cursor" | "codex";
   targets: string[];
 }
@@ -385,6 +420,11 @@ Agent Plugin bundle
 | Grok Build | Copy the validated bundle without changing portable files | Read only namespaces registered to the Grok adapter | Generate `.grok/plugins/<name>/` as a managed copy until Grok can consume the canonical bundle directly. |
 | OpenCode | Project plugin skills and merge normalized MCP servers into OpenCode config when needed | Read only namespaces registered to the OpenCode adapter | Symlink skills into `.opencode/skills/`; generalized legacy bundles may project Markdown agents, while standard extension resources are preserved but not projected yet; do not generate JavaScript or TypeScript plugin modules. |
 | Pi | Project supported skills | Read only namespaces registered to the Pi adapter | Symlink skills into `.agents/skills/`; ignore unsupported MCP or extension components with warnings. |
+
+For Claude, Cursor, and Codex, an authored matching native manifest replaces the
+generated-manifest step for that target only. For Grok, hybrid compatibility
+copies exclude `.claude-plugin`, `.cursor-plugin`, `.codex-plugin`, and known
+legacy component roots while retaining portable files and ordinary assets.
 
 Pi is an explicit isolation exception. Its plugin surface is the shared
 `.agents/skills/` directory, so targeting Pi makes those plugin skills visible
@@ -502,7 +542,9 @@ Generated state is deterministic and dotagents-managed:
 4. Generated JSON ownership uses adjacent `.dotagents-managed` sidecars.
    Component symlinks use marker files in a reserved sibling
    `.dotagents-managed/` directory so markers cannot consume a valid component
-   name. Legacy `metadata.managedBy` files remain recognized for JSON migration.
+   name. Canonical hybrid bundles use `.dotagents-authored-interfaces` to record
+   source-authored native interface membership. Legacy `metadata.managedBy`
+   files remain recognized for generated JSON migration only.
 5. Managed registration, manifests, copies, links, and MCP entries are pruned
    when a plugin or target is removed.
 6. `.agents/.gitignore` lists copied managed bundles and generated links without
@@ -566,6 +608,8 @@ Migration should happen in compatibility stages:
 - Reject legacy portable component fields for newly authored plugins.
 - Keep an explicit compatibility importer for older third-party repositories
   until a documented major-version removal.
+- Accept hybrid migration repositories without treating native siblings or
+  legacy roots as portable authoring fields.
 
 ## Implementation Gaps
 

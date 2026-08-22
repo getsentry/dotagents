@@ -291,7 +291,7 @@ Generated files include a dotagents header marker. `install` and `sync` overwrit
 
 Each `[[plugins]]` entry requires `name` and `source`. Optional: `ref`, `path`, and `targets`. When `targets` is absent or empty, dotagents targets every agent listed in `agents`.
 
-dotagents installs canonical plugin bundles under `.agents/plugins/<name>/`. New bundles use Agent Plugins v1: required `plugin.json`, optional `skills/`, optional `mcp.json`, and reverse-domain client extensions. Portable source files are preserved and target JSON remains client-native. OpenCode receives portable MCP servers under managed `plugin.<plugin>.<server>` keys, with `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` expanded into installed and persistent managed paths. Generated JSON uses adjacent ownership sidecars; component symlinks use marker files in reserved `.dotagents-managed/` directories. Standard bundles reject legacy root components so client-specific behavior cannot leak across harnesses. Native Claude/Cursor/Codex bundles may be imported conservatively: the owning native manifest is preserved, while other clients receive only core metadata and Agent Skills. Native MCP and client-specific components are not guessed or cross-translated.
+dotagents installs canonical plugin bundles under `.agents/plugins/<name>/`. New bundles use Agent Plugins v1: required `plugin.json`, optional `skills/`, optional `mcp.json`, and reverse-domain client extensions. Portable source files are preserved and target JSON remains client-native. OpenCode receives portable MCP servers under managed `plugin.<plugin>.<server>` keys, with `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` expanded into installed and persistent managed paths. Generated JSON uses adjacent ownership sidecars; component symlinks use marker files in reserved `.dotagents-managed/` directories. Native Claude/Cursor/Codex bundles may be imported conservatively. A valid standard root may coexist with authored Claude, Cursor, or Codex manifests as a hybrid compatibility bundle: the portable root remains authoritative for shared data and generated adapters, while each authored manifest remains byte-for-byte authoritative only for its matching selected client. Native commands, agents, hooks, MCP, and other resources are not guessed or cross-translated. Malformed selected native interfaces fail preflight; malformed unselected interfaces remain inert with warnings. Invalid standard roots never downgrade to native or generalized legacy parsing.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -470,7 +470,7 @@ Show trusted sources with their type. Use `--json` for machine-readable output. 
 npx @sentry/dotagents list [--json]
 ```
 
-Show declared skills, plugins, and status. JSON output is an object with `skills` and `plugins` arrays.
+Show declared skills, plugins, and status. Hybrid compatibility diagnostics appear as indented warning lines. JSON output is an object with `skills` and `plugins` arrays; plugin entries include a `warnings` array when diagnostics exist.
 
 | Status | Meaning |
 |--------|---------|
@@ -486,7 +486,7 @@ Skills from wildcard entries are marked with a wildcard indicator.
 npx @sentry/dotagents doctor [--fix]
 ```
 
-Check selected-scope health: gitignore setup where applicable, installed skills and plugins, plugin runtime projections, symlinks, legacy config fields, and legacy managed project hooks. Use `--fix` to auto-repair issues; project hook repair is `npx @sentry/dotagents --project doctor --fix`. Use `sync` in the same scope to repair generated runtime config drift.
+Check selected-scope health: gitignore setup where applicable, installed skills and plugins, hybrid plugin compatibility diagnostics, plugin runtime projections, symlinks, legacy config fields, and legacy managed project hooks. Compatibility is reported as the `plugin compatibility` check. Use `--fix` to auto-repair issues; project hook repair is `npx @sentry/dotagents --project doctor --fix`. Use `sync` in the same scope to repair generated runtime config drift.
 
 | Flag | Description |
 |------|-------------|

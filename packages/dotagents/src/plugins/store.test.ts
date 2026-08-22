@@ -9,9 +9,11 @@ import {
   isSameProjectPluginConfig,
   loadInstalledPlugins,
   lockEntryForPlugin,
+  preparePluginForTargets,
   resolvePlugin,
   type ResolvedPlugin,
 } from "./store.js";
+import { AGENT_PLUGIN_SCHEMA } from "./schema.js";
 
 vi.mock("node:fs/promises", async () => {
   const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
@@ -137,7 +139,7 @@ describe("plugin store", () => {
         source: "path:source/review-tools",
       }], "npx @sentry/dotagents install");
       expect(result.plugins).toEqual([]);
-      expect(result.issues[0]?.issue).toContain("has no plugin.json or supported native manifest");
+      expect(result.issues[0]?.issue).toContain("missing plugin.json. Reinstall the plugin");
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }
@@ -318,20 +320,166 @@ describe("plugin store", () => {
     }
   });
 
-  it("rejects legacy root components in standard bundles", async () => {
+  it("accepts standard bundles with inert legacy roots and reports them", async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
     try {
       const pluginDir = join(projectRoot, "source", "plugins", "review-tools");
       await mkdir(join(pluginDir, "agents"), { recursive: true });
       await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+        $schema: AGENT_PLUGIN_SCHEMA,
         name: "review-tools",
       }));
 
-      await expect(resolvePlugin(
+      const resolved = await resolvePlugin(
         { name: "review-tools", source: "path:source", path: "plugins/review-tools" },
         { stateDir: join(projectRoot, "state"), projectRoot },
-      )).rejects.toThrow(/contains legacy root components: agents/);
+      );
+      expect(resolved.plugin.manifest).toMatchObject({
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "review-tools",
+      });
+      expect(resolved.plugin.compatibilityWarnings).toEqual([
+        'Plugin "review-tools" contains ignored legacy root resources: agents. They are preserved but are not portable plugin components.',
+      ]);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    { shape: "standard-only", root: true, native: false, legacy: false },
+    { shape: "native-only", root: false, native: true, legacy: false },
+    { shape: "standard-plus-native", root: true, native: true, legacy: false },
+    { shape: "standard-plus-inert-legacy", root: true, native: false, legacy: true },
+  ])("discovers $shape bundles as one candidate", async ({ root, native, legacy }) => {
+    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-hybrid-"));
+    try {
+      if (root) {
+        await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
+          $schema: AGENT_PLUGIN_SCHEMA,
+          name: "review-tools",
+        }));
+      }
+      if (native) {
+        await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
+        await writeFile(join(sourceRoot, ".claude-plugin", "plugin.json"), JSON.stringify({
+          name: "review-tools",
+          commands: "./commands",
+        }));
+      }
+      if (legacy || native) {await mkdir(join(sourceRoot, "commands"), { recursive: true });}
+
+      const candidates = await discoverPlugins(sourceRoot);
+
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]).toMatchObject({ name: "review-tools", path: "" });
+      expect(candidates[0]!.nativeSource).toBe(root ? undefined : "claude");
+      expect(Boolean(candidates[0]!.authoredNativeInterfaces.claude)).toBe(native);
+      expect(candidates[0]!.manifest).toMatchObject({ name: "review-tools" });
+      if (root) {expect(candidates[0]!.manifest).toHaveProperty("$schema", AGENT_PLUGIN_SCHEMA);}
+    } finally {
+      await rm(sourceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the portable identity authoritative in hybrid bundles", async () => {
+    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-hybrid-"));
+    try {
+      await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
+      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "portable-name",
+      }));
+      await writeFile(join(sourceRoot, ".claude-plugin", "plugin.json"), JSON.stringify({
+        name: "native-name",
+      }));
+
+      await expect(discoverPlugins(sourceRoot)).rejects.toThrow(
+        'Authored Claude plugin manifest name "native-name" does not match portable plugin name "portable-name"',
+      );
+    } finally {
+      await rm(sourceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("never falls back from an invalid standard root to a valid native manifest", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-hybrid-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
+      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/2.0.0/plugin.schema.json",
+        name: "review-tools",
+      }));
+      await writeFile(join(sourceRoot, ".claude-plugin", "plugin.json"), JSON.stringify({
+        name: "review-tools",
+      }));
+      await writeFile(join(sourceRoot, "marketplace.json"), JSON.stringify({
+        name: "external",
+        plugins: [{
+          name: "review-tools",
+          source: { source: "github", repo: "example/review-tools" },
+        }],
+      }));
+
+      await expect(resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      )).rejects.toThrow("unsupported Agent Plugins schema");
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("does not let an unrelated root issue mask a valid marketplace candidate", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-hybrid-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const pluginDir = join(sourceRoot, "catalog", "review-tools");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/2.0.0/plugin.schema.json",
+        name: "unrelated-root",
+      }));
+      await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }));
+      await writeFile(join(sourceRoot, "marketplace.json"), JSON.stringify({
+        name: "local",
+        plugins: [{ name: "review-tools", source: "./catalog/review-tools" }],
+      }));
+
+      await expect(resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      )).resolves.toMatchObject({ plugin: { pluginDir } });
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("warns when portable and native metadata differ without changing identity", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-hybrid-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      await mkdir(join(sourceRoot, ".codex-plugin"), { recursive: true });
+      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "review-tools",
+        version: "1.0.0",
+        author: { name: "Portable author" },
+      }));
+      await writeFile(join(sourceRoot, ".codex-plugin", "plugin.json"), JSON.stringify({
+        name: "review-tools",
+        version: "1.0.0",
+        author: { name: "Native author" },
+      }));
+      const resolved = await resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+
+      expect(preparePluginForTargets(resolved.plugin, ["codex"]).compatibilityWarnings).toContain(
+        'Plugin "review-tools" has differing portable and Codex metadata; both are preserved and the authored Codex manifest governs Codex.',
+      );
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import list, { runList, runPluginList } from "./list.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { resolveScope } from "../../scope.js";
+import { DOTAGENTS_AUTHORED_INTERFACES_MARKER } from "../../plugins/store.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -187,6 +188,8 @@ source = "org/unlocked"
     );
     await mkdir(join(projectRoot, ".agents", "plugins", "ok-tools"), { recursive: true });
     await mkdir(join(projectRoot, ".agents", "plugins", "unlocked-tools"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "plugins", "ok-tools", "plugin.json"), '{"name":"ok-tools"}');
+    await writeFile(join(projectRoot, ".agents", "plugins", "unlocked-tools", "plugin.json"), '{"name":"unlocked-tools"}');
     await writeLockfile(join(projectRoot, "agents.lock"), {
       version: 1,
       skills: {},
@@ -209,19 +212,33 @@ source = "org/unlocked"
   });
 
   it("prints JSON with skill and plugin sections", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "hybrid-tools");
+    await mkdir(join(pluginDir, ".claude-plugin"), { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({
+      $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+      name: "hybrid-tools",
+    }));
+    await writeFile(join(pluginDir, ".claude-plugin", "plugin.json"), '{"name":"hybrid-tools"}');
+    await writeFile(join(pluginDir, DOTAGENTS_AUTHORED_INTERFACES_MARKER), "claude\n");
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1
+agents = ["claude"]
 
 [[skills]]
 name = "pdf"
 source = "org/repo"
 
 [[plugins]]
-name = "review-tools"
-source = "org/plugins"
+name = "hybrid-tools"
+source = "org/hybrid-tools"
 `,
     );
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: {},
+      plugins: { "hybrid-tools": { source: "org/hybrid-tools" } },
+    });
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     process.chdir(projectRoot);
 
@@ -233,7 +250,14 @@ source = "org/plugins"
         { name: "pdf", source: "org/repo", status: "missing" },
       ],
       plugins: [
-        { name: "review-tools", source: "org/plugins", status: "missing" },
+        {
+          name: "hybrid-tools",
+          source: "org/hybrid-tools",
+          status: "ok",
+          warnings: [
+            'Plugin "hybrid-tools" is a hybrid compatibility bundle: portable components remain shared; authored Claude interfaces govern only their matching clients.',
+          ],
+        },
       ],
     });
   });

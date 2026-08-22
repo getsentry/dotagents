@@ -220,5 +220,10 @@ source = "getsentry/agent-pack"
 targets = ["claude", "cursor", "codex", "opencode"]
 ```
 
+Portable Agent Plugins may coexist with authored Claude, Cursor, or Codex
+manifests during migration. Dotagents preserves each authored manifest for its
+matching client and projects only the portable skills and MCP into unrelated
+targets.
+
 See the [CLI reference](/cli/#configuration-agentstoml) for all fields and
 options.

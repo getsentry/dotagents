@@ -9,6 +9,7 @@ import { existsSync } from "node:fs";
 import type { ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 import type { CommandContext } from "../context.js";
+import { loadInstalledPlugins } from "../../plugins/store.js";
 
 export interface SkillStatus {
   name: string;
@@ -22,6 +23,7 @@ export interface PluginStatus {
   name: string;
   source: string;
   status: "ok" | "missing" | "unlocked";
+  warnings?: string[];
 }
 
 export interface ListOptions {
@@ -94,6 +96,21 @@ export async function runPluginList(opts: PluginListOptions): Promise<PluginStat
 
   const config = await loadConfig(configPath);
   const lockfile = await loadLockfile(lockPath);
+  const loaded = await loadInstalledPlugins(
+    pluginsDir,
+    config.plugins.filter((plugin) => existsSync(join(pluginsDir, plugin.name))),
+    "dotagents install",
+    config.agents,
+  );
+  const warnings = new Map<string, string[]>();
+  for (const plugin of loaded.plugins) {
+    if (plugin.compatibilityWarnings?.length) {
+      warnings.set(plugin.name, plugin.compatibilityWarnings);
+    }
+  }
+  for (const issue of loaded.issues) {
+    warnings.set(issue.name, [...(warnings.get(issue.name) ?? []), issue.issue]);
+  }
 
   const results: PluginStatus[] = [];
   for (const plugin of config.plugins.toSorted((a, b) => a.name.localeCompare(b.name))) {
@@ -106,11 +123,21 @@ export async function runPluginList(opts: PluginListOptions): Promise<PluginStat
     }
 
     if (!locked) {
-      results.push({ name: plugin.name, source: plugin.source, status: "unlocked" });
+      results.push({
+        name: plugin.name,
+        source: plugin.source,
+        status: "unlocked",
+        ...(warnings.get(plugin.name)?.length ? { warnings: warnings.get(plugin.name) } : {}),
+      });
       continue;
     }
 
-    results.push({ name: plugin.name, source: plugin.source, status: "ok" });
+    results.push({
+      name: plugin.name,
+      source: plugin.source,
+      status: "ok",
+      ...(warnings.get(plugin.name)?.length ? { warnings: warnings.get(plugin.name) } : {}),
+    });
   }
 
   return results;
@@ -183,6 +210,9 @@ export default async function list(args: string[], context: CommandContext): Pro
     console.log(chalk.bold("Plugins:"));
     for (const p of pluginResults) {
       console.log(formatPluginStatus(p));
+      for (const warning of p.warnings ?? []) {
+        console.log(chalk.yellow(`    warn: ${warning}`));
+      }
     }
   }
 }

@@ -313,9 +313,10 @@ dotagents doctor [--fix]
 ```
 
 Check the selected scope and fix supported issues. Verifies installed skills
-and plugins, plugin runtime projections, and legacy config fields. Project scope
-also checks gitignore setup, symlinks, and managed hooks. Use `dotagents sync`
-in the same scope to repair generated runtime configs.
+and plugins, reports hybrid diagnostics in the `plugin compatibility` check,
+checks plugin runtime projections, and detects legacy config fields. Project
+scope also checks gitignore setup, symlinks, and managed hooks. Use
+`dotagents sync` in the same scope to repair generated runtime configs.
 
 Options:
 
@@ -336,9 +337,10 @@ dotagents doctor --fix    # fix what it can
 dotagents list [--json]
 ```
 
-Show declared skills and plugins with install/lock status. Use `--json` for
+Show declared skills and plugins with install/lock status. Hybrid plugin
+diagnostics appear as warning lines below the plugin. Use `--json` for
 machine-readable output. JSON output contains separate `skills` and `plugins`
-arrays.
+arrays; plugin entries include `warnings` when diagnostics exist.
 
 Status output:
 
@@ -456,6 +458,16 @@ Legacy generalized and native Claude/Cursor/Codex manifests remain supported
 during migration. Native imports preserve the owning manifest and expose only
 core metadata and Agent Skills to other clients; native components are never
 translated into unrelated clients' formats.
+
+A valid standard root may coexist with authored `.claude-plugin`,
+`.cursor-plugin`, or `.codex-plugin` manifests as a hybrid compatibility
+bundle. Portable skills, MCP, and metadata remain shared; an authored manifest
+is preserved byte-for-byte and governs only its matching selected client.
+Other clients receive adapters generated solely from the portable core. Root
+commands, agents, hooks, native MCP, and similar resources remain inert outside
+their owning client. Invalid standard roots do not fall back to legacy parsing,
+and a malformed native interface blocks installation only when its client is
+selected. `install`, `sync`, `list`, and `doctor` report compatibility warnings.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |

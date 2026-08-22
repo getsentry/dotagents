@@ -185,6 +185,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
             scope.pluginsDir,
             config.plugins.filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root)),
             `${cmd} install`,
+            config.agents,
           );
           await writeAgentsGitignore(
             scope.agentsDir,
@@ -265,7 +266,22 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
   }
 
   if (config.plugins.length > 0 && pluginErrors.length === 0) {
-    const installed = await loadInstalledPlugins(scope.pluginsDir, config.plugins, `${cmd} install`);
+    const installed = await loadInstalledPlugins(
+      scope.pluginsDir,
+      config.plugins,
+      `${cmd} install`,
+      config.agents,
+    );
+    const compatibilityWarnings = installed.plugins.flatMap(
+      (plugin) => plugin.compatibilityWarnings ?? [],
+    );
+    if (compatibilityWarnings.length > 0) {
+      checks.push({
+        name: "plugin compatibility",
+        status: "warn",
+        message: compatibilityWarnings.join(" "),
+      });
+    }
     const runtimeIssues = installed.issues.length === 0
       ? await verifyPluginOutputs(config.agents, installed.plugins, pluginRuntimeLayout(scope), {
           reservedMcpNames: config.mcp.map((server) => server.name),

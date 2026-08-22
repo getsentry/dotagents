@@ -39,15 +39,23 @@ const COMMAND_CASES = [
 
 describe("CLI help dispatch", () => {
   const originalExitCode = process.exitCode;
+  let dispatchRoot: string;
+  let originalCwd: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     for (const [, handler] of COMMAND_CASES) {handler.mockReset();}
     checkForUpdate.mockClear();
     process.exitCode = originalExitCode;
+    originalCwd = process.cwd();
+    dispatchRoot = await mkdtemp(join(tmpdir(), "dotagents-cli-dispatch-"));
+    await writeFile(join(dispatchRoot, "agents.toml"), "version = 1\n");
+    process.chdir(dispatchRoot);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    process.chdir(originalCwd);
     process.exitCode = originalExitCode;
+    await rm(dispatchRoot, { recursive: true, force: true });
   });
 
   it("prints command help without running the command", async () => {

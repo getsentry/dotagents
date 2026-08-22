@@ -243,7 +243,7 @@ Generated paths:
 
 Plugin dependencies. Each entry selects one plugin bundle from a source. dotagents installs the canonical plugin bundle into `.agents/plugins/<name>/` and writes deterministic runtime-specific plugin outputs for the configured agents selected by the plugin's `targets`.
 
-The target canonical plugin input is an [Agent Plugins](https://agent-plugins.org/) bundle under `.agents/plugins/<name>/`: required `plugin.json`, optional `skills/`, optional `mcp.json`, and client-specific extension namespaces. dotagents source declarations, lock entries, marketplaces, target selection, and generated runtime files remain management concerns outside the portable bundle. Generated Claude, Cursor, and Codex marketplaces or native manifests are adapters, not source-of-truth plugin metadata.
+The preferred canonical plugin input is an [Agent Plugins](https://agent-plugins.org/) bundle under `.agents/plugins/<name>/`: required `plugin.json`, optional `skills/`, optional `mcp.json`, and client-specific extension namespaces. During migration, a valid portable root may coexist with authored Claude, Cursor, or Codex manifests as a hybrid compatibility bundle. The portable root remains authoritative for shared data and generated adapters; each authored native manifest remains byte-for-byte authoritative only for its matching selected client. Dotagents generates a native manifest only when that client has no authored interface. Source declarations, lock entries, marketplaces, target selection, and generated runtime files remain management concerns outside the portable bundle.
 
 See [Plugin Support Specification](plugins.md) for the Agent Plugins-aligned bundle contract, legacy migration plan, discovery rules, normalized internal model, downstream target transformations, and implementation gaps.
 
@@ -705,8 +705,9 @@ dotagents doctor [--fix]
 8. The selected scope's managed skills directory exists
 9. All declared skills are installed
 10. All declared plugins are installed
-11. Generated plugin runtime artifacts are intact
-12. In project scope, symlinks are intact
+11. Hybrid plugin compatibility diagnostics are reported
+12. Generated plugin runtime artifacts are intact
+13. In project scope, symlinks are intact
 
 **Flags:**
 - `--fix`: Auto-fix issues where possible (add gitignore entries, remove legacy fields, create missing `.agents/.gitignore`, and repair legacy managed project hooks)
@@ -724,7 +725,7 @@ dotagents list [--json]
 - `✗` missing — in agents.toml but not installed
 - `?` unlocked — installed but not in lockfile
 
-**Output:** name, source, status. Human output groups results under `Skills:` and `Plugins:` when both are present. JSON output is an object with `skills` and `plugins` arrays.
+**Output:** name, source, status, and optional plugin compatibility warnings. Human output groups results under `Skills:` and `Plugins:` when both are present and prints plugin warning lines below their plugin. JSON output is an object with `skills` and `plugins` arrays; a plugin entry includes `warnings` when diagnostics exist.
 
 ---
 

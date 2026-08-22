@@ -3,6 +3,11 @@ import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, rm, rmdir, sta
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { loadSkillMd, type SerializedObject } from "@sentry/dotagents-lib";
 import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest, parsePluginMcp, type LegacyPluginManifest } from "../schema.js";
+import {
+  DOTAGENTS_AUTHORED_INTERFACES_MARKER,
+  hasRecordedAuthoredPluginInterface,
+  HYBRID_LEGACY_ROOTS,
+} from "../store.js";
 import type { PluginDeclaration } from "../types.js";
 import { selectedAgentIds, selectPlugins, targetWarnings, usesLegacyPluginComponents } from "../targets.js";
 import { marketplaceOutputPaths, marketplaceOutputs } from "./marketplace.js";
@@ -83,6 +88,12 @@ export async function writePluginOutputs(
   let written = 0;
   const selected = selectPlugins(agentIds, plugins);
   const loadedMcp = new Map<string, LoadedStandardMcp>();
+
+  for (const plugin of plugins) {
+    for (const message of plugin.compatibilityWarnings ?? []) {
+      warnings.push({ agent: "plugin", name: plugin.name, message });
+    }
+  }
 
   for (const warning of targetWarnings(agentIds, plugins)) {
     warnings.push(warning);
@@ -262,6 +273,15 @@ export async function prunePluginOutputs(
       );
       for (const entry of entries) {
         if (!entry.isDirectory() || desired.has(entry.name)) {continue;}
+        const plugin = plugins.find((plugin) => plugin.name === entry.name);
+        if (
+          plugin?.nativeSource === target.agent ||
+          plugin?.authoredNativeInterfaces?.[target.agent] !== undefined ||
+          !plugin && await hasRecordedAuthoredPluginInterface(
+            join(canonicalPluginDir, entry.name),
+            target.agent,
+          )
+        ) {continue;}
         for (const fileName of ["plugin.json", "mcp.json"]) {
           const path = join(canonicalPluginDir, entry.name, target.dir, fileName);
           if (!await isManagedJsonFile(path)) {continue;}
@@ -276,7 +296,7 @@ export async function prunePluginOutputs(
   return pruned;
 }
 
-/** Mirrors a plugin bundle into Grok's plugin directory with a managed marker. */
+/** Writes a sanitized managed projection into Grok's plugin directory. */
 async function writeGrokProjection(
   layout: PluginRuntimeLayout,
   plugin: PluginDeclaration,
@@ -300,9 +320,13 @@ async function writeGrokProjection(
     ".claude-plugin",
     ".cursor-plugin",
     ".codex-plugin",
+    DOTAGENTS_AUTHORED_INTERFACES_MARKER,
     ".dotagents-managed",
     ".dotagents-native-source",
   ]);
+  if (isStandardPluginManifest(plugin.manifest)) {
+    for (const path of HYBRID_LEGACY_ROOTS) {excluded.add(path);}
+  }
   let portableSkillsSource: string | undefined;
   if (plugin.nativeSource) {
     for (const path of ["agents", "commands", "rules", "hooks", "monitors", ".mcp.json", ".lsp.json", ".app.json"]) {
