@@ -326,7 +326,7 @@ describe("writer", () => {
       });
       await addMcpToConfig(configPath, {
         name: "remote",
-        url: "https://mcp.example.com/sse",
+        url: "https://mcp.example.com/mcp",
         headers: { Authorization: "Bearer tok" },
         env: [],
       });
@@ -339,7 +339,7 @@ describe("writer", () => {
         env: ["GITHUB_TOKEN"],
       });
       expect(config.mcp.find((server) => server.name === "remote")).toMatchObject({
-        url: "https://mcp.example.com/sse",
+        url: "https://mcp.example.com/mcp",
         headers: { Authorization: "Bearer tok" },
       });
     });

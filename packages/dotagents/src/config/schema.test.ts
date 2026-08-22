@@ -444,11 +444,11 @@ describe("agentsConfigSchema", () => {
     it("accepts an http MCP server", () => {
       const result = agentsConfigSchema.safeParse({
         version: 1,
-        mcp: [{ name: "remote", url: "https://mcp.example.com/sse" }],
+        mcp: [{ name: "remote", url: "https://mcp.example.com/mcp" }],
       });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.mcp[0]!.url).toBe("https://mcp.example.com/sse");
+        expect(result.data.mcp[0]!.url).toBe("https://mcp.example.com/mcp");
       }
     });
 

@@ -209,13 +209,13 @@ Add an MCP server declaration.
 
 ```bash
 npx @sentry/dotagents mcp add github --command "npx -y @modelcontextprotocol/server-github" --env GITHUB_TOKEN
-npx @sentry/dotagents mcp add remote-api --url https://mcp.example.com/sse --header "Authorization:Bearer token"
+npx @sentry/dotagents mcp add remote-api --url https://mcp.example.com/mcp --header "Authorization:Bearer token"
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--command "<cmd> [args...]"` | Command to run (stdio transport), including optional arguments |
-| `--url <url>` | HTTP endpoint URL (HTTP transport) |
+| `--url <url>` | Streamable HTTP endpoint URL |
 | `--header <Key:Value>` | HTTP headers (repeatable) |
 | `--env <VAR>` | Environment variable names to pass through (repeatable) |
 

@@ -3,15 +3,16 @@ import type { SubagentConfigSpec } from "../subagents/types.js";
 import type { SerializedObject, SerializedValue } from "@sentry/dotagents-lib";
 
 /**
- * Universal MCP server declaration from agents.toml [[mcp]] sections.
- * Represents either a stdio or HTTP server.
+ * Universal MCP server declaration used by target serializers. Top-level
+ * [[mcp]] entries use stdio or Streamable HTTP; plugin adapters may retain
+ * legacy SSE endpoints required by Agent Plugins v1.
  */
 export interface McpDeclaration {
   name: string;
   /** For stdio servers */
   command?: string;
   args?: string[];
-  /** For HTTP servers */
+  /** For remote HTTP servers */
   url?: string;
   headers?: Record<string, string>;
   /** Whether target-native environment references should be generated in HTTP values. */

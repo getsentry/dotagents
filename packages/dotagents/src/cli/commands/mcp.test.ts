@@ -92,14 +92,14 @@ describe("mcp", () => {
       await runMcpAdd({
         scope,
         name: "remote",
-        url: "https://mcp.example.com/sse",
+        url: "https://mcp.example.com/mcp",
         headers: ["Authorization:Bearer tok"],
         env: ["API_KEY"],
       });
 
       const config = await loadConfig(scope.configPath);
       expect(config.mcp).toHaveLength(1);
-      expect(config.mcp[0]!.url).toBe("https://mcp.example.com/sse");
+      expect(config.mcp[0]!.url).toBe("https://mcp.example.com/mcp");
       expect(config.mcp[0]!.headers).toEqual({ Authorization: "Bearer tok" });
     });
 

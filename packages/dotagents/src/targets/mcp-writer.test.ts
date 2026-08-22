@@ -24,7 +24,7 @@ const STDIO_SERVER: McpDeclaration = {
 
 const HTTP_SERVER: McpDeclaration = {
   name: "remote",
-  url: "https://mcp.example.com/sse",
+  url: "https://mcp.example.com/mcp",
   headers: { Authorization: "Bearer tok" },
 };
 
@@ -238,14 +238,14 @@ describe("writeMcpConfigs", () => {
     const claude = JSON.parse(await readFile(join(dir, ".mcp.json"), "utf-8"));
     expect(claude.mcpServers.remote).toEqual({
       type: "http",
-      url: "https://mcp.example.com/sse",
+      url: "https://mcp.example.com/mcp",
       headers: { Authorization: "Bearer tok" },
     });
 
     // Cursor
     const cursor = JSON.parse(await readFile(join(dir, ".cursor", "mcp.json"), "utf-8"));
     expect(cursor.mcpServers.remote).toEqual({
-      url: "https://mcp.example.com/sse",
+      url: "https://mcp.example.com/mcp",
       headers: { Authorization: "Bearer tok" },
     });
 
@@ -253,7 +253,7 @@ describe("writeMcpConfigs", () => {
     const vscode = JSON.parse(await readFile(join(dir, ".vscode", "mcp.json"), "utf-8"));
     expect(vscode.servers.remote).toEqual({
       type: "http",
-      url: "https://mcp.example.com/sse",
+      url: "https://mcp.example.com/mcp",
       headers: { Authorization: "Bearer tok" },
     });
 
@@ -263,7 +263,7 @@ describe("writeMcpConfigs", () => {
     );
     expect(opencode.mcp.remote).toEqual({
       type: "remote",
-      url: "https://mcp.example.com/sse",
+      url: "https://mcp.example.com/mcp",
       headers: { Authorization: "Bearer tok" },
     });
 
@@ -271,7 +271,7 @@ describe("writeMcpConfigs", () => {
     const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
     const codex = parseTOML(raw) as Record<string, Record<string, SerializedObject>>;
     expect(codex["mcp_servers"]!["remote"]).toEqual({
-      url: "https://mcp.example.com/sse",
+      url: "https://mcp.example.com/mcp",
       http_headers: { Authorization: "Bearer tok" },
     });
   });
@@ -589,7 +589,7 @@ describe("verifyMcpConfigs", () => {
         },
         remote: {
           type: "http",
-          url: "https://mcp.example.com/sse",
+          url: "https://mcp.example.com/mcp",
           headers: { Authorization: "Bearer tok" },
         },
       },
