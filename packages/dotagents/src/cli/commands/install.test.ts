@@ -652,7 +652,7 @@ source = "path:plugin-source/invalid-tools"
       $schema: AGENT_PLUGIN_SCHEMA,
       name: "hybrid-tools",
     }));
-    const malformedBytes = '{ "name": "hybrid-tools", "commands": "../outside" }\n';
+    const malformedBytes = "{broken\n";
     await writeFile(join(sourceDir, ".claude-plugin", "plugin.json"), malformedBytes);
     await writeFile(join(projectRoot, "agents.toml"), `version = 1
 agents = ["codex"]

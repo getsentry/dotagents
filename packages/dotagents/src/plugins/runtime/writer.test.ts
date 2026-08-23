@@ -5,7 +5,12 @@ import { dirname, join, relative, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse as parseJSONC } from "jsonc-parser";
 import type { PluginDeclaration } from "../types.js";
-import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest, type LegacyPluginManifest } from "../schema.js";
+import {
+  AGENT_PLUGIN_MCP_SCHEMA,
+  AGENT_PLUGIN_SCHEMA,
+  isStandardPluginManifest,
+  type LegacyPluginManifest,
+} from "../schema.js";
 import {
   prunePluginOutputs,
   projectedPiSkillNames,
@@ -328,6 +333,23 @@ describe("plugin writer", () => {
     expect(cursor["x-claude"]).toBeUndefined();
   });
 
+  it("rejects a malformed fallback at the selected projection boundary", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: { $schema: AGENT_PLUGIN_SCHEMA, name: "alpha-tools" },
+      authoredNativeInterfaces: {
+        claude: {
+          path: ".claude-plugin/plugin.json",
+          fallback: true,
+          error: "invalid native manifest",
+        },
+      },
+    });
+
+    await expect(writePluginOutputs(["claude"], [alpha], root)).rejects.toThrow(
+      "Invalid Claude native fallback",
+    );
+  });
+
   it("projects only portable hybrid components to OpenCode and Pi", async () => {
     const alpha = await plugin("alpha-tools", {
       manifest: {
@@ -377,8 +399,26 @@ describe("plugin writer", () => {
     await mkdir(join(alpha.pluginDir, "hooks"), { recursive: true });
     await writeFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "alpha-tools" }));
     await writeFile(join(alpha.pluginDir, "commands", "native.md"), "native command");
+    await writeFile(join(alpha.pluginDir, "commands", "real-server"), "portable command");
+    await symlink("real-server", join(alpha.pluginDir, "commands", "server"));
     await writeFile(join(alpha.pluginDir, "agents", "native.md"), "native agent");
     await writeFile(join(alpha.pluginDir, "hooks", "hooks.json"), "{}");
+    await mkdir(join(alpha.pluginDir, "bin"), { recursive: true });
+    await writeFile(join(alpha.pluginDir, "bin", "server"), "portable executable");
+    await writeFile(join(alpha.pluginDir, "mcp.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: {
+        portable: {
+          type: "stdio",
+          command: "node",
+          env: {
+            TOOL: "${PLUGIN_ROOT}/bin/server",
+            NATIVE_LIKE: "${PLUGIN_ROOT}/.claude-plugin/tool",
+          },
+        },
+        portableCommand: { type: "stdio", command: "./commands/server" },
+      },
+    }));
     await writeFile(join(alpha.pluginDir, "asset.txt"), "ordinary asset");
     alpha.authoredNativeInterfaces = {
       claude: {
@@ -393,8 +433,12 @@ describe("plugin writer", () => {
     const projected = join(root, ".grok", "plugins", "alpha-tools");
     expect(existsSync(join(projected, "plugin.json"))).toBe(true);
     expect(existsSync(join(projected, "skills", "portable-skill", "SKILL.md"))).toBe(true);
+    expect(await readFile(join(projected, "bin", "server"), "utf-8")).toBe("portable executable");
+    expect(await readFile(join(projected, "commands", "server"), "utf-8")).toBe("portable command");
+    expect(existsSync(join(projected, "commands", "real-server"))).toBe(true);
+    expect(existsSync(join(projected, "commands", "native.md"))).toBe(false);
     expect(await readFile(join(projected, "asset.txt"), "utf-8")).toBe("ordinary asset");
-    for (const path of [".claude-plugin", "commands", "agents", "hooks"]) {
+    for (const path of [".claude-plugin", "agents", "hooks"]) {
       expect(existsSync(join(projected, path))).toBe(false);
     }
   });

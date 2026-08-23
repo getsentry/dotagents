@@ -1,7 +1,8 @@
+import { isDeepStrictEqual } from "node:util";
 import type { NativePluginSource, PluginDeclaration } from "./types.js";
 import type { PluginWriteWarning } from "./runtime/types.js";
-import { isStandardPluginManifest } from "./schema.js";
-import { isSerializedObject, type SerializedValue } from "@sentry/dotagents-lib";
+import { isStandardPluginManifest, type PluginMcpConfig } from "./schema.js";
+import { isSerializedObject, type SerializedObject, type SerializedValue } from "@sentry/dotagents-lib";
 import { isString } from "../utils/type-guards.js";
 
 const PLUGIN_ONLY_AGENT_IDS = ["grok", "pi"];
@@ -44,13 +45,39 @@ export function selectedAgentIds(
 export function nativeInterfaceNeedsFallback(
   source: NativePluginSource,
   value: SerializedValue,
+  reproducibleFields: SerializedObject = {},
 ): boolean {
-  if (!isSerializedObject(value)) {return false;}
+  if (!isSerializedObject(value)) {return true;}
   for (const [key, field] of Object.entries(value)) {
+    if (reproducibleFields[key] !== undefined && isDeepStrictEqual(field, reproducibleFields[key])) {
+      continue;
+    }
     if (!GENERATED_NATIVE_FIELDS[source].has(key)) {return true;}
     if (key === "skills" && !isConventionalSkillsReference(field)) {return true;}
   }
   return false;
+}
+
+/** Returns the native MCP reference generated from a portable MCP parse result. */
+export function generatedNativeMcpPath(
+  source: NativePluginSource,
+  portableMcp: { config?: PluginMcpConfig; issues: string[] } | undefined,
+): string | undefined {
+  if (!portableMcp?.config) {return undefined;}
+  if (portableMcp.issues.length === 0) {return "./mcp.json";}
+  if (Object.keys(portableMcp.config.mcpServers).length > 0) {
+    return `./.${source}-plugin/mcp.json`;
+  }
+  return undefined;
+}
+
+/** Returns whether the matching-client manifest is authored rather than generated. */
+export function hasAuthoredNativeInterface(
+  plugin: Pick<PluginDeclaration, "authoredNativeInterfaces" | "nativeSource">,
+  source: NativePluginSource,
+): boolean {
+  return plugin.nativeSource === source ||
+    plugin.authoredNativeInterfaces?.[source]?.fallback === true;
 }
 
 function isConventionalSkillsReference(value: SerializedValue | undefined): boolean {

@@ -16,19 +16,27 @@ import {
   type TrustPolicy,
   type CacheReuse,
   isSerializedValue,
+  type SerializedObject,
   type SerializedValue,
 } from "@sentry/dotagents-lib";
 import { PLUGIN_NAME_PATTERN, type PluginConfig } from "../config/schema.js";
 import type { LockedPlugin } from "../lockfile/schema.js";
 import {
   parsePluginManifest,
+  parsePluginMcpBestEffort,
   parsePluginMarketplace,
   isStandardPluginManifest,
   type MarketplacePluginEntry,
   type LegacyPluginManifest,
   type PluginManifest,
+  type PluginMcpParseResult,
 } from "./schema.js";
-import { nativeInterfaceNeedsFallback, selectedAgentIds } from "./targets.js";
+import {
+  generatedNativeMcpPath,
+  nativeInterfaceNeedsFallback,
+  selectedAgentIds,
+} from "./targets.js";
+import { codexPluginInterface } from "./runtime/manifest-values.js";
 import type {
   AuthoredNativePluginInterfaces,
   NativePluginSource,
@@ -277,7 +285,7 @@ export async function loadInstalledPlugins(
   pluginsDir: string,
   configs: PluginConfig[],
   installCommand: string,
-  agentIds: string[] = [],
+  agentIds: string[],
 ): Promise<{ plugins: PluginDeclaration[]; issues: Array<{ name: string; issue: string }> }> {
   const plugins: PluginDeclaration[] = [];
   const issues: Array<{ name: string; issue: string }> = [];
@@ -797,14 +805,6 @@ async function loadPluginCandidate(
         "Plugin names must be 1-64 lowercase letters, numbers, hyphens, or dots, have alphanumeric ends, and not contain '--' or '..'.",
     );
   }
-  try {
-    assertNativeInterfaceNames(name, loaded.authoredNativeInterfaces, relativePath(sourceRoot, pluginDir) || ".");
-  } catch (err) {
-    throw new NamedPluginManifestError(
-      err instanceof Error ? err.message : String(err),
-      name,
-    );
-  }
   return {
     name,
     dir: pluginDir,
@@ -857,6 +857,7 @@ async function loadPluginInterfaces(
         pluginDir,
         fallbackSources,
         installedNativeSource,
+        manifest,
       ),
       nativeSource: installedNativeSource,
     };
@@ -896,8 +897,14 @@ async function loadAuthoredNativeInterfaces(
   pluginDir: string,
   fallbackSources: ReadonlySet<NativePluginSource> | null | undefined,
   installedNativeSource: NativePluginSource | undefined,
+  portableManifest: PluginManifest | undefined,
 ): Promise<AuthoredNativePluginInterfaces> {
+  // undefined classifies source input; null ignores installed adapters; a Set reloads recorded fallbacks.
   const interfaces: AuthoredNativePluginInterfaces = {};
+  const portableMcp = fallbackSources === undefined && portableManifest &&
+      isStandardPluginManifest(portableManifest)
+    ? await loadPortableMcpForGeneration(pluginDir)
+    : undefined;
   for (const candidate of NATIVE_MANIFEST_PATHS) {
     const filePath = join(pluginDir, candidate.path);
     if (!existsSync(filePath)) {
@@ -910,16 +917,30 @@ async function loadAuthoredNativeInterfaces(
     }
     if (fallbackSources && !fallbackSources.has(candidate.source)) {continue;}
     if (fallbackSources === null && installedNativeSource !== candidate.source) {continue;}
-    let fallback = fallbackSources !== undefined;
+    let fallback = true;
     try {
       const value = await readJson(filePath);
+      const manifest = parsePluginManifest(value, filePath);
       if (fallbackSources === undefined) {
-        fallback = nativeInterfaceNeedsFallback(candidate.source, value);
+        const reproducibleFields: SerializedObject = {};
+        const mcpPath = await reproducibleNativeMcpPath(
+          pluginDir,
+          candidate.source,
+          portableMcp,
+        );
+        if (mcpPath) {reproducibleFields["mcpServers"] = mcpPath;}
+        if (candidate.source === "codex" && portableManifest && isString(portableManifest.name)) {
+          reproducibleFields["interface"] = codexPluginInterface(
+            portableManifest.name,
+            portableManifest,
+          );
+        }
+        fallback = nativeInterfaceNeedsFallback(candidate.source, value, reproducibleFields);
       }
       interfaces[candidate.source] = {
         path: candidate.path,
         fallback,
-        manifest: parsePluginManifest(value, filePath),
+        manifest,
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -931,6 +952,36 @@ async function loadAuthoredNativeInterfaces(
     }
   }
   return interfaces;
+}
+
+async function reproducibleNativeMcpPath(
+  pluginDir: string,
+  source: NativePluginSource,
+  portableMcp: PluginMcpParseResult | undefined,
+): Promise<string | undefined> {
+  const mcpPath = generatedNativeMcpPath(source, portableMcp);
+  if (!mcpPath || mcpPath === "./mcp.json") {return mcpPath;}
+  const adapterPath = join(pluginDir, mcpPath);
+  if (!existsSync(adapterPath)) {return mcpPath;}
+  try {
+    return isDeepStrictEqual(await readJson(adapterPath), portableMcp?.config)
+      ? mcpPath
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function loadPortableMcpForGeneration(
+  pluginDir: string,
+): Promise<PluginMcpParseResult | undefined> {
+  const filePath = join(pluginDir, "mcp.json");
+  if (!existsSync(filePath)) {return undefined;}
+  try {
+    return parsePluginMcpBestEffort(await readJson(filePath), filePath);
+  } catch {
+    return undefined;
+  }
 }
 
 class NamedPluginManifestError extends Error {
@@ -969,6 +1020,11 @@ async function removeRedundantNativeInterfaces(plugin: PluginDeclaration): Promi
     const nativeInterface = plugin.authoredNativeInterfaces?.[candidate.source];
     if (!nativeInterface || nativeInterface.fallback) {continue;}
     await rm(join(plugin.pluginDir, candidate.path), { force: true });
+    if (
+      nativeInterface.manifest?.["mcpServers"] === `./.${candidate.source}-plugin/mcp.json`
+    ) {
+      await rm(join(plugin.pluginDir, `.${candidate.source}-plugin`, "mcp.json"), { force: true });
+    }
   }
 }
 
@@ -1094,8 +1150,10 @@ export function preparePluginForTargets(
   agentIds: string[],
 ): PluginDeclaration {
   const interfaces = plugin.authoredNativeInterfaces ?? {};
-  assertNativeInterfaceNames(plugin.name, interfaces, plugin.pluginDir);
   const selectedTargets = new Set(selectedAgentIds(agentIds, plugin));
+  if (isStandardPluginManifest(plugin.manifest)) {
+    assertNativeInterfaceNames(plugin.name, interfaces, plugin.pluginDir, selectedTargets);
+  }
   for (const source of nativeSources()) {
     const nativeInterface = interfaces[source];
     if (!nativeInterface?.fallback || !nativeInterface.error || !selectedTargets.has(source)) {continue;}
@@ -1122,19 +1180,30 @@ function assertNativeInterfaceNames(
   expected: string,
   interfaces: AuthoredNativePluginInterfaces,
   context: string,
+  selectedTargets: ReadonlySet<string>,
 ): void {
   for (const source of nativeSources()) {
     const nativeInterface = interfaces[source];
     if (!nativeInterface?.fallback) {continue;}
     const manifest = nativeInterface.manifest;
     if (!manifest) {continue;}
-    const actual = manifest["name"];
-    if (isString(actual) && actual !== expected) {
-      throw new Error(
-        `${nativeDisplayName(source)} native fallback manifest name "${actual}" does not match portable plugin name "${expected}" in ${context}.`,
-      );
-    }
+    const issue = nativeInterfaceNameIssue(expected, source, manifest);
+    if (!issue || !selectedTargets.has(source)) {continue;}
+    throw new Error(`${issue} in ${context}.`);
   }
+}
+
+function nativeInterfaceNameIssue(
+  expected: string,
+  source: NativePluginSource,
+  manifest: PluginManifest,
+): string | undefined {
+  const actual = manifest["name"];
+  if (actual === expected) {return undefined;}
+  if (isString(actual)) {
+    return `${nativeDisplayName(source)} native fallback manifest name "${actual}" does not match portable plugin name "${expected}"`;
+  }
+  return `${nativeDisplayName(source)} native fallback manifest is missing the portable plugin name "${expected}"`;
 }
 
 function compatibilityWarnings(
@@ -1185,6 +1254,15 @@ function compatibilityWarnings(
     if (nativeInterface.error && !selected.has(source)) {
       warnings.push(
         `Plugin "${name}" has a malformed ${nativeDisplayName(source)} native fallback that was ignored because ${nativeDisplayName(source)} is not selected: ${nativeInterface.error}`,
+      );
+      continue;
+    }
+    const nameIssue = nativeInterface.manifest
+      ? nativeInterfaceNameIssue(name, source, nativeInterface.manifest)
+      : undefined;
+    if (nameIssue && !selected.has(source)) {
+      warnings.push(
+        `Plugin "${name}" has an invalid ${nativeDisplayName(source)} native fallback that was ignored because ${nativeDisplayName(source)} is not selected: ${nameIssue}.`,
       );
       continue;
     }

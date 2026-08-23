@@ -3,13 +3,15 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { isStandardPluginManifest, parsePluginMcpBestEffort, type LegacyPluginManifest, type PluginManifest, type PluginMcpConfig } from "../schema.js";
 import type { PluginDeclaration } from "../types.js";
-import { usesLegacyPluginComponents } from "../targets.js";
+import {
+  generatedNativeMcpPath,
+  hasAuthoredNativeInterface,
+  usesLegacyPluginComponents,
+} from "../targets.js";
 import { isManagedJsonFile, removeManagedJsonFile, stableJson, writeManagedJsonIfChanged } from "../managed-files.js";
 import {
-  manifestString,
-  legacyManifestString,
+  codexPluginInterface,
   runtimePath,
-  titleCase,
 } from "./manifest-values.js";
 import type { PluginWriteWarning } from "./types.js";
 import { isSafeComponentPath } from "./component-paths.js";
@@ -65,9 +67,7 @@ export async function writePluginManifests(
   for (const spec of NATIVE_PLUGIN_MANIFEST_TARGETS) {
     if (!agents.includes(spec.agent)) {continue;}
     const filePath = join(plugin.pluginDir, spec.dir, "plugin.json");
-    const authored = plugin.nativeSource === spec.agent ||
-      plugin.authoredNativeInterfaces?.[spec.agent]?.fallback === true;
-    if (existsSync(filePath) && authored) {continue;}
+    if (existsSync(filePath) && hasAuthoredNativeInterface(plugin, spec.agent)) {continue;}
     if (existsSync(filePath) && !await isManagedJsonFile(filePath)) {
       warnings.push({
         agent: spec.agent,
@@ -76,14 +76,14 @@ export async function writePluginManifests(
       });
       continue;
     }
-    let mcpPath: string | undefined;
+    let mcpPath = generatedNativeMcpPath(spec.agent, standardMcp);
     const adapterMcpPath = join(plugin.pluginDir, spec.dir, "mcp.json");
     if (standardMcp.config) {
       if (standardMcp.issues.length === 0) {
-        mcpPath = "./mcp.json";
         if (await isManagedJsonFile(adapterMcpPath)) {await removeManagedJsonFile(adapterMcpPath);}
       } else if (Object.keys(standardMcp.config.mcpServers).length > 0) {
         if (existsSync(adapterMcpPath) && !await isManagedJsonFile(adapterMcpPath)) {
+          mcpPath = undefined;
           warnings.push({
             agent: spec.agent,
             name: plugin.name,
@@ -91,7 +91,6 @@ export async function writePluginManifests(
           });
         } else {
           if (await writeManagedJsonIfChanged(adapterMcpPath, stableJson(standardMcp.config))) {written++;}
-          mcpPath = `./${spec.dir}/mcp.json`;
         }
       }
     } else if (await isManagedJsonFile(adapterMcpPath)) {
@@ -237,7 +236,7 @@ function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWa
     manifest["apps"] = "./.app.json";
   }
   if (!manifest["interface"]) {
-    manifest["interface"] = codexInterface(plugin);
+    manifest["interface"] = codexPluginInterface(plugin.name, plugin.manifest);
   }
   return manifest;
 }
@@ -276,22 +275,6 @@ async function isDirectory(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-function codexInterface(plugin: PluginDeclaration): SerializedObject {
-  return {
-    displayName: titleCase(plugin.name),
-    shortDescription: manifestString(plugin.manifest, "description") ?? "",
-    developerName: developerName(plugin.manifest),
-    category: legacyManifestString(plugin.manifest, "category") ?? "Coding",
-    capabilities: ["Interactive", "Write"],
-  };
-}
-
-function developerName(manifest: PluginManifest): string {
-  const author = manifest.author;
-  if (author && isString(author.name)) {return author.name;}
-  return "Unknown";
 }
 
 function copyManifestField(source: PluginManifest, dest: SerializedObject, key: keyof PluginManifest): void {

@@ -13,7 +13,7 @@ import {
   resolvePlugin,
   type ResolvedPlugin,
 } from "./store.js";
-import { AGENT_PLUGIN_SCHEMA } from "./schema.js";
+import { AGENT_PLUGIN_MCP_SCHEMA, AGENT_PLUGIN_SCHEMA } from "./schema.js";
 
 async function removeWithBackupFailure(
   path: Parameters<typeof rm>[0],
@@ -111,7 +111,7 @@ describe("plugin store", () => {
       const result = await loadInstalledPlugins(pluginsDir, [{
         name: "review-tools",
         source: "path:source/review-tools",
-      }], "npx @sentry/dotagents install");
+      }], "npx @sentry/dotagents install", []);
       expect(result.plugins).toEqual([]);
       expect(result.issues[0]?.issue).toContain("Installed plugin resolves outside source");
     } finally {
@@ -128,7 +128,7 @@ describe("plugin store", () => {
       const result = await loadInstalledPlugins(pluginsDir, [{
         name: "review-tools",
         source: "path:source/review-tools",
-      }], "npx @sentry/dotagents install");
+      }], "npx @sentry/dotagents install", []);
       expect(result.plugins).toEqual([]);
       expect(result.issues[0]?.issue).toContain("missing plugin.json. Reinstall the plugin");
     } finally {
@@ -330,43 +330,36 @@ describe("plugin store", () => {
     }
   });
 
-  it.each([
-    { layout: "standard-only", root: true, native: false, legacy: false },
-    { layout: "native-only", root: false, native: true, legacy: false },
-    { layout: "standard-plus-native", root: true, native: true, legacy: false },
-    { layout: "standard-plus-inert-legacy", root: true, native: false, legacy: true },
-  ])("discovers $layout bundles as one candidate", async ({ root, native, legacy }) => {
+  it("discovers a standard-plus-native bundle as one candidate", async () => {
     const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-hybrid-"));
     try {
-      if (root) {
-        await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
-          $schema: AGENT_PLUGIN_SCHEMA,
-          name: "review-tools",
-        }));
-      }
-      if (native) {
-        await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
-        await writeFile(join(sourceRoot, ".claude-plugin", "plugin.json"), JSON.stringify({
-          name: "review-tools",
-          commands: "./commands",
-        }));
-      }
-      if (legacy || native) {await mkdir(join(sourceRoot, "commands"), { recursive: true });}
+      await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
+      await mkdir(join(sourceRoot, "commands"), { recursive: true });
+      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "review-tools",
+      }));
+      await writeFile(join(sourceRoot, ".claude-plugin", "plugin.json"), JSON.stringify({
+        name: "review-tools",
+        commands: "./commands",
+      }));
 
       const candidates = await discoverPlugins(sourceRoot);
 
       expect(candidates).toHaveLength(1);
       expect(candidates[0]).toMatchObject({ name: "review-tools", path: "" });
-      expect(candidates[0]!.nativeSource).toBe(root ? undefined : "claude");
-      expect(Boolean(candidates[0]!.authoredNativeInterfaces.claude)).toBe(native);
-      expect(candidates[0]!.manifest).toMatchObject({ name: "review-tools" });
-      if (root) {expect(candidates[0]!.manifest).toHaveProperty("$schema", AGENT_PLUGIN_SCHEMA);}
+      expect(candidates[0]!.nativeSource).toBeUndefined();
+      expect(candidates[0]!.authoredNativeInterfaces.claude?.fallback).toBe(true);
+      expect(candidates[0]!.manifest).toMatchObject({
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "review-tools",
+      });
     } finally {
       await rm(sourceRoot, { recursive: true, force: true });
     }
   });
 
-  it("keeps the portable identity authoritative in hybrid bundles", async () => {
+  it("validates hybrid fallback identity only when its client is selected", async () => {
     const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-hybrid-"));
     try {
       await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
@@ -375,12 +368,18 @@ describe("plugin store", () => {
         name: "portable-name",
       }));
       await writeFile(join(sourceRoot, ".claude-plugin", "plugin.json"), JSON.stringify({
-        name: "native-name",
         commands: "./commands",
       }));
 
-      await expect(discoverPlugins(sourceRoot)).rejects.toThrow(
-        'Claude native fallback manifest name "native-name" does not match portable plugin name "portable-name"',
+      const resolved = await resolvePlugin(
+        { name: "portable-name", source: "path:." },
+        { stateDir: join(sourceRoot, "state"), projectRoot: sourceRoot },
+      );
+      expect(preparePluginForTargets(resolved.plugin, ["codex"]).compatibilityWarnings?.some(
+        (warning) => warning.includes("missing the portable plugin name"),
+      )).toBe(true);
+      expect(() => preparePluginForTargets(resolved.plugin, ["claude"])).toThrow(
+        'Claude native fallback manifest is missing the portable plugin name "portable-name"',
       );
     } finally {
       await rm(sourceRoot, { recursive: true, force: true });
@@ -452,10 +451,33 @@ describe("plugin store", () => {
         version: "1.0.0",
         author: { name: "Portable author" },
       }));
+      await writeFile(join(sourceRoot, "mcp.json"), JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          review: { type: "stdio", command: "node" },
+          invalid: { type: "stdio", command: "node server.js" },
+        },
+      }));
+      const generatedMcp = {
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { review: { type: "stdio", command: "node" } },
+      };
+      await writeFile(
+        join(sourceRoot, ".codex-plugin", "mcp.json"),
+        JSON.stringify(generatedMcp),
+      );
       await writeFile(join(sourceRoot, ".codex-plugin", "plugin.json"), JSON.stringify({
         name: "review-tools",
         version: "1.0.0",
         author: { name: "Native author" },
+        mcpServers: "./.codex-plugin/mcp.json",
+        interface: {
+          displayName: "Review Tools",
+          shortDescription: "",
+          developerName: "Portable author",
+          category: "Coding",
+          capabilities: ["Interactive", "Write"],
+        },
       }));
       const resolved = await resolvePlugin(
         { name: "review-tools", source: "path:source" },
@@ -467,6 +489,18 @@ describe("plugin store", () => {
         'Plugin "review-tools" is a hybrid compatibility bundle: the portable core remains authoritative; redundant authored native interfaces are ignored in favor of portable generation.',
         'Plugin "review-tools" has an authored Codex interface that was ignored because the portable core can generate the Codex adapter.',
       ]);
+      const installed = await installPluginBundle(join(projectRoot, "installed"), resolved);
+      expect(existsSync(join(installed.pluginDir, ".codex-plugin", "mcp.json"))).toBe(false);
+
+      await writeFile(
+        join(sourceRoot, ".codex-plugin", "mcp.json"),
+        JSON.stringify({ ...generatedMcp, mcpServers: { other: { type: "stdio", command: "node" } } }),
+      );
+      const collided = await resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+      expect(collided.plugin.authoredNativeInterfaces?.codex?.fallback).toBe(true);
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }
