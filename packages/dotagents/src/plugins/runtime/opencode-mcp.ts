@@ -109,13 +109,14 @@ async function openCodeDeclarations(
     const cwd = server.cwd?.startsWith("./")
       ? join(pluginRoot, server.cwd.slice(2))
       : expand(server.cwd ?? "${PLUGIN_ROOT}");
-    const envValues: Record<string, string> = {
-      PLUGIN_ROOT: pluginRoot,
-      PLUGIN_DATA: dataDir,
-    };
-    for (const [key, value] of Object.entries(server.env ?? {})) {
-      envValues[key] = expand(value);
-    }
+    const baseEnvironment = [
+      ["PLUGIN_ROOT", pluginRoot],
+      ["PLUGIN_DATA", dataDir],
+    ] as const;
+    const pluginEnvironment = Object.entries(server.env ?? {}).map(
+      ([key, value]) => [key, expand(value)] as const,
+    );
+    const envValues = Object.fromEntries([...baseEnvironment, ...pluginEnvironment]);
     declarations.push({
       name,
       command,

@@ -1,16 +1,19 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
 import { TOOL_NAMES, isToolName, type ToolName } from "./tool-name.js";
 
+function verifyCandidate(candidate: string | number): void {
+  if (isToolName(candidate)) {
+    expectTypeOf(candidate).toEqualTypeOf<ToolName>();
+  }
+}
+
 describe("isToolName", () => {
   it("accepts every name in TOOL_NAMES", () => {
     for (const name of TOOL_NAMES) {
       expect(isToolName(name)).toBe(true);
     }
 
-    const candidate: unknown = "Read";
-    if (isToolName(candidate)) {
-      expectTypeOf(candidate).toEqualTypeOf<ToolName>();
-    }
+    verifyCandidate("Read");
   });
 
   it("rejects unknown names", () => {

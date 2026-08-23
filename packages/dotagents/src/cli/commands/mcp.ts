@@ -71,10 +71,16 @@ export async function runMcpAdd(opts: McpAddOptions): Promise<void> {
 
   const entry: McpConfig = {
     name,
-    ...(command ? { command, args: opts.args } : {}),
-    ...(url ? { url, headers: buildHeaders(opts.headers) } : {}),
     env: opts.env ?? [],
   };
+  if (command) {
+    entry.command = command;
+    entry.args = opts.args;
+  }
+  if (url) {
+    entry.url = url;
+    entry.headers = buildHeaders(opts.headers);
+  }
 
   await addMcpToConfig(scope.configPath, entry);
   await runInstall({ scope });

@@ -9,6 +9,16 @@ import {
   ParseSourceError,
 } from "./resolver.js";
 
+function captureParseSourceError(source: string): ParseSourceError {
+  try {
+    parseSource(source);
+  } catch (err) {
+    if (err instanceof ParseSourceError) {return err;}
+    throw err;
+  }
+  throw new Error("expected parseSource to throw");
+}
+
 describe("parseOwnerRepoShorthand", () => {
   it("parses owner/repo", () => {
     expect(parseOwnerRepoShorthand("getsentry/skills")).toEqual({
@@ -472,32 +482,18 @@ describe("isSourceExcluded", () => {
 describe("parseSource strict shorthand", () => {
   it("throws ParseSourceError on empty SHA after @", () => {
     expect(() => parseSource("owner/repo@")).toThrow(ParseSourceError);
-    try {
-      parseSource("owner/repo@");
-    } catch (err) {
-      expect(err).toBeInstanceOf(ParseSourceError);
-      expect((err as ParseSourceError).kind).toBe("empty-sha");
-    }
+    const err = captureParseSourceError("owner/repo@");
+    expect(err.kind).toBe("empty-sha");
   });
 
   it("throws ParseSourceError on empty SHA in scoped shorthand", () => {
-    try {
-      parseSource("@owner/repo@");
-      throw new Error("expected to throw");
-    } catch (err) {
-      expect(err).toBeInstanceOf(ParseSourceError);
-      expect((err as ParseSourceError).kind).toBe("empty-sha");
-    }
+    expect(captureParseSourceError("@owner/repo@").kind).toBe("empty-sha");
   });
 
   it("throws ParseSourceError on multi-segment shorthand", () => {
-    try {
-      parseSource("owner/repo/nested");
-      throw new Error("expected to throw");
-    } catch (err) {
-      expect(err).toBeInstanceOf(ParseSourceError);
-      expect((err as ParseSourceError).kind).toBe("multi-segment-shorthand");
-    }
+    expect(captureParseSourceError("owner/repo/nested").kind).toBe(
+      "multi-segment-shorthand",
+    );
   });
 
   it("still parses valid github shorthand without throwing", () => {

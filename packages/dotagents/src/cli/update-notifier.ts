@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { z } from "zod/v4";
 
 const DEFAULT_CACHE_DIR = join(homedir(), ".dotagents");
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -11,6 +12,13 @@ interface CacheData {
   lastCheck: number;
   latestVersion: string;
 }
+
+const cacheDataSchema = z.object({
+  lastCheck: z.number(),
+  latestVersion: z.string(),
+});
+
+const registryResponseSchema = z.object({ version: z.string() });
 
 /**
  * Compare two semver strings (x.y.z only).
@@ -28,11 +36,8 @@ export function compareSemver(a: string, b: string): number {
 
 async function readCache(cacheFile: string): Promise<CacheData | null> {
   try {
-    const data = JSON.parse(await readFile(cacheFile, "utf-8"));
-    if (typeof data?.lastCheck === "number" && typeof data?.latestVersion === "string") {
-      return { lastCheck: data.lastCheck, latestVersion: data.latestVersion };
-    }
-    return null;
+    const parsed = cacheDataSchema.safeParse(JSON.parse(await readFile(cacheFile, "utf-8")));
+    return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }
@@ -53,8 +58,8 @@ async function fetchLatestVersion(): Promise<string | null> {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!response.ok) {return null;}
-    const data = (await response.json()) as { version?: unknown };
-    return typeof data.version === "string" ? data.version : null;
+    const parsed = registryResponseSchema.safeParse(await response.json());
+    return parsed.success ? parsed.data.version : null;
   } catch {
     return null;
   }

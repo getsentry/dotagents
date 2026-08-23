@@ -10,7 +10,6 @@ import {
   pluginManifestSchema,
   pluginMarketplaceSchema,
 } from "./schema.js";
-import type { SerializedObject } from "@sentry/dotagents-lib";
 
 describe("plugin manifest schema", () => {
   it("accepts Agent Plugins v1 manifests", () => {
@@ -134,7 +133,7 @@ describe("plugin manifest schema", () => {
       metadata: { count: Number.POSITIVE_INFINITY },
     }, "plugin.json")).toThrow("expected a serializable object");
     expect(() => parsePluginManifest(
-      JSON.parse('{"name":"review-tools","__proto__":{"polluted":true}}') as unknown,
+      JSON.parse('{"name":"review-tools","__proto__":{"polluted":true}}'),
       "plugin.json",
     )).toThrow("expected a serializable object");
   });
@@ -170,11 +169,11 @@ describe("plugin manifest schema", () => {
     );
 
     expect(manifest.name).toBe("review-tools");
-    expect((manifest as SerializedObject)["x-runtime"]).toEqual({
+    expect(manifest["x-runtime"]).toEqual({
       plugins: ["runtime/plugin.ts"],
       runtime: "bun",
     });
-    expect((manifest as SerializedObject)["x-dotagents"]).toEqual({ stable: true });
+    expect(manifest["x-dotagents"]).toEqual({ stable: true });
   });
 
   it("rejects absolute and traversing component paths", () => {
@@ -317,7 +316,7 @@ describe("plugin marketplace schema", () => {
       plugins: [],
     }, "marketplace.json")).toThrow("expected a serializable object");
     expect(() => parsePluginMarketplace(
-      JSON.parse('{"name":"dotagents","plugins":[],"__proto__":{"polluted":true}}') as unknown,
+      JSON.parse('{"name":"dotagents","plugins":[],"__proto__":{"polluted":true}}'),
       "marketplace.json",
     )).toThrow("expected a serializable object");
   });

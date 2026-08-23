@@ -12,5 +12,4 @@ import type { TrustPolicy } from "@sentry/dotagents-lib";
  * This file emits a tiny no-op assignment at runtime; it is here for the type
  * check, not the runtime behavior.
  */
-const _trustPolicyConformance: (t: TrustConfig) => TrustPolicy = (t) => t;
-export const __trustPolicyConformance = _trustPolicyConformance;
+export const trustPolicyConformance: (trust: TrustConfig) => TrustPolicy = (trust) => trust;

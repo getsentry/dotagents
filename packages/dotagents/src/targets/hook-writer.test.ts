@@ -12,6 +12,7 @@ import {
 } from "./hook-writer.js";
 import type { HookDeclaration } from "./types.js";
 import type { HookConfig } from "../config/schema.js";
+import { isSerializedObject } from "@sentry/dotagents-lib";
 
 const HOOKS: HookDeclaration[] = [
   { event: "PreToolUse", matcher: "Bash", command: ".agents/hooks/block-rm.sh" },
@@ -90,8 +91,12 @@ describe("writeHookConfigs", () => {
     await writeHookConfigs(["cursor"], HOOKS, projectHookResolver(dir));
 
     const content = JSON.parse(await readFile(join(dir, ".cursor", "hooks.json"), "utf-8"));
+    if (!isSerializedObject(content) || !isSerializedObject(content["hooks"])) {
+      throw new Error("expected serialized cursor hooks");
+    }
     // Cursor hooks should not contain matcher
-    for (const entries of Object.values(content.hooks) as unknown[][]) {
+    for (const entries of Object.values(content["hooks"])) {
+      if (!Array.isArray(entries)) {throw new Error("expected cursor hook entries");}
       for (const entry of entries) {
         expect(entry).not.toHaveProperty("matcher");
       }

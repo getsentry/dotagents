@@ -11,11 +11,14 @@ export async function copyDir(
   opts: { verbatimSymlinks?: boolean } = {},
 ): Promise<void> {
   await rm(dest, { recursive: true, force: true });
-  await cp(src, dest, {
+  const copyOptions: Parameters<typeof cp>[2] = {
     recursive: true,
-    ...(opts.verbatimSymlinks === undefined ? {} : { verbatimSymlinks: opts.verbatimSymlinks }),
     filter: (source) => basename(source) !== ".git",
-  });
+  };
+  if (opts.verbatimSymlinks !== undefined) {
+    copyOptions.verbatimSymlinks = opts.verbatimSymlinks;
+  }
+  await cp(src, dest, copyOptions);
 }
 
 /** Strip trailing `/` characters from a string. */

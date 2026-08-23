@@ -17,6 +17,16 @@ function makeTrust(overrides: Partial<TrustPolicy> = {}): TrustPolicy {
   };
 }
 
+function captureTrustError(source: string, trust: TrustPolicy): TrustError {
+  try {
+    validateTrustedSource(source, trust);
+  } catch (err) {
+    if (err instanceof TrustError) {return err;}
+    throw err;
+  }
+  throw new Error("expected validateTrustedSource to throw");
+}
+
 describe("validateTrustedSource", () => {
   it("allows everything when trust config is undefined", () => {
     expect(() => validateTrustedSource("evil/repo")).not.toThrow();
@@ -250,15 +260,9 @@ describe("validateTrustedSource", () => {
 
     it("exposes domain details on rejected well-known source", () => {
       const trust = makeTrust({ git_domains: ["other.example.com"] });
-      try {
-        validateTrustedSource("https://cli.sentry.dev", trust);
-        throw new Error("expected TrustError");
-      } catch (err) {
-        expect(err).toBeInstanceOf(TrustError);
-        const e = err as TrustError;
-        expect(e.details.kind).toBe("well-known");
-        expect(e.details.domain).toBe("cli.sentry.dev");
-      }
+      const err = captureTrustError("https://cli.sentry.dev", trust);
+      expect(err.details.kind).toBe("well-known");
+      expect(err.details.domain).toBe("cli.sentry.dev");
     });
 
     it("matches well-known domains case-insensitively", () => {
@@ -361,29 +365,17 @@ describe("validateTrustedSource", () => {
 
     it("exposes owner+repo details on rejected GitHub sources", () => {
       const trust = makeTrust({ github_orgs: ["getsentry"] });
-      try {
-        validateTrustedSource("evil/repo", trust);
-        throw new Error("expected TrustError");
-      } catch (err) {
-        expect(err).toBeInstanceOf(TrustError);
-        const e = err as TrustError;
-        expect(e.details.kind).toBe("github");
-        expect(e.details.owner).toBe("evil");
-        expect(e.details.repo).toBe("repo");
-      }
+      const err = captureTrustError("evil/repo", trust);
+      expect(err.details.kind).toBe("github");
+      expect(err.details.owner).toBe("evil");
+      expect(err.details.repo).toBe("repo");
     });
 
     it("exposes domain details on rejected git domain sources", () => {
       const trust = makeTrust({ git_domains: ["git.corp.com"] });
-      try {
-        validateTrustedSource("git:https://evil.com/repo.git", trust);
-        throw new Error("expected TrustError");
-      } catch (err) {
-        expect(err).toBeInstanceOf(TrustError);
-        const e = err as TrustError;
-        expect(e.details.kind).toBe("git");
-        expect(e.details.domain).toBe("evil.com");
-      }
+      const err = captureTrustError("git:https://evil.com/repo.git", trust);
+      expect(err.details.kind).toBe("git");
+      expect(err.details.domain).toBe("evil.com");
     });
   });
 });

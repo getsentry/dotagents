@@ -58,37 +58,25 @@ describe("checkForUpdate", () => {
   });
 
   it("returns null when fetch returns non-ok status", async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      json: async () => ({}),
-    } as Response);
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 500 }));
     const result = await checkForUpdate("0.7.0", { cacheDir });
     expect(result).toBeNull();
   });
 
   it("returns null when already on the latest version", async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ version: "0.7.0" }),
-    } as Response);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ version: "0.7.0" })));
     const result = await checkForUpdate("0.7.0", { cacheDir });
     expect(result).toBeNull();
   });
 
   it("returns null when on a newer version than registry", async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ version: "0.6.0" }),
-    } as Response);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ version: "0.6.0" })));
     const result = await checkForUpdate("0.7.0", { cacheDir });
     expect(result).toBeNull();
   });
 
   it("returns a message when a newer version exists", async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ version: "0.8.0" }),
-    } as Response);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ version: "0.8.0" })));
     const result = await checkForUpdate("0.7.0", { cacheDir });
     expect(result).not.toBeNull();
     expect(result).toContain("0.7.0");
@@ -96,10 +84,7 @@ describe("checkForUpdate", () => {
   });
 
   it("returns null when registry returns invalid json shape", async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ name: "no-version-field" }),
-    } as Response);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ name: "no-version-field" })));
     const result = await checkForUpdate("0.7.0", { cacheDir });
     expect(result).toBeNull();
   });
@@ -121,10 +106,7 @@ describe("checkForUpdate", () => {
       join(cacheDir, "update-check.json"),
       JSON.stringify({ lastCheck: Date.now() - 25 * 60 * 60 * 1000, latestVersion: "0.8.0" }),
     );
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ version: "0.9.0" }),
-    } as Response);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ version: "0.9.0" })));
     const result = await checkForUpdate("0.7.0", { cacheDir });
     expect(result).toContain("0.9.0");
     expect(fetch).toHaveBeenCalled();

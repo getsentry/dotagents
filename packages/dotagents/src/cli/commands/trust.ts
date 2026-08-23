@@ -16,10 +16,15 @@ export class TrustCommandError extends Error {
 
 type TrustField = "github_orgs" | "github_repos" | "git_domains";
 
+export interface ClassifiedTrustSource {
+  field: TrustField;
+  value: string;
+}
+
 export function classifyTrustSource(
   source: string,
   defaultRepositorySource?: RepositorySource,
-): { field: TrustField; value: string } {
+): ClassifiedTrustSource {
   // When configured for GitLab, expand shorthands (no dots) to gitlab.com/... domain paths
   if (defaultRepositorySource === "gitlab" && !source.includes(".")) {
     return { field: "git_domains", value: `gitlab.com/${source}` };
