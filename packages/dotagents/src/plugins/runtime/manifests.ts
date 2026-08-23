@@ -14,6 +14,7 @@ import {
 import type { PluginWriteWarning } from "./types.js";
 import { isSafeComponentPath } from "./component-paths.js";
 import type { SerializedObject } from "@sentry/dotagents-lib";
+import { isString, isStringArray } from "../../utils/type-guards.js";
 
 type ComponentManifestKey =
   | "skills"
@@ -191,6 +192,7 @@ function cursorRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteW
 function codexRuntimeManifest(plugin: PluginDeclaration, warnings: PluginWriteWarning[], standardMcpPath: string | undefined, portableSkills: boolean): SerializedObject {
   const standard = isStandardPluginManifest(plugin.manifest);
   const legacyComponents = usesLegacyPluginComponents(plugin, "codex");
+  // SAFETY: legacy components are only selected for non-standard manifest fields.
   const legacy = legacyComponents ? plugin.manifest as LegacyPluginManifest : undefined;
   const manifest: SerializedObject = { name: plugin.name };
   if (!standard && legacyComponents) {
@@ -288,7 +290,7 @@ function codexInterface(plugin: PluginDeclaration): SerializedObject {
 
 function developerName(manifest: PluginManifest): string {
   const author = manifest.author;
-  if (author && typeof author.name === "string") {return author.name;}
+  if (author && isString(author.name)) {return author.name;}
   return "Unknown";
 }
 
@@ -309,8 +311,9 @@ function copyRuntimeComponentField(
   key: ComponentManifestKey,
   warnings: PluginWriteWarning[],
 ): boolean {
+  // SAFETY: this function is called only when legacy component fields are enabled.
   const value = (plugin.manifest as LegacyPluginManifest)[key];
-  if (typeof value === "string") {
+  if (isString(value)) {
     if (isSafeComponentPath(value)) {
       dest[key] = runtimePath(value);
     } else {
@@ -318,7 +321,7 @@ function copyRuntimeComponentField(
     }
     return true;
   }
-  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+  if (isStringArray(value)) {
     const paths = value.flatMap((item) => {
       if (isSafeComponentPath(item)) {return [runtimePath(item)];}
       warnUnsafeComponentPath(plugin, key, item, warnings);

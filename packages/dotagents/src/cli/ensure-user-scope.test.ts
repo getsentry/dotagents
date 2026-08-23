@@ -7,6 +7,18 @@ import { ensureUserScopeBootstrapped } from "./ensure-user-scope.js";
 import { allAgentIds } from "../targets/registry.js";
 import type { ScopeRoot } from "../scope.js";
 
+function userScope(home: string): ScopeRoot {
+  return {
+    scope: "user",
+    root: home,
+    agentsDir: home,
+    configPath: join(home, "agents.toml"),
+    lockPath: join(home, "agents.lock"),
+    skillsDir: join(home, "skills"),
+    pluginsDir: join(home, "plugins"),
+  };
+}
+
 describe("ensureUserScopeBootstrapped", () => {
   let tmpDir: string;
 
@@ -19,18 +31,6 @@ describe("ensureUserScopeBootstrapped", () => {
     vi.restoreAllMocks();
     await rm(tmpDir, { recursive: true, force: true });
   });
-
-  function userScope(home: string): ScopeRoot {
-    return {
-      scope: "user",
-      root: home,
-      agentsDir: home,
-      configPath: join(home, "agents.toml"),
-      lockPath: join(home, "agents.lock"),
-      skillsDir: join(home, "skills"),
-      pluginsDir: join(home, "plugins"),
-    };
-  }
 
   it("creates agents.toml and skills/ when user scope is uninitialized", async () => {
     const scope = userScope(tmpDir);

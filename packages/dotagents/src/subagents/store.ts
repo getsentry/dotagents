@@ -27,6 +27,7 @@ import type {
   SubagentDeclaration,
   SubagentIdentityStrategy,
 } from "./types.js";
+import { hasErrorCode, isNonEmptyString, isString } from "../utils/type-guards.js";
 
 const DOTAGENTS_NATIVE_FIELD = "dotagents_native";
 const NATIVE_SUBAGENT_TARGETS = ["claude", "cursor", "codex", "opencode"] satisfies NativeSubagentTarget[];
@@ -237,13 +238,18 @@ export async function pruneInstalledSubagents(
 }
 
 export function lockEntryForSubagent(resolved: ResolvedSubagent): LockedSubagent {
-  return {
+  if (resolved.type === "local") {return { source: resolved.source };}
+  if (!resolved.resolvedUrl || !resolved.resolvedPath || !resolved.commit) {
+    throw new Error(`Incomplete git resolution for subagent "${resolved.subagent.name}".`);
+  }
+  const entry: LockedSubagent = {
     source: resolved.source,
-    ...(resolved.resolvedUrl ? { resolved_url: resolved.resolvedUrl } : {}),
-    ...(resolved.resolvedPath ? { resolved_path: resolved.resolvedPath } : {}),
-    ...(resolved.resolvedRef ? { resolved_ref: resolved.resolvedRef } : {}),
-    ...(resolved.commit ? { resolved_commit: resolved.commit } : {}),
+    resolved_url: resolved.resolvedUrl,
+    resolved_path: resolved.resolvedPath,
+    resolved_commit: resolved.commit,
   };
+  if (resolved.resolvedRef) {entry.resolved_ref = resolved.resolvedRef;}
+  return entry;
 }
 
 async function loadSubagentFromSource(
@@ -309,11 +315,11 @@ async function discoverSubagent(
         assertSubagentNameMatches(subagent.name, config.name, relPath);
       }
       if (subagent.name !== config.name) {continue;}
-      const match = {
+      const match: DiscoveredSubagent = {
         path: relPath,
         subagent,
-        ...(scanDir.nativeTarget ? { nativeTarget: scanDir.nativeTarget } : {}),
       };
+      if (scanDir.nativeTarget) {match.nativeTarget = scanDir.nativeTarget;}
       if (nameFromFile === config.name) {
         fileNameMatches.push(match);
       } else {
@@ -358,7 +364,7 @@ async function loadSubagentFile(
       `Invalid subagent name "${name}" in ${filePath}; expected lowercase letters, numbers, and hyphens`,
     );
   }
-  if (typeof meta["description"] !== "string" || !meta["description"]) {
+  if (!isNonEmptyString(meta["description"])) {
     throw new Error(`Missing 'description' in subagent frontmatter: ${filePath}`);
   }
   if (!body) {
@@ -370,12 +376,13 @@ async function loadSubagentFile(
     native[opts.nativeTarget] = raw;
   }
 
-  return {
+  const subagent: SubagentDeclaration = {
     name,
     description: meta["description"],
     instructions: body,
-    ...(Object.keys(native).length > 0 ? { native } : {}),
   };
+  if (Object.keys(native).length > 0) {subagent.native = native;}
+  return subagent;
 }
 
 async function loadCodexSubagentFile(
@@ -401,7 +408,7 @@ async function loadCodexSubagentFile(
   }
 
   const name = parsed["name"];
-  if (typeof name !== "string" || !name) {
+  if (!isNonEmptyString(name)) {
     throw new Error(`Missing 'name' in Codex subagent TOML: ${filePath}`);
   }
 
@@ -415,12 +422,12 @@ async function loadCodexSubagentFile(
   }
 
   const description = parsed["description"];
-  if (typeof description !== "string" || !description) {
+  if (!isNonEmptyString(description)) {
     throw new Error(`Missing 'description' in Codex subagent TOML: ${filePath}`);
   }
 
   const instructions = parsed["developer_instructions"];
-  if (typeof instructions !== "string" || !instructions.trim()) {
+  if (!isNonEmptyString(instructions) || !instructions.trim()) {
     throw new Error(`Missing 'developer_instructions' in Codex subagent TOML: ${filePath}`);
   }
 
@@ -450,17 +457,15 @@ function mergeDiscoveredSubagents(
 
   for (const match of matches) {
     for (const [target, content] of Object.entries(match.subagent.native ?? {})) {
-      const nativeTarget = target as NativeSubagentTarget;
-      native[nativeTarget] ??= content;
+      if (isNativeSubagentTarget(target)) {native[target] ??= content;}
     }
   }
 
+  const subagent: SubagentDeclaration = { ...base.subagent };
+  if (Object.keys(native).length > 0) {subagent.native = native;}
   return {
     path: base.path,
-    subagent: {
-      ...base.subagent,
-      ...(Object.keys(native).length > 0 ? { native } : {}),
-    },
+    subagent,
   };
 }
 
@@ -540,12 +545,13 @@ function assertSingleDiscoveryMatch(
 }
 
 function serializeInstalledSubagent(subagent: SubagentDeclaration): string {
+  const fields: SerializedObject = {
+    name: subagent.name,
+    description: subagent.description,
+  };
+  if (subagent.native) {fields[DOTAGENTS_NATIVE_FIELD] = subagent.native;}
   return serializeMarkdownSubagent(
-    {
-      name: subagent.name,
-      description: subagent.description,
-      ...(subagent.native ? { [DOTAGENTS_NATIVE_FIELD]: subagent.native } : {}),
-    },
+    fields,
     subagent.instructions,
   );
 }
@@ -620,15 +626,19 @@ function readNativeOverlays(meta: SerializedObject): NativeSubagentContent {
   const native: NativeSubagentContent = {};
   for (const target of NATIVE_SUBAGENT_TARGETS) {
     const config = raw[target];
-    if (typeof config === "string") {
+    if (isString(config)) {
       native[target] = config;
-    } else if (isSerializedObject(config) && typeof config["content"] === "string") {
+    } else if (isSerializedObject(config) && isString(config["content"])) {
       native[target] = config["content"];
     }
   }
   return native;
 }
 
-function isNotFoundError(err: unknown): boolean {
-  return err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT";
+function isNotFoundError<ErrorValue>(err: ErrorValue): boolean {
+  return hasErrorCode(err, "ENOENT");
+}
+
+function isNativeSubagentTarget(target: string): target is NativeSubagentTarget {
+  return target === "claude" || target === "cursor" || target === "codex" || target === "opencode";
 }

@@ -102,13 +102,14 @@ async function expandSkills(
 
 function lockEntryForSkill(dep: SkillDependency, resolved: ResolvedSkill): LockedSkill {
   if (resolved.type === "git") {
-    return {
+    const entry: LockedSkill = {
       source: dep.source,
       resolved_url: resolved.resolvedUrl,
       resolved_path: resolved.resolvedPath,
-      ...(resolved.resolvedRef ? { resolved_ref: resolved.resolvedRef } : {}),
       resolved_commit: resolved.commit,
     };
+    if (resolved.resolvedRef) {entry.resolved_ref = resolved.resolvedRef;}
+    return entry;
   }
   if (resolved.type === "well-known") {
     return {
@@ -116,10 +117,11 @@ function lockEntryForSkill(dep: SkillDependency, resolved: ResolvedSkill): Locke
       resolved_url: resolved.resolvedUrl,
     };
   }
-  return {
+  const entry: LockedSkill = {
     source: dep.source,
-    ...(resolved.resolvedPath ? { resolved_path: resolved.resolvedPath } : {}),
   };
+  if (resolved.resolvedPath) {entry.resolved_path = resolved.resolvedPath;}
+  return entry;
 }
 
 /** Resolves, copies, and prunes canonical skill directories for install. */

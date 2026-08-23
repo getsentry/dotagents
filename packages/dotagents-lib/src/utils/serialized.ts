@@ -13,7 +13,7 @@ export interface SerializedObject {
 
 const MAX_SERIALIZED_DEPTH = 1_000;
 
-export function isSerializedObject(value: unknown): value is SerializedObject {
+export function isSerializedObject<Value>(value: Value): value is Value & SerializedObject {
   try {
     return isPlainObject(value) && validateSerializedValue(value);
   } catch {
@@ -21,7 +21,7 @@ export function isSerializedObject(value: unknown): value is SerializedObject {
   }
 }
 
-export function isSerializedValue(value: unknown): value is SerializedValue {
+export function isSerializedValue<Value>(value: Value): value is Value & SerializedValue {
   try {
     return validateSerializedValue(value);
   } catch {
@@ -35,14 +35,16 @@ interface VisitFrame {
   depth: number;
 }
 
-function validateSerializedValue(root: unknown): boolean {
+function validateSerializedValue<Value>(root: Value): root is Value & SerializedValue {
   const ancestors = new Set<object>();
   const stack: VisitFrame[] = [{ value: root, exiting: false, depth: 0 }];
 
   while (stack.length > 0) {
-    const frame = stack.pop()!;
+    const frame = stack.pop();
+    if (frame === undefined) {break;}
     const value = frame.value;
     if (frame.exiting) {
+      // SAFETY: exiting frames are only pushed for arrays and plain objects.
       ancestors.delete(value as object);
       continue;
     }
@@ -89,7 +91,7 @@ function validateSerializedValue(root: unknown): boolean {
   return true;
 }
 
-function isPlainObject(value: unknown): value is object {
+function isPlainObject<Value>(value: Value): value is Value & object {
   if (typeof value !== "object" || value === null || Array.isArray(value) || value instanceof Date) {
     return false;
   }

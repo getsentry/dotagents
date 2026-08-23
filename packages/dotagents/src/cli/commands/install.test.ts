@@ -5,7 +5,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import install, { runInstall as runInstallCommand, InstallError, type InstallOptions, type InstallResult } from "./install.js";
 import { runSync } from "./sync.js";
-import { exec, type SerializedObject } from "@sentry/dotagents-lib";
+import { exec, isSerializedObject, type SerializedObject, type SerializedValue } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import type { Lockfile } from "../../lockfile/schema.js";
@@ -43,9 +43,28 @@ targets = [${targets.map((target) => `"${target}"`).join(", ")}]
 `;
 
 type HarnessEntry =
-  | { json: unknown }
+  | { json: SerializedValue }
   | { text: string }
   | { symlink: string };
+
+interface HarnessFiles extends Record<string, HarnessEntry> {}
+
+function parseJsonObject(content: string): SerializedObject {
+  const parsed = JSON.parse(content);
+  if (!isSerializedObject(parsed)) {throw new Error("expected a serialized JSON object");}
+  return parsed;
+}
+
+function objectValue(value: SerializedValue | undefined): SerializedObject {
+  if (!isSerializedObject(value)) {throw new Error("expected a serialized object value");}
+  return value;
+}
+
+function arrayField(document: SerializedObject, key: string): SerializedValue[] {
+  const value = document[key];
+  if (!Array.isArray(value)) {throw new Error(`expected array field ${key}`);}
+  return value;
+}
 
 function componentMarkerContent(linkPath: string, targetPath: string): string {
   return `managedBy=dotagents\ntarget=${JSON.stringify(relative(dirname(linkPath), targetPath))}\n`;
@@ -216,7 +235,9 @@ source = "path:plugin-source/review-tools"
       source: "path:plugin-source/review-tools",
     });
 
-    const codexMarketplace = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "marketplace.json"), "utf-8")) as SerializedObject;
+    const codexMarketplace = parseJsonObject(
+      await readFile(join(projectRoot, ".agents", "plugins", "marketplace.json"), "utf-8"),
+    );
     expect(codexMarketplace).toEqual({
       interface: {
         displayName: "Dotagents Plugins",
@@ -242,8 +263,8 @@ source = "path:plugin-source/review-tools"
         },
       ],
     });
-    const codexPlugin = (codexMarketplace["plugins"] as Array<{ source: { path: string } }>)[0]!;
-    expect(resolve(projectRoot, codexPlugin["source"].path)).toBe(
+    const codexPlugin = objectValue(arrayField(codexMarketplace, "plugins")[0]);
+    expect(resolve(projectRoot, String(objectValue(codexPlugin["source"])["path"]))).toBe(
       join(projectRoot, ".agents", "plugins", "review-tools"),
     );
 
@@ -264,13 +285,17 @@ source = "path:plugin-source/review-tools"
   ]
 }
 `);
-    const claudeMarketplace = JSON.parse(claudeMarketplaceJson) as { plugins: Array<{ source: string }> };
-    expect(resolve(projectRoot, claudeMarketplace["plugins"][0]!["source"])).toBe(
+    const claudeMarketplace = parseJsonObject(claudeMarketplaceJson);
+    const claudePlugin = objectValue(arrayField(claudeMarketplace, "plugins")[0]);
+    expect(resolve(projectRoot, String(claudePlugin["source"]))).toBe(
       join(projectRoot, ".agents", "plugins", "review-tools"),
     );
     expect(await readFile(join(projectRoot, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(claudeMarketplaceJson);
 
-    const claudeManifest = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".claude-plugin", "plugin.json"), "utf-8")) as SerializedObject;
+    const claudeManifest = parseJsonObject(await readFile(
+      join(projectRoot, ".agents", "plugins", "review-tools", ".claude-plugin", "plugin.json"),
+      "utf-8",
+    ));
     expect(claudeManifest["name"]).toBe("review-tools");
     expect(claudeManifest["skills"]).toBe("./skills");
     expect(claudeManifest["commands"]).toBe("./commands");
@@ -278,7 +303,10 @@ source = "path:plugin-source/review-tools"
     expect(claudeManifest["category"]).toBeUndefined();
     expect(claudeManifest["metadata"]).toBeUndefined();
 
-    const codexManifest = JSON.parse(await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"), "utf-8")) as SerializedObject;
+    const codexManifest = parseJsonObject(await readFile(
+      join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"),
+      "utf-8",
+    ));
     expect(codexManifest["name"]).toBe("review-tools");
     expect(codexManifest["skills"]).toBe("./skills");
     expect(codexManifest["commands"]).toBe("./commands");
@@ -370,7 +398,7 @@ source = "path:plugin-source/portable-tools"
         skills: "./skills",
         version: "1.0.0",
       };
-      const canonicalFiles: Record<string, HarnessEntry> = {
+      const canonicalFiles: HarnessFiles = {
         ".agents/plugins/portable-tools/.dotagents-managed": { text: "managedBy=dotagents\n" },
         ".agents/plugins/portable-tools/com.example.client/agents/should-not-project.md": { text: extensionAgent },
         ".agents/plugins/portable-tools/com.example.client/commands/should-not-project.md": { text: extensionCommand },
@@ -380,7 +408,7 @@ source = "path:plugin-source/portable-tools"
         ".agents/plugins/portable-tools/server.mjs": { text: serverSource },
         ".agents/plugins/portable-tools/skills": { symlink: join(installedDir, "linked-skills") },
       };
-      const addNativeManifest = (dir: string, manifest: unknown): void => {
+      const addNativeManifest = (dir: string, manifest: SerializedValue): void => {
         canonicalFiles[`.agents/plugins/portable-tools/${dir}/plugin.json`] = { json: manifest };
         canonicalFiles[`.agents/plugins/portable-tools/${dir}/plugin.json.dotagents-managed`] = { text: "managedBy=dotagents\n" };
       };
@@ -447,7 +475,7 @@ source = "path:plugin-source/portable-tools"
         });
       }
 
-      const targetOutputPaths: Record<typeof target, string[]> = {
+      const targetOutputPaths = {
         claude: [".claude-plugin"],
         cursor: [".cursor-plugin"],
         codex: [".agents/plugins/marketplace.json"],
@@ -458,7 +486,7 @@ source = "path:plugin-source/portable-tools"
           ".opencode/agents",
         ],
         pi: [".agents/skills/portable-qa", ".agents/skills/.dotagents-managed/portable-qa"],
-      };
+      } satisfies Record<typeof target, string[]>;
       await runSync({ scope });
       for (const [otherTarget, paths] of Object.entries(targetOutputPaths)) {
         if (otherTarget === target) {continue;}
@@ -846,7 +874,7 @@ source = "path:plugin-source/review-tools"
 
   it.each(["directory", "wrong-content file"] as const)(
     "does not overwrite an existing plugin destination with an unmanaged marker %s",
-    async (markerShape) => {
+    async (ownershipMarkerKind) => {
     const sourceDir = join(projectRoot, "plugin-source", "review-tools");
     await mkdir(join(sourceDir, "skills", "review"), { recursive: true });
     await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
@@ -854,7 +882,7 @@ source = "path:plugin-source/review-tools"
 
     const existingDir = join(projectRoot, ".agents", "plugins", "review-tools");
     await mkdir(existingDir, { recursive: true });
-    if (markerShape === "directory") {
+    if (ownershipMarkerKind === "directory") {
       await mkdir(join(existingDir, DOTAGENTS_MANAGED_PLUGIN_MARKER));
     } else {
       await writeFile(join(existingDir, DOTAGENTS_MANAGED_PLUGIN_MARKER), "owned-by=user\n");
@@ -883,7 +911,7 @@ source = "path:plugin-source/review-tools"
     const scope = resolveScope("project", projectRoot);
     await expect(runInstall({ scope })).rejects.toThrow(/install destination already exists and is not managed/);
 
-    const existingManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as SerializedObject;
+    const existingManifest = parseJsonObject(await readFile(join(existingDir, "plugin.json"), "utf-8"));
     expect(existingManifest["description"]).toBe("Hand written");
     },
   );
@@ -1001,7 +1029,7 @@ source = "path:plugin-source/review-tools"
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const installedManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as SerializedObject;
+    const installedManifest = parseJsonObject(await readFile(join(existingDir, "plugin.json"), "utf-8"));
     expect(installedManifest["description"]).toBe("Updated plugin");
     expect(existsSync(join(existingDir, "skills", "review", "SKILL.md"))).toBe(true);
     expect(existsSync(join(existingDir, "skills", "old-review", "SKILL.md"))).toBe(false);
@@ -1035,7 +1063,7 @@ source = "path:plugin-source/review-tools"
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const installedManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as SerializedObject;
+    const installedManifest = parseJsonObject(await readFile(join(existingDir, "plugin.json"), "utf-8"));
     expect(installedManifest["description"]).toBe("Recovered plugin");
     expect(existsSync(join(existingDir, "skills", "review", "SKILL.md"))).toBe(true);
     expect(existsSync(join(existingDir, "skills", "partial", "SKILL.md"))).toBe(false);
@@ -1076,7 +1104,7 @@ source = "path:plugin-source/review-tools"
     const scope = resolveScope("project", projectRoot);
     await expect(runInstall({ scope })).rejects.toThrow(/install destination already exists and is not managed/);
 
-    const installedManifest = JSON.parse(await readFile(join(existingDir, "plugin.json"), "utf-8")) as SerializedObject;
+    const installedManifest = parseJsonObject(await readFile(join(existingDir, "plugin.json"), "utf-8"));
     expect(installedManifest["description"]).toBe("In-place plugin");
     const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
     expect(lockfile!.plugins["review-tools"]).toEqual({
@@ -1490,9 +1518,9 @@ source = "path:plugin-source"
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const installed = JSON.parse(
+    const installed = parseJsonObject(
       await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
-    ) as SerializedObject;
+    );
     expect(installed["description"]).toBe("Canonical plugin");
   });
 
@@ -1539,12 +1567,12 @@ source = "path:plugin-source"
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const installedManifest = JSON.parse(
+    const installedManifest = parseJsonObject(
       await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
-    ) as SerializedObject;
-    const codexManifest = JSON.parse(
+    );
+    const codexManifest = parseJsonObject(
       await readFile(join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"), "utf-8"),
-    ) as SerializedObject;
+    );
 
     expect(installedManifest).toEqual(sourceManifest);
     expect(codexManifest["description"]).toBe("Source description");
@@ -1593,9 +1621,9 @@ source = "path:plugin-source"
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const installedManifest = JSON.parse(
+    const installedManifest = parseJsonObject(
       await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
-    ) as SerializedObject;
+    );
     expect(installedManifest["description"]).toBe("Canonical marketplace plugin");
   });
 
@@ -1650,9 +1678,9 @@ source = "path:plugin-source"
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const installedManifest = JSON.parse(
+    const installedManifest = parseJsonObject(
       await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
-    ) as SerializedObject;
+    );
     expect(installedManifest["description"]).toBe(
       "Fallback local plugin",
     );
@@ -1696,9 +1724,9 @@ source = "path:plugin-source"
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    const installedManifest = JSON.parse(
+    const installedManifest = parseJsonObject(
       await readFile(join(projectRoot, ".agents", "plugins", "review-tools", "plugin.json"), "utf-8"),
-    ) as SerializedObject;
+    );
     expect(installedManifest["description"]).toBe("Fallback local plugin");
   });
 
@@ -2027,7 +2055,8 @@ path = "code-reviewer.md"
     }
 
     expect(error).toBeInstanceOf(InstallError);
-    expect((error as Error).message).toContain(
+    if (!(error instanceof Error)) {throw new Error("expected install to reject");}
+    expect(error.message).toContain(
       "Subagent file exists and is not managed by dotagents",
     );
     expect(await readFile(installedPath, "utf-8")).toBe("hand-written subagent\n");
@@ -2816,7 +2845,8 @@ path = "reviewer.md"
     expect(lockfile).not.toBeNull();
     expect(lockfile!.skills["pdf"]!).toBeDefined();
     // Should have resolved to the old commit, not HEAD
-    const locked = lockfile!.skills["pdf"]! as { resolved_commit?: string };
+    const locked = lockfile!.skills["pdf"]!;
+    if (!("resolved_commit" in locked)) {throw new Error("expected a git lock entry");}
     expect(locked.resolved_commit).toBe(oldSha.trim());
   });
 

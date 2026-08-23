@@ -122,22 +122,14 @@ export async function runPluginList(opts: PluginListOptions): Promise<PluginStat
       continue;
     }
 
-    if (!locked) {
-      results.push({
-        name: plugin.name,
-        source: plugin.source,
-        status: "unlocked",
-        ...(warnings.get(plugin.name)?.length ? { warnings: warnings.get(plugin.name) } : {}),
-      });
-      continue;
-    }
-
-    results.push({
+    const result: PluginStatus = {
       name: plugin.name,
       source: plugin.source,
-      status: "ok",
-      ...(warnings.get(plugin.name)?.length ? { warnings: warnings.get(plugin.name) } : {}),
-    });
+      status: locked ? "ok" : "unlocked",
+    };
+    const pluginWarnings = warnings.get(plugin.name);
+    if (pluginWarnings?.length) {result.warnings = pluginWarnings;}
+    results.push(result);
   }
 
   return results;

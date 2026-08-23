@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { lstat, mkdtemp, mkdir, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   discoverPlugins,
   installPluginBundle,
@@ -15,24 +15,15 @@ import {
 } from "./store.js";
 import { AGENT_PLUGIN_SCHEMA } from "./schema.js";
 
-vi.mock("node:fs/promises", async () => {
-  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-  return {
-    ...actual,
-    realpath: vi.fn(actual.realpath),
-    rename: vi.fn(actual.rename),
-    rm: vi.fn(actual.rm),
-  };
-});
+async function removeWithBackupFailure(
+  path: Parameters<typeof rm>[0],
+  options: Parameters<typeof rm>[1],
+): Promise<void> {
+  if (String(path).includes(".backup-")) {throw new Error("backup cleanup failed");}
+  await rm(path, options);
+}
 
 describe("plugin store", () => {
-  afterEach(async () => {
-    const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-    vi.mocked(realpath).mockImplementation(actual.realpath);
-    vi.mocked(rename).mockImplementation(actual.rename);
-    vi.mocked(rm).mockImplementation(actual.rm);
-  });
-
   it("preserves an empty resolved path for root git plugins", () => {
     const resolved = {
       type: "git",
@@ -176,8 +167,7 @@ describe("plugin store", () => {
         "utf-8",
       );
 
-      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-      vi.mocked(rename).mockImplementation(async (oldPath, newPath) => {
+      const renameWithFailures: typeof rename = async (oldPath, newPath) => {
         const oldString = String(oldPath);
         const newString = String(newPath);
         if (oldString.includes(".tmp-") && newString === destDir) {
@@ -186,8 +176,8 @@ describe("plugin store", () => {
         if (oldString.includes(".backup-") && newString === destDir) {
           throw new Error("rollback failed");
         }
-        await actual.rename(oldPath, newPath);
-      });
+        await rename(oldPath, newPath);
+      };
 
       await expect(installPluginBundle(pluginsDir, {
         type: "local",
@@ -197,7 +187,7 @@ describe("plugin store", () => {
           pluginDir: sourceDir,
           manifest: { name: "review-tools", description: "New plugin" },
         },
-      })).rejects.toThrow("destination rename failed");
+      }, { rename: renameWithFailures })).rejects.toThrow("destination rename failed");
 
       expect(existsSync(destDir)).toBe(false);
       const backupName = (await readdir(pluginsDir)).find((name) => name.startsWith(".review-tools.backup-"));
@@ -228,12 +218,6 @@ describe("plugin store", () => {
         "utf-8",
       );
 
-      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-      vi.mocked(rm).mockImplementation(async (path, options) => {
-        if (String(path).includes(".backup-")) {throw new Error("backup cleanup failed");}
-        await actual.rm(path, options);
-      });
-
       await expect(installPluginBundle(pluginsDir, {
         type: "local",
         plugin: {
@@ -242,7 +226,7 @@ describe("plugin store", () => {
           pluginDir: sourceDir,
           manifest: { name: "review-tools", description: "New plugin" },
         },
-      })).resolves.toMatchObject({ pluginDir: destDir });
+      }, { rm: removeWithBackupFailure })).resolves.toMatchObject({ pluginDir: destDir });
 
       const installedManifest = JSON.parse(await readFile(join(destDir, "plugin.json"), "utf-8"));
       expect(installedManifest.description).toBe("New plugin");
@@ -347,11 +331,11 @@ describe("plugin store", () => {
   });
 
   it.each([
-    { shape: "standard-only", root: true, native: false, legacy: false },
-    { shape: "native-only", root: false, native: true, legacy: false },
-    { shape: "standard-plus-native", root: true, native: true, legacy: false },
-    { shape: "standard-plus-inert-legacy", root: true, native: false, legacy: true },
-  ])("discovers $shape bundles as one candidate", async ({ root, native, legacy }) => {
+    { layout: "standard-only", root: true, native: false, legacy: false },
+    { layout: "native-only", root: false, native: true, legacy: false },
+    { layout: "standard-plus-native", root: true, native: true, legacy: false },
+    { layout: "standard-plus-inert-legacy", root: true, native: false, legacy: true },
+  ])("discovers $layout bundles as one candidate", async ({ root, native, legacy }) => {
     const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-hybrid-"));
     try {
       if (root) {
@@ -500,29 +484,34 @@ describe("plugin store", () => {
         "utf-8",
       );
 
-      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+      // SAFETY: the fixture adds the Node error code required by the boundary check.
       const missingRoot = new Error("missing source root") as NodeJS.ErrnoException;
       missingRoot.code = "ENOENT";
-      vi.mocked(realpath).mockImplementation(async (path, options) => {
+      const realpathWithMissingRoot = async (path: string): Promise<string> => {
         if (String(path) === sourceRoot) {
           throw missingRoot;
         }
-        return actual.realpath(path, options);
-      });
+        return realpath(path);
+      };
 
       let error: unknown;
       try {
         await resolvePlugin(
           { name: "review-tools", source: "path:source", path: "plugins/review-tools" },
-          { stateDir: join(projectRoot, "state"), projectRoot },
+          {
+            stateDir: join(projectRoot, "state"),
+            projectRoot,
+            services: { realpath: realpathWithMissingRoot },
+          },
         );
       } catch (err) {
         error = err;
       }
 
       expect(error).toBeInstanceOf(Error);
-      expect((error as Error).message).toBe("Plugin path source root does not exist: plugins/review-tools");
-      expect((error as Error).cause).toBe(missingRoot);
+      if (!(error instanceof Error)) {throw new Error("expected resolvePlugin to reject");}
+      expect(error.message).toBe("Plugin path source root does not exist: plugins/review-tools");
+      expect(error.cause).toBe(missingRoot);
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }
@@ -536,27 +525,32 @@ describe("plugin store", () => {
       await mkdir(pluginDir, { recursive: true });
       await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }), "utf-8");
 
-      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+      // SAFETY: the fixture adds the Node error code required by the boundary check.
       const missingPath = new Error("missing plugin path") as NodeJS.ErrnoException;
       missingPath.code = "ENOENT";
-      vi.mocked(realpath).mockImplementation(async (path, options) => {
+      const realpathWithMissingPath = async (path: string): Promise<string> => {
         if (String(path) === pluginDir) {throw missingPath;}
-        return actual.realpath(path, options);
-      });
+        return realpath(path);
+      };
 
       let error: unknown;
       try {
         await resolvePlugin(
           { name: "review-tools", source: "path:source", path: "plugins/review-tools" },
-          { stateDir: join(projectRoot, "state"), projectRoot },
+          {
+            stateDir: join(projectRoot, "state"),
+            projectRoot,
+            services: { realpath: realpathWithMissingPath },
+          },
         );
       } catch (err) {
         error = err;
       }
 
       expect(error).toBeInstanceOf(Error);
-      expect((error as Error).message).toBe("Plugin path source path does not exist: plugins/review-tools");
-      expect((error as Error).cause).toBe(missingPath);
+      if (!(error instanceof Error)) {throw new Error("expected resolvePlugin to reject");}
+      expect(error.message).toBe("Plugin path source path does not exist: plugins/review-tools");
+      expect(error.cause).toBe(missingPath);
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }

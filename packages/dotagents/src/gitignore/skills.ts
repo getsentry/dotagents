@@ -51,6 +51,6 @@ function isInside(path: string, root: string): boolean {
   return relPath === "" || (!relPath.startsWith("..") && !isAbsolute(relPath));
 }
 
-function isNotFoundError(err: unknown): boolean {
+function isNotFoundError<ErrorValue>(err: ErrorValue): boolean {
   return err instanceof Error && "code" in err && err.code === "ENOENT";
 }

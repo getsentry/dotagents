@@ -1,16 +1,17 @@
 import type { NativePluginSource, PluginDeclaration } from "./types.js";
 import type { PluginWriteWarning } from "./runtime/types.js";
 import { isStandardPluginManifest } from "./schema.js";
-import { isSerializedObject } from "@sentry/dotagents-lib";
+import { isSerializedObject, type SerializedValue } from "@sentry/dotagents-lib";
+import { isString } from "../utils/type-guards.js";
 
 const PLUGIN_ONLY_AGENT_IDS = ["grok", "pi"];
 const PLUGIN_AGENT_IDS = ["claude", "cursor", "codex", "grok", "opencode", "pi"];
 const SUPPORTED_PLUGIN_AGENT_IDS = new Set(allPluginAgentIds());
-const GENERATED_NATIVE_FIELDS: Record<NativePluginSource, ReadonlySet<string>> = {
+const GENERATED_NATIVE_FIELDS = {
   claude: new Set(["$schema", "name", "version", "description", "author", "homepage", "repository", "license", "keywords", "skills"]),
   cursor: new Set(["$schema", "name", "version", "description", "author", "homepage", "repository", "license", "keywords", "skills"]),
   codex: new Set(["$schema", "name", "version", "description", "author", "homepage", "repository", "license", "keywords", "skills"]),
-};
+} satisfies Record<NativePluginSource, ReadonlySet<string>>;
 
 /** Returns agent IDs accepted in agents.toml only for plugin runtime output. */
 export function allPluginOnlyAgentIds(): string[] {
@@ -42,7 +43,7 @@ export function selectedAgentIds(
 /** Returns whether a native manifest contains behavior the target adapter cannot generate from the portable core. */
 export function nativeInterfaceNeedsFallback(
   source: NativePluginSource,
-  value: unknown,
+  value: SerializedValue,
 ): boolean {
   if (!isSerializedObject(value)) {return false;}
   for (const [key, field] of Object.entries(value)) {
@@ -52,9 +53,9 @@ export function nativeInterfaceNeedsFallback(
   return false;
 }
 
-function isConventionalSkillsReference(value: unknown): boolean {
+function isConventionalSkillsReference(value: SerializedValue | undefined): boolean {
   const values = Array.isArray(value) ? value : [value];
-  return values.length === 1 && typeof values[0] === "string" &&
+  return values.length === 1 && isString(values[0]) &&
     values[0].replace(/^\.\//, "").replace(/\/$/, "") === "skills";
 }
 

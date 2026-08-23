@@ -1,9 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ResolveError, resolveSkill, resolveWildcardSkills } from "./resolver.js";
 
-vi.mock("../sources/wellknown.js", () => ({
-  ensureWellKnownCached: vi.fn().mockResolvedValue(null),
-}));
+const ensureWellKnownCached = vi.fn(async () => null);
 
 const STATE_DIR = "/tmp/dotagents-well-known-test-cache";
 const SOURCE = "https://skills.example.com";
@@ -11,7 +9,10 @@ const SOURCE = "https://skills.example.com";
 describe("missing well-known index", () => {
   it("rejects single-skill resolution", async () => {
     await expect(
-      resolveSkill("review", { source: SOURCE }, { stateDir: STATE_DIR }),
+      resolveSkill("review", { source: SOURCE }, {
+        stateDir: STATE_DIR,
+        services: { ensureWellKnownCached },
+      }),
     ).rejects.toThrow(ResolveError);
   });
 
@@ -19,7 +20,7 @@ describe("missing well-known index", () => {
     await expect(
       resolveWildcardSkills(
         { source: SOURCE, exclude: [] },
-        { stateDir: STATE_DIR },
+        { stateDir: STATE_DIR, services: { ensureWellKnownCached } },
       ),
     ).resolves.toEqual([]);
   });

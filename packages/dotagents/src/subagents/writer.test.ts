@@ -13,7 +13,6 @@ import {
 } from "./writer.js";
 import { DOTAGENTS_SUBAGENT_MARKER } from "./format.js";
 import type { SubagentDeclaration } from "./types.js";
-import type { SerializedObject } from "@sentry/dotagents-lib";
 
 const SUBAGENT: SubagentDeclaration = {
   name: "code-reviewer",
@@ -26,6 +25,10 @@ const OTHER_SUBAGENT: SubagentDeclaration = {
   description: "Write focused tests.",
   instructions: "Add regression coverage for the current change.",
 };
+
+function managedSubagent(name: string): string {
+  return `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "${name}"\n---\n`;
+}
 
 describe("writeSubagentConfigs", () => {
   let dir: string;
@@ -66,7 +69,7 @@ describe("writeSubagentConfigs", () => {
     const raw = await readFile(join(dir, ".codex", "agents", "code-reviewer.toml"), "utf-8");
     expect(raw).toContain(DOTAGENTS_SUBAGENT_MARKER);
 
-    const content = parseTOML(raw) as SerializedObject;
+    const content = parseTOML(raw);
     expect(content["name"]).toBe("code-reviewer");
     expect(content["description"]).toBe("Review code for correctness and missing tests.");
     expect(content["developer_instructions"]).toBe("Review the current diff and return findings.");
@@ -93,7 +96,7 @@ describe("writeSubagentConfigs", () => {
     );
 
     const codexRaw = await readFile(join(dir, ".codex", "agents", "code-reviewer.toml"), "utf-8");
-    const codex = parseTOML(codexRaw) as SerializedObject;
+    const codex = parseTOML(codexRaw);
     expect(codex["developer_instructions"]).toBe("Native Codex instructions.");
     expect(codex["sandbox_mode"]).toBe("read-only");
     expect(codexRaw).toContain("# upstream comment");
@@ -612,10 +615,8 @@ describe("reconcileSubagentConfigs", () => {
     await mkdir(targetDir, { recursive: true });
     const declaredPath = join(targetDir, "failed-reviewer.md");
     const stalePath = join(targetDir, "old-reviewer.md");
-    const managed = (name: string) =>
-      `---\n# ${DOTAGENTS_SUBAGENT_MARKER}\nname: "${name}"\n---\n`;
-    await writeFile(declaredPath, managed("failed-reviewer"), "utf-8");
-    await writeFile(stalePath, managed("old-reviewer"), "utf-8");
+    await writeFile(declaredPath, managedSubagent("failed-reviewer"), "utf-8");
+    await writeFile(stalePath, managedSubagent("old-reviewer"), "utf-8");
 
     const result = await reconcileSubagentConfigs(
       ["claude"],

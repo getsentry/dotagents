@@ -4,21 +4,38 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import * as clack from "@clack/prompts";
-import add, { runAdd, AddCancelledError, AddError } from "./add.js";
+import addCommand, {
+  runAdd as runAddCommand,
+  AddCancelledError,
+  AddError,
+  type AddOptions,
+  type AddPrompts,
+} from "./add.js";
 import * as installModule from "./install.js";
 import { TrustError, exec } from "@sentry/dotagents-lib";
 import { resolveScope } from "../../scope.js";
+import type { CommandContext } from "../context.js";
+import { z } from "zod/v4";
 
-vi.mock("@clack/prompts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@clack/prompts")>();
-  return {
-    ...actual,
-    select: vi.fn(),
-    multiselect: vi.fn(),
-    isCancel: vi.fn(actual.isCancel),
-    spinner: vi.fn(),
-  };
-});
+const prompts = {
+  select: vi.fn<AddPrompts["select"]>(),
+  multiselect: vi.fn<AddPrompts["multiselect"]>(),
+  isCancel: vi.fn<AddPrompts["isCancel"]>(clack.isCancel),
+  spinner: vi.fn<AddPrompts["spinner"]>(),
+} satisfies AddPrompts;
+
+const gitTraceEventSchema = z.object({
+  event: z.string(),
+  argv: z.array(z.string()).optional(),
+}).passthrough();
+
+function runAdd(opts: AddOptions): ReturnType<typeof runAddCommand> {
+  return runAddCommand({ ...opts, prompts });
+}
+
+function add(args: string[], context: CommandContext): Promise<void> {
+  return addCommand(args, context, prompts);
+}
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -52,7 +69,7 @@ function countGitFetches(tracePath: string): number {
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as { event: string; argv?: string[] })
+    .map((line) => gitTraceEventSchema.parse(JSON.parse(line)))
     .filter((event) => event.event === "start" && event.argv?.[1] === "fetch")
     .length;
 }
@@ -146,7 +163,7 @@ describe("runAdd", () => {
     const installEvents = (await readFile(installTracePath, "utf-8"))
       .trim()
       .split("\n")
-      .map((line) => JSON.parse(line) as { event: string; argv?: string[] });
+      .map((line) => gitTraceEventSchema.parse(JSON.parse(line)));
     const installFetches = installEvents.filter(
       (event) => event.event === "start" && event.argv?.[1] === "fetch",
     );
@@ -342,7 +359,8 @@ describe("runAdd", () => {
     }).catch((cause: unknown) => cause);
 
     expect(error).toBeInstanceOf(AddError);
-    expect((error as Error).message).toBe(
+    if (!(error instanceof Error)) {throw new Error("expected add to reject");}
+    expect(error.message).toBe(
       "Skills already exist in agents.toml with a different source or ref: review.",
     );
   });
@@ -525,8 +543,8 @@ describe("runAdd", () => {
   });
 
   it("cancels interactive catalog selection before writing", async () => {
-    vi.mocked(clack.select).mockResolvedValue("pick");
-    vi.mocked(clack.isCancel).mockReturnValue(true);
+    prompts.select.mockResolvedValue("pick");
+    prompts.isCancel.mockReturnValue(true);
 
     await expect(
       runAdd({
@@ -542,8 +560,8 @@ describe("runAdd", () => {
   });
 
   it("persists an interactive all selection and installs once", async () => {
-    vi.mocked(clack.select).mockResolvedValue("all");
-    vi.mocked(clack.isCancel).mockReturnValue(false);
+    prompts.select.mockResolvedValue("all");
+    prompts.isCancel.mockReturnValue(false);
     const install = vi.spyOn(installModule, "runInstall").mockResolvedValue({
       installed: [],
       installedPlugins: [],
@@ -569,9 +587,9 @@ describe("runAdd", () => {
   });
 
   it("persists interactive skill selections and installs once", async () => {
-    vi.mocked(clack.select).mockResolvedValue("pick");
-    vi.mocked(clack.multiselect).mockResolvedValue(["pdf", "review"]);
-    vi.mocked(clack.isCancel).mockReturnValue(false);
+    prompts.select.mockResolvedValue("pick");
+    prompts.multiselect.mockResolvedValue(["pdf", "review"]);
+    prompts.isCancel.mockReturnValue(false);
     const install = vi.spyOn(installModule, "runInstall").mockResolvedValue({
       installed: [],
       installedPlugins: [],
@@ -763,9 +781,9 @@ describe("runAdd (local sources)", () => {
       interactive: false,
     })).rejects.toThrow(/Multiple plugins found.*alpha, beta.*--name/);
 
-    vi.mocked(clack.select).mockResolvedValue("pick");
-    vi.mocked(clack.multiselect).mockResolvedValue([1]);
-    vi.mocked(clack.isCancel).mockReturnValue(false);
+    prompts.select.mockResolvedValue("pick");
+    prompts.multiselect.mockResolvedValue([1]);
+    prompts.isCancel.mockReturnValue(false);
     mockRunInstall();
     const result = await runAdd({
       scope: resolveScope("project", projectRoot),
@@ -783,9 +801,9 @@ describe("runAdd (local sources)", () => {
     const sourceDir = join(projectRoot, "root-plugin-picker");
     await writePlugin(sourceDir, "shared");
     await writePlugin(join(sourceDir, ".agents", "plugins", "shared"), "shared");
-    vi.mocked(clack.select).mockResolvedValue("pick");
-    vi.mocked(clack.multiselect).mockResolvedValue([0]);
-    vi.mocked(clack.isCancel).mockReturnValue(false);
+    prompts.select.mockResolvedValue("pick");
+    prompts.multiselect.mockResolvedValue([0]);
+    prompts.isCancel.mockReturnValue(false);
     mockRunInstall();
 
     const result = await runAdd({
@@ -872,9 +890,9 @@ describe("runAdd (local sources)", () => {
         { name: "beta", source: "./shared-plugin" },
       ],
     }));
-    vi.mocked(clack.select).mockResolvedValue("pick");
-    vi.mocked(clack.multiselect).mockResolvedValue([0, 1]);
-    vi.mocked(clack.isCancel).mockReturnValue(false);
+    prompts.select.mockResolvedValue("pick");
+    prompts.multiselect.mockResolvedValue([0, 1]);
+    prompts.isCancel.mockReturnValue(false);
     mockRunInstall();
 
     const result = await runAdd({
@@ -965,7 +983,8 @@ describe("runAdd (local sources)", () => {
     }).catch((cause: unknown) => cause);
 
     expect(error).toBeInstanceOf(AddError);
-    expect((error as Error).message).toBe(
+    if (!(error instanceof Error)) {throw new Error("expected add to reject");}
+    expect(error.message).toBe(
       "Plugins already exist in agents.toml with a different source, ref, or path: beta.",
     );
   });
@@ -1203,7 +1222,7 @@ describe("add() CLI parsing", () => {
       clear: vi.fn(),
       isCancelled: false,
     };
-    vi.mocked(clack.spinner).mockReturnValue(spinner);
+    prompts.spinner.mockReturnValue(spinner);
     const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
     Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -1212,7 +1231,7 @@ describe("add() CLI parsing", () => {
     try {
       await add(["path:plugin-source", "--skill", "cli-plugin"], { scope: resolveScope("project", projectRoot) });
 
-      expect(clack.spinner).toHaveBeenCalledWith({ indicator: "timer" });
+      expect(prompts.spinner).toHaveBeenCalledWith({ indicator: "timer" });
       expect(spinner.start.mock.calls).toEqual([
         ["Resolving path:plugin-source"],
         ["Installing components"],
@@ -1229,7 +1248,7 @@ describe("add() CLI parsing", () => {
       if (originalIsTTY) {
         Object.defineProperty(process.stdout, "isTTY", originalIsTTY);
       } else {
-        delete (process.stdout as { isTTY?: boolean }).isTTY;
+        Reflect.deleteProperty(process.stdout, "isTTY");
       }
     }
   });

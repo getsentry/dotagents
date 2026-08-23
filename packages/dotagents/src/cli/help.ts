@@ -1,4 +1,4 @@
-const COMMAND_HELP: Record<string, string> = {
+const COMMAND_HELP = {
   init: `Usage: npx @sentry/dotagents [--project|--global|--user] init [options]
 
 Initialize agents.toml and the selected scope's managed directories.
@@ -125,6 +125,15 @@ const SCOPE_HELP = `Scope:
 export function getCommandHelp(command: string, args: string[]): string | undefined {
   if (!args.some((arg) => arg === "--help" || arg === "-h")) {return undefined;}
   const subcommand = args[0];
-  const help = COMMAND_HELP[subcommand ? `${command} ${subcommand}` : command] ?? COMMAND_HELP[command];
+  const fullCommand = subcommand ? `${command} ${subcommand}` : command;
+  const help = commandHelp(fullCommand) ?? commandHelp(command);
   return help ? `${help}\n\n${SCOPE_HELP}` : undefined;
+}
+
+function commandHelp(command: string): string | undefined {
+  return isCommandHelp(command) ? COMMAND_HELP[command] : undefined;
+}
+
+function isCommandHelp(command: string): command is keyof typeof COMMAND_HELP {
+  return Object.hasOwn(COMMAND_HELP, command);
 }

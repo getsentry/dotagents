@@ -1,11 +1,12 @@
 import { isStandardPluginManifest, type LegacyPluginManifest, type PluginManifest } from "../schema.js";
+import { isString } from "../../utils/type-guards.js";
 
 export function manifestString(
   manifest: PluginManifest,
   key: "description" | "version",
 ): string | undefined {
   const value = manifest[key];
-  return typeof value === "string" ? value : undefined;
+  return isString(value) ? value : undefined;
 }
 
 export function legacyManifestString(
@@ -13,8 +14,9 @@ export function legacyManifestString(
   key: "category",
 ): string | undefined {
   if (isStandardPluginManifest(manifest)) {return undefined;}
+  // SAFETY: the standard-manifest guard above leaves the legacy manifest variant.
   const value = (manifest as LegacyPluginManifest)[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+  return isString(value) && value.length > 0 ? value : undefined;
 }
 
 /** Formats an already validated plugin-relative component path. */

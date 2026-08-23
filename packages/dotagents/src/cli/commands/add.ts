@@ -3,6 +3,7 @@ import { readFile, realpath, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
+import type { MultiSelectOptions, SelectOptions } from "@clack/prompts";
 import chalk from "chalk";
 import { loadConfig } from "../../config/loader.js";
 import {
@@ -35,6 +36,7 @@ import {
   validateTrustedSource,
   TrustError,
   GitError,
+  type CacheReuse,
 } from "@sentry/dotagents-lib";
 import { getCacheStateDir, HOST_SCAN_DIRS } from "../cache.js";
 import { formatGitError, formatTrustError } from "../errors.js";
@@ -46,6 +48,7 @@ import {
   discoverPlugins,
   type PluginCandidate,
 } from "../../plugins/store.js";
+import { isNumber, isString } from "../../utils/type-guards.js";
 
 /** Parent paths that are standard/expected — no need to show them in the picker */
 const STANDARD_PARENTS = new Set(["", "skills", ".agents/skills", ".claude/skills"]);
@@ -72,7 +75,25 @@ export interface AddOptions {
   all?: boolean;
   interactive?: boolean;
   progress?: AddProgress;
+  prompts?: AddPrompts;
 }
+
+type AddPromptValue = string | number;
+type AddPromptResult = AddPromptValue | AddPromptValue[] | symbol;
+
+export interface AddPrompts {
+  select(options: SelectOptions<AddPromptValue>): Promise<AddPromptValue | symbol>;
+  multiselect(options: MultiSelectOptions<AddPromptValue>): Promise<AddPromptValue[] | symbol>;
+  isCancel(value: AddPromptResult): boolean;
+  spinner: typeof clack.spinner;
+}
+
+const DEFAULT_ADD_PROMPTS: AddPrompts = {
+  select: clack.select,
+  multiselect: clack.multiselect,
+  isCancel: clack.isCancel,
+  spinner: clack.spinner,
+};
 
 export interface AddProgress {
   start(message: string): void;
@@ -201,6 +222,7 @@ async function selectSkills(
   source: string,
   interactive: boolean | undefined,
   command: string,
+  prompts: AddPrompts,
 ): Promise<SkillSelection> {
   if (acquired.local && !names?.length) {
     const meta = await loadSkillMd(join(acquired.rootDir, "SKILL.md"));
@@ -241,7 +263,7 @@ async function selectSkills(
     );
   }
 
-  const mode = await clack.select({
+  const mode = await prompts.select({
     message: `Multiple skills found in ${source}. How would you like to add them?`,
     options: [
       {
@@ -256,10 +278,11 @@ async function selectSkills(
       },
     ],
   });
-  if (clack.isCancel(mode)) {throw new AddCancelledError();}
+  if (prompts.isCancel(mode)) {throw new AddCancelledError();}
   if (mode === "all") {return { type: "wildcard" };}
+  if (mode !== "pick") {throw new AddError("Invalid skill selection mode.");}
 
-  const selected = await clack.multiselect({
+  const selected = await prompts.multiselect({
     message: "Select which skills to add:",
     options: skills
       .toSorted((a, b) => a.meta.name.localeCompare(b.meta.name))
@@ -279,11 +302,14 @@ async function selectSkills(
       }),
     required: true,
   });
-  if (clack.isCancel(selected)) {throw new AddCancelledError();}
+  if (prompts.isCancel(selected)) {throw new AddCancelledError();}
+  if (!Array.isArray(selected)) {throw new AddError("Invalid skill selection.");}
+  const selectedNames = selected.filter(isString);
+  if (selectedNames.length !== selected.length) {throw new AddError("Invalid skill selection.");}
   return {
     type: "skills",
-    names: selected,
-    duplicatePolicy: selected.length === 1 ? "single" : "selected",
+    names: selectedNames,
+    duplicatePolicy: selectedNames.length === 1 ? "single" : "selected",
   };
 }
 
@@ -334,6 +360,7 @@ async function selectPlugins(
   interactive: boolean | undefined,
   all: boolean | undefined,
   command: string,
+  prompts: AddPrompts,
 ): Promise<PluginSelection> {
   if (all) {
     assertUniquePluginNames(candidates, source);
@@ -356,7 +383,7 @@ async function selectPlugins(
     );
   }
 
-  const mode = await clack.select({
+  const mode = await prompts.select({
     message: `Multiple plugins found in ${source}. How would you like to add them?`,
     options: [
       {
@@ -371,16 +398,17 @@ async function selectPlugins(
       },
     ],
   });
-  if (clack.isCancel(mode)) {throw new AddCancelledError();}
+  if (prompts.isCancel(mode)) {throw new AddCancelledError();}
   if (mode === "all") {
     assertUniquePluginNames(candidates, source);
     return { candidates, duplicatePolicy: "selected" };
   }
+  if (mode !== "pick") {throw new AddError("Invalid plugin selection mode.");}
 
   const pickerCandidates = candidates.toSorted((a, b) =>
     a.name.localeCompare(b.name) || a.path.localeCompare(b.path)
   );
-  const selectedIndices = await clack.multiselect({
+  const selectedIndices = await prompts.multiselect({
     message: "Select which plugins to add:",
     options: pickerCandidates
       .map((candidate, index) => ({
@@ -390,8 +418,11 @@ async function selectPlugins(
       })),
     required: true,
   });
-  if (clack.isCancel(selectedIndices)) {throw new AddCancelledError();}
-  const selected = selectedIndices.map((index) => {
+  if (prompts.isCancel(selectedIndices)) {throw new AddCancelledError();}
+  if (!Array.isArray(selectedIndices)) {throw new AddError("Invalid plugin selection.");}
+  const indices = selectedIndices.filter(isNumber);
+  if (indices.length !== selectedIndices.length) {throw new AddError("Invalid plugin selection.");}
+  const selected = indices.map((index) => {
     const candidate = pickerCandidates[index];
     if (!candidate) {throw new AddError("Invalid plugin selection.");}
     return candidate;
@@ -412,6 +443,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
     all,
     interactive,
     progress,
+    prompts = DEFAULT_ADD_PROMPTS,
   } = opts;
   const command = commandPrefix(scope);
   const specifier = stripLeadingAt(rawSpecifier);
@@ -461,10 +493,11 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
     progress?.start("Installing components");
     try {
       await mutateConfig();
-      await runInstall({
-        scope,
-        ...(reuse ? { reuse } : {}),
-      });
+      if (reuse) {
+        await runInstall({ scope, reuse });
+      } else {
+        await runInstall({ scope });
+      }
       progress?.stop("Installation complete");
     } catch (err) {
       progress?.error("Installation failed");
@@ -669,13 +702,11 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
       ? err
       : new AddError(message);
   }
-  const reuse = acquired.git && acquired.commit
-    ? {
-        repoDir: acquired.rootDir,
-        commit: acquired.commit,
-        ...(effectiveRef ? { ref: effectiveRef } : {}),
-      }
-    : undefined;
+  let reuse: CacheReuse | undefined;
+  if (acquired.git && acquired.commit) {
+    reuse = { repoDir: acquired.rootDir, commit: acquired.commit };
+    if (effectiveRef) {reuse.ref = effectiveRef;}
+  }
 
   // Plugin presence classifies the entire source; bundled and standalone skills stay hidden.
   if (plugins.length > 0) {
@@ -695,6 +726,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
       interactive,
       all,
       command,
+      prompts,
     );
     if (acquired.local) {
       const managedPluginsDir = await physicalPath(scope.pluginsDir);
@@ -735,6 +767,7 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
     sourceForStorage,
     interactive,
     command,
+    prompts,
   );
   return persistSkills(selection);
 }
@@ -746,6 +779,7 @@ export async function runAdd(opts: AddOptions): Promise<string | string[]> {
 export default async function add(
   args: string[],
   context: CommandContext,
+  prompts: AddPrompts = DEFAULT_ADD_PROMPTS,
 ): Promise<void> {
   const { positionals, values } = parseArgs({
     args,
@@ -791,7 +825,7 @@ export default async function add(
     const interactive =
       process.stdout.isTTY === true && !names && !values["all"];
     const progress = process.stdout.isTTY === true
-      ? clack.spinner({ indicator: "timer" })
+      ? prompts.spinner({ indicator: "timer" })
       : undefined;
     const { kind, result, action } = await executeAdd({
       scope,
@@ -801,6 +835,7 @@ export default async function add(
       all: values["all"],
       interactive,
       progress,
+      prompts,
     });
     if (action === "refreshed") {
       if (Array.isArray(result)) {

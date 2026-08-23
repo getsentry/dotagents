@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
+import { isObject } from "../../utils/type-guards.js";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { filterManagedPluginSkillNames } from "../../gitignore/skills.js";
@@ -100,9 +101,9 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
   if (lockfile && existsSync(scope.lockPath)) {
     const rawLock = parseTOML(await readFile(scope.lockPath, "utf-8"));
     const rawSkills = rawLock["skills"];
-    const hasLegacyLockFields = rawSkills !== null && typeof rawSkills === "object" &&
+    const hasLegacyLockFields = isObject(rawSkills) &&
       !Array.isArray(rawSkills) && !(rawSkills instanceof Date) && Object.values(rawSkills).some(
-        (skill) => skill !== null && typeof skill === "object" &&
+        (skill) => isObject(skill) &&
           !Array.isArray(skill) && !(skill instanceof Date) &&
           ("commit" in skill || "integrity" in skill),
       );

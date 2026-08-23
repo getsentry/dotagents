@@ -15,6 +15,8 @@ import {
   type RepositorySource,
   type TrustPolicy,
   type CacheReuse,
+  isSerializedValue,
+  type SerializedValue,
 } from "@sentry/dotagents-lib";
 import { PLUGIN_NAME_PATTERN, type PluginConfig } from "../config/schema.js";
 import type { LockedPlugin } from "../lockfile/schema.js";
@@ -32,6 +34,7 @@ import type {
   NativePluginSource,
   PluginDeclaration,
 } from "./types.js";
+import { hasErrorCode, isString } from "../utils/type-guards.js";
 
 // Owns plugin source discovery and installation into the canonical project tree.
 // Resolved sources are never allowed to live inside the same project's
@@ -45,7 +48,16 @@ export interface PluginResolveOptions {
   trust?: TrustPolicy;
   /** Exact git checkout acquired earlier in the current operation. */
   reuse?: CacheReuse;
+  services?: Partial<PluginStoreServices>;
 }
+
+export interface PluginStoreServices {
+  realpath(path: string): Promise<string>;
+  rename: typeof rename;
+  rm: typeof rm;
+}
+
+const DEFAULT_PLUGIN_STORE_SERVICES: PluginStoreServices = { realpath, rename, rm };
 
 interface ResolvedLocalPlugin {
   type: "local";
@@ -146,6 +158,7 @@ export async function resolvePlugin(
   config: PluginConfig,
   opts: PluginResolveOptions,
 ): Promise<ResolvedPlugin> {
+  const services = { ...DEFAULT_PLUGIN_STORE_SERVICES, ...opts.services };
   const sourceForResolve = applyDefaultRepositorySource(
     config.source,
     opts.defaultRepositorySource,
@@ -156,7 +169,7 @@ export async function resolvePlugin(
 
   if (parsed.type === "local") {
     const sourceDir = await resolveLocalSource(opts.projectRoot, parsed.path!);
-    const discovered = await resolvePluginCandidate(sourceDir, config);
+    const discovered = await resolvePluginCandidate(sourceDir, config, services.realpath);
     if (!discovered) {
       throw new Error(`Plugin "${config.name}" not found in ${config.source}.`);
     }
@@ -188,7 +201,7 @@ export async function resolvePlugin(
     reuse: opts.reuse,
   });
 
-  const discovered = await resolvePluginCandidate(cached.repoDir, config);
+  const discovered = await resolvePluginCandidate(cached.repoDir, config, services.realpath);
   if (!discovered) {
     throw new Error(`Plugin "${config.name}" not found in ${config.source}.`);
   }
@@ -207,7 +220,9 @@ export async function resolvePlugin(
 export async function installPluginBundle(
   pluginsDir: string,
   resolved: ResolvedPlugin,
+  overrides: Partial<PluginStoreServices> = {},
 ): Promise<PluginDeclaration> {
+  const services = { ...DEFAULT_PLUGIN_STORE_SERVICES, ...overrides };
   const destDir = join(pluginsDir, resolved.plugin.name);
   if (isProjectPluginSource(resolved.plugin.pluginDir, pluginsDir)) {
     throw new Error(
@@ -225,7 +240,7 @@ export async function installPluginBundle(
   );
 
   try {
-    const sourceDir = await realpath(resolved.plugin.pluginDir);
+    const sourceDir = await services.realpath(resolved.plugin.pluginDir);
     await copyDir(sourceDir, tempDir, { verbatimSymlinks: true });
     await removeSourceOwnershipMarkers(tempDir);
     await assertPluginBundleSymlinksContained(tempDir);
@@ -237,21 +252,21 @@ export async function installPluginBundle(
     await writeManagedMarker(tempDir);
 
     if (existsSync(destDir)) {
-      await rename(destDir, backupDir);
+      await services.rename(destDir, backupDir);
       try {
-        await rename(tempDir, destDir);
+        await services.rename(tempDir, destDir);
       } catch (err) {
-        await rename(backupDir, destDir).catch(() => {});
+        await services.rename(backupDir, destDir).catch(() => {});
         throw err;
       }
       // The new destination is committed; backup cleanup must not turn a
       // successful install into a failure that prevents lockfile updates.
-      await rm(backupDir, { recursive: true, force: true }).catch(() => {});
+      await services.rm(backupDir, { recursive: true, force: true }).catch(() => {});
     } else {
-      await rename(tempDir, destDir);
+      await services.rename(tempDir, destDir);
     }
   } finally {
-    await rm(tempDir, { recursive: true, force: true });
+    await services.rm(tempDir, { recursive: true, force: true });
   }
 
   return installed;
@@ -371,13 +386,14 @@ export function lockEntryForPlugin(resolved: ResolvedPlugin): LockedPlugin {
   if (resolved.type === "local") {
     return { source: resolved.plugin.source };
   }
-  return {
+  const entry: LockedPlugin = {
     source: resolved.plugin.source,
     resolved_url: resolved.resolvedUrl,
     resolved_path: resolved.resolvedPath,
-    ...(resolved.resolvedRef === undefined ? {} : { resolved_ref: resolved.resolvedRef }),
     resolved_commit: resolved.commit,
   };
+  if (resolved.resolvedRef !== undefined) {entry.resolved_ref = resolved.resolvedRef;}
+  return entry;
 }
 
 /** Returns true for direct `path:.agents/plugins/...` plugin sources. */
@@ -431,9 +447,10 @@ export function isSameProjectPluginConfig(
 async function resolvePluginCandidate(
   sourceDir: string,
   config: PluginConfig,
+  resolveRealpath: PluginStoreServices["realpath"] = realpath,
 ): Promise<PluginCandidate | null> {
   if (config.path) {
-    const dir = await resolveInside(sourceDir, config.path, "Plugin path");
+    const dir = await resolveInside(sourceDir, config.path, "Plugin path", resolveRealpath);
     const candidate = await loadPluginCandidate(
       sourceDir,
       dir,
@@ -611,7 +628,7 @@ async function discoverFromMarketplaces(
       });
       continue;
     }
-    const root = typeof marketplace.metadata?.pluginRoot === "string"
+    const root = isString(marketplace.metadata?.pluginRoot)
       ? marketplace.metadata.pluginRoot
       : ".";
     for (const entry of marketplace.plugins) {
@@ -765,11 +782,12 @@ async function loadPluginCandidate(
   if (!loaded) {return null;}
   const manifest = loaded.manifest;
 
-  const name = manifest && typeof manifest["name"] === "string"
+  const name = manifest && isString(manifest["name"])
     ? String(manifest["name"])
-    : typeof overlay["name"] === "string"
+    : isString(overlay["name"])
       ? String(overlay["name"])
       : basename(pluginDir);
+  // SAFETY: the merged fallback only combines fields from two legacy manifests.
   const combined = manifest && isStandardPluginManifest(manifest)
     ? manifest
     : normalizeManifest(name, { ...overlay, ...manifest } as LegacyPluginManifest);
@@ -921,9 +939,9 @@ class NamedPluginManifestError extends Error {
   }
 }
 
-function pluginManifestError(err: unknown, value: unknown): Error {
+function pluginManifestError<Thrown>(err: Thrown, value: SerializedValue): Error {
   const message = err instanceof Error ? err.message : String(err);
-  const name = isSerializedObject(value) && typeof value["name"] === "string"
+  const name = isSerializedObject(value) && isString(value["name"])
     ? value["name"]
     : undefined;
   return new NamedPluginManifestError(message, name);
@@ -999,10 +1017,11 @@ async function readNativeFallbackSources(
   const values = content.split("\n").filter(Boolean);
   const sources = new Set<NativePluginSource>();
   for (const value of values) {
-    if (!nativeSources().includes(value as NativePluginSource) || sources.has(value as NativePluginSource)) {
+    const source = nativeSources().find((candidate) => candidate === value);
+    if (!source || sources.has(source)) {
       throw new Error(`Invalid native fallback provenance: ${value || "<empty>"}`);
     }
-    sources.add(value as NativePluginSource);
+    sources.add(source);
   }
   if (sources.size === 0) {
     throw new Error("Invalid native fallback provenance: empty marker");
@@ -1110,7 +1129,7 @@ function assertNativeInterfaceNames(
     const manifest = nativeInterface.manifest;
     if (!manifest) {continue;}
     const actual = manifest["name"];
-    if (typeof actual === "string" && actual !== expected) {
+    if (isString(actual) && actual !== expected) {
       throw new Error(
         `${nativeDisplayName(source)} native fallback manifest name "${actual}" does not match portable plugin name "${expected}" in ${context}.`,
       );
@@ -1205,7 +1224,7 @@ function assertPluginName(
   context: string,
 ): void {
   const actual = manifest["name"];
-  if (typeof actual === "string" && actual !== expected) {
+  if (isString(actual) && actual !== expected) {
     throw new Error(`Plugin manifest name "${actual}" does not match configured name "${expected}" in ${context}.`);
   }
 }
@@ -1214,6 +1233,7 @@ function normalizeManifest(
   name: string,
   manifest: PluginManifest,
 ): PluginManifest {
+  // SAFETY: replacing the required name field preserves every PluginManifest variant.
   return { ...manifest, name } as PluginManifest;
 }
 
@@ -1244,9 +1264,9 @@ async function dedupeCandidates(candidates: PluginCandidate[]): Promise<PluginCa
 /** Returns local marketplace paths; unsupported extension sources are skipped. */
 function localMarketplacePath(entry: MarketplacePluginEntry): string | null {
   const { source } = entry;
-  if (typeof source === "string") {return stripDotSlash(source);}
+  if (isString(source)) {return stripDotSlash(source);}
 
-  if (source.source === "local" && typeof source.path === "string") {
+  if (source.source === "local" && isString(source.path)) {
     return stripDotSlash(source.path);
   }
   return null;
@@ -1254,7 +1274,7 @@ function localMarketplacePath(entry: MarketplacePluginEntry): string | null {
 
 function marketplaceSourceType(entry: MarketplacePluginEntry): string {
   const { source } = entry;
-  if (typeof source === "string") {return "local";}
+  if (isString(source)) {return "local";}
   return source.source ?? "extension";
 }
 
@@ -1263,7 +1283,12 @@ function stripDotSlash(path: string): string {
 }
 
 /** Resolves a selector path while preserving the source-root containment boundary. */
-async function resolveInside(root: string, childPath: string, label: string): Promise<string> {
+async function resolveInside(
+  root: string,
+  childPath: string,
+  label: string,
+  resolveRealpath: PluginStoreServices["realpath"] = realpath,
+): Promise<string> {
   const rootPath = resolve(root);
   const filePath = resolve(rootPath, childPath);
   const relPath = relative(rootPath, filePath);
@@ -1271,7 +1296,7 @@ async function resolveInside(root: string, childPath: string, label: string): Pr
     throw new Error(`${label} resolves outside source: ${childPath}`);
   }
   if (existsSync(filePath)) {
-    await assertInsideSourceRoot(rootPath, filePath, label, childPath);
+    await assertInsideSourceRoot(rootPath, filePath, label, childPath, resolveRealpath);
   }
   return filePath;
 }
@@ -1299,10 +1324,11 @@ async function assertInsideSourceRoot(
   filePath: string,
   label: string,
   displayPath = relativePath(root, filePath),
+  resolveRealpath: PluginStoreServices["realpath"] = realpath,
 ): Promise<void> {
   let rootRealPath: string;
   try {
-    rootRealPath = await realpath(root);
+    rootRealPath = await resolveRealpath(root);
   } catch (err) {
     if (isNotFoundError(err)) {
       throw new Error(`${label} source root does not exist: ${displayPath}`, { cause: err });
@@ -1311,7 +1337,7 @@ async function assertInsideSourceRoot(
   }
   let fileRealPath: string;
   try {
-    fileRealPath = await realpath(filePath);
+    fileRealPath = await resolveRealpath(filePath);
   } catch (err) {
     if (isNotFoundError(err)) {
       throw new Error(`${label} source path does not exist: ${displayPath}`, { cause: err });
@@ -1324,8 +1350,8 @@ async function assertInsideSourceRoot(
   }
 }
 
-function isNotFoundError(err: unknown): boolean {
-  return err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT";
+function isNotFoundError<ErrorValue>(err: ErrorValue): boolean {
+  return hasErrorCode(err, "ENOENT");
 }
 
 function managedPluginPath(pluginsDir: string, name: string): string | null {
@@ -1345,18 +1371,21 @@ function isOutsideRelativePath(path: string): boolean {
   return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
 }
 
-function isNotDirectoryError(err: unknown): boolean {
-  return err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOTDIR";
+function isNotDirectoryError<ErrorValue>(err: ErrorValue): boolean {
+  return hasErrorCode(err, "ENOTDIR");
 }
 
-async function readJson(filePath: string): Promise<unknown> {
+async function readJson(filePath: string): Promise<SerializedValue> {
   const raw = await readFile(filePath, "utf-8");
-  let parsed: unknown;
+  let parsed;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = JSON.parse(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Invalid JSON ${filePath}: ${message}`, { cause: err });
+  }
+  if (!isSerializedValue(parsed)) {
+    throw new Error(`Invalid JSON ${filePath}: value is not safely serializable`);
   }
   return parsed;
 }

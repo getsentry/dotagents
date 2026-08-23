@@ -650,7 +650,8 @@ source = "path:plugins/review-tools"
       expect.unreachable("should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(WildcardSkillRemoveError);
-      expect((err as WildcardSkillRemoveError).source).toBe(`git:${repoDir}`);
+      if (!(err instanceof WildcardSkillRemoveError)) {throw err;}
+      expect(err.source).toBe(`git:${repoDir}`);
     }
   });
 

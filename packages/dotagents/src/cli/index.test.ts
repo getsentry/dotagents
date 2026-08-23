@@ -2,28 +2,35 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveProjectScope, resolveScope } from "../scope.js";
+import { main, type CliServices, type CommandHandler } from "./main.js";
 
-const init = vi.fn();
-const install = vi.fn();
-const add = vi.fn();
-const remove = vi.fn();
-const sync = vi.fn();
-const list = vi.fn();
-const mcp = vi.fn();
-const trust = vi.fn();
-const doctor = vi.fn();
+const init = vi.fn<CommandHandler>(async () => {});
+const install = vi.fn<CommandHandler>(async () => {});
+const add = vi.fn<CommandHandler>(async () => {});
+const remove = vi.fn<CommandHandler>(async () => {});
+const sync = vi.fn<CommandHandler>(async () => {});
+const list = vi.fn<CommandHandler>(async () => {});
+const mcp = vi.fn<CommandHandler>(async () => {});
+const trust = vi.fn<CommandHandler>(async () => {});
+const doctor = vi.fn<CommandHandler>(async () => {});
 const checkForUpdate = vi.fn(() => Promise.resolve(null));
 
-vi.mock("./commands/init.js", () => ({ default: init }));
-vi.mock("./commands/install.js", () => ({ default: install }));
-vi.mock("./commands/add.js", () => ({ default: add }));
-vi.mock("./commands/remove.js", () => ({ default: remove }));
-vi.mock("./commands/sync.js", () => ({ default: sync }));
-vi.mock("./commands/list.js", () => ({ default: list }));
-vi.mock("./commands/mcp.js", () => ({ default: mcp }));
-vi.mock("./commands/trust.js", () => ({ default: trust }));
-vi.mock("./commands/doctor.js", () => ({ default: doctor }));
-vi.mock("./update-notifier.js", () => ({ checkForUpdate }));
+const services = {
+  commands: { init, install, add, remove, sync, list, mcp, trust, doctor },
+  checkForUpdate,
+  resolveProjectScope: (projectRoot: string) => resolveScope("project", projectRoot),
+  resolveScope,
+} satisfies CliServices;
+
+const scopeServices = {
+  ...services,
+  resolveProjectScope,
+} satisfies CliServices;
+
+function runMain(argv: string[], cliServices: CliServices = services): Promise<void> {
+  return main(argv, cliServices);
+}
 
 const COMMAND_CASES = [
   ["init", init],
@@ -39,30 +46,22 @@ const COMMAND_CASES = [
 
 describe("CLI help dispatch", () => {
   const originalExitCode = process.exitCode;
-  let dispatchRoot: string;
-  let originalCwd: string;
 
-  beforeEach(async () => {
-    for (const [, handler] of COMMAND_CASES) {handler.mockReset();}
+  beforeEach(() => {
+    for (const [, handler] of COMMAND_CASES) {
+      handler.mockReset();
+    }
     checkForUpdate.mockClear();
     process.exitCode = originalExitCode;
-    originalCwd = process.cwd();
-    dispatchRoot = await mkdtemp(join(tmpdir(), "dotagents-cli-dispatch-"));
-    await writeFile(join(dispatchRoot, "agents.toml"), "version = 1\n");
-    process.chdir(dispatchRoot);
   });
 
-  afterEach(async () => {
-    process.chdir(originalCwd);
+  afterEach(() => {
     process.exitCode = originalExitCode;
-    await rm(dispatchRoot, { recursive: true, force: true });
   });
 
   it("prints command help without running the command", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    const { main } = await import("./main.js");
-
-    await main(["sync", "--help"]);
+    await runMain(["sync", "--help"]);
 
     expect(sync).not.toHaveBeenCalled();
     expect(checkForUpdate).not.toHaveBeenCalled();
@@ -72,9 +71,7 @@ describe("CLI help dispatch", () => {
   });
 
   it("defaults to global scope", async () => {
-    const { main } = await import("./main.js");
-
-    await main(["sync"]);
+    await runMain(["sync"]);
 
     expect(sync).toHaveBeenCalledWith([], {
       scope: expect.objectContaining({ scope: "user" }),
@@ -82,9 +79,7 @@ describe("CLI help dispatch", () => {
   });
 
   it.each(["--user", "--global"])("passes %s as explicit global scope", async (scopeFlag) => {
-    const { main } = await import("./main.js");
-
-    await main(["sync", scopeFlag]);
+    await runMain(["sync", scopeFlag]);
 
     expect(sync).toHaveBeenCalledWith([], {
       scope: expect.objectContaining({ scope: "user" }),
@@ -92,9 +87,7 @@ describe("CLI help dispatch", () => {
   });
 
   it("accepts both user scope aliases together", async () => {
-    const { main } = await import("./main.js");
-
-    await main(["--user", "--global", "sync"]);
+    await runMain(["--user", "--global", "sync"]);
 
     expect(sync).toHaveBeenCalledWith([], {
       scope: expect.objectContaining({ scope: "user" }),
@@ -105,9 +98,7 @@ describe("CLI help dispatch", () => {
     ["before", ["--project", "sync"]],
     ["after", ["sync", "--project"]],
   ])("passes project scope with the flag %s the command", async (_placement, argv) => {
-    const { main } = await import("./main.js");
-
-    await main(argv);
+    await runMain(argv);
 
     expect(sync).toHaveBeenCalledWith([], {
       scope: expect.objectContaining({ scope: "project" }),
@@ -116,9 +107,7 @@ describe("CLI help dispatch", () => {
 
   it("rejects contradictory scope flags without running the command", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { main } = await import("./main.js");
-
-    await main(["--project", "sync", "--global"]);
+    await runMain(["--project", "sync", "--global"]);
 
     expect(sync).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
@@ -128,9 +117,7 @@ describe("CLI help dispatch", () => {
 
   it("rejects a project conflict with the legacy alias", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { main } = await import("./main.js");
-
-    await main(["sync", "--project", "--user"]);
+    await runMain(["sync", "--project", "--user"]);
 
     expect(sync).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
@@ -140,9 +127,7 @@ describe("CLI help dispatch", () => {
 
   it("documents the default and compatibility flags in top-level help", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    const { main } = await import("./main.js");
-
-    await main([]);
+    await runMain([]);
 
     expect(log).toHaveBeenCalledWith(expect.stringContaining("--project   Operate on the current project instead of global scope"));
     expect(log).toHaveBeenCalledWith(expect.stringContaining("--global    Explicitly operate on global scope (~/.agents/, the default)"));
@@ -159,7 +144,9 @@ describe("scope isolation for all commands", () => {
   let originalCwd: string;
 
   beforeEach(async () => {
-    for (const [, handler] of COMMAND_CASES) {handler.mockReset();}
+    for (const [, handler] of COMMAND_CASES) {
+      handler.mockReset();
+    }
     checkForUpdate.mockClear();
     process.exitCode = undefined;
     originalCwd = process.cwd();
@@ -182,9 +169,7 @@ describe("scope isolation for all commands", () => {
   });
 
   it.each(COMMAND_CASES)("uses only global state for unqualified %s", async (command, handler) => {
-    const { main } = await import("./main.js");
-
-    await main([command]);
+    await runMain([command], scopeServices);
 
     expect(handler).toHaveBeenCalledOnce();
     expect(handler).toHaveBeenCalledWith([], {
@@ -193,9 +178,7 @@ describe("scope isolation for all commands", () => {
   });
 
   it.each(COMMAND_CASES)("uses only project state for explicit-project %s", async (command, handler) => {
-    const { main } = await import("./main.js");
-
-    await main(["--project", command]);
+    await runMain(["--project", command], scopeServices);
 
     expect(handler).toHaveBeenCalledOnce();
     expect(handler).toHaveBeenCalledWith([], {
@@ -206,9 +189,7 @@ describe("scope isolation for all commands", () => {
   it("fails a project command with no config instead of falling back globally", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     await rm(join(projectRoot, "agents.toml"));
-    const { main } = await import("./main.js");
-
-    await main(["--project", "sync"]);
+    await runMain(["--project", "sync"], scopeServices);
 
     expect(sync).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith(expect.stringContaining("--project init"));
@@ -218,9 +199,7 @@ describe("scope isolation for all commands", () => {
   it("allows project init in the current directory outside Git", async () => {
     await rm(join(projectRoot, ".git"), { recursive: true });
     await rm(join(projectRoot, "agents.toml"));
-    const { main } = await import("./main.js");
-
-    await main(["--project", "init"]);
+    await runMain(["--project", "init"], scopeServices);
 
     expect(init).toHaveBeenCalledWith([], {
       scope: expect.objectContaining({ scope: "project", root: canonicalProjectRoot }),

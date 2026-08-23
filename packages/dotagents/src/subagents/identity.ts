@@ -5,13 +5,14 @@ import {
   type SerializedObject,
 } from "@sentry/dotagents-lib";
 import type { SubagentConfigSpec, SubagentIdentityStrategy } from "./types.js";
+import { isNonEmptyString } from "../utils/type-guards.js";
 
 export function subagentIdentityFromMarkdownMeta(
   strategy: SubagentIdentityStrategy,
   fileName: string | undefined,
   meta: SerializedObject,
 ): string | null {
-  const declaredName = typeof meta["name"] === "string" && meta["name"] ? meta["name"] : null;
+  const declaredName = isNonEmptyString(meta["name"]) ? meta["name"] : null;
 
   switch (strategy) {
     case "frontmatter-name":
@@ -68,7 +69,7 @@ export function readSubagentFileIdentity(
 export function subagentIdentityFromTomlContent(content: string): string | null {
   try {
     const parsed = parseTOML(content);
-    if (typeof parsed["name"] === "string" && parsed["name"]) {
+    if (isNonEmptyString(parsed["name"])) {
       return parsed["name"];
     }
   } catch {

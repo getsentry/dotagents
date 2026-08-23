@@ -1,11 +1,12 @@
 import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { isSerializedObject, isSerializedValue, type SerializedValue } from "@sentry/dotagents-lib";
+import { hasErrorCode, isObject } from "../utils/type-guards.js";
 
 const MANAGED_MARKER_SUFFIX = ".dotagents-managed";
 let markerCounter = 0;
 
-export function stableJson(value: unknown): string {
+export function stableJson<Value>(value: Value): string {
   if (!isSerializedValue(value)) {throw new TypeError("Managed JSON must be serializable");}
   return `${JSON.stringify(sortJson(value), null, 2)}\n`;
 }
@@ -13,7 +14,7 @@ export function stableJson(value: unknown): string {
 function sortJson(value: SerializedValue): SerializedValue {
   if (Array.isArray(value)) {return value.map(sortJson);}
   if (value instanceof Date) {return value;}
-  if (!value || typeof value !== "object") {return value;}
+  if (!value || !isObject(value)) {return value;}
   return Object.fromEntries(
     Object.entries(value)
       .toSorted(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
@@ -59,7 +60,7 @@ export async function isManagedJsonFile(filePath: string): Promise<boolean> {
     if (!isNotFoundError(err)) {throw err;}
   }
   try {
-    const parsed: unknown = JSON.parse(await readFile(filePath, "utf-8"));
+    const parsed = JSON.parse(await readFile(filePath, "utf-8"));
     if (!isSerializedObject(parsed)) {return false;}
     const metadata = parsed["metadata"];
     return isSerializedObject(metadata) && metadata["managedBy"] === "dotagents";
@@ -85,7 +86,7 @@ async function writeManagedMarker(filePath: string): Promise<boolean> {
     try {
       await rename(tempPath, filePath);
     } catch (err) {
-      if (!(err instanceof Error && "code" in err && ["EEXIST", "EPERM"].includes(String((err as NodeJS.ErrnoException).code)))) {
+      if (!(hasErrorCode(err, "EEXIST") || hasErrorCode(err, "EPERM"))) {
         throw err;
       }
       await rm(filePath, { force: true });
@@ -101,6 +102,6 @@ export function managedJsonMarkerPath(filePath: string): string {
   return `${filePath}${MANAGED_MARKER_SUFFIX}`;
 }
 
-export function isNotFoundError(err: unknown): boolean {
-  return err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT";
+export function isNotFoundError<Value>(err: Value): boolean {
+  return hasErrorCode(err, "ENOENT");
 }

@@ -38,6 +38,7 @@ export {
 } from "./skills/resolver.js";
 export type { ParseSourceErrorKind } from "./skills/resolver.js";
 export type {
+  ParsedSource,
   ResolvedSkill,
   ResolvedGitSkill,
   ResolvedLocalSkill,
@@ -45,6 +46,7 @@ export type {
   NamedResolvedSkill,
   WildcardDependencyInput,
   ResolveOpts,
+  ResolverServices,
 } from "./skills/resolver.js";
 
 // Sources / cache
@@ -56,7 +58,7 @@ export {
   isGitRepo,
   GitError,
 } from "./sources/git.js";
-export type { GitErrorDetails } from "./sources/git.js";
+export type { GitErrorDetails, GitExecutor } from "./sources/git.js";
 export {
   ensureCached,
   CacheError,

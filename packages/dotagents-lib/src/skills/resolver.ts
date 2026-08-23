@@ -89,6 +89,17 @@ export interface ResolvedWellKnownSkill {
 
 export type ResolvedSkill = ResolvedGitSkill | ResolvedLocalSkill | ResolvedWellKnownSkill;
 
+export interface ParsedSource {
+  type: "github" | "git" | "local" | "well-known";
+  url?: string;
+  /** Original URL to use for cloning (preserves SSH/HTTPS protocol). Undefined for owner/repo shorthand. */
+  cloneUrl?: string;
+  owner?: string;
+  repo?: string;
+  ref?: string;
+  path?: string;
+}
+
 export function isExplicitSourceSpecifier(specifier: string): boolean {
   return (
     specifier.startsWith("path:") ||
@@ -168,16 +179,7 @@ export function applyDefaultRepositorySource(
 /**
  * Parse a source string into its components.
  */
-export function parseSource(source: string): {
-  type: "github" | "git" | "local" | "well-known";
-  url?: string;
-  /** Original URL to use for cloning (preserves SSH/HTTPS protocol). Undefined for owner/repo shorthand. */
-  cloneUrl?: string;
-  owner?: string;
-  repo?: string;
-  ref?: string;
-  path?: string;
-} {
+export function parseSource(source: string): ParsedSource {
   if (source.startsWith("path:")) {
     return { type: "local", path: source.slice(5) };
   }
@@ -329,7 +331,21 @@ export interface ResolveOpts {
   trust?: TrustPolicy;
   /** Exact git checkout acquired earlier in the current operation. */
   reuse?: CacheReuse;
+  /** Dependency overrides for tests and embedded hosts. */
+  services?: Partial<ResolverServices>;
 }
+
+export interface ResolverServices {
+  ensureCached: typeof ensureCached;
+  ensureWellKnownCached: typeof ensureWellKnownCached;
+  resolveLocalSource: typeof resolveLocalSource;
+}
+
+const DEFAULT_RESOLVER_SERVICES: ResolverServices = {
+  ensureCached,
+  ensureWellKnownCached,
+  resolveLocalSource,
+};
 
 type AcquiredSkillSource =
   | { type: "local"; skillDir: string }
@@ -346,6 +362,7 @@ async function acquireSkillSource(
   dep: { source: string; ref?: string },
   opts: ResolveOpts,
 ): Promise<AcquiredSkillSource> {
+  const services = { ...DEFAULT_RESOLVER_SERVICES, ...opts.services };
   const sourceForResolve = applyDefaultRepositorySource(
     dep.source,
     opts.defaultRepositorySource,
@@ -356,13 +373,13 @@ async function acquireSkillSource(
   const parsed = parseSource(sourceForResolve);
   if (parsed.type === "local") {
     const projectRoot = opts.projectRoot || process.cwd();
-    const skillDir = await resolveLocalSource(projectRoot, parsed.path!);
+    const skillDir = await services.resolveLocalSource(projectRoot, parsed.path!);
     return { type: "local", skillDir };
   }
 
   if (parsed.type === "well-known") {
     const resolvedUrl = parsed.url!;
-    const cached = await ensureWellKnownCached({
+    const cached = await services.ensureWellKnownCached({
       stateDir: opts.stateDir,
       url: resolvedUrl,
       cacheKey: wellKnownCacheKey(resolvedUrl),
@@ -382,7 +399,7 @@ async function acquireSkillSource(
     ? `${parsed.owner}/${parsed.repo}`
     : sanitizeCacheKey(url);
   const excluded = isSourceExcluded(dep.source, opts.minimumReleaseAgeExclude);
-  const cached = await ensureCached({
+  const cached = await services.ensureCached({
     stateDir: opts.stateDir,
     url: resolvedUrl,
     cacheKey,
@@ -502,7 +519,7 @@ async function discoverWildcardScope(
     try {
       scopeStat = await stat(scopeDir);
     } catch (err) {
-      if (!(err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT")) {
+      if (!(err instanceof Error && "code" in err && err.code === "ENOENT")) {
         throw err;
       }
       throw new ResolveError(`Wildcard path "${path}" does not exist in source`);

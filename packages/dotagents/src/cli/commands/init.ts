@@ -32,7 +32,14 @@ export interface InitOptions {
   trust?: TrustConfig;
   skills?: Array<{ name: string; source: string }>;
   scope: ScopeRoot;
+  services?: InitServices;
 }
+
+export interface InitServices {
+  runInstall: typeof runInstall;
+}
+
+const DEFAULT_INIT_SERVICES: InitServices = { runInstall };
 
 export async function runInit(opts: InitOptions): Promise<void> {
   const { scope, force, agents } = opts;
@@ -96,7 +103,7 @@ export async function runInit(opts: InitOptions): Promise<void> {
   // Auto-install declared skills (best-effort — may fail offline)
   if (config.skills.length > 0) {
     try {
-      await runInstall({ scope });
+      await (opts.services ?? DEFAULT_INIT_SERVICES).runInstall({ scope });
     } catch (err) {
       // Re-throw structured errors — TrustError is a policy violation, GitError
       // carries the auth-required SSH hint. Both deserve a hard fail with the
@@ -159,7 +166,11 @@ const BANNER = `
                        |___/
 `;
 
-async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<void> {
+async function runInteractiveInit(
+  scope: ScopeRoot,
+  force?: boolean,
+  services: InitServices = DEFAULT_INIT_SERVICES,
+): Promise<void> {
   function cancelled(): never {
     clack.outro("Setup cancelled.");
     // eslint-disable-next-line no-restricted-syntax
@@ -219,6 +230,7 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
     force,
     agents: selectedAgents,
     trust,
+    services,
   });
 
   const gitDir = scope.scope === "project" ? findGitDir(scope.root) : undefined;
@@ -251,7 +263,11 @@ async function runInteractiveInit(scope: ScopeRoot, force?: boolean): Promise<vo
   clack.outro(`You're all set! Run \`${commandPrefix(scope)} add\` to add more skills.`);
 }
 
-export default async function init(args: string[], context: CommandContext): Promise<void> {
+export default async function init(
+  args: string[],
+  context: CommandContext,
+  services: InitServices = DEFAULT_INIT_SERVICES,
+): Promise<void> {
   const { values } = parseArgs({
     args,
     options: {
@@ -297,7 +313,7 @@ export default async function init(args: string[], context: CommandContext): Pro
 
     // Interactive mode: TTY with no --agents flag
     if (process.stdout.isTTY && values["agents"] === undefined) {
-      await runInteractiveInit(scope, values["force"]);
+      await runInteractiveInit(scope, values["force"], services);
       return;
     }
 
@@ -305,7 +321,7 @@ export default async function init(args: string[], context: CommandContext): Pro
       ? values["agents"].split(",").map((s) => s.trim()).filter(Boolean)
       : undefined;
 
-    await runInit({ scope, force: values["force"], agents });
+    await runInit({ scope, force: values["force"], agents, services });
   } catch (err) {
     if (err instanceof CancelledError) {return;}
     if (err instanceof TrustError) {
