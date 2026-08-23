@@ -413,7 +413,7 @@ describe("plugin writer", () => {
           type: "stdio",
           command: "node",
           env: {
-            TOOL: "${PLUGIN_ROOT}/bin/server",
+            PATH: "${PLUGIN_ROOT}/bin:/usr/bin",
             NATIVE_LIKE: "${PLUGIN_ROOT}/.claude-plugin/tool",
           },
         },

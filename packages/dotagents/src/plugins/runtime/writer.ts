@@ -482,6 +482,11 @@ async function visitPortableMcpAsset(
     await visitPortableMcpAsset(pluginDir, target, subtree, assets, visited);
     return;
   }
+  if (!subtree && fileStat.isDirectory()) {
+    assets.subtrees.add(path);
+    await visitPortableMcpAsset(pluginDir, path, true, assets, visited);
+    return;
+  }
   if (!subtree || !fileStat.isDirectory()) {return;}
   for (const entry of await readdir(filePath, { withFileTypes: true })) {
     if (!entry.isDirectory() && !entry.isSymbolicLink()) {continue;}
