@@ -75,8 +75,8 @@ const cacheLocks = new Map<string, Promise<void>>();
 async function withCacheLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const previous = cacheLocks.get(key) ?? Promise.resolve();
   let release!: () => void;
-  const current = new Promise<void>((resolve) => {
-    release = resolve;
+  const current = new Promise<void>((releaseLock) => {
+    release = releaseLock;
   });
   const next = previous.catch(() => {}).then(() => current);
 

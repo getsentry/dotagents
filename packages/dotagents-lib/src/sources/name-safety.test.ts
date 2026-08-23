@@ -1,6 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { validateGitNameSafety, GitNameSafetyError } from "./name-safety.js";
 
+function captureGitNameSafetyError(run: () => void): GitNameSafetyError {
+  try {
+    run();
+  } catch (err) {
+    if (err instanceof GitNameSafetyError) {return err;}
+    throw err;
+  }
+  throw new Error("expected validateGitNameSafety to throw");
+}
+
 describe("validateGitNameSafety", () => {
   it("accepts safe owner/repo/ref", () => {
     expect(() =>
@@ -29,80 +39,60 @@ describe("validateGitNameSafety", () => {
     expect(() => validateGitNameSafety({ owner: "-malicious" })).toThrow(
       GitNameSafetyError,
     );
-    try {
-      validateGitNameSafety({ owner: "-malicious" });
-    } catch (err) {
-      expect(err).toBeInstanceOf(GitNameSafetyError);
-      expect((err as GitNameSafetyError).field).toBe("owner");
-      expect((err as GitNameSafetyError).reason).toBe("leading-dash");
-    }
+    const err = captureGitNameSafetyError(() =>
+      validateGitNameSafety({ owner: "-malicious" }),
+    );
+    expect(err.field).toBe("owner");
+    expect(err.reason).toBe("leading-dash");
   });
 
   it("rejects leading-dash repo", () => {
-    try {
-      validateGitNameSafety({ repo: "-evil" });
-      throw new Error("expected to throw");
-    } catch (err) {
-      expect(err).toBeInstanceOf(GitNameSafetyError);
-      expect((err as GitNameSafetyError).field).toBe("repo");
-      expect((err as GitNameSafetyError).reason).toBe("leading-dash");
-    }
+    const err = captureGitNameSafetyError(() =>
+      validateGitNameSafety({ repo: "-evil" }),
+    );
+    expect(err.field).toBe("repo");
+    expect(err.reason).toBe("leading-dash");
   });
 
   it("rejects leading-dash ref", () => {
-    try {
-      validateGitNameSafety({ ref: "--upload-pack=evil" });
-      throw new Error("expected to throw");
-    } catch (err) {
-      expect(err).toBeInstanceOf(GitNameSafetyError);
-      expect((err as GitNameSafetyError).field).toBe("ref");
-      expect((err as GitNameSafetyError).reason).toBe("leading-dash");
-    }
+    const err = captureGitNameSafetyError(() =>
+      validateGitNameSafety({ ref: "--upload-pack=evil" }),
+    );
+    expect(err.field).toBe("ref");
+    expect(err.reason).toBe("leading-dash");
   });
 
   it("rejects '..' as repo", () => {
-    try {
-      validateGitNameSafety({ owner: "safe", repo: ".." });
-      throw new Error("expected to throw");
-    } catch (err) {
-      expect((err as GitNameSafetyError).reason).toBe("traversal");
-    }
+    const err = captureGitNameSafetyError(() =>
+      validateGitNameSafety({ owner: "safe", repo: ".." }),
+    );
+    expect(err.reason).toBe("traversal");
   });
 
   it("rejects '.' as repo", () => {
-    try {
-      validateGitNameSafety({ repo: "." });
-      throw new Error("expected to throw");
-    } catch (err) {
-      expect((err as GitNameSafetyError).reason).toBe("traversal");
-    }
+    const err = captureGitNameSafetyError(() => validateGitNameSafety({ repo: "." }));
+    expect(err.reason).toBe("traversal");
   });
 
   it("rejects embedded '..' in a segment", () => {
-    try {
-      validateGitNameSafety({ repo: "foo..bar" });
-      throw new Error("expected to throw");
-    } catch (err) {
-      expect((err as GitNameSafetyError).reason).toBe("traversal");
-    }
+    const err = captureGitNameSafetyError(() =>
+      validateGitNameSafety({ repo: "foo..bar" }),
+    );
+    expect(err.reason).toBe("traversal");
   });
 
   it("rejects embedded '..' in owner segment", () => {
-    try {
-      validateGitNameSafety({ owner: "..foo" });
-      throw new Error("expected to throw");
-    } catch (err) {
-      expect((err as GitNameSafetyError).reason).toBe("traversal");
-    }
+    const err = captureGitNameSafetyError(() =>
+      validateGitNameSafety({ owner: "..foo" }),
+    );
+    expect(err.reason).toBe("traversal");
   });
 
   it("rejects invalid characters", () => {
-    try {
-      validateGitNameSafety({ owner: "weird name" });
-      throw new Error("expected to throw");
-    } catch (err) {
-      expect((err as GitNameSafetyError).reason).toBe("invalid-characters");
-    }
+    const err = captureGitNameSafetyError(() =>
+      validateGitNameSafety({ owner: "weird name" }),
+    );
+    expect(err.reason).toBe("invalid-characters");
   });
 
   it("accepts GitLab nested group with safe segments", () => {
@@ -112,22 +102,18 @@ describe("validateGitNameSafety", () => {
   });
 
   it("rejects GitLab nested group when one segment is unsafe", () => {
-    try {
-      validateGitNameSafety({ owner: "group/-evil", repo: "repo" });
-      throw new Error("expected to throw");
-    } catch (err) {
-      expect((err as GitNameSafetyError).field).toBe("owner");
-      expect((err as GitNameSafetyError).reason).toBe("leading-dash");
-    }
+    const err = captureGitNameSafetyError(() =>
+      validateGitNameSafety({ owner: "group/-evil", repo: "repo" }),
+    );
+    expect(err.field).toBe("owner");
+    expect(err.reason).toBe("leading-dash");
   });
 
   it("rejects GitLab nested group with traversal segment", () => {
-    try {
-      validateGitNameSafety({ owner: "group/../escape", repo: "repo" });
-      throw new Error("expected to throw");
-    } catch (err) {
-      expect((err as GitNameSafetyError).field).toBe("owner");
-      expect((err as GitNameSafetyError).reason).toBe("traversal");
-    }
+    const err = captureGitNameSafetyError(() =>
+      validateGitNameSafety({ owner: "group/../escape", repo: "repo" }),
+    );
+    expect(err.field).toBe("owner");
+    expect(err.reason).toBe("traversal");
   });
 });

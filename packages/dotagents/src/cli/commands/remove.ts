@@ -378,7 +378,7 @@ export default async function remove(args: string[], context: CommandContext): P
     return;
   }
 
-  const skipConfirm = values.yes as boolean;
+  const skipConfirm = values.yes;
 
   try {
     const { scope } = context;

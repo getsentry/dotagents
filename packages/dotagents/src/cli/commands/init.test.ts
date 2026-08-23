@@ -4,11 +4,17 @@ import { mkdtemp, mkdir, rm, writeFile, readFile, lstat, readdir } from "node:fs
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
-import init, { runInit, InitError, installPostMergeHook } from "./init.js";
+import init, {
+  runInit as runInitCommand,
+  InitError,
+  installPostMergeHook,
+  type InitOptions,
+  type InitServices,
+} from "./init.js";
 import { loadConfig } from "../../config/loader.js";
 
-vi.mock("./install.js", () => ({
-  runInstall: vi.fn().mockResolvedValue({
+const services = {
+  runInstall: vi.fn(async () => ({
     installed: [],
     installedPlugins: [],
     pruned: [],
@@ -17,8 +23,12 @@ vi.mock("./install.js", () => ({
     hookWarnings: [],
     subagentWarnings: [],
     pluginWarnings: [],
-  }),
-}));
+  })),
+} satisfies InitServices;
+
+function runInit(opts: Omit<InitOptions, "services">): Promise<void> {
+  return runInitCommand({ ...opts, services });
+}
 
 describe("runInit", () => {
   let dir: string;
@@ -53,7 +63,7 @@ describe("runInit", () => {
 
     try {
       process.chdir(child);
-      await init(["--agents", "claude"], { scope: resolveScope("project", dir) });
+      await init(["--agents", "claude"], { scope: resolveScope("project", dir) }, services);
     } finally {
       process.chdir(cwd);
     }
@@ -331,7 +341,7 @@ describe("init hook migration", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    await init([], { scope: resolveScope("project", dir) });
+    await init([], { scope: resolveScope("project", dir) }, services);
 
     const hook = await readFile(hookPath, "utf-8");
     expect(hook).toContain("dotagents --project install");
@@ -348,7 +358,7 @@ describe("init hook migration", () => {
     await mkdir(join(dir, ".git", "hooks", "post-merge"), { recursive: true });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    await init(["--agents", "claude"], { scope: resolveScope("project", dir) });
+    await init(["--agents", "claude"], { scope: resolveScope("project", dir) }, services);
 
     expect(existsSync(join(dir, "agents.toml"))).toBe(true);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("--project doctor --fix"));

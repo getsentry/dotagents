@@ -47,10 +47,10 @@ export async function loadSkillMd(
     fileDescription: "SKILL.md",
   });
 
-  if (typeof meta["name"] !== "string" || !meta["name"]) {
+  if (!isNonEmptyString(meta["name"])) {
     throw new SkillLoadError(`Missing 'name' in SKILL.md frontmatter: ${filePath}`);
   }
-  if (typeof meta["description"] !== "string" || !meta["description"]) {
+  if (!isNonEmptyString(meta["description"])) {
     throw new SkillLoadError(`Missing 'description' in SKILL.md frontmatter: ${filePath}`);
   }
 
@@ -59,6 +59,8 @@ export async function loadSkillMd(
     meta["allowedTools"] = allowedTools;
   }
 
+  // SAFETY: name and description were validated above; the remaining fields
+  // retain the SerializedObject contract established by the frontmatter parser.
   return meta as SkillMeta;
 }
 
@@ -152,7 +154,7 @@ function extractFrontmatter(content: string): { yaml: string; end: number } | nu
  * a way the lib can't interpret (e.g. an object).
  */
 function parseAllowedTools(
-  raw: unknown,
+  raw: SerializedObject[string],
   onWarning?: (message: string) => void,
 ): ToolName[] | undefined {
   if (raw === undefined || raw === null) {return undefined;}
@@ -162,20 +164,20 @@ function parseAllowedTools(
   // likely a typo and we treat it as absent.
   let tokens: string[];
   let isArrayForm = false;
-  if (typeof raw === "string") {
+  if (isString(raw)) {
     tokens = raw.split(/\s+/).filter(Boolean);
   } else if (Array.isArray(raw)) {
     isArrayForm = true;
     tokens = [];
     for (const entry of raw) {
-      if (typeof entry === "string" && entry.trim().length > 0) {
+      if (isNonEmptyString(entry)) {
         tokens.push(entry.trim());
       } else {
         onWarning?.(`allowed-tools: skipping non-string entry ${JSON.stringify(entry)}`);
       }
     }
   } else {
-    onWarning?.(`allowed-tools must be a string or array, got ${typeof raw}; ignoring`);
+    onWarning?.(`allowed-tools must be a string or array; ignoring ${JSON.stringify(raw)}`);
     return undefined;
   }
 
@@ -195,4 +197,12 @@ function parseAllowedTools(
   }
   // Declared-but-no-recognized-tokens stays distinct from field-absent.
   return accepted;
+}
+
+function isString<Value>(value: Value): value is Value & string {
+  return typeof value === "string";
+}
+
+function isNonEmptyString<Value>(value: Value): value is Value & string {
+  return typeof value === "string" && value.length > 0;
 }

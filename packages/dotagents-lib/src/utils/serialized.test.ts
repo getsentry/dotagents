@@ -24,7 +24,7 @@ describe("serialized values", () => {
     expect(isSerializedValue(hiddenCallback)).toBe(false);
     const accessor = Object.defineProperty({}, "enabled", { get: () => true, enumerable: true });
     expect(isSerializedValue(accessor)).toBe(false);
-    expect(isSerializedValue(JSON.parse('{"__proto__":{"polluted":true}}') as unknown)).toBe(false);
+    expect(isSerializedValue(JSON.parse('{"__proto__":{"polluted":true}}'))).toBe(false);
     expect(isSerializedValue(new Map([["enabled", true]]))).toBe(false);
     expect(isSerializedValue(new (class Metadata { enabled = true; })())).toBe(false);
     const sparse: unknown[] = [];
@@ -33,7 +33,8 @@ describe("serialized values", () => {
   });
 
   it("rejects cyclic objects without overflowing", () => {
-    const value: { self?: object } = {};
+    interface CyclicValue { self?: object }
+    const value: CyclicValue = {};
     value.self = value;
     expect(isSerializedObject(value)).toBe(false);
   });

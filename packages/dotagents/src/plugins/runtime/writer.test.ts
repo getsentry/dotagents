@@ -5,14 +5,55 @@ import { dirname, join, relative, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse as parseJSONC } from "jsonc-parser";
 import type { PluginDeclaration } from "../types.js";
-import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest } from "../schema.js";
+import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest, type LegacyPluginManifest } from "../schema.js";
 import {
   prunePluginOutputs,
   projectedPiSkillNames,
   verifyPluginOutputs,
   writePluginOutputs,
 } from "./writer.js";
-import type { SerializedObject } from "@sentry/dotagents-lib";
+import { isSerializedObject, type SerializedObject, type SerializedValue } from "@sentry/dotagents-lib";
+
+function parseJsonObject(content: string): SerializedObject {
+  const parsed = JSON.parse(content);
+  if (!isSerializedObject(parsed)) {throw new Error("expected a serialized JSON object");}
+  return parsed;
+}
+
+function parseJsoncObject(content: string): SerializedObject {
+  const parsed = parseJSONC(content);
+  if (!isSerializedObject(parsed)) {throw new Error("expected a serialized JSONC object");}
+  return parsed;
+}
+
+function objectValue(value: SerializedValue | undefined): SerializedObject {
+  if (!isSerializedObject(value)) {throw new Error("expected a serialized object value");}
+  return value;
+}
+
+function arrayField(document: SerializedObject, key: string): SerializedValue[] {
+  const value = document[key];
+  if (!Array.isArray(value)) {throw new Error(`expected array field ${key}`);}
+  return value;
+}
+
+async function expectSymlinkTarget(linkPath: string, expectedTarget: string): Promise<void> {
+  expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
+  expect(resolve(dirname(linkPath), await readlink(linkPath))).toBe(resolve(expectedTarget));
+}
+
+function componentMarkerContent(linkPath: string, targetPath: string): string {
+  return `managedBy=dotagents\ntarget=${JSON.stringify(relative(dirname(linkPath), targetPath))}\n`;
+}
+
+async function writePluginSkill(pluginDir: string, name: string): Promise<void> {
+  await mkdir(join(pluginDir, "skills", name), { recursive: true });
+  await writeFile(
+    join(pluginDir, "skills", name, "SKILL.md"),
+    `---\nname: ${name}\ndescription: Plugin QA\n---\n`,
+    "utf-8",
+  );
+}
 
 describe("plugin writer", () => {
   let root: string;
@@ -33,16 +74,21 @@ describe("plugin writer", () => {
     await mkdir(join(pluginDir, "skills"), { recursive: true });
     await mkdir(join(pluginDir, "commands"), { recursive: true });
     await mkdir(join(pluginDir, "agents"), { recursive: true });
-    const manifest = (overrides.manifest && isStandardPluginManifest(overrides.manifest)
-      ? overrides.manifest
-      : {
-          name,
-          version: "1.0.0",
-          description: `Tools for ${name}`,
-          category: "Coding",
-          author: { name: "Sentry" },
-          ...overrides.manifest,
-        }) as PluginDeclaration["manifest"];
+    let manifest: PluginDeclaration["manifest"];
+    if (overrides.manifest && isStandardPluginManifest(overrides.manifest)) {
+      manifest = overrides.manifest;
+    } else {
+      const legacyOverrides = overrides.manifest;
+      const legacyManifest: LegacyPluginManifest = {
+        name,
+        version: "1.0.0",
+        description: `Tools for ${name}`,
+        category: "Coding",
+        author: { name: "Sentry" },
+      };
+      Object.assign(legacyManifest, legacyOverrides);
+      manifest = legacyManifest;
+    }
     return {
       name,
       source: `path:.agents/plugins/${name}`,
@@ -51,24 +97,6 @@ describe("plugin writer", () => {
       nativeSource: overrides.nativeSource,
       targets: overrides.targets,
     };
-  }
-
-  async function expectSymlinkTarget(linkPath: string, expectedTarget: string): Promise<void> {
-    expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
-    expect(resolve(dirname(linkPath), await readlink(linkPath))).toBe(resolve(expectedTarget));
-  }
-
-  function componentMarkerContent(linkPath: string, targetPath: string): string {
-    return `managedBy=dotagents\ntarget=${JSON.stringify(relative(dirname(linkPath), targetPath))}\n`;
-  }
-
-  async function writePluginSkill(pluginDir: string, name: string): Promise<void> {
-    await mkdir(join(pluginDir, "skills", name), { recursive: true });
-    await writeFile(
-      join(pluginDir, "skills", name, "SKILL.md"),
-      `---\nname: ${name}\ndescription: Plugin QA\n---\n`,
-      "utf-8",
-    );
   }
 
   it("writes deterministic marketplace outputs for runtimes that need projections", async () => {
@@ -83,7 +111,7 @@ describe("plugin writer", () => {
 
     expect(result.warnings).toEqual([]);
     expect(result.written).toBe(9);
-    const codexMarketplace = JSON.parse(await readFile(join(root, ".agents", "plugins", "marketplace.json"), "utf-8")) as SerializedObject;
+    const codexMarketplace = parseJsonObject(await readFile(join(root, ".agents", "plugins", "marketplace.json"), "utf-8"));
     expect(codexMarketplace).toEqual({
       interface: {
         displayName: "Dotagents Plugins",
@@ -123,8 +151,8 @@ describe("plugin writer", () => {
         },
       ],
     });
-    const codexPlugin = (codexMarketplace["plugins"] as Array<{ source: { path: string } }>)[0]!;
-    expect(resolve(root, codexPlugin["source"].path)).toBe(alpha.pluginDir);
+    const codexPlugin = objectValue(arrayField(codexMarketplace, "plugins")[0]);
+    expect(resolve(root, String(objectValue(codexPlugin["source"])["path"]))).toBe(alpha.pluginDir);
 
     const claudeMarketplaceJson = await readFile(join(root, ".claude-plugin", "marketplace.json"), "utf-8");
     expect(claudeMarketplaceJson).toBe(`{
@@ -149,24 +177,25 @@ describe("plugin writer", () => {
   ]
 }
 `);
-    const claudeMarketplace = JSON.parse(claudeMarketplaceJson) as { plugins: Array<{ source: string }> };
-    expect(resolve(root, claudeMarketplace["plugins"][0]!["source"])).toBe(alpha.pluginDir);
+    const claudeMarketplace = parseJsonObject(claudeMarketplaceJson);
+    const claudePlugin = objectValue(arrayField(claudeMarketplace, "plugins")[0]);
+    expect(resolve(root, String(claudePlugin["source"]))).toBe(alpha.pluginDir);
     expect(await readFile(join(root, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(claudeMarketplaceJson);
 
-    const claudeManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json"), "utf-8")) as SerializedObject;
+    const claudeManifest = parseJsonObject(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json"), "utf-8"));
     expect(claudeManifest["skills"]).toBe("./skills");
     expect(claudeManifest["commands"]).toBe("./commands");
     expect(claudeManifest["agents"]).toBeUndefined();
     expect(claudeManifest["category"]).toBeUndefined();
     expect(claudeManifest["metadata"]).toBeUndefined();
 
-    const cursorManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".cursor-plugin", "plugin.json"), "utf-8")) as SerializedObject;
+    const cursorManifest = parseJsonObject(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".cursor-plugin", "plugin.json"), "utf-8"));
     expect(cursorManifest["skills"]).toBe("./skills");
     expect(cursorManifest["commands"]).toBe("./commands");
     expect(cursorManifest["agents"]).toBe("./agents");
     expect(cursorManifest["metadata"]).toBeUndefined();
 
-    const codexManifest = JSON.parse(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"), "utf-8")) as SerializedObject;
+    const codexManifest = parseJsonObject(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"), "utf-8"));
     expect(codexManifest["skills"]).toBe("./skills");
     expect(codexManifest["commands"]).toBe("./commands");
     expect(codexManifest["agents"]).toBe("./agents");
@@ -191,15 +220,15 @@ describe("plugin writer", () => {
 
     await writePluginOutputs(["codex"], [alpha], root);
 
-    const marketplace = JSON.parse(
+    const marketplace = parseJsonObject(
       await readFile(join(root, ".agents", "plugins", "marketplace.json"), "utf-8"),
-    ) as { plugins: Array<{ category: string }> };
-    expect(marketplace.plugins[0]!.category).toBe("Productivity");
+    );
+    expect(objectValue(arrayField(marketplace, "plugins")[0])["category"]).toBe("Productivity");
 
-    const manifest = JSON.parse(
+    const manifest = parseJsonObject(
       await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8"),
-    ) as { interface: { category: string } };
-    expect(manifest.interface.category).toBe("Coding");
+    );
+    expect(objectValue(manifest["interface"])["category"]).toBe("Coding");
   });
 
   it("preserves explicit skills paths when repairing native manifests", async () => {
@@ -215,10 +244,10 @@ describe("plugin writer", () => {
 
       await writePluginOutputs([nativeSource], [nativePlugin], root);
 
-      const manifest = JSON.parse(
+      const manifest = parseJsonObject(
         await readFile(join(nativePlugin.pluginDir, `.${nativeSource}-plugin`, "plugin.json"), "utf-8"),
-      ) as { skills: string };
-      expect(manifest.skills).toBe("./custom-skills");
+      );
+      expect(manifest["skills"]).toBe("./custom-skills");
     }
   });
 
@@ -290,9 +319,9 @@ describe("plugin writer", () => {
 
     expect(await readFile(adapterMcpPath, "utf-8")).toBe('{"user":"owned"}\n');
     expect(existsSync(`${adapterMcpPath}.dotagents-managed`)).toBe(false);
-    const manifest = JSON.parse(
+    const manifest = parseJsonObject(
       await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8"),
-    ) as SerializedObject;
+    );
     expect(manifest["mcpServers"]).toBeUndefined();
     expect(result.warnings.some((warning) => warning.message.includes("MCP adapter exists and is not managed"))).toBe(true);
   });
@@ -359,14 +388,14 @@ describe("plugin writer", () => {
 
     expect(result.warnings).toEqual([]);
     expect(result.written).toBe(4);
-    const claudeManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8")) as SerializedObject;
+    const claudeManifest = parseJsonObject(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8"));
     expect(claudeManifest["agents"]).toBeUndefined();
     expect(claudeManifest["commands"]).toEqual(["./cmds/review.md"]);
     expect(claudeManifest["hooks"]).toBe("./config/hooks.json");
     expect(claudeManifest["mcpServers"]).toBe("./config/mcp.json");
     expect(claudeManifest["skills"]).toBe("./plugin-skills");
 
-    const cursorManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "utf-8")) as SerializedObject;
+    const cursorManifest = parseJsonObject(await readFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "utf-8"));
     expect(cursorManifest["agents"]).toBe("./custom-agents");
     expect(cursorManifest["commands"]).toEqual(["./cmds/review.md"]);
     expect(cursorManifest["hooks"]).toBe("./config/hooks.json");
@@ -402,9 +431,9 @@ describe("plugin writer", () => {
         message: 'Plugin component path "../outside" for "skills" is not a safe relative path and was skipped.',
       },
     ]);
-    const claudeManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8")) as SerializedObject;
-    const cursorManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "utf-8")) as SerializedObject;
-    const codexManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8")) as SerializedObject;
+    const claudeManifest = parseJsonObject(await readFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), "utf-8"));
+    const cursorManifest = parseJsonObject(await readFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "utf-8"));
+    const codexManifest = parseJsonObject(await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8"));
     expect(claudeManifest["skills"]).toBeUndefined();
     expect(cursorManifest["skills"]).toBeUndefined();
     expect(codexManifest["skills"]).toBeUndefined();
@@ -426,7 +455,7 @@ describe("plugin writer", () => {
         message: 'Plugin component path "\\outside" for "skills" is not a safe relative path and was skipped.',
       },
     ]);
-    const codexManifest = JSON.parse(await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8")) as SerializedObject;
+    const codexManifest = parseJsonObject(await readFile(join(alpha.pluginDir, ".codex-plugin", "plugin.json"), "utf-8"));
     expect(codexManifest["skills"]).toBeUndefined();
   });
 
@@ -518,11 +547,11 @@ describe("plugin writer", () => {
 
   it.each(["directory", "wrong-content file"] as const)(
     "does not treat a Grok marker %s as projection ownership",
-    async (markerShape) => {
+    async (ownershipMarkerKind) => {
     const alpha = await plugin("alpha-tools");
     const dest = join(root, ".grok", "plugins", "alpha-tools");
     await mkdir(dest, { recursive: true });
-    if (markerShape === "directory") {
+    if (ownershipMarkerKind === "directory") {
       await mkdir(join(dest, ".dotagents-managed"));
     } else {
       await writeFile(join(dest, ".dotagents-managed"), "owned-by=user\n");
@@ -612,15 +641,15 @@ describe("plugin writer", () => {
     expect(result.warnings).toEqual([]);
     const raw = await readFile(opencodePath, "utf-8");
     expect(raw).toContain("// Preserve user config");
-    const config = parseJSONC(raw) as { mcp: SerializedObject };
-    expect(config.mcp["manual"]).toEqual({ type: "local", command: ["manual"] });
-    expect(config.mcp["plugin.alpha-tools.remote"]).toEqual({
+    const config = parseJsoncObject(raw);
+    expect(objectValue(config["mcp"])["manual"]).toEqual({ type: "local", command: ["manual"] });
+    expect(objectValue(config["mcp"])["plugin.alpha-tools.remote"]).toEqual({
       type: "remote",
       url: "https://example.com/${DEPLOYMENT}/mcp",
       headers: { "X-Fixture": "Bearer ${TOKEN}" },
     });
     const dataDir = join(root, ".agents", "plugin-data", "alpha-tools");
-    expect(config.mcp["plugin.alpha-tools.local"]).toEqual({
+    expect(objectValue(config["mcp"])["plugin.alpha-tools.local"]).toEqual({
       type: "local",
       command: ["node", join(alpha.pluginDir, "server.mjs"), "${OTHER}"],
       cwd: join(alpha.pluginDir, "runtime"),
@@ -630,7 +659,7 @@ describe("plugin writer", () => {
         PLUGIN_ROOT: alpha.pluginDir,
       },
     });
-    expect(config.mcp["plugin.alpha-tools.default-cwd"]).toEqual({
+    expect(objectValue(config["mcp"])["plugin.alpha-tools.default-cwd"]).toEqual({
       type: "local",
       command: ["node"],
       cwd: alpha.pluginDir,
@@ -657,10 +686,8 @@ describe("plugin writer", () => {
 
     const prunedRaw = await readFile(opencodePath, "utf-8");
     expect(prunedRaw).toContain("// Preserve user config");
-    const prunedConfig = parseJSONC(prunedRaw) as {
-      mcp: SerializedObject;
-    };
-    expect(prunedConfig.mcp).toEqual({ manual: { type: "local", command: ["manual"] } });
+    const prunedConfig = parseJsoncObject(prunedRaw);
+    expect(prunedConfig["mcp"]).toEqual({ manual: { type: "local", command: ["manual"] } });
     expect(existsSync(dataDir)).toBe(false);
     expect(existsSync(join(root, ".agents", "plugin-mcp", "opencode.json"))).toBe(false);
   });

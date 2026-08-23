@@ -39,7 +39,7 @@ export function exec(
 
     execFile(cmd, args, { cwd: opts?.cwd, env, maxBuffer: 50 * 1024 * 1024, timeout: opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS }, (err, stdout, stderr) => {
       if (err) {
-        const code = "code" in err ? (err.code as number | null) : null;
+        const code = "code" in err && isNumber(err.code) ? err.code : null;
         reject(
           new ExecError(
             `${cmd} ${args.join(" ")} failed: ${stderr.trim() || err.message}`,
@@ -52,4 +52,8 @@ export function exec(
       resolve({ stdout, stderr });
     });
   });
+}
+
+function isNumber<Value>(value: Value): value is Value & number {
+  return typeof value === "number";
 }

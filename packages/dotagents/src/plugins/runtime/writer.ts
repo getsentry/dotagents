@@ -27,6 +27,7 @@ import {
   type PluginRuntimeLayout,
   type PluginRuntimeRoot,
 } from "./layout.js";
+import { hasErrorCode, isNonEmptyString, isString, isStringArray } from "../../utils/type-guards.js";
 
 // Owns deterministic runtime plugin projections. Existing runtime artifacts are
 // overwritten only when they carry dotagents managed metadata or a managed marker.
@@ -344,19 +345,18 @@ function portableCoreManifest(plugin: PluginDeclaration): SerializedObject {
   };
   for (const key of ["description", "version", "homepage", "license"] as const) {
     const value = plugin.manifest[key];
-    if (typeof value === "string" && value.length > 0) {manifest[key] = value;}
+    if (isNonEmptyString(value)) {manifest[key] = value;}
   }
-  if (typeof plugin.manifest.repository === "string") {
+  if (isString(plugin.manifest.repository)) {
     manifest["repository"] = plugin.manifest.repository;
   }
   if (plugin.manifest.author?.name) {
-    manifest["author"] = {
-      name: plugin.manifest.author.name,
-      ...(plugin.manifest.author.email ? { email: plugin.manifest.author.email } : {}),
-      ...(plugin.manifest.author.url ? { url: plugin.manifest.author.url } : {}),
-    };
+    const author: SerializedObject = { name: plugin.manifest.author.name };
+    if (plugin.manifest.author.email) {author["email"] = plugin.manifest.author.email;}
+    if (plugin.manifest.author.url) {author["url"] = plugin.manifest.author.url;}
+    manifest["author"] = author;
   }
-  if (plugin.manifest.keywords?.every((keyword) => typeof keyword === "string")) {
+  if (isStringArray(plugin.manifest.keywords)) {
     manifest["keywords"] = plugin.manifest.keywords;
   }
   return manifest;
@@ -365,10 +365,11 @@ function portableCoreManifest(plugin: PluginDeclaration): SerializedObject {
 function nativeComponentRoots(plugin: PluginDeclaration): string[] {
   if (!plugin.nativeSource || isStandardPluginManifest(plugin.manifest)) {return [];}
   const roots = new Set<string>();
+  // SAFETY: standard manifests returned above; remaining native manifests use legacy fields.
   const manifest = plugin.manifest as LegacyPluginManifest;
   for (const key of ["skills", "agents", "commands", "rules", "hooks", "mcpServers", "lspServers", "apps", "monitors", "bin"] as const) {
     const value = manifest[key];
-    const paths = typeof value === "string" ? [value] : Array.isArray(value) ? value : [];
+    const paths = isString(value) ? [value] : isStringArray(value) ? value : [];
     for (const path of paths) {
       if (!isSafeComponentPath(path)) {continue;}
       const root = path.replace(/^\.\//, "").split("/")[0];
@@ -683,13 +684,18 @@ function componentDirs(
   return paths.map((path) => join(plugin.pluginDir, path));
 }
 
-function manifestPaths(
-  value: unknown,
+interface ManifestPaths {
+  present: boolean;
+  paths: string[];
+}
+
+function manifestPaths<Value>(
+  value: Value,
   plugin: PluginDeclaration,
   manifestKey: keyof Pick<LegacyPluginManifest, "skills" | "agents">,
   agent?: ComponentProjectionAgent,
   warnings: PluginWriteWarning[] = [],
-): { present: boolean; paths: string[] } {
+): ManifestPaths {
   const collect = (values: string[]): string[] => {
     const paths: string[] = [];
     for (const item of values) {
@@ -708,13 +714,13 @@ function manifestPaths(
     return paths;
   };
 
-  if (typeof value === "string") {
+  if (isString(value)) {
     return {
       present: true,
       paths: collect([value]),
     };
   }
-  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+  if (isStringArray(value)) {
     return {
       present: true,
       paths: collect(value),
@@ -754,8 +760,8 @@ function isOutsideRelativePath(path: string): boolean {
   return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
 }
 
-function isNotDirectoryError(err: unknown): boolean {
-  return err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOTDIR";
+function isNotDirectoryError<ErrorValue>(err: ErrorValue): boolean {
+  return hasErrorCode(err, "ENOTDIR");
 }
 
 /** Prunes stale component symlinks carrying a marker in the reserved ownership directory. */
@@ -781,8 +787,8 @@ async function pruneManagedComponentLinks(
 
 async function symlinkPointsTo(filePath: string, expectedTarget: string): Promise<boolean> {
   try {
-    const stat = await lstat(filePath);
-    if (!stat.isSymbolicLink()) {return false;}
+    const linkStat = await lstat(filePath);
+    if (!linkStat.isSymbolicLink()) {return false;}
     const target = await readlink(filePath);
     return resolve(dirname(filePath), target) === resolve(expectedTarget);
   } catch {
@@ -811,8 +817,8 @@ async function isDirectoryPath(filePath: string): Promise<boolean> {
 
 async function isManagedComponentLink(filePath: string): Promise<boolean> {
   try {
-    const stat = await lstat(filePath);
-    if (!stat.isSymbolicLink()) {return false;}
+    const linkStat = await lstat(filePath);
+    if (!linkStat.isSymbolicLink()) {return false;}
     const markerPath = await safeComponentLinkMarkerPath(filePath, false);
     if (!markerPath || !(await lstat(markerPath)).isFile()) {return false;}
     const target = await readlink(filePath);
@@ -834,7 +840,7 @@ async function claimComponentLinkMarker(filePath: string, target: string): Promi
     await writeFile(markerPath, content, { encoding: "utf-8", flag: "wx" });
     return true;
   } catch (err) {
-    if (!(err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "EEXIST")) {
+    if (!hasErrorCode(err, "EEXIST")) {
       throw err;
     }
   }
@@ -856,7 +862,7 @@ function isComponentLinkMarkerContent(content: string): boolean {
   if (!content.startsWith(prefix) || !content.endsWith("\n")) {return false;}
   try {
     const target = JSON.parse(content.slice(prefix.length, -1));
-    return typeof target === "string" && content === componentLinkMarkerContent(target);
+    return isString(target) && content === componentLinkMarkerContent(target);
   } catch {
     return false;
   }
@@ -873,7 +879,7 @@ async function safeComponentLinkMarkerPath(filePath: string, createDir: boolean)
     try {
       await mkdir(markerDir);
     } catch (mkdirErr) {
-      if (!(mkdirErr instanceof Error && "code" in mkdirErr && (mkdirErr as NodeJS.ErrnoException).code === "EEXIST")) {
+      if (!hasErrorCode(mkdirErr, "EEXIST")) {
         throw mkdirErr;
       }
     }
@@ -933,7 +939,7 @@ async function rmdirIfEmpty(dir: string): Promise<void> {
   try {
     await rmdir(dir);
   } catch (err) {
-    if (!isNotFoundError(err) && !(err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOTEMPTY")) {
+    if (!isNotFoundError(err) && !hasErrorCode(err, "ENOTEMPTY")) {
       throw err;
     }
   }

@@ -1,6 +1,8 @@
 import { exec, ExecError } from "../utils/exec.js";
 import { existsSync } from "node:fs";
 
+export type GitExecutor = typeof exec;
+
 function toSshCloneUrl(url: string): string | undefined {
   const hostedMatch = url.match(
     /^https?:\/\/(github\.com|gitlab\.com)\/(.+)$/i,
@@ -53,6 +55,7 @@ export async function clone(
   url: string,
   dest: string,
   ref?: string,
+  run: GitExecutor = exec,
 ): Promise<void> {
   const isSha = ref && SHA_LIKE.test(ref);
   const args = ["clone", "--depth=1"];
@@ -62,7 +65,7 @@ export async function clone(
   args.push("--", url, dest);
 
   try {
-    await exec("git", args);
+    await run("git", args);
   } catch (err) {
     if (err instanceof ExecError) {
       const stderr = err.stderr;
@@ -88,17 +91,17 @@ export async function clone(
 
   // For SHA refs, fetch the specific commit after the initial clone
   if (isSha) {
-    await fetchRef(dest, ref);
+    await fetchRef(dest, ref, run);
   }
 }
 
 /**
  * Fetch latest and reset to origin's HEAD. For updating unpinned repos.
  */
-export async function fetchAndReset(repoDir: string): Promise<void> {
+export async function fetchAndReset(repoDir: string, run: GitExecutor = exec): Promise<void> {
   try {
-    await exec("git", ["fetch", "--force", "--depth=1", "--", "origin"], { cwd: repoDir });
-    await exec("git", ["reset", "--hard", "FETCH_HEAD"], { cwd: repoDir });
+    await run("git", ["fetch", "--force", "--depth=1", "--", "origin"], { cwd: repoDir });
+    await run("git", ["reset", "--hard", "FETCH_HEAD"], { cwd: repoDir });
   } catch (err) {
     if (err instanceof ExecError) {
       throw new GitError(`Failed to update ${repoDir}: ${err.stderr}`);
@@ -110,12 +113,12 @@ export async function fetchAndReset(repoDir: string): Promise<void> {
 /**
  * Fetch a specific ref and checkout.
  */
-export async function fetchRef(repoDir: string, ref: string): Promise<void> {
+export async function fetchRef(repoDir: string, ref: string, run: GitExecutor = exec): Promise<void> {
   try {
-    await exec("git", ["fetch", "--force", "--depth=1", "--", "origin", ref], {
+    await run("git", ["fetch", "--force", "--depth=1", "--", "origin", ref], {
       cwd: repoDir,
     });
-    await exec("git", ["checkout", "FETCH_HEAD"], { cwd: repoDir });
+    await run("git", ["checkout", "FETCH_HEAD"], { cwd: repoDir });
   } catch (err) {
     if (err instanceof ExecError) {
       throw new GitError(
@@ -129,8 +132,8 @@ export async function fetchRef(repoDir: string, ref: string): Promise<void> {
 /**
  * Get the current HEAD commit SHA (full 40 chars).
  */
-export async function headCommit(repoDir: string): Promise<string> {
-  const { stdout } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
+export async function headCommit(repoDir: string, run: GitExecutor = exec): Promise<string> {
+  const { stdout } = await run("git", ["rev-parse", "HEAD"], { cwd: repoDir });
   return stdout.trim();
 }
 
@@ -139,8 +142,8 @@ export async function headCommit(repoDir: string): Promise<string> {
  * Uses committer date (not author date) to reflect when the commit landed on the branch,
  * which aligns with "release age" semantics (survives cherry-picks and merges).
  */
-export async function headCommitDate(repoDir: string): Promise<Date> {
-  const { stdout } = await exec("git", ["log", "-1", "--format=%cI", "HEAD"], { cwd: repoDir });
+export async function headCommitDate(repoDir: string, run: GitExecutor = exec): Promise<Date> {
+  const { stdout } = await run("git", ["log", "-1", "--format=%cI", "HEAD"], { cwd: repoDir });
   return new Date(stdout.trim());
 }
 
@@ -154,6 +157,7 @@ export async function headCommitDate(repoDir: string): Promise<Date> {
 export async function findCommitOlderThan(
   repoDir: string,
   minAgeMinutes: number,
+  run: GitExecutor = exec,
 ): Promise<string | null> {
   const cutoff = new Date(Date.now() - minAgeMinutes * 60 * 1000);
   const iso = cutoff.toISOString();
@@ -161,7 +165,7 @@ export async function findCommitOlderThan(
   // Unshallow to get full history — needed to find commits older than the cutoff.
   // Only called when HEAD is too new, so the extra fetch is acceptable.
   try {
-    await exec("git", ["fetch", "--force", "--unshallow", "--", "origin"], { cwd: repoDir });
+    await run("git", ["fetch", "--force", "--unshallow", "--", "origin"], { cwd: repoDir });
   } catch (err) {
     if (!(err instanceof ExecError)) {throw err;}
     // --unshallow fails on a complete (non-shallow) repository — that's fine
@@ -173,7 +177,7 @@ export async function findCommitOlderThan(
   // Find the newest commit at or before the cutoff.
   // Use HEAD (not FETCH_HEAD) — after the prior fetchAndReset, HEAD is at the
   // latest commit and --unshallow made full history available behind it.
-  const { stdout } = await exec(
+  const { stdout } = await run(
     "git",
     ["log", "--format=%H", "--before", iso, "-1", "HEAD"],
     { cwd: repoDir },
@@ -185,9 +189,9 @@ export async function findCommitOlderThan(
 /**
  * Checkout a local ref (commit, branch, tag). No fetch — the ref must already exist locally.
  */
-export async function checkout(repoDir: string, ref: string): Promise<void> {
+export async function checkout(repoDir: string, ref: string, run: GitExecutor = exec): Promise<void> {
   try {
-    await exec("git", ["checkout", ref], { cwd: repoDir });
+    await run("git", ["checkout", ref], { cwd: repoDir });
   } catch (err) {
     if (err instanceof ExecError) {
       throw new GitError(`Failed to checkout ${ref} in ${repoDir}: ${err.stderr}`);

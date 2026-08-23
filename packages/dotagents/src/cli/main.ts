@@ -12,15 +12,49 @@ import trust from "./commands/trust.js";
 import doctor from "./commands/doctor.js";
 import { getCommandHelp } from "./help.js";
 import { resolveProjectScope, resolveScope, ScopeError, type Scope } from "../scope.js";
+import type { CommandContext } from "./context.js";
+import { z } from "zod/v4";
 
 const require = createRequire(import.meta.url);
-const { version } = require("../../package.json") as { version: string };
+const { version } = z.object({ version: z.string() }).parse(require("../../package.json"));
 export { version };
 
-const COMMANDS = {
+export type CommandHandler = (args: string[], context: CommandContext) => Promise<void>;
+
+export interface CliCommands {
+  init: CommandHandler;
+  install: CommandHandler;
+  add: CommandHandler;
+  remove: CommandHandler;
+  sync: CommandHandler;
+  list: CommandHandler;
+  mcp: CommandHandler;
+  trust: CommandHandler;
+  doctor: CommandHandler;
+}
+
+export interface CliServices {
+  commands: CliCommands;
+  checkForUpdate: typeof checkForUpdate;
+  resolveProjectScope: typeof resolveProjectScope;
+  resolveScope: typeof resolveScope;
+}
+
+const COMMANDS: CliCommands = {
   init, install, add, remove, sync, list, mcp, trust, doctor,
-} as const;
+};
 type Command = keyof typeof COMMANDS;
+
+const DEFAULT_CLI_SERVICES: CliServices = {
+  commands: COMMANDS,
+  checkForUpdate,
+  resolveProjectScope,
+  resolveScope,
+};
+
+function isCommand(value: string, commands: CliCommands): value is Command {
+  return Object.hasOwn(commands, value);
+}
 
 export interface ParsedScopeArgs {
   args: string[];
@@ -63,7 +97,10 @@ Options:
   --version   Show version`);
 }
 
-export async function main(argv = process.argv.slice(2)): Promise<void> {
+export async function main(
+  argv = process.argv.slice(2),
+  services: CliServices = DEFAULT_CLI_SERVICES,
+): Promise<void> {
   let parsed: ParsedScopeArgs;
   try {
     parsed = parseScopeArgs(argv);
@@ -87,14 +124,14 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     return;
   }
 
-  if (!Object.hasOwn(COMMANDS, first)) {
+  if (!isCommand(first, services.commands)) {
     console.error(`Unknown command: ${first}`);
     printUsage();
     process.exitCode = 1;
     return;
   }
 
-  const command = COMMANDS[first as Command];
+  const command = services.commands[first];
   const commandArgs = args.slice(1);
   const commandHelp = getCommandHelp(first, commandArgs);
   if (commandHelp) {
@@ -105,8 +142,8 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   let scope;
   try {
     scope = parsed.scope === "project"
-      ? resolveProjectScope(resolve("."), { requireConfig: first !== "init" })
-      : resolveScope("user");
+      ? services.resolveProjectScope(resolve("."), { requireConfig: first !== "init" })
+      : services.resolveScope("user");
   } catch (err) {
     if (err instanceof ScopeError) {
       console.error(err.message);
@@ -116,7 +153,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     throw err;
   }
 
-  const updateMessage = checkForUpdate(version);
+  const updateMessage = services.checkForUpdate(version);
   await command(commandArgs, { scope });
 
   const message = await updateMessage;

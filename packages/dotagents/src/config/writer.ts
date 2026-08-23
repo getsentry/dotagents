@@ -14,6 +14,11 @@ export interface DefaultConfigOptions {
   skills?: Array<{ name: string; source: string; ref?: string; path?: string }>;
 }
 
+interface TomlDependencyEntry extends Record<string, string> {
+  name: string;
+  source: string;
+}
+
 /**
  * Add a skill entry to agents.toml.
  * Appends a [[skills]] block at the end of the file.
@@ -27,7 +32,7 @@ export async function addSkillToConfig(
   const content = await readFile(filePath, "utf-8");
 
   // Build a partial TOML object and stringify it for proper escaping
-  const entry: Record<string, string> = { name, source: dep.source };
+  const entry: TomlDependencyEntry = { name, source: dep.source };
   if (dep.ref) {entry["ref"] = dep.ref;}
   if (dep.path) {entry["path"] = dep.path;}
 
@@ -47,7 +52,7 @@ export async function addPluginsToConfig(
   }
   const content = await readFile(filePath, "utf-8");
   const entries = plugins.map((plugin) => {
-    const entry: Record<string, string> = {
+    const entry: TomlDependencyEntry = {
       name: plugin.name,
       source: plugin.source,
     };
@@ -289,7 +294,7 @@ function removeBlockByHeader(content: string, header: string, name: string): str
   );
 }
 
-function tomlValue(value: unknown): string {
+function tomlValue<Value>(value: Value): string {
   return stringify({ v: value }).replace("v = ", "").trimEnd();
 }
 
@@ -475,7 +480,7 @@ export function generateDefaultConfig(opts?: DefaultConfigOptions | string[]): s
 
   if (options.skills && options.skills.length > 0) {
     for (const skill of options.skills) {
-      const entry: Record<string, string> = { name: skill.name, source: skill.source };
+      const entry: TomlDependencyEntry = { name: skill.name, source: skill.source };
       if (skill.ref) {entry["ref"] = skill.ref;}
       if (skill.path) {entry["path"] = skill.path;}
       config += `\n${stringify({ skills: [entry] }).trimEnd()}\n`;

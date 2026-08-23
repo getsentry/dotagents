@@ -13,7 +13,25 @@ import {
   writeMcpConfigs,
 } from "./mcp-writer.js";
 import type { McpDeclaration } from "./types.js";
-import type { SerializedObject } from "@sentry/dotagents-lib";
+import { isSerializedObject, type SerializedObject } from "@sentry/dotagents-lib";
+
+function parseJsoncObject(content: string): SerializedObject {
+  const parsed = parseJSONC(content);
+  if (!isSerializedObject(parsed)) {throw new Error("expected a serialized JSONC object");}
+  return parsed;
+}
+
+function parseTomlObject(content: string): SerializedObject {
+  const parsed = parseTOML(content);
+  if (!isSerializedObject(parsed)) {throw new Error("expected a serialized TOML object");}
+  return parsed;
+}
+
+function childObject(document: SerializedObject, key: string): SerializedObject {
+  const value = document[key];
+  if (!isSerializedObject(value)) {throw new Error(`expected object field ${key}`);}
+  return value;
+}
 
 const STDIO_SERVER: McpDeclaration = {
   name: "github",
@@ -156,7 +174,7 @@ describe("writeMcpConfigs", () => {
     });
     let raw = await readFile(filePath, "utf-8");
     expect(raw).toContain("// Keep this setting and server");
-    expect((parseJSONC(raw) as { mcp: SerializedObject }).mcp["plugin.qa.remote"]).toEqual({
+    expect(childObject(parseJsoncObject(raw), "mcp")["plugin.qa.remote"]).toEqual({
       type: "remote",
       url: "https://example.com/mcp",
     });
@@ -173,11 +191,11 @@ describe("writeMcpConfigs", () => {
       mode: "apply",
     });
     raw = await readFile(filePath, "utf-8");
-    const parsed = parseJSONC(raw) as { theme: string; mcp: SerializedObject };
+    const parsed = parseJsoncObject(raw);
     expect(raw).toContain("// Keep this setting and server");
-    expect(parsed.theme).toBe("dark");
-    expect(parsed.mcp["manual"]).toEqual({ type: "local", command: ["manual"] });
-    expect(parsed.mcp["plugin.qa.remote"]).toBeUndefined();
+    expect(parsed["theme"]).toBe("dark");
+    expect(childObject(parsed, "mcp")["manual"]).toEqual({ type: "local", command: ["manual"] });
+    expect(childObject(parsed, "mcp")["plugin.qa.remote"]).toBeUndefined();
     expect(existsSync(statePath)).toBe(false);
   });
 
@@ -269,8 +287,8 @@ describe("writeMcpConfigs", () => {
 
     // Codex
     const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
-    const codex = parseTOML(raw) as Record<string, Record<string, SerializedObject>>;
-    expect(codex["mcp_servers"]!["remote"]).toEqual({
+    const codex = parseTomlObject(raw);
+    expect(childObject(codex, "mcp_servers")["remote"]).toEqual({
       url: "https://mcp.example.com/mcp",
       http_headers: { Authorization: "Bearer tok" },
     });
@@ -331,7 +349,7 @@ describe("writeMcpConfigs", () => {
     const nested = await readFile(nestedPath, "utf-8");
     expect(nested).toContain("// Keep this comment");
     expect(
-      (parseJSONC(nested) as Record<string, SerializedObject>)["mcp"]!["github"],
+      childObject(parseJsoncObject(nested), "mcp")["github"],
     ).toBeDefined();
     expect(JSON.parse(await readFile(legacyPath, "utf-8"))).toEqual({
       mcp: { legacy: { command: ["legacy"] } },
@@ -363,9 +381,9 @@ describe("writeMcpConfigs", () => {
     expect(raw).toContain("// Project theme must remain documented");
     expect(raw).toContain("// User-owned server");
     expect(raw).toMatch(/"github": \{[\s\S]*?\n    },\n  },\n}\n$/);
-    const content = parseJSONC(raw) as Record<string, SerializedObject>;
-    expect(content["mcp"]!["manual"]).toEqual({ type: "local", command: ["manual"] });
-    expect(content["mcp"]!["github"]).toEqual({
+    const content = parseJsoncObject(raw);
+    expect(childObject(content, "mcp")["manual"]).toEqual({ type: "local", command: ["manual"] });
+    expect(childObject(content, "mcp")["github"]).toEqual({
       type: "local",
       command: ["npx", "-y", "@mcp/server-github"],
       environment: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
@@ -464,10 +482,10 @@ describe("writeMcpConfigs", () => {
       headers: { "X-Api-Key": "${API_KEY}", Authorization: "Bearer ${TOKEN}" },
     });
 
-    const codex = parseTOML(
+    const codex = parseTomlObject(
       await readFile(join(dir, ".codex", "config.toml"), "utf-8"),
-    ) as Record<string, Record<string, SerializedObject>>;
-    expect(codex["mcp_servers"]!["authed-api"]).toEqual({
+    );
+    expect(childObject(codex, "mcp_servers")["authed-api"]).toEqual({
       url: "https://${API_HOST}/mcp",
       http_headers: {
         "X-Api-Key": "${API_KEY}",
@@ -480,8 +498,8 @@ describe("writeMcpConfigs", () => {
     await writeMcpConfigs(["codex"], [HTTP_SERVER_WITH_ENV_REFS], projectMcpResolver(dir));
 
     const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
-    const content = parseTOML(raw) as Record<string, Record<string, SerializedObject>>;
-    expect(content["mcp_servers"]!["authed-api"]).toEqual({
+    const content = parseTomlObject(raw);
+    expect(childObject(content, "mcp_servers")["authed-api"]).toEqual({
       url: "https://${API_HOST}/mcp",
       // Pure ref: X-Api-Key = "${API_KEY}" → env_http_headers.API_KEY = "X-Api-Key"
       env_http_headers: { API_KEY: "X-Api-Key" },

@@ -10,8 +10,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(__dirname, "..");
+const moduleDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = join(moduleDir, "..");
 
 // craft passes [OLD_VERSION, NEW_VERSION]; manual invocation passes just NEW_VERSION.
 const args = process.argv.slice(2);
