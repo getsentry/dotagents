@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import list, { runList, runPluginList } from "./list.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { resolveScope } from "../../scope.js";
-import { DOTAGENTS_AUTHORED_INTERFACES_MARKER } from "../../plugins/store.js";
+import { DOTAGENTS_NATIVE_FALLBACKS_MARKER } from "../../plugins/store.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -219,7 +219,7 @@ source = "org/unlocked"
       name: "hybrid-tools",
     }));
     await writeFile(join(pluginDir, ".claude-plugin", "plugin.json"), '{"name":"hybrid-tools"}');
-    await writeFile(join(pluginDir, DOTAGENTS_AUTHORED_INTERFACES_MARKER), "claude\n");
+    await writeFile(join(pluginDir, DOTAGENTS_NATIVE_FALLBACKS_MARKER), "claude\n");
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1
@@ -255,7 +255,7 @@ source = "org/hybrid-tools"
           source: "org/hybrid-tools",
           status: "ok",
           warnings: [
-            'Plugin "hybrid-tools" is a hybrid compatibility bundle: portable components remain shared; authored Claude interfaces govern only their matching clients.',
+            'Plugin "hybrid-tools" is a hybrid compatibility bundle: the portable core remains authoritative; authored Claude interfaces are retained only as matching-client fallbacks.',
           ],
         },
       ],

@@ -1,10 +1,16 @@
-import type { PluginDeclaration } from "./types.js";
+import type { NativePluginSource, PluginDeclaration } from "./types.js";
 import type { PluginWriteWarning } from "./runtime/types.js";
 import { isStandardPluginManifest } from "./schema.js";
+import { isSerializedObject } from "@sentry/dotagents-lib";
 
 const PLUGIN_ONLY_AGENT_IDS = ["grok", "pi"];
 const PLUGIN_AGENT_IDS = ["claude", "cursor", "codex", "grok", "opencode", "pi"];
 const SUPPORTED_PLUGIN_AGENT_IDS = new Set(allPluginAgentIds());
+const GENERATED_NATIVE_FIELDS: Record<NativePluginSource, ReadonlySet<string>> = {
+  claude: new Set(["$schema", "name", "version", "description", "author", "homepage", "repository", "license", "keywords", "skills"]),
+  cursor: new Set(["$schema", "name", "version", "description", "author", "homepage", "repository", "license", "keywords", "skills"]),
+  codex: new Set(["$schema", "name", "version", "description", "author", "homepage", "repository", "license", "keywords", "skills"]),
+};
 
 /** Returns agent IDs accepted in agents.toml only for plugin runtime output. */
 export function allPluginOnlyAgentIds(): string[] {
@@ -31,6 +37,25 @@ export function selectedAgentIds(
   return [...new Set(targets)]
     .filter((target) => configured.has(target))
     .filter((target) => SUPPORTED_PLUGIN_AGENT_IDS.has(target));
+}
+
+/** Returns whether a native manifest contains behavior the target adapter cannot generate from the portable core. */
+export function nativeInterfaceNeedsFallback(
+  source: NativePluginSource,
+  value: unknown,
+): boolean {
+  if (!isSerializedObject(value)) {return false;}
+  for (const [key, field] of Object.entries(value)) {
+    if (!GENERATED_NATIVE_FIELDS[source].has(key)) {return true;}
+    if (key === "skills" && !isConventionalSkillsReference(field)) {return true;}
+  }
+  return false;
+}
+
+function isConventionalSkillsReference(value: unknown): boolean {
+  const values = Array.isArray(value) ? value : [value];
+  return values.length === 1 && typeof values[0] === "string" &&
+    values[0].replace(/^\.\//, "").replace(/\/$/, "") === "skills";
 }
 
 /** Keeps native legacy components with their owning client while generalized legacy bundles remain portable. */

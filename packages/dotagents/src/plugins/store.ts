@@ -26,7 +26,7 @@ import {
   type LegacyPluginManifest,
   type PluginManifest,
 } from "./schema.js";
-import { selectedAgentIds } from "./targets.js";
+import { nativeInterfaceNeedsFallback, selectedAgentIds } from "./targets.js";
 import type {
   AuthoredNativePluginInterfaces,
   NativePluginSource,
@@ -136,7 +136,7 @@ export const HYBRID_LEGACY_ROOTS = [
 ] as const;
 
 export const DOTAGENTS_MANAGED_PLUGIN_MARKER = ".dotagents-managed";
-export const DOTAGENTS_AUTHORED_INTERFACES_MARKER = ".dotagents-authored-interfaces";
+export const DOTAGENTS_NATIVE_FALLBACKS_MARKER = ".dotagents-native-fallbacks";
 const DOTAGENTS_NATIVE_SOURCE_MARKER = ".dotagents-native-source";
 
 let tempInstallCounter = 0;
@@ -230,9 +230,10 @@ export async function installPluginBundle(
     await removeSourceOwnershipMarkers(tempDir);
     await assertPluginBundleSymlinksContained(tempDir);
     const staged = { ...resolved.plugin, pluginDir: tempDir };
+    await removeRedundantNativeInterfaces(staged);
     await ensureCanonicalManifest(staged);
     await writeNativeSourceMarker(staged);
-    await writeAuthoredInterfacesMarker(staged);
+    await writeNativeFallbacksMarker(staged);
     await writeManagedMarker(tempDir);
 
     if (existsSync(destDir)) {
@@ -821,7 +822,7 @@ async function loadPluginInterfaces(
   const provenance = installed
     ? await readInstalledPluginProvenance(pluginDir)
     : undefined;
-  const authoredSources = provenance?.authoredSources;
+  const fallbackSources = provenance?.fallbackSources;
   const installedNativeSource = provenance?.nativeSource;
   const rootPath = join(pluginDir, "plugin.json");
   if (existsSync(rootPath)) {
@@ -836,7 +837,7 @@ async function loadPluginInterfaces(
       manifest,
       authoredNativeInterfaces: await loadAuthoredNativeInterfaces(
         pluginDir,
-        authoredSources,
+        fallbackSources,
         installedNativeSource,
       ),
       nativeSource: installedNativeSource,
@@ -860,6 +861,7 @@ async function loadPluginInterfaces(
     if (candidate.nativeSource) {
       authoredNativeInterfaces[candidate.nativeSource] = {
         path: candidate.path,
+        fallback: true,
         manifest,
       };
     }
@@ -874,31 +876,38 @@ async function loadPluginInterfaces(
 
 async function loadAuthoredNativeInterfaces(
   pluginDir: string,
-  authoredSources: ReadonlySet<NativePluginSource> | null | undefined,
+  fallbackSources: ReadonlySet<NativePluginSource> | null | undefined,
   installedNativeSource: NativePluginSource | undefined,
 ): Promise<AuthoredNativePluginInterfaces> {
   const interfaces: AuthoredNativePluginInterfaces = {};
   for (const candidate of NATIVE_MANIFEST_PATHS) {
     const filePath = join(pluginDir, candidate.path);
     if (!existsSync(filePath)) {
-      if (authoredSources?.has(candidate.source)) {
+      if (fallbackSources?.has(candidate.source)) {
         throw new Error(
-          `Installed plugin records an authored ${nativeDisplayName(candidate.source)} interface, but ${candidate.path} is missing. Reinstall the plugin.`,
+          `Installed plugin records a ${nativeDisplayName(candidate.source)} native fallback, but ${candidate.path} is missing. Reinstall the plugin.`,
         );
       }
       continue;
     }
-    if (authoredSources && !authoredSources.has(candidate.source)) {continue;}
-    if (authoredSources === null && installedNativeSource !== candidate.source) {continue;}
+    if (fallbackSources && !fallbackSources.has(candidate.source)) {continue;}
+    if (fallbackSources === null && installedNativeSource !== candidate.source) {continue;}
+    let fallback = fallbackSources !== undefined;
     try {
+      const value = await readJson(filePath);
+      if (fallbackSources === undefined) {
+        fallback = nativeInterfaceNeedsFallback(candidate.source, value);
+      }
       interfaces[candidate.source] = {
         path: candidate.path,
-        manifest: parsePluginManifest(await readJson(filePath), filePath),
+        fallback,
+        manifest: parsePluginManifest(value, filePath),
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       interfaces[candidate.source] = {
         path: candidate.path,
+        fallback,
         error: message.replaceAll(filePath, candidate.path),
       };
     }
@@ -926,7 +935,7 @@ async function removeSourceOwnershipMarkers(dir: string): Promise<void> {
     const filePath = join(dir, entry.name);
     if (
       entry.name === DOTAGENTS_MANAGED_PLUGIN_MARKER ||
-      entry.name === DOTAGENTS_AUTHORED_INTERFACES_MARKER ||
+      entry.name === DOTAGENTS_NATIVE_FALLBACKS_MARKER ||
       entry.name === DOTAGENTS_NATIVE_SOURCE_MARKER ||
       entry.name.endsWith(".dotagents-managed")
     ) {
@@ -934,6 +943,14 @@ async function removeSourceOwnershipMarkers(dir: string): Promise<void> {
       continue;
     }
     if (entry.isDirectory()) {await removeSourceOwnershipMarkers(filePath);}
+  }
+}
+
+async function removeRedundantNativeInterfaces(plugin: PluginDeclaration): Promise<void> {
+  for (const candidate of NATIVE_MANIFEST_PATHS) {
+    const nativeInterface = plugin.authoredNativeInterfaces?.[candidate.source];
+    if (!nativeInterface || nativeInterface.fallback) {continue;}
+    await rm(join(plugin.pluginDir, candidate.path), { force: true });
   }
 }
 
@@ -956,10 +973,10 @@ async function writeNativeSourceMarker(plugin: PluginDeclaration): Promise<void>
   }
 }
 
-async function writeAuthoredInterfacesMarker(plugin: PluginDeclaration): Promise<void> {
-  const filePath = join(plugin.pluginDir, DOTAGENTS_AUTHORED_INTERFACES_MARKER);
+async function writeNativeFallbacksMarker(plugin: PluginDeclaration): Promise<void> {
+  const filePath = join(plugin.pluginDir, DOTAGENTS_NATIVE_FALLBACKS_MARKER);
   const sources = nativeSources().filter(
-    (source) => plugin.authoredNativeInterfaces?.[source] !== undefined,
+    (source) => plugin.authoredNativeInterfaces?.[source]?.fallback,
   );
   if (sources.length === 0) {
     await rm(filePath, { force: true });
@@ -968,12 +985,12 @@ async function writeAuthoredInterfacesMarker(plugin: PluginDeclaration): Promise
   await writeFile(filePath, `${sources.join("\n")}\n`, "utf-8");
 }
 
-async function readAuthoredInterfaceSources(
+async function readNativeFallbackSources(
   pluginDir: string,
 ): Promise<Set<NativePluginSource> | null> {
   let content: string;
   try {
-    content = await readFile(join(pluginDir, DOTAGENTS_AUTHORED_INTERFACES_MARKER), "utf-8");
+    content = await readFile(join(pluginDir, DOTAGENTS_NATIVE_FALLBACKS_MARKER), "utf-8");
   } catch (err) {
     if (isNotFoundError(err)) {return null;}
     throw err;
@@ -983,39 +1000,39 @@ async function readAuthoredInterfaceSources(
   const sources = new Set<NativePluginSource>();
   for (const value of values) {
     if (!nativeSources().includes(value as NativePluginSource) || sources.has(value as NativePluginSource)) {
-      throw new Error(`Invalid authored plugin interface provenance: ${value || "<empty>"}`);
+      throw new Error(`Invalid native fallback provenance: ${value || "<empty>"}`);
     }
     sources.add(value as NativePluginSource);
   }
   if (sources.size === 0) {
-    throw new Error("Invalid authored plugin interface provenance: empty marker");
+    throw new Error("Invalid native fallback provenance: empty marker");
   }
   return sources;
 }
 
 async function readInstalledPluginProvenance(pluginDir: string): Promise<{
-  authoredSources: Set<NativePluginSource> | null;
+  fallbackSources: Set<NativePluginSource> | null;
   nativeSource: NativePluginSource | undefined;
 }> {
-  const authoredSources = await readAuthoredInterfaceSources(pluginDir);
+  const fallbackSources = await readNativeFallbackSources(pluginDir);
   const nativeSource = await readNativeSourceMarker(pluginDir);
   if (
-    authoredSources && nativeSource &&
-    (authoredSources.size !== 1 || !authoredSources.has(nativeSource))
+    fallbackSources && nativeSource &&
+    (fallbackSources.size !== 1 || !fallbackSources.has(nativeSource))
   ) {
     throw new Error("Installed plugin has conflicting native interface provenance. Reinstall the plugin.");
   }
-  return { authoredSources, nativeSource };
+  return { fallbackSources, nativeSource };
 }
 
-/** Returns whether installed provenance reserves a native interface as source-authored. */
-export async function hasRecordedAuthoredPluginInterface(
+/** Returns whether installed provenance reserves a matching-client native fallback. */
+export async function hasRecordedNativePluginFallback(
   pluginDir: string,
   source: NativePluginSource,
 ): Promise<boolean> {
   const provenance = await readInstalledPluginProvenance(pluginDir);
-  return provenance.authoredSources
-    ? provenance.authoredSources.has(source)
+  return provenance.fallbackSources
+    ? provenance.fallbackSources.has(source)
     : provenance.nativeSource === source;
 }
 
@@ -1062,9 +1079,9 @@ export function preparePluginForTargets(
   const selectedTargets = new Set(selectedAgentIds(agentIds, plugin));
   for (const source of nativeSources()) {
     const nativeInterface = interfaces[source];
-    if (!nativeInterface?.error || !selectedTargets.has(source)) {continue;}
+    if (!nativeInterface?.fallback || !nativeInterface.error || !selectedTargets.has(source)) {continue;}
     throw new Error(
-      `Invalid authored ${nativeDisplayName(source)} plugin interface for "${plugin.name}" at ${nativeInterface.path}: ${nativeInterface.error}`,
+      `Invalid ${nativeDisplayName(source)} native fallback for "${plugin.name}" at ${nativeInterface.path}: ${nativeInterface.error}`,
     );
   }
   const legacyRoots = isStandardPluginManifest(plugin.manifest)
@@ -1088,12 +1105,14 @@ function assertNativeInterfaceNames(
   context: string,
 ): void {
   for (const source of nativeSources()) {
-    const manifest = interfaces[source]?.manifest;
+    const nativeInterface = interfaces[source];
+    if (!nativeInterface?.fallback) {continue;}
+    const manifest = nativeInterface.manifest;
     if (!manifest) {continue;}
     const actual = manifest["name"];
     if (typeof actual === "string" && actual !== expected) {
       throw new Error(
-        `Authored ${nativeDisplayName(source)} plugin manifest name "${actual}" does not match portable plugin name "${expected}" in ${context}.`,
+        `${nativeDisplayName(source)} native fallback manifest name "${actual}" does not match portable plugin name "${expected}" in ${context}.`,
       );
     }
   }
@@ -1109,10 +1128,17 @@ function compatibilityWarnings(
   if (!isStandardPluginManifest(manifest)) {return [];}
   const warnings: string[] = [];
   const sources = nativeSources().filter((source) => interfaces[source] !== undefined);
-  const validSources = sources.filter((source) => interfaces[source]?.manifest !== undefined);
-  if (sources.length > 0) {
+  const fallbackSources = sources.filter((source) => interfaces[source]?.fallback);
+  const validFallbackSources = fallbackSources.filter(
+    (source) => interfaces[source]?.manifest !== undefined,
+  );
+  if (fallbackSources.length > 0) {
     warnings.push(
-      `Plugin "${name}" is a hybrid compatibility bundle: portable components remain shared; authored ${validSources.map(nativeDisplayName).join(", ") || "native"} interfaces govern only their matching clients.`,
+      `Plugin "${name}" is a hybrid compatibility bundle: the portable core remains authoritative; authored ${validFallbackSources.map(nativeDisplayName).join(", ") || "native"} interfaces are retained only as matching-client fallbacks.`,
+    );
+  } else if (sources.length > 0) {
+    warnings.push(
+      `Plugin "${name}" is a hybrid compatibility bundle: the portable core remains authoritative; redundant authored native interfaces are ignored in favor of portable generation.`,
     );
   } else if (legacyRoots.length > 0) {
     warnings.push(
@@ -1123,23 +1149,29 @@ function compatibilityWarnings(
   if (
     legacyRoots.length > 0 &&
     sources.length > 0 &&
-    !validSources.some((source) => selected.has(source))
+    !validFallbackSources.some((source) => selected.has(source))
   ) {
     warnings.push(
-      `Plugin "${name}" contains ignored legacy root resources for the selected targets: ${legacyRoots.join(", ")}. They remain available only to a matching authored native interface.`,
+      `Plugin "${name}" contains ignored legacy root resources for the selected targets: ${legacyRoots.join(", ")}. They remain available only to a matching native fallback.`,
     );
   }
   for (const source of sources) {
     const nativeInterface = interfaces[source]!;
+    if (!nativeInterface.fallback) {
+      warnings.push(
+        `Plugin "${name}" has an authored ${nativeDisplayName(source)} interface that was ignored because the portable core can generate the ${nativeDisplayName(source)} adapter${nativeInterface.error ? `: ${nativeInterface.error}` : "."}`,
+      );
+      continue;
+    }
     if (nativeInterface.error && !selected.has(source)) {
       warnings.push(
-        `Plugin "${name}" has a malformed authored ${nativeDisplayName(source)} interface that was ignored because ${nativeDisplayName(source)} is not selected: ${nativeInterface.error}`,
+        `Plugin "${name}" has a malformed ${nativeDisplayName(source)} native fallback that was ignored because ${nativeDisplayName(source)} is not selected: ${nativeInterface.error}`,
       );
       continue;
     }
     if (nativeInterface.manifest && metadataDiffers(manifest, nativeInterface.manifest)) {
       warnings.push(
-        `Plugin "${name}" has differing portable and ${nativeDisplayName(source)} metadata; both are preserved and the authored ${nativeDisplayName(source)} manifest governs ${nativeDisplayName(source)}.`,
+        `Plugin "${name}" has differing portable and ${nativeDisplayName(source)} fallback metadata; the portable core remains the source of truth while ${nativeDisplayName(source)} receives the preserved fallback.`,
       );
     }
   }

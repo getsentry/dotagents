@@ -65,7 +65,7 @@ export async function writePluginManifests(
     if (!agents.includes(spec.agent)) {continue;}
     const filePath = join(plugin.pluginDir, spec.dir, "plugin.json");
     const authored = plugin.nativeSource === spec.agent ||
-      plugin.authoredNativeInterfaces?.[spec.agent]?.manifest !== undefined;
+      plugin.authoredNativeInterfaces?.[spec.agent]?.fallback === true;
     if (existsSync(filePath) && authored) {continue;}
     if (existsSync(filePath) && !await isManagedJsonFile(filePath)) {
       warnings.push({

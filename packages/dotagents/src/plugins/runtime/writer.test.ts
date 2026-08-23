@@ -242,6 +242,7 @@ describe("plugin writer", () => {
       alpha.authoredNativeInterfaces = {
         [target]: {
           path: `${manifestDir}/plugin.json`,
+          fallback: true,
           manifest: {
             name: "alpha-tools",
             description: "Native description",
@@ -277,6 +278,7 @@ describe("plugin writer", () => {
     alpha.authoredNativeInterfaces = {
       claude: {
         path: ".claude-plugin/plugin.json",
+        fallback: true,
         manifest: {
           name: "alpha-tools",
           commands: "./commands",
@@ -310,6 +312,7 @@ describe("plugin writer", () => {
     alpha.authoredNativeInterfaces = {
       claude: {
         path: ".claude-plugin/plugin.json",
+        fallback: true,
         manifest: {
           name: "alpha-tools",
           agents: "./agents",
@@ -351,6 +354,7 @@ describe("plugin writer", () => {
     alpha.authoredNativeInterfaces = {
       claude: {
         path: ".claude-plugin/plugin.json",
+        fallback: true,
         manifest: { name: "alpha-tools" },
       },
     };

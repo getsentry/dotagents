@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runDoctor } from "./doctor.js";
 import { resolveScope } from "../../scope.js";
-import { DOTAGENTS_AUTHORED_INTERFACES_MARKER } from "../../plugins/store.js";
+import { DOTAGENTS_NATIVE_FALLBACKS_MARKER } from "../../plugins/store.js";
 
 describe("runDoctor", () => {
   let tmpDir: string;
@@ -184,7 +184,7 @@ source = "path:external-review-tools"
       name: "hybrid-tools",
     }));
     await writeFile(join(pluginDir, ".claude-plugin", "plugin.json"), '{"name":"hybrid-tools"}');
-    await writeFile(join(pluginDir, DOTAGENTS_AUTHORED_INTERFACES_MARKER), "claude\n");
+    await writeFile(join(pluginDir, DOTAGENTS_NATIVE_FALLBACKS_MARKER), "claude\n");
     await writeFile(join(projectRoot, "agents.toml"), `version = 1
 agents = ["claude"]
 

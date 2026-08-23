@@ -392,10 +392,11 @@ describe("plugin store", () => {
       }));
       await writeFile(join(sourceRoot, ".claude-plugin", "plugin.json"), JSON.stringify({
         name: "native-name",
+        commands: "./commands",
       }));
 
       await expect(discoverPlugins(sourceRoot)).rejects.toThrow(
-        'Authored Claude plugin manifest name "native-name" does not match portable plugin name "portable-name"',
+        'Claude native fallback manifest name "native-name" does not match portable plugin name "portable-name"',
       );
     } finally {
       await rm(sourceRoot, { recursive: true, force: true });
@@ -456,7 +457,7 @@ describe("plugin store", () => {
     }
   });
 
-  it("warns when portable and native metadata differ without changing identity", async () => {
+  it("keeps portable metadata authoritative when the native interface is reproducible", async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-hybrid-"));
     try {
       const sourceRoot = join(projectRoot, "source");
@@ -477,9 +478,11 @@ describe("plugin store", () => {
         { stateDir: join(projectRoot, "state"), projectRoot },
       );
 
-      expect(preparePluginForTargets(resolved.plugin, ["codex"]).compatibilityWarnings).toContain(
-        'Plugin "review-tools" has differing portable and Codex metadata; both are preserved and the authored Codex manifest governs Codex.',
-      );
+      expect(resolved.plugin.authoredNativeInterfaces?.codex?.fallback).toBe(false);
+      expect(preparePluginForTargets(resolved.plugin, ["codex"]).compatibilityWarnings).toEqual([
+        'Plugin "review-tools" is a hybrid compatibility bundle: the portable core remains authoritative; redundant authored native interfaces are ignored in favor of portable generation.',
+        'Plugin "review-tools" has an authored Codex interface that was ignored because the portable core can generate the Codex adapter.',
+      ]);
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }

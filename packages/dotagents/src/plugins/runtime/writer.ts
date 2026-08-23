@@ -4,8 +4,8 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { loadSkillMd, type SerializedObject } from "@sentry/dotagents-lib";
 import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest, parsePluginMcp, type LegacyPluginManifest } from "../schema.js";
 import {
-  DOTAGENTS_AUTHORED_INTERFACES_MARKER,
-  hasRecordedAuthoredPluginInterface,
+  DOTAGENTS_NATIVE_FALLBACKS_MARKER,
+  hasRecordedNativePluginFallback,
   HYBRID_LEGACY_ROOTS,
 } from "../store.js";
 import type { PluginDeclaration } from "../types.js";
@@ -276,8 +276,8 @@ export async function prunePluginOutputs(
         const plugin = plugins.find((plugin) => plugin.name === entry.name);
         if (
           plugin?.nativeSource === target.agent ||
-          plugin?.authoredNativeInterfaces?.[target.agent] !== undefined ||
-          !plugin && await hasRecordedAuthoredPluginInterface(
+          plugin?.authoredNativeInterfaces?.[target.agent]?.fallback === true ||
+          !plugin && await hasRecordedNativePluginFallback(
             join(canonicalPluginDir, entry.name),
             target.agent,
           )
@@ -320,7 +320,7 @@ async function writeGrokProjection(
     ".claude-plugin",
     ".cursor-plugin",
     ".codex-plugin",
-    DOTAGENTS_AUTHORED_INTERFACES_MARKER,
+    DOTAGENTS_NATIVE_FALLBACKS_MARKER,
     ".dotagents-managed",
     ".dotagents-native-source",
   ]);
