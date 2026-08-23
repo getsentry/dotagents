@@ -15,7 +15,7 @@
     "build": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "oxlint src --deny-warnings",
+    "lint": "node --import tsx ../../node_modules/oxlint/bin/oxlint src --deny-warnings",
     "typecheck": "tsc -b --emitDeclarationOnly"
   },
   "files": [
