@@ -152,9 +152,13 @@ export async function reconcilePluginOutputs(
   root: PluginRuntimeRoot,
   options: PluginRuntimeOptions = {},
 ): Promise<{ result: PluginWriteResult; pruned: string[] }> {
-  const pruned = await prunePluginOutputs(agentIds, plugins, root);
+  const pruneWarnings: PluginWriteWarning[] = [];
+  const pruned = await prunePluginOutputs(agentIds, plugins, root, pruneWarnings);
   const result = await writePluginOutputs(agentIds, plugins, root, options);
-  return { result, pruned };
+  return {
+    result: { ...result, warnings: [...pruneWarnings, ...result.warnings] },
+    pruned,
+  };
 }
 
 /** Verifies that generated plugin runtime artifacts match the current declarations. */
@@ -236,6 +240,7 @@ export async function prunePluginOutputs(
   agentIds: string[],
   plugins: PluginDeclaration[],
   root: PluginRuntimeRoot,
+  warnings: PluginWriteWarning[] = [],
 ): Promise<string[]> {
   const layout = normalizePluginRuntimeLayout(root);
   const pruned: string[] = [];
@@ -281,6 +286,7 @@ export async function prunePluginOutputs(
   const canonicalPluginDir = layout.canonicalPluginsDir;
   if (existsSync(canonicalPluginDir)) {
     const entries = await readdir(canonicalPluginDir, { withFileTypes: true });
+    const unverifiableProvenance = new Set<string>();
     for (const target of NATIVE_PLUGIN_MANIFEST_TARGETS) {
       const desired = new Set(
         plugins
@@ -290,13 +296,25 @@ export async function prunePluginOutputs(
       for (const entry of entries) {
         if (!entry.isDirectory() || desired.has(entry.name)) {continue;}
         const installedPlugin = plugins.find((plugin) => plugin.name === entry.name);
-        if (
-          (installedPlugin && hasAuthoredNativeInterface(installedPlugin, target.agent)) ||
-          (!installedPlugin && await hasRecordedNativePluginFallback(
-            join(canonicalPluginDir, entry.name),
-            target.agent,
-          ))
-        ) {continue;}
+        if (installedPlugin && hasAuthoredNativeInterface(installedPlugin, target.agent)) {continue;}
+        if (!installedPlugin) {
+          if (unverifiableProvenance.has(entry.name)) {continue;}
+          try {
+            if (await hasRecordedNativePluginFallback(
+              join(canonicalPluginDir, entry.name),
+              target.agent,
+            )) {continue;}
+          } catch (err) {
+            unverifiableProvenance.add(entry.name);
+            const message = err instanceof Error ? err.message : String(err);
+            warnings.push({
+              agent: "plugin",
+              name: entry.name,
+              message: `Plugin "${entry.name}" native fallback provenance could not be verified, so its native outputs were preserved: ${message}`,
+            });
+            continue;
+          }
+        }
         for (const fileName of ["plugin.json", "mcp.json"]) {
           const path = join(canonicalPluginDir, entry.name, target.dir, fileName);
           if (!await isManagedJsonFile(path)) {continue;}

@@ -14,6 +14,7 @@ import {
 import {
   prunePluginOutputs,
   projectedPiSkillNames,
+  reconcilePluginOutputs,
   verifyPluginOutputs,
   writePluginOutputs,
 } from "./writer.js";
@@ -1340,6 +1341,31 @@ describe("plugin writer", () => {
     expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json"))).toBe(false);
     expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".cursor-plugin", "plugin.json"))).toBe(false);
     expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"))).toBe(false);
+  });
+
+  it("preserves orphan native outputs when fallback provenance is corrupt", async () => {
+    const pluginDir = join(root, ".agents", "plugins", "orphan-tools");
+    const manifestPaths = ["claude", "cursor", "codex"].map(
+      (target) => join(pluginDir, `.${target}-plugin`, "plugin.json"),
+    );
+    for (const manifestPath of manifestPaths) {
+      await mkdir(dirname(manifestPath), { recursive: true });
+      await writeFile(manifestPath, JSON.stringify({ name: "orphan-tools" }));
+      await writeFile(`${manifestPath}.dotagents-managed`, "managedBy=dotagents\n");
+    }
+    await writeFile(join(pluginDir, ".dotagents-native-fallbacks"), "not-a-target\n");
+
+    const { result, pruned } = await reconcilePluginOutputs([], [], root);
+
+    for (const manifestPath of manifestPaths) {
+      expect(pruned).not.toContain(manifestPath);
+      expect(existsSync(manifestPath)).toBe(true);
+    }
+    expect(result.warnings).toEqual([{
+      agent: "plugin",
+      name: "orphan-tools",
+      message: 'Plugin "orphan-tools" native fallback provenance could not be verified, so its native outputs were preserved: Invalid native fallback provenance: not-a-target',
+    }]);
   });
 
   it("does not prune arbitrary component links into canonical plugin sources", async () => {
