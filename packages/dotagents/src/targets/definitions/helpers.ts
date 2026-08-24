@@ -46,7 +46,7 @@ export function interpolateHeaders(
 
 /**
  * Split headers for Codex's model: pure `${VAR}` refs go to `envHttpHeaders`
- * (mapping env var name to header name), everything else stays in `httpHeaders`.
+ * (mapping header name to env var name), everything else stays in `httpHeaders`.
  * Mixed values like `"Bearer ${TOKEN}"` can't be represented in Codex's
  * env_http_headers format and fall through as literal strings in httpHeaders.
  */
@@ -60,7 +60,7 @@ export function extractCodexHeaders(
   for (const [key, value] of Object.entries(headers)) {
     const match = pureRefRe.exec(value);
     if (match) {
-      (envHttpHeaders ??= {})[match[1]!] = key;
+      (envHttpHeaders ??= {})[key] = match[1]!;
     } else {
       (httpHeaders ??= {})[key] = value;
     }
