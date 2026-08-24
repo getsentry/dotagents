@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Breaking Changes ⚠️
+
+- Codex generated marketplaces now use `dotagents` instead of `dotagents-local`.
+
+Existing Codex installations keep the old marketplace and plugin identities. Complete this migration after the upgrade:
+
+1. Run `codex plugin remove <name>@dotagents-local` for each installed dotagents plugin.
+1. Run `codex plugin marketplace remove dotagents-local`.
+1. Run dotagents `install` or `sync` for the applicable scope.
+1. Run `codex plugin marketplace add <marketplace-root>`.
+1. Run `codex plugin add <name>@dotagents` for each plugin.
+
+Dotagents does not change native Codex marketplace registration or installed plugin state.
+
 ## 3.0.1
 
 ### Bug Fixes 🐛

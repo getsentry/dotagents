@@ -55,15 +55,15 @@ export CODEX_HOME="$TMP/codex-home"
 mkdir -p "$CODEX_HOME"
 codex plugin marketplace add "$PROJECT" --json
 codex plugin list --available --json
-codex plugin add qa-tools@dotagents-local --json
+codex plugin add qa-tools@dotagents --json
 codex plugin list --json
 ```
 
 Expected evidence:
 
-- Marketplace add returns `dotagents-local`
-- Available list includes `qa-tools@dotagents-local`
-- Install returns `qa-tools@dotagents-local`
+- Marketplace add returns `dotagents`
+- Available list includes `qa-tools@dotagents`
+- Install returns `qa-tools@dotagents`
 - Installed list shows the plugin enabled
 
 Manual final check with model auth:

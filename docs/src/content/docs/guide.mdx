@@ -152,6 +152,12 @@ locations. Override the dotagents root with `DOTAGENTS_HOME`.
 `--global` selects global scope explicitly. `--user` remains a compatibility
 alias.
 
+## Generated Marketplace Name
+
+Claude Code, Cursor, and Codex use `dotagents` for generated marketplaces. Native plugin selectors use `<name>@dotagents`.
+
+Existing Codex installations keep the old marketplace identity after a dotagents upgrade. Remove each `<name>@dotagents-local` plugin and the `dotagents-local` marketplace. Then run dotagents `install` or `sync`, register the project or global marketplace root again, and install each plugin as `<name>@dotagents`.
+
 <a id="configuration"></a>
 
 ## Full Configuration Example
