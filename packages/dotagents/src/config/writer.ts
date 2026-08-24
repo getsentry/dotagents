@@ -213,7 +213,7 @@ export async function removeMcpFromConfig(
   name: string,
 ): Promise<void> {
   const content = await readFile(filePath, "utf-8");
-  await writeFile(filePath, removeBlockByHeader(content, "[[mcp]]", name), "utf-8");
+  await writeFile(filePath, removeBlockByHeader(content, "[[mcp]]", name, "mcp"), "utf-8");
 }
 
 /** Extract a TOML string value from a line like `key = "value"` or `key = 'value'`. */
@@ -228,8 +228,15 @@ interface ArrayTableSpan {
   end: number;
 }
 
-function findArrayTables(lines: string[], header: string): ArrayTableSpan[] {
+function findArrayTables(
+  lines: string[],
+  header: string,
+  nestedTableName?: string,
+): ArrayTableSpan[] {
   const spans: ArrayTableSpan[] = [];
+  const nestedTablePrefixes = nestedTableName
+    ? [`[${nestedTableName}.`, `[[${nestedTableName}.`]
+    : [];
   let i = 0;
   while (i < lines.length) {
     if (lines[i]!.trim() !== header) {
@@ -239,7 +246,16 @@ function findArrayTables(lines: string[], header: string): ArrayTableSpan[] {
 
     const start = i;
     i++;
-    while (i < lines.length && !lines[i]!.trim().startsWith("[")) {i++;}
+    while (i < lines.length) {
+      const line = lines[i]!.trim();
+      if (
+        line.startsWith("[")
+        && !nestedTablePrefixes.some((prefix) => line.startsWith(prefix))
+      ) {
+        break;
+      }
+      i++;
+    }
     let end = i;
     while (end > start + 1 && lines[end - 1]!.trim() === "") {end--;}
     spans.push({ start, end });
@@ -275,8 +291,9 @@ function removeArrayTables(
   lines: string[],
   header: string,
   shouldRemove: (span: ArrayTableSpan) => boolean,
+  nestedTableName?: string,
 ): string {
-  const spans = findArrayTables(lines, header).filter(shouldRemove);
+  const spans = findArrayTables(lines, header, nestedTableName).filter(shouldRemove);
   for (const span of spans.toReversed()) {
     let start = span.start;
     while (start > 0 && lines[start - 1]!.trim() === "") {start--;}
@@ -285,12 +302,18 @@ function removeArrayTables(
   return lines.join("\n");
 }
 
-function removeBlockByHeader(content: string, header: string, name: string): string {
+function removeBlockByHeader(
+  content: string,
+  header: string,
+  name: string,
+  nestedTableName?: string,
+): string {
   const lines = content.split("\n");
   return removeArrayTables(
     lines,
     header,
     (span) => getStringField(lines, span, "name") === name,
+    nestedTableName,
   );
 }
 

@@ -353,6 +353,31 @@ describe("writer", () => {
       expect(after).toBe(before);
     });
 
+    it("removes nested headers without changing another server", async () => {
+      await addMcpToConfig(configPath, {
+        name: "remove-me",
+        url: "https://remove.example.test/mcp",
+        headers: { Authorization: "${REMOVE_TOKEN}" },
+        env: [],
+      });
+      await addMcpToConfig(configPath, {
+        name: "keep-me",
+        url: "https://keep.example.test/mcp",
+        headers: { Authorization: "${KEEP_TOKEN}" },
+        env: [],
+      });
+
+      await removeMcpFromConfig(configPath, "remove-me");
+
+      const config = await loadConfig(configPath);
+      expect(config.mcp).toEqual([{
+        name: "keep-me",
+        url: "https://keep.example.test/mcp",
+        headers: { Authorization: "${KEEP_TOKEN}" },
+        env: [],
+      }]);
+    });
+
     it("does not affect skills with same name", async () => {
       await addSkillToConfig(configPath, "github", {
         source: "org/github-skill",
