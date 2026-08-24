@@ -378,6 +378,62 @@ describe("writer", () => {
       }]);
     });
 
+    it.each([
+      ["whitespace around the dotted key", "[mcp . headers]"],
+      ["a quoted root key", "[\"mcp\".headers]"],
+    ])("removes nested headers with %s", async (_description, headersTable) => {
+      const input = `version = 1
+
+[[mcp]]
+name = "remove-me"
+url = "https://remove.example.test/mcp"
+
+${headersTable}
+Authorization = "\${REMOVE_TOKEN}"
+
+[[mcp]]
+name = "keep-me"
+command = "keep-command"
+`;
+      await writeFile(configPath, input);
+
+      await removeMcpFromConfig(configPath, "remove-me");
+
+      const config = await loadConfig(configPath);
+      expect(config.mcp).toEqual([{
+        name: "keep-me",
+        command: "keep-command",
+        env: [],
+      }]);
+    });
+
+    it("does not use a nested header name to select a server", async () => {
+      const input = `version = 1
+
+[[mcp]]
+"name" = "keep-me"
+url = "https://keep.example.test/mcp"
+
+[mcp.headers]
+name = "remove-me"
+
+[[mcp]]
+name = "remove-me"
+command = "remove-command"
+`;
+      await writeFile(configPath, input);
+
+      await removeMcpFromConfig(configPath, "remove-me");
+
+      const config = await loadConfig(configPath);
+      expect(config.mcp).toEqual([{
+        name: "keep-me",
+        url: "https://keep.example.test/mcp",
+        headers: { name: "remove-me" },
+        env: [],
+      }]);
+    });
+
     it("does not affect skills with same name", async () => {
       await addSkillToConfig(configPath, "github", {
         source: "org/github-skill",

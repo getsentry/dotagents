@@ -1,12 +1,16 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { stringify } from "smol-toml";
+import { parse as parseTOML, stringify } from "smol-toml";
 import type {
   WildcardSkillDependency,
   TrustConfig,
   McpConfig,
   PluginConfig,
 } from "./schema.js";
-import { sourcesMatch, type SerializedObject } from "@sentry/dotagents-lib";
+import {
+  isSerializedObject,
+  sourcesMatch,
+  type SerializedObject,
+} from "@sentry/dotagents-lib";
 
 export interface DefaultConfigOptions {
   agents?: string[];
@@ -222,10 +226,27 @@ function extractTomlStringValue(line: string, key: string): string | undefined {
   return match?.[1] ?? match?.[2];
 }
 
-/** Half-open table range ending before its separator blank lines or the next header. */
+/** Half-open table range, with fields ending before the first nested table. */
 interface ArrayTableSpan {
   start: number;
+  fieldsEnd: number;
   end: number;
+}
+
+function classifyTableHeader(
+  line: string,
+  nestedTableName?: string,
+): "nested" | "other" | undefined {
+  if (!line.startsWith("[")) {return undefined;}
+
+  try {
+    const parsed = parseTOML(line);
+    const root = nestedTableName ? parsed[nestedTableName] : undefined;
+    const definesNestedTable = isSerializedObject(root) && Object.keys(root).length > 0;
+    return definesNestedTable ? "nested" : "other";
+  } catch {
+    return undefined;
+  }
 }
 
 function findArrayTables(
@@ -234,9 +255,6 @@ function findArrayTables(
   nestedTableName?: string,
 ): ArrayTableSpan[] {
   const spans: ArrayTableSpan[] = [];
-  const nestedTablePrefixes = nestedTableName
-    ? [`[${nestedTableName}.`, `[[${nestedTableName}.`]
-    : [];
   let i = 0;
   while (i < lines.length) {
     if (lines[i]!.trim() !== header) {
@@ -245,20 +263,18 @@ function findArrayTables(
     }
 
     const start = i;
+    let fieldsEnd: number | undefined;
     i++;
     while (i < lines.length) {
       const line = lines[i]!.trim();
-      if (
-        line.startsWith("[")
-        && !nestedTablePrefixes.some((prefix) => line.startsWith(prefix))
-      ) {
-        break;
-      }
+      const tableHeader = classifyTableHeader(line, nestedTableName);
+      if (tableHeader === "other") {break;}
+      if (tableHeader === "nested") {fieldsEnd ??= i;}
       i++;
     }
     let end = i;
     while (end > start + 1 && lines[end - 1]!.trim() === "") {end--;}
-    spans.push({ start, end });
+    spans.push({ start, fieldsEnd: fieldsEnd ?? end, end });
   }
   return spans;
 }
@@ -269,7 +285,7 @@ function findFieldLine(
   key: string,
 ): number | undefined {
   const assignment = new RegExp(`^${key}\\s*=`);
-  for (let i = span.start + 1; i < span.end; i++) {
+  for (let i = span.start + 1; i < span.fieldsEnd; i++) {
     const trimmed = lines[i]!.trim();
     if (assignment.test(trimmed)) {return i;}
   }
