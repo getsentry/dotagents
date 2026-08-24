@@ -2,6 +2,7 @@ import { z } from "zod/v4";
 import { validateHeaderName, validateHeaderValue } from "node:http";
 import { isIP } from "node:net";
 import { isSerializedObject, type SerializedObject } from "@sentry/dotagents-lib";
+import { isObject, isString } from "../utils/type-guards.js";
 
 export const AGENT_PLUGIN_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
 export const AGENT_PLUGIN_MCP_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json";
@@ -182,10 +183,15 @@ export interface PluginMcpConfig {
   mcpServers: Record<string, z.infer<typeof pluginMcpServerSchema>>;
 }
 
-export function parsePluginMcpBestEffort(
-  value: unknown,
+export interface PluginMcpParseResult {
+  config: PluginMcpConfig;
+  issues: string[];
+}
+
+export function parsePluginMcpBestEffort<Value>(
+  value: Value,
   filePath: string,
-): { config: PluginMcpConfig; issues: string[] } {
+): PluginMcpParseResult {
   const envelope = pluginMcpEnvelopeSchema.safeParse(value);
   if (!envelope.success) {
     throw new Error(`Invalid plugin MCP config ${filePath}: ${envelope.error.message}`);
@@ -210,7 +216,7 @@ export function parsePluginMcpBestEffort(
   };
 }
 
-export function parsePluginMcp(value: unknown, filePath: string): PluginMcpConfig {
+export function parsePluginMcp<Value>(value: Value, filePath: string): PluginMcpConfig {
   const parsed = parsePluginMcpBestEffort(value, filePath);
   if (parsed.issues.length > 0) {
     throw new Error(parsed.issues.join("\n"));
@@ -268,8 +274,8 @@ export const pluginMarketplaceSchema = z.object({
 export type PluginMarketplace = z.infer<typeof pluginMarketplaceSchema> & SerializedObject;
 
 /** Parses an external plugin manifest and annotates schema errors with its file path. */
-export function parsePluginManifest(
-  value: unknown,
+export function parsePluginManifest<Value>(
+  value: Value,
   filePath: string,
 ): PluginManifest {
   const recordValue = isSerializedObject(value) ? value : null;
@@ -277,7 +283,7 @@ export function parsePluginManifest(
     throw new Error(`Invalid plugin manifest ${filePath}: expected a serializable object`);
   }
   const schemaValue = recordValue["$schema"];
-  const normalizedSchemaValue = typeof schemaValue === "string"
+  const normalizedSchemaValue = isString(schemaValue)
     ? normalizeAgentPluginSchemaUrl(schemaValue)
     : null;
   const isStandard = normalizedSchemaValue === AGENT_PLUGIN_SCHEMA;
@@ -287,12 +293,12 @@ export function parsePluginManifest(
   ) {
     throw new Error(`Invalid plugin manifest ${filePath}: unsupported Agent Plugins schema ${schemaValue}`);
   }
-  let input = value;
+  let input: SerializedObject = recordValue;
   if (isStandard) {
-    const record = { ...recordValue };
+    const record: SerializedObject = { ...recordValue };
     record["$schema"] = AGENT_PLUGIN_SCHEMA;
     const extensions = record["extensions"];
-    if (extensions !== undefined && (extensions === null || typeof extensions !== "object" || Array.isArray(extensions))) {
+    if (extensions !== undefined && (!isObject(extensions) || Array.isArray(extensions))) {
       delete record["extensions"];
     } else if (isSerializedObject(extensions)) {
       record["extensions"] = Object.fromEntries(
@@ -301,7 +307,7 @@ export function parsePluginManifest(
     }
     input = record;
   } else if ("$schema" in recordValue) {
-    const record = { ...recordValue };
+    const record: SerializedObject = { ...recordValue };
     delete record["$schema"];
     input = record;
   }
@@ -334,8 +340,8 @@ function normalizeAgentPluginSchemaUrl(value: string): string | null {
 }
 
 /** Parses an external plugin marketplace and annotates schema errors with its file path. */
-export function parsePluginMarketplace(
-  value: unknown,
+export function parsePluginMarketplace<Value>(
+  value: Value,
   filePath: string,
 ): PluginMarketplace {
   if (!isSerializedObject(value)) {

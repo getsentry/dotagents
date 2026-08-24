@@ -494,7 +494,13 @@ source = "path:plugins/pdf"
   it("preserves an installed plugin without an ownership marker", async () => {
     const pluginSource = join(projectRoot, "plugins", "review-tools");
     await mkdir(join(pluginSource, "skills", "review"), { recursive: true });
-    await writeFile(join(pluginSource, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await mkdir(join(pluginSource, ".codex-plugin"), { recursive: true });
+    await writeFile(join(pluginSource, "plugin.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+    }, null, 2));
+    const authoredBytes = '{ "name": "review-tools", "metadata": {"managedBy": "dotagents"}, "x-authored": true }\n';
+    await writeFile(join(pluginSource, ".codex-plugin", "plugin.json"), authoredBytes);
     await writeFile(join(pluginSource, "skills", "review", "SKILL.md"), SKILL_MD("review"));
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -519,6 +525,10 @@ source = "path:plugins/review-tools"
     const config = await loadConfig(join(projectRoot, "agents.toml"));
     expect(config.plugins.find((plugin) => plugin.name === "review-tools")).toBeUndefined();
     expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(true);
+    expect(await readFile(
+      join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"),
+      "utf-8",
+    )).toBe(authoredBytes);
     expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
   });
 
@@ -640,7 +650,8 @@ source = "path:plugins/review-tools"
       expect.unreachable("should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(WildcardSkillRemoveError);
-      expect((err as WildcardSkillRemoveError).source).toBe(`git:${repoDir}`);
+      if (!(err instanceof WildcardSkillRemoveError)) {throw err;}
+      expect(err.source).toBe(`git:${repoDir}`);
     }
   });
 

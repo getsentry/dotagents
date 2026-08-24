@@ -30,6 +30,13 @@ describe("getCommandHelp", () => {
     );
   });
 
+  it("describes remote MCP servers as Streamable HTTP", () => {
+    const help = getCommandHelp("mcp", ["add", "--help"]);
+
+    expect(help).toContain("Streamable HTTP server URL");
+    expect(help).not.toContain("SSE");
+  });
+
   it("does not intercept normal command arguments", () => {
     expect(getCommandHelp("add", ["getsentry/skills", "find-bugs"])).toBeUndefined();
   });

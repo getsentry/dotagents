@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
+import { isObject } from "../../utils/type-guards.js";
 import { parseArgs } from "node:util";
 import chalk from "chalk";
 import { filterManagedPluginSkillNames } from "../../gitignore/skills.js";
@@ -100,9 +101,9 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
   if (lockfile && existsSync(scope.lockPath)) {
     const rawLock = parseTOML(await readFile(scope.lockPath, "utf-8"));
     const rawSkills = rawLock["skills"];
-    const hasLegacyLockFields = rawSkills !== null && typeof rawSkills === "object" &&
+    const hasLegacyLockFields = isObject(rawSkills) &&
       !Array.isArray(rawSkills) && !(rawSkills instanceof Date) && Object.values(rawSkills).some(
-        (skill) => skill !== null && typeof skill === "object" &&
+        (skill) => isObject(skill) &&
           !Array.isArray(skill) && !(skill instanceof Date) &&
           ("commit" in skill || "integrity" in skill),
       );
@@ -185,6 +186,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
             scope.pluginsDir,
             config.plugins.filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root)),
             `${cmd} install`,
+            config.agents,
           );
           await writeAgentsGitignore(
             scope.agentsDir,
@@ -265,7 +267,22 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
   }
 
   if (config.plugins.length > 0 && pluginErrors.length === 0) {
-    const installed = await loadInstalledPlugins(scope.pluginsDir, config.plugins, `${cmd} install`);
+    const installed = await loadInstalledPlugins(
+      scope.pluginsDir,
+      config.plugins,
+      `${cmd} install`,
+      config.agents,
+    );
+    const compatibilityWarnings = installed.plugins.flatMap(
+      (plugin) => plugin.compatibilityWarnings ?? [],
+    );
+    if (compatibilityWarnings.length > 0) {
+      checks.push({
+        name: "plugin compatibility",
+        status: "warn",
+        message: compatibilityWarnings.join(" "),
+      });
+    }
     const runtimeIssues = installed.issues.length === 0
       ? await verifyPluginOutputs(config.agents, installed.plugins, pluginRuntimeLayout(scope), {
           reservedMcpNames: config.mcp.map((server) => server.name),

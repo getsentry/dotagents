@@ -18,6 +18,7 @@ import type {
 } from "./types.js";
 import type { McpConfig } from "../config/schema.js";
 import { isSerializedObject, type SerializedObject } from "@sentry/dotagents-lib";
+import { hasErrorCode, isObject, isString } from "../utils/type-guards.js";
 
 export interface McpResolvedTarget {
   filePath: string;
@@ -431,7 +432,7 @@ function readServerRoot(
 ): SerializedObject {
   const root = document[rootKey];
   if (root === undefined) {return {};}
-  if (root === null || typeof root !== "object" || Array.isArray(root) || root instanceof Date) {
+  if (!isObject(root) || Array.isArray(root) || root instanceof Date) {
     throw new TypeError(`MCP config root must contain an object: ${filePath}`);
   }
   return root;
@@ -453,7 +454,7 @@ async function readExisting(
 ): Promise<SerializedObject> {
   const raw = await readFile(filePath, "utf-8");
   const jsoncErrors: JsoncParseError[] = [];
-  const parsed: unknown = spec.format === "toml"
+  const parsed = spec.format === "toml"
     ? parseTOML(raw)
     : spec.format === "jsonc"
       ? parseJsonc(raw, jsoncErrors, { allowTrailingComma: true })
@@ -473,8 +474,8 @@ async function readExisting(
   return parsed;
 }
 
-function isTomlObject(value: unknown): value is SerializedObject {
-  return value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date);
+function isTomlObject<Value>(value: Value): value is Value & SerializedObject {
+  return isObject(value) && !Array.isArray(value) && !(value instanceof Date);
 }
 
 async function writeReconciledDocument(
@@ -551,15 +552,22 @@ async function readManagedMcpState(
 ): Promise<{ state?: ManagedMcpState; issue?: string }> {
   if (!existsSync(statePath)) {return {};}
   try {
-    const value: unknown = JSON.parse(await readFile(statePath, "utf-8"));
-    if (!isSerializedObject(value) || value["version"] !== 1 || !Array.isArray(value["servers"]) ||
-      !value["servers"].every((name) => typeof name === "string")) {
+    const value = JSON.parse(await readFile(statePath, "utf-8"));
+    if (!isSerializedObject(value) || value["version"] !== 1) {
+      return { issue: `Invalid managed MCP state: ${statePath}` };
+    }
+    const servers = value["servers"];
+    if (!Array.isArray(servers)) {
+      return { issue: `Invalid managed MCP state: ${statePath}` };
+    }
+    const validatedServers = servers.filter(isString);
+    if (validatedServers.length !== servers.length) {
       return { issue: `Invalid managed MCP state: ${statePath}` };
     }
     return {
       state: {
         version: 1,
-        servers: [...new Set(value["servers"] as string[])].toSorted(),
+        servers: [...new Set(validatedServers)].toSorted(),
       },
     };
   } catch {
@@ -626,6 +634,6 @@ async function desiredModeIssue(
   };
 }
 
-function isNotFoundError(err: unknown): boolean {
-  return err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT";
+function isNotFoundError<ErrorValue>(err: ErrorValue): boolean {
+  return hasErrorCode(err, "ENOENT");
 }

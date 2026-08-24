@@ -193,13 +193,13 @@ dotagents mcp add <name> --url <url> [--header <Key:Value>...] [--env <VAR>...]
 
 Add an MCP server declaration to `agents.toml` and run `install` to generate
 agent configs. Specify exactly one transport: `--command` for stdio or `--url`
-for HTTP.
+for Streamable HTTP.
 
 Options:
 
 - `--command "<cmd> [args...]"` is the command string to execute for stdio
   transport.
-- `--url <url>` is the server URL for HTTP transport.
+- `--url <url>` is the server URL for Streamable HTTP transport.
 - `--header <Key:Value>` adds an HTTP header. Repeatable. URL servers only.
 - `--env <VAR>` passes through an environment variable. Repeatable.
 
@@ -209,8 +209,8 @@ Examples:
 # Stdio server
 dotagents mcp add github --command "npx -y @modelcontextprotocol/server-github" --env GITHUB_TOKEN
 
-# HTTP server with auth header
-dotagents mcp add remote --url https://mcp.example.com/sse --header "Authorization:Bearer tok"
+# Streamable HTTP server with auth header
+dotagents mcp add remote --url https://mcp.example.com/mcp --header "Authorization:Bearer tok"
 ```
 
 <a id="mcp-remove"></a>
@@ -313,9 +313,10 @@ dotagents doctor [--fix]
 ```
 
 Check the selected scope and fix supported issues. Verifies installed skills
-and plugins, plugin runtime projections, and legacy config fields. Project scope
-also checks gitignore setup, symlinks, and managed hooks. Use `dotagents sync`
-in the same scope to repair generated runtime configs.
+and plugins, reports hybrid diagnostics in the `plugin compatibility` check,
+checks plugin runtime projections, and detects legacy config fields. Project
+scope also checks gitignore setup, symlinks, and managed hooks. Use
+`dotagents sync` in the same scope to repair generated runtime configs.
 
 Options:
 
@@ -336,9 +337,10 @@ dotagents doctor --fix    # fix what it can
 dotagents list [--json]
 ```
 
-Show declared skills and plugins with install/lock status. Use `--json` for
+Show declared skills and plugins with install/lock status. Hybrid plugin
+diagnostics appear as warning lines below the plugin. Use `--json` for
 machine-readable output. JSON output contains separate `skills` and `plugins`
-arrays.
+arrays; plugin entries include `warnings` when diagnostics exist.
 
 Status output:
 
@@ -448,14 +450,29 @@ agents. Plugin sources support GitHub/GitLab shorthands, git URLs, and `path:`
 sources; HTTPS well-known sources are not supported for plugins.
 
 New plugin bundles follow Agent Plugins v1 with a required `plugin.json` and
-optional `skills/` and `mcp.json`. dotagents preserves the raw bundle and
-generates isolated target adapters from the portable core. Generated JSON uses
+optional `skills/` and `mcp.json`. dotagents preserves the portable core and
+generates isolated target adapters from it. Generated JSON uses
 adjacent ownership sidecars; component symlinks use marker files in reserved
 `.dotagents-managed/` directories. Client schemas receive no dotagents-only fields.
 Legacy generalized and native Claude/Cursor/Codex manifests remain supported
 during migration. Native imports preserve the owning manifest and expose only
 core metadata and Agent Skills to other clients; native components are never
 translated into unrelated clients' formats.
+
+A valid standard root may coexist with authored `.claude-plugin`,
+`.cursor-plugin`, or `.codex-plugin` manifests as a hybrid compatibility
+bundle. Portable skills, MCP, and metadata remain shared; an authored manifest
+is ignored when its behavior can be reproduced from the portable core. A
+manifest with commands, hooks, custom fields, or other unrepresentable behavior
+is retained byte-for-byte only as a matching-client fallback. Other clients
+receive adapters generated solely from the portable core. Managed adapters are
+disposable output and are never imported back into the portable bundle. Root
+commands, agents, hooks, native MCP, and similar resources remain inert outside
+their owning client. Invalid standard roots do not fall back to legacy parsing,
+and a malformed native fallback blocks installation only when its client is
+selected. `install` warns when redundant native input is normalized away;
+`sync`, `list`, and `doctor` report durable retained-fallback state without
+reinterpreting generated adapters as source input.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |

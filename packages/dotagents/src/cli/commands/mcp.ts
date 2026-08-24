@@ -71,10 +71,16 @@ export async function runMcpAdd(opts: McpAddOptions): Promise<void> {
 
   const entry: McpConfig = {
     name,
-    ...(command ? { command, args: opts.args } : {}),
-    ...(url ? { url, headers: buildHeaders(opts.headers) } : {}),
     env: opts.env ?? [],
   };
+  if (command) {
+    entry.command = command;
+    entry.args = opts.args;
+  }
+  if (url) {
+    entry.url = url;
+    entry.headers = buildHeaders(opts.headers);
+  }
 
   await addMcpToConfig(scope.configPath, entry);
   await runInstall({ scope });
@@ -154,7 +160,7 @@ async function mcpAddInteractive(name: string | undefined, scope: ScopeRoot): Pr
     message: "Transport",
     options: [
       { label: "Command (stdio)", value: "stdio" as const },
-      { label: "URL (HTTP)", value: "http" as const },
+      { label: "URL (Streamable HTTP)", value: "http" as const },
     ],
   });
   if (clack.isCancel(transport)) {throw new McpCancelledError();}
@@ -180,7 +186,7 @@ async function mcpAddInteractive(name: string | undefined, scope: ScopeRoot): Pr
   } else {
     const urlInput = await clack.text({
       message: "URL",
-      placeholder: "https://mcp.example.com/sse",
+      placeholder: "https://mcp.example.com/mcp",
       validate: (v) => {
         if (!v?.trim()) {return "URL is required.";}
       },

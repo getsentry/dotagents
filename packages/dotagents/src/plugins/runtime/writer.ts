@@ -3,8 +3,20 @@ import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, rm, rmdir, sta
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { loadSkillMd, type SerializedObject } from "@sentry/dotagents-lib";
 import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest, parsePluginMcp, type LegacyPluginManifest } from "../schema.js";
+import {
+  DOTAGENTS_NATIVE_FALLBACKS_MARKER,
+  hasRecordedNativePluginFallback,
+  HYBRID_LEGACY_ROOTS,
+  preparePluginForTargets,
+} from "../store.js";
 import type { PluginDeclaration } from "../types.js";
-import { selectedAgentIds, selectPlugins, targetWarnings, usesLegacyPluginComponents } from "../targets.js";
+import {
+  hasAuthoredNativeInterface,
+  selectedAgentIds,
+  selectPlugins,
+  targetWarnings,
+  usesLegacyPluginComponents,
+} from "../targets.js";
 import { marketplaceOutputPaths, marketplaceOutputs } from "./marketplace.js";
 import {
   type PluginVerifyIssue,
@@ -27,6 +39,7 @@ import {
   type PluginRuntimeLayout,
   type PluginRuntimeRoot,
 } from "./layout.js";
+import { hasErrorCode, isNonEmptyString, isString, isStringArray } from "../../utils/type-guards.js";
 
 // Owns deterministic runtime plugin projections. Existing runtime artifacts are
 // overwritten only when they carry dotagents managed metadata or a managed marker.
@@ -81,10 +94,19 @@ export async function writePluginOutputs(
   const layout = normalizePluginRuntimeLayout(root);
   const warnings: PluginWriteWarning[] = [];
   let written = 0;
-  const selected = selectPlugins(agentIds, plugins);
+  const preparedPlugins = plugins.map((plugin) => plugin.authoredNativeInterfaces === undefined
+    ? plugin
+    : preparePluginForTargets(plugin, agentIds));
+  const selected = selectPlugins(agentIds, preparedPlugins);
   const loadedMcp = new Map<string, LoadedStandardMcp>();
 
-  for (const warning of targetWarnings(agentIds, plugins)) {
+  for (const plugin of preparedPlugins) {
+    for (const message of plugin.compatibilityWarnings ?? []) {
+      warnings.push({ agent: "plugin", name: plugin.name, message });
+    }
+  }
+
+  for (const warning of targetWarnings(agentIds, preparedPlugins)) {
     warnings.push(warning);
   }
 
@@ -97,7 +119,12 @@ export async function writePluginOutputs(
     const standardMcp = await loadStandardMcp(plugin, warnings);
     loadedMcp.set(plugin.name, standardMcp);
     written += await writePluginManifests(plugin, agents, warnings, standardMcp);
-    if (agents.includes("grok") && await writeGrokProjection(layout, plugin, warnings)) {
+    if (agents.includes("grok") && await writeGrokProjection(
+      layout,
+      plugin,
+      warnings,
+      standardMcp,
+    )) {
       written++;
     }
   }
@@ -106,7 +133,7 @@ export async function writePluginOutputs(
   written += await writeComponentProjections("pi", agentIds, selected, layout, warnings);
   const opencodeMcp = await reconcileOpenCodePluginMcp(
     agentIds,
-    plugins,
+    preparedPlugins,
     loadedMcp,
     layout,
     options.reservedMcpNames ?? [],
@@ -125,9 +152,13 @@ export async function reconcilePluginOutputs(
   root: PluginRuntimeRoot,
   options: PluginRuntimeOptions = {},
 ): Promise<{ result: PluginWriteResult; pruned: string[] }> {
-  const pruned = await prunePluginOutputs(agentIds, plugins, root);
+  const pruneWarnings: PluginWriteWarning[] = [];
+  const pruned = await prunePluginOutputs(agentIds, plugins, root, pruneWarnings);
   const result = await writePluginOutputs(agentIds, plugins, root, options);
-  return { result, pruned };
+  return {
+    result: { ...result, warnings: [...pruneWarnings, ...result.warnings] },
+    pruned,
+  };
 }
 
 /** Verifies that generated plugin runtime artifacts match the current declarations. */
@@ -209,6 +240,7 @@ export async function prunePluginOutputs(
   agentIds: string[],
   plugins: PluginDeclaration[],
   root: PluginRuntimeRoot,
+  warnings: PluginWriteWarning[] = [],
 ): Promise<string[]> {
   const layout = normalizePluginRuntimeLayout(root);
   const pruned: string[] = [];
@@ -254,6 +286,7 @@ export async function prunePluginOutputs(
   const canonicalPluginDir = layout.canonicalPluginsDir;
   if (existsSync(canonicalPluginDir)) {
     const entries = await readdir(canonicalPluginDir, { withFileTypes: true });
+    const unverifiableProvenance = new Set<string>();
     for (const target of NATIVE_PLUGIN_MANIFEST_TARGETS) {
       const desired = new Set(
         plugins
@@ -262,6 +295,26 @@ export async function prunePluginOutputs(
       );
       for (const entry of entries) {
         if (!entry.isDirectory() || desired.has(entry.name)) {continue;}
+        const installedPlugin = plugins.find((plugin) => plugin.name === entry.name);
+        if (installedPlugin && hasAuthoredNativeInterface(installedPlugin, target.agent)) {continue;}
+        if (!installedPlugin) {
+          if (unverifiableProvenance.has(entry.name)) {continue;}
+          try {
+            if (await hasRecordedNativePluginFallback(
+              join(canonicalPluginDir, entry.name),
+              target.agent,
+            )) {continue;}
+          } catch (err) {
+            unverifiableProvenance.add(entry.name);
+            const message = err instanceof Error ? err.message : String(err);
+            warnings.push({
+              agent: "plugin",
+              name: entry.name,
+              message: `Plugin "${entry.name}" native fallback provenance could not be verified, so its native outputs were preserved: ${message}`,
+            });
+            continue;
+          }
+        }
         for (const fileName of ["plugin.json", "mcp.json"]) {
           const path = join(canonicalPluginDir, entry.name, target.dir, fileName);
           if (!await isManagedJsonFile(path)) {continue;}
@@ -276,11 +329,12 @@ export async function prunePluginOutputs(
   return pruned;
 }
 
-/** Mirrors a plugin bundle into Grok's plugin directory with a managed marker. */
+/** Writes a sanitized managed projection into Grok's plugin directory. */
 async function writeGrokProjection(
   layout: PluginRuntimeLayout,
   plugin: PluginDeclaration,
   warnings: PluginWriteWarning[],
+  standardMcp: LoadedStandardMcp,
 ): Promise<boolean> {
   const dest = join(layout.grokPluginsDir, plugin.name);
   if (existsSync(dest)) {
@@ -300,9 +354,19 @@ async function writeGrokProjection(
     ".claude-plugin",
     ".cursor-plugin",
     ".codex-plugin",
+    DOTAGENTS_NATIVE_FALLBACKS_MARKER,
     ".dotagents-managed",
     ".dotagents-native-source",
   ]);
+  const alwaysExcluded = new Set(excluded);
+  for (const path of HYBRID_LEGACY_ROOTS) {
+    if (path.startsWith(".")) {alwaysExcluded.add(path);}
+  }
+  const portableMcpAssets = portableMcpAssetPaths(standardMcp);
+  await includePortableMcpSymlinkTargets(plugin.pluginDir, portableMcpAssets);
+  if (isStandardPluginManifest(plugin.manifest)) {
+    for (const path of HYBRID_LEGACY_ROOTS) {excluded.add(path);}
+  }
   let portableSkillsSource: string | undefined;
   if (plugin.nativeSource) {
     for (const path of ["agents", "commands", "rules", "hooks", "monitors", ".mcp.json", ".lsp.json", ".app.json"]) {
@@ -321,7 +385,9 @@ async function writeGrokProjection(
     filter: (source) => {
       const relPath = relative(plugin.pluginDir, source).split("\\").join("/");
       const rootEntry = relPath.split("/")[0];
-      return !rootEntry || !excluded.has(rootEntry);
+      if (!rootEntry || !excluded.has(rootEntry)) {return true;}
+      if (alwaysExcluded.has(rootEntry)) {return false;}
+      return isPortableMcpAssetPath(relPath, portableMcpAssets);
     },
   });
   if (portableSkillsSource) {
@@ -337,6 +403,103 @@ async function writeGrokProjection(
   return true;
 }
 
+interface PortableMcpAssetPaths {
+  exact: Set<string>;
+  subtrees: Set<string>;
+}
+
+function portableMcpAssetPaths(standardMcp: LoadedStandardMcp): PortableMcpAssetPaths {
+  const paths: PortableMcpAssetPaths = { exact: new Set(), subtrees: new Set() };
+  for (const server of Object.values(standardMcp.config?.mcpServers ?? {})) {
+    if (server.type !== "stdio") {continue;}
+    addPortableMcpReferences(paths.exact, server.command);
+    addPortableMcpReferences(paths.subtrees, server.cwd);
+    for (const value of [...(server.args ?? []), ...Object.values(server.env ?? {})]) {
+      addPortableMcpReferences(paths.exact, value);
+    }
+  }
+  return paths;
+}
+
+function addPortableMcpReferences(paths: Set<string>, value: string | undefined): void {
+  if (!value) {return;}
+  if (value.startsWith("./")) {paths.add(value.slice(2));}
+  for (const match of value.matchAll(/\$\{PLUGIN_ROOT\}\/([^\s:;,]+)/g)) {
+    if (match[1]) {paths.add(match[1]);}
+  }
+}
+
+function isPortableMcpAssetPath(
+  path: string,
+  assets: PortableMcpAssetPaths,
+): boolean {
+  for (const asset of assets.exact) {
+    if (path === asset || asset.startsWith(`${path}/`)) {return true;}
+  }
+  for (const subtree of assets.subtrees) {
+    if (
+      path === subtree || path.startsWith(`${subtree}/`) || subtree.startsWith(`${path}/`)
+    ) {return true;}
+  }
+  return false;
+}
+
+async function includePortableMcpSymlinkTargets(
+  pluginDir: string,
+  assets: PortableMcpAssetPaths,
+): Promise<void> {
+  const visited = new Set<string>();
+  for (const path of assets.exact) {
+    await visitPortableMcpAsset(pluginDir, path, false, assets, visited);
+  }
+  for (const path of assets.subtrees) {
+    await visitPortableMcpAsset(pluginDir, path, true, assets, visited);
+  }
+}
+
+async function visitPortableMcpAsset(
+  pluginDir: string,
+  path: string,
+  subtree: boolean,
+  assets: PortableMcpAssetPaths,
+  visited: Set<string>,
+): Promise<void> {
+  const visitKey = `${subtree ? "subtree" : "exact"}:${path}`;
+  if (visited.has(visitKey)) {return;}
+  visited.add(visitKey);
+  const filePath = join(pluginDir, path);
+  let fileStat: Awaited<ReturnType<typeof lstat>>;
+  try {
+    fileStat = await lstat(filePath);
+  } catch {
+    return;
+  }
+  if (fileStat.isSymbolicLink()) {
+    const targetPath = resolve(dirname(filePath), await readlink(filePath));
+    const target = relative(pluginDir, targetPath).split("\\").join("/");
+    if (!target || isOutsideRelativePath(target)) {return;}
+    (subtree ? assets.subtrees : assets.exact).add(target);
+    await visitPortableMcpAsset(pluginDir, target, subtree, assets, visited);
+    return;
+  }
+  if (!subtree && fileStat.isDirectory()) {
+    assets.subtrees.add(path);
+    await visitPortableMcpAsset(pluginDir, path, true, assets, visited);
+    return;
+  }
+  if (!subtree || !fileStat.isDirectory()) {return;}
+  for (const entry of await readdir(filePath, { withFileTypes: true })) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) {continue;}
+    await visitPortableMcpAsset(
+      pluginDir,
+      join(path, entry.name).split("\\").join("/"),
+      true,
+      assets,
+      visited,
+    );
+  }
+}
+
 function portableCoreManifest(plugin: PluginDeclaration): SerializedObject {
   const manifest: SerializedObject = {
     $schema: AGENT_PLUGIN_SCHEMA,
@@ -344,19 +507,18 @@ function portableCoreManifest(plugin: PluginDeclaration): SerializedObject {
   };
   for (const key of ["description", "version", "homepage", "license"] as const) {
     const value = plugin.manifest[key];
-    if (typeof value === "string" && value.length > 0) {manifest[key] = value;}
+    if (isNonEmptyString(value)) {manifest[key] = value;}
   }
-  if (typeof plugin.manifest.repository === "string") {
+  if (isString(plugin.manifest.repository)) {
     manifest["repository"] = plugin.manifest.repository;
   }
   if (plugin.manifest.author?.name) {
-    manifest["author"] = {
-      name: plugin.manifest.author.name,
-      ...(plugin.manifest.author.email ? { email: plugin.manifest.author.email } : {}),
-      ...(plugin.manifest.author.url ? { url: plugin.manifest.author.url } : {}),
-    };
+    const author: SerializedObject = { name: plugin.manifest.author.name };
+    if (plugin.manifest.author.email) {author["email"] = plugin.manifest.author.email;}
+    if (plugin.manifest.author.url) {author["url"] = plugin.manifest.author.url;}
+    manifest["author"] = author;
   }
-  if (plugin.manifest.keywords?.every((keyword) => typeof keyword === "string")) {
+  if (isStringArray(plugin.manifest.keywords)) {
     manifest["keywords"] = plugin.manifest.keywords;
   }
   return manifest;
@@ -365,10 +527,11 @@ function portableCoreManifest(plugin: PluginDeclaration): SerializedObject {
 function nativeComponentRoots(plugin: PluginDeclaration): string[] {
   if (!plugin.nativeSource || isStandardPluginManifest(plugin.manifest)) {return [];}
   const roots = new Set<string>();
+  // SAFETY: standard manifests returned above; remaining native manifests use legacy fields.
   const manifest = plugin.manifest as LegacyPluginManifest;
   for (const key of ["skills", "agents", "commands", "rules", "hooks", "mcpServers", "lspServers", "apps", "monitors", "bin"] as const) {
     const value = manifest[key];
-    const paths = typeof value === "string" ? [value] : Array.isArray(value) ? value : [];
+    const paths = isString(value) ? [value] : isStringArray(value) ? value : [];
     for (const path of paths) {
       if (!isSafeComponentPath(path)) {continue;}
       const root = path.replace(/^\.\//, "").split("/")[0];
@@ -683,13 +846,18 @@ function componentDirs(
   return paths.map((path) => join(plugin.pluginDir, path));
 }
 
-function manifestPaths(
-  value: unknown,
+interface ManifestPaths {
+  present: boolean;
+  paths: string[];
+}
+
+function manifestPaths<Value>(
+  value: Value,
   plugin: PluginDeclaration,
   manifestKey: keyof Pick<LegacyPluginManifest, "skills" | "agents">,
   agent?: ComponentProjectionAgent,
   warnings: PluginWriteWarning[] = [],
-): { present: boolean; paths: string[] } {
+): ManifestPaths {
   const collect = (values: string[]): string[] => {
     const paths: string[] = [];
     for (const item of values) {
@@ -708,13 +876,13 @@ function manifestPaths(
     return paths;
   };
 
-  if (typeof value === "string") {
+  if (isString(value)) {
     return {
       present: true,
       paths: collect([value]),
     };
   }
-  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+  if (isStringArray(value)) {
     return {
       present: true,
       paths: collect(value),
@@ -754,8 +922,8 @@ function isOutsideRelativePath(path: string): boolean {
   return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
 }
 
-function isNotDirectoryError(err: unknown): boolean {
-  return err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOTDIR";
+function isNotDirectoryError<ErrorValue>(err: ErrorValue): boolean {
+  return hasErrorCode(err, "ENOTDIR");
 }
 
 /** Prunes stale component symlinks carrying a marker in the reserved ownership directory. */
@@ -781,8 +949,8 @@ async function pruneManagedComponentLinks(
 
 async function symlinkPointsTo(filePath: string, expectedTarget: string): Promise<boolean> {
   try {
-    const stat = await lstat(filePath);
-    if (!stat.isSymbolicLink()) {return false;}
+    const linkStat = await lstat(filePath);
+    if (!linkStat.isSymbolicLink()) {return false;}
     const target = await readlink(filePath);
     return resolve(dirname(filePath), target) === resolve(expectedTarget);
   } catch {
@@ -811,8 +979,8 @@ async function isDirectoryPath(filePath: string): Promise<boolean> {
 
 async function isManagedComponentLink(filePath: string): Promise<boolean> {
   try {
-    const stat = await lstat(filePath);
-    if (!stat.isSymbolicLink()) {return false;}
+    const linkStat = await lstat(filePath);
+    if (!linkStat.isSymbolicLink()) {return false;}
     const markerPath = await safeComponentLinkMarkerPath(filePath, false);
     if (!markerPath || !(await lstat(markerPath)).isFile()) {return false;}
     const target = await readlink(filePath);
@@ -834,7 +1002,7 @@ async function claimComponentLinkMarker(filePath: string, target: string): Promi
     await writeFile(markerPath, content, { encoding: "utf-8", flag: "wx" });
     return true;
   } catch (err) {
-    if (!(err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "EEXIST")) {
+    if (!hasErrorCode(err, "EEXIST")) {
       throw err;
     }
   }
@@ -856,7 +1024,7 @@ function isComponentLinkMarkerContent(content: string): boolean {
   if (!content.startsWith(prefix) || !content.endsWith("\n")) {return false;}
   try {
     const target = JSON.parse(content.slice(prefix.length, -1));
-    return typeof target === "string" && content === componentLinkMarkerContent(target);
+    return isString(target) && content === componentLinkMarkerContent(target);
   } catch {
     return false;
   }
@@ -873,7 +1041,7 @@ async function safeComponentLinkMarkerPath(filePath: string, createDir: boolean)
     try {
       await mkdir(markerDir);
     } catch (mkdirErr) {
-      if (!(mkdirErr instanceof Error && "code" in mkdirErr && (mkdirErr as NodeJS.ErrnoException).code === "EEXIST")) {
+      if (!hasErrorCode(mkdirErr, "EEXIST")) {
         throw mkdirErr;
       }
     }
@@ -933,7 +1101,7 @@ async function rmdirIfEmpty(dir: string): Promise<void> {
   try {
     await rmdir(dir);
   } catch (err) {
-    if (!isNotFoundError(err) && !(err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOTEMPTY")) {
+    if (!isNotFoundError(err) && !hasErrorCode(err, "ENOTEMPTY")) {
       throw err;
     }
   }

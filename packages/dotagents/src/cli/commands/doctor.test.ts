@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runDoctor } from "./doctor.js";
 import { resolveScope } from "../../scope.js";
+import { DOTAGENTS_NATIVE_FALLBACKS_MARKER } from "../../plugins/store.js";
 
 describe("runDoctor", () => {
   let tmpDir: string;
@@ -173,6 +174,32 @@ source = "path:external-review-tools"
     expect(check?.message).toContain("Same-project plugins cannot be installed into the same project");
     expect(check?.message).toContain("review-tools");
     expect(check?.message).toContain("Run 'npx @sentry/dotagents --project install'");
+  });
+
+  it("reports hybrid compatibility separately from runtime drift", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "hybrid-tools");
+    await mkdir(join(pluginDir, ".claude-plugin"), { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({
+      $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+      name: "hybrid-tools",
+    }));
+    await writeFile(join(pluginDir, ".claude-plugin", "plugin.json"), '{"name":"hybrid-tools"}');
+    await writeFile(join(pluginDir, DOTAGENTS_NATIVE_FALLBACKS_MARKER), "claude\n");
+    await writeFile(join(projectRoot, "agents.toml"), `version = 1
+agents = ["claude"]
+
+[[plugins]]
+name = "hybrid-tools"
+source = "org/hybrid-tools"
+`);
+    await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
+    await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");
+
+    const result = await runDoctor({ scope: resolveScope("project", projectRoot) });
+    const compatibility = result.checks.find((check) => check.name === "plugin compatibility");
+
+    expect(compatibility?.status).toBe("warn");
+    expect(compatibility?.message).toContain("hybrid compatibility bundle");
   });
 
   it("detects a missing agent skill symlink", async () => {

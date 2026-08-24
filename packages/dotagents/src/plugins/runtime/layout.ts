@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ScopeRoot } from "../../scope.js";
+import { isString } from "../../utils/type-guards.js";
 
 export interface PluginRuntimeLayout {
   claudeMarketplaceRoot: string;
@@ -78,5 +79,5 @@ export function pluginRuntimeLayout(scope: ScopeRoot): PluginRuntimeLayout {
 }
 
 export function normalizePluginRuntimeLayout(root: PluginRuntimeRoot): PluginRuntimeLayout {
-  return typeof root === "string" ? projectPluginRuntimeLayout(root) : root;
+  return isString(root) ? projectPluginRuntimeLayout(root) : root;
 }

@@ -276,6 +276,7 @@ async function removePluginArtifacts(
     scope.pluginsDir,
     remainingPluginConfigs,
     `${commandPrefix(scope)} install`,
+    config.agents,
   );
   if (installedPlugins.issues.length === 0) {
     const { result } = await reconcilePluginOutputs(
@@ -334,6 +335,7 @@ async function updateProjectGitignore(scope: ScopeRoot): Promise<void> {
     scope.pluginsDir,
     config.plugins.filter((plugin) => !isSameProjectPluginConfig(plugin, scope.pluginsDir, scope.root)),
     `${commandPrefix(scope)} install`,
+    config.agents,
   );
   await writeAgentsGitignore(
     scope.agentsDir,
@@ -378,7 +380,7 @@ export default async function remove(args: string[], context: CommandContext): P
     return;
   }
 
-  const skipConfirm = values.yes as boolean;
+  const skipConfirm = values.yes;
 
   try {
     const { scope } = context;

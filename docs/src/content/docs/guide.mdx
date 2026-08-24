@@ -196,10 +196,10 @@ command = "npx"
 args = ["-y", "@modelcontextprotocol/server-github"]
 env = ["GITHUB_TOKEN"]
 
-# MCP server (HTTP with OAuth)
+# MCP server (Streamable HTTP with OAuth)
 [[mcp]]
 name = "remote-api"
-url = "https://mcp.example.com/sse"
+url = "https://mcp.example.com/mcp"
 
 # Hooks
 [[hooks]]
@@ -219,6 +219,12 @@ name = "review-tools"
 source = "getsentry/agent-pack"
 targets = ["claude", "cursor", "codex", "opencode"]
 ```
+
+Portable Agent Plugins may coexist with authored Claude, Cursor, or Codex
+manifests during migration. The portable root remains the source of truth.
+Dotagents ignores reproducible native manifests and retains only behavior it
+cannot generate as a matching-client fallback; unrelated targets receive only
+portable skills and MCP.
 
 See the [CLI reference](/cli/#configuration-agentstoml) for all fields and
 options.

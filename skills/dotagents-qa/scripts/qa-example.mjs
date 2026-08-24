@@ -18,8 +18,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(__dirname, "../../..");
+const moduleDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(moduleDir, "../../..");
 const cliPath = join(repoRoot, "packages", "dotagents", "dist", "cli", "index.js");
 const exampleRoot = join(repoRoot, "examples", "full");
 const sentinel = "DOTAGENTS_SUBAGENT_RUNTIME_PROOF_9b8e6f2c";
@@ -438,10 +438,10 @@ function proveCodexRuntime() {
       },
     );
   } catch (err) {
-    if (err && typeof err === "object" && "stdout" in err && typeof err.stdout === "string") {
+    if (isObjectValue(err) && "stdout" in err && isStringValue(err.stdout)) {
       writeFileSync(outputPath, err.stdout);
     }
-    if (err && typeof err === "object" && "stderr" in err && typeof err.stderr === "string") {
+    if (isObjectValue(err) && "stderr" in err && isStringValue(err.stderr)) {
       writeFileSync(stderrPath, err.stderr);
     }
     throw err;
@@ -551,13 +551,6 @@ function assertFile(relativePath) {
   }
 }
 
-function assertFileDoesNotExist(relativePath) {
-  const path = join(projectDir, relativePath);
-  if (existsSync(path)) {
-    throw new Error(`expected file not to exist: ${relativePath}`);
-  }
-}
-
 function assertSymlink(relativePath) {
   const path = join(projectDir, relativePath);
   if (!existsSync(path) || !lstatSync(path).isSymbolicLink()) {
@@ -621,7 +614,7 @@ function assertCodexRuntimeEvents(output) {
     if (!line.trim()) {continue;}
     const event = JSON.parse(line);
     const states = event.item?.agents_states;
-    if (!states || typeof states !== "object") {continue;}
+    if (!isObjectValue(states)) {continue;}
     for (const state of Object.values(states)) {
       if (state?.message?.includes(sentinel)) {
         return;
@@ -630,4 +623,12 @@ function assertCodexRuntimeEvents(output) {
   }
 
   throw new Error("Codex runtime JSONL should include a waited child-agent response with the sentinel");
+}
+
+function isObjectValue(value) {
+  return value !== null && Object(value) === value;
+}
+
+function isStringValue(value) {
+  return Object.prototype.toString.call(value) === "[object String]";
 }

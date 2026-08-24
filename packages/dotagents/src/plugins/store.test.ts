@@ -2,35 +2,28 @@ import { existsSync } from "node:fs";
 import { lstat, mkdtemp, mkdir, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   discoverPlugins,
   installPluginBundle,
   isSameProjectPluginConfig,
   loadInstalledPlugins,
   lockEntryForPlugin,
+  preparePluginForTargets,
   resolvePlugin,
   type ResolvedPlugin,
 } from "./store.js";
+import { AGENT_PLUGIN_MCP_SCHEMA, AGENT_PLUGIN_SCHEMA } from "./schema.js";
 
-vi.mock("node:fs/promises", async () => {
-  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-  return {
-    ...actual,
-    realpath: vi.fn(actual.realpath),
-    rename: vi.fn(actual.rename),
-    rm: vi.fn(actual.rm),
-  };
-});
+async function removeWithBackupFailure(
+  path: Parameters<typeof rm>[0],
+  options: Parameters<typeof rm>[1],
+): Promise<void> {
+  if (String(path).includes(".backup-")) {throw new Error("backup cleanup failed");}
+  await rm(path, options);
+}
 
 describe("plugin store", () => {
-  afterEach(async () => {
-    const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-    vi.mocked(realpath).mockImplementation(actual.realpath);
-    vi.mocked(rename).mockImplementation(actual.rename);
-    vi.mocked(rm).mockImplementation(actual.rm);
-  });
-
   it("preserves an empty resolved path for root git plugins", () => {
     const resolved = {
       type: "git",
@@ -118,7 +111,7 @@ describe("plugin store", () => {
       const result = await loadInstalledPlugins(pluginsDir, [{
         name: "review-tools",
         source: "path:source/review-tools",
-      }], "npx @sentry/dotagents install");
+      }], "npx @sentry/dotagents install", []);
       expect(result.plugins).toEqual([]);
       expect(result.issues[0]?.issue).toContain("Installed plugin resolves outside source");
     } finally {
@@ -135,9 +128,9 @@ describe("plugin store", () => {
       const result = await loadInstalledPlugins(pluginsDir, [{
         name: "review-tools",
         source: "path:source/review-tools",
-      }], "npx @sentry/dotagents install");
+      }], "npx @sentry/dotagents install", []);
       expect(result.plugins).toEqual([]);
-      expect(result.issues[0]?.issue).toContain("has no plugin.json or supported native manifest");
+      expect(result.issues[0]?.issue).toContain("missing plugin.json. Reinstall the plugin");
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }
@@ -174,8 +167,7 @@ describe("plugin store", () => {
         "utf-8",
       );
 
-      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-      vi.mocked(rename).mockImplementation(async (oldPath, newPath) => {
+      const renameWithFailures: typeof rename = async (oldPath, newPath) => {
         const oldString = String(oldPath);
         const newString = String(newPath);
         if (oldString.includes(".tmp-") && newString === destDir) {
@@ -184,8 +176,8 @@ describe("plugin store", () => {
         if (oldString.includes(".backup-") && newString === destDir) {
           throw new Error("rollback failed");
         }
-        await actual.rename(oldPath, newPath);
-      });
+        await rename(oldPath, newPath);
+      };
 
       await expect(installPluginBundle(pluginsDir, {
         type: "local",
@@ -195,7 +187,7 @@ describe("plugin store", () => {
           pluginDir: sourceDir,
           manifest: { name: "review-tools", description: "New plugin" },
         },
-      })).rejects.toThrow("destination rename failed");
+      }, { rename: renameWithFailures })).rejects.toThrow("destination rename failed");
 
       expect(existsSync(destDir)).toBe(false);
       const backupName = (await readdir(pluginsDir)).find((name) => name.startsWith(".review-tools.backup-"));
@@ -226,12 +218,6 @@ describe("plugin store", () => {
         "utf-8",
       );
 
-      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-      vi.mocked(rm).mockImplementation(async (path, options) => {
-        if (String(path).includes(".backup-")) {throw new Error("backup cleanup failed");}
-        await actual.rm(path, options);
-      });
-
       await expect(installPluginBundle(pluginsDir, {
         type: "local",
         plugin: {
@@ -240,7 +226,7 @@ describe("plugin store", () => {
           pluginDir: sourceDir,
           manifest: { name: "review-tools", description: "New plugin" },
         },
-      })).resolves.toMatchObject({ pluginDir: destDir });
+      }, { rm: removeWithBackupFailure })).resolves.toMatchObject({ pluginDir: destDir });
 
       const installedManifest = JSON.parse(await readFile(join(destDir, "plugin.json"), "utf-8"));
       expect(installedManifest.description).toBe("New plugin");
@@ -318,20 +304,203 @@ describe("plugin store", () => {
     }
   });
 
-  it("rejects legacy root components in standard bundles", async () => {
+  it("accepts standard bundles with inert legacy roots and reports them", async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
     try {
       const pluginDir = join(projectRoot, "source", "plugins", "review-tools");
       await mkdir(join(pluginDir, "agents"), { recursive: true });
       await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+        $schema: AGENT_PLUGIN_SCHEMA,
         name: "review-tools",
       }));
 
-      await expect(resolvePlugin(
+      const resolved = await resolvePlugin(
         { name: "review-tools", source: "path:source", path: "plugins/review-tools" },
         { stateDir: join(projectRoot, "state"), projectRoot },
-      )).rejects.toThrow(/contains legacy root components: agents/);
+      );
+      expect(resolved.plugin.manifest).toMatchObject({
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "review-tools",
+      });
+      expect(resolved.plugin.compatibilityWarnings).toEqual([
+        'Plugin "review-tools" contains ignored legacy root resources: agents. They are preserved but are not portable plugin components.',
+      ]);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("discovers a standard-plus-native bundle as one candidate", async () => {
+    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-hybrid-"));
+    try {
+      await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
+      await mkdir(join(sourceRoot, "commands"), { recursive: true });
+      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "review-tools",
+      }));
+      await writeFile(join(sourceRoot, ".claude-plugin", "plugin.json"), JSON.stringify({
+        name: "review-tools",
+        commands: "./commands",
+      }));
+
+      const candidates = await discoverPlugins(sourceRoot);
+
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]).toMatchObject({ name: "review-tools", path: "" });
+      expect(candidates[0]!.nativeSource).toBeUndefined();
+      expect(candidates[0]!.authoredNativeInterfaces.claude?.fallback).toBe(true);
+      expect(candidates[0]!.manifest).toMatchObject({
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "review-tools",
+      });
+    } finally {
+      await rm(sourceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("validates hybrid fallback identity only when its client is selected", async () => {
+    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-hybrid-"));
+    try {
+      await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
+      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "portable-name",
+      }));
+      await writeFile(join(sourceRoot, ".claude-plugin", "plugin.json"), JSON.stringify({
+        commands: "./commands",
+      }));
+
+      const resolved = await resolvePlugin(
+        { name: "portable-name", source: "path:." },
+        { stateDir: join(sourceRoot, "state"), projectRoot: sourceRoot },
+      );
+      expect(preparePluginForTargets(resolved.plugin, ["codex"]).compatibilityWarnings?.some(
+        (warning) => warning.includes("missing the portable plugin name"),
+      )).toBe(true);
+      expect(() => preparePluginForTargets(resolved.plugin, ["claude"])).toThrow(
+        'Claude native fallback manifest is missing the portable plugin name "portable-name"',
+      );
+    } finally {
+      await rm(sourceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("never falls back from an invalid standard root to a valid native manifest", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-hybrid-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
+      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/2.0.0/plugin.schema.json",
+        name: "review-tools",
+      }));
+      await writeFile(join(sourceRoot, ".claude-plugin", "plugin.json"), JSON.stringify({
+        name: "review-tools",
+      }));
+      await writeFile(join(sourceRoot, "marketplace.json"), JSON.stringify({
+        name: "external",
+        plugins: [{
+          name: "review-tools",
+          source: { source: "github", repo: "example/review-tools" },
+        }],
+      }));
+
+      await expect(resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      )).rejects.toThrow("unsupported Agent Plugins schema");
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("does not let an unrelated root issue mask a valid marketplace candidate", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-hybrid-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const pluginDir = join(sourceRoot, "catalog", "review-tools");
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/2.0.0/plugin.schema.json",
+        name: "unrelated-root",
+      }));
+      await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }));
+      await writeFile(join(sourceRoot, "marketplace.json"), JSON.stringify({
+        name: "local",
+        plugins: [{ name: "review-tools", source: "./catalog/review-tools" }],
+      }));
+
+      await expect(resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      )).resolves.toMatchObject({ plugin: { pluginDir } });
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps portable metadata authoritative when the native interface is reproducible", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-hybrid-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      await mkdir(join(sourceRoot, ".codex-plugin"), { recursive: true });
+      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "review-tools",
+        version: "1.0.0",
+        author: { name: "Portable author" },
+      }));
+      await writeFile(join(sourceRoot, "mcp.json"), JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          review: { type: "stdio", command: "node" },
+          invalid: { type: "stdio", command: "node server.js" },
+        },
+      }));
+      const generatedMcp = {
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { review: { type: "stdio", command: "node" } },
+      };
+      await writeFile(
+        join(sourceRoot, ".codex-plugin", "mcp.json"),
+        JSON.stringify(generatedMcp),
+      );
+      await writeFile(join(sourceRoot, ".codex-plugin", "plugin.json"), JSON.stringify({
+        name: "review-tools",
+        version: "1.0.0",
+        author: { name: "Native author" },
+        mcpServers: "./.codex-plugin/mcp.json",
+        interface: {
+          displayName: "Review Tools",
+          shortDescription: "",
+          developerName: "Portable author",
+          category: "Coding",
+          capabilities: ["Interactive", "Write"],
+        },
+      }));
+      const resolved = await resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+
+      expect(resolved.plugin.authoredNativeInterfaces?.codex?.fallback).toBe(false);
+      expect(preparePluginForTargets(resolved.plugin, ["codex"]).compatibilityWarnings).toEqual([
+        'Plugin "review-tools" is a hybrid compatibility bundle: the portable core remains authoritative; redundant authored native interfaces are ignored in favor of portable generation.',
+        'Plugin "review-tools" has an authored Codex interface that was ignored because the portable core can generate the Codex adapter.',
+      ]);
+      const installed = await installPluginBundle(join(projectRoot, "installed"), resolved);
+      expect(existsSync(join(installed.pluginDir, ".codex-plugin", "mcp.json"))).toBe(false);
+
+      await writeFile(
+        join(sourceRoot, ".codex-plugin", "mcp.json"),
+        JSON.stringify({ ...generatedMcp, mcpServers: { other: { type: "stdio", command: "node" } } }),
+      );
+      const collided = await resolvePlugin(
+        { name: "review-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+      expect(collided.plugin.authoredNativeInterfaces?.codex?.fallback).toBe(true);
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }
@@ -349,29 +518,34 @@ describe("plugin store", () => {
         "utf-8",
       );
 
-      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+      // SAFETY: the fixture adds the Node error code required by the boundary check.
       const missingRoot = new Error("missing source root") as NodeJS.ErrnoException;
       missingRoot.code = "ENOENT";
-      vi.mocked(realpath).mockImplementation(async (path, options) => {
+      const realpathWithMissingRoot = async (path: string): Promise<string> => {
         if (String(path) === sourceRoot) {
           throw missingRoot;
         }
-        return actual.realpath(path, options);
-      });
+        return realpath(path);
+      };
 
       let error: unknown;
       try {
         await resolvePlugin(
           { name: "review-tools", source: "path:source", path: "plugins/review-tools" },
-          { stateDir: join(projectRoot, "state"), projectRoot },
+          {
+            stateDir: join(projectRoot, "state"),
+            projectRoot,
+            services: { realpath: realpathWithMissingRoot },
+          },
         );
       } catch (err) {
         error = err;
       }
 
       expect(error).toBeInstanceOf(Error);
-      expect((error as Error).message).toBe("Plugin path source root does not exist: plugins/review-tools");
-      expect((error as Error).cause).toBe(missingRoot);
+      if (!(error instanceof Error)) {throw new Error("expected resolvePlugin to reject");}
+      expect(error.message).toBe("Plugin path source root does not exist: plugins/review-tools");
+      expect(error.cause).toBe(missingRoot);
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }
@@ -385,27 +559,32 @@ describe("plugin store", () => {
       await mkdir(pluginDir, { recursive: true });
       await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "review-tools" }), "utf-8");
 
-      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+      // SAFETY: the fixture adds the Node error code required by the boundary check.
       const missingPath = new Error("missing plugin path") as NodeJS.ErrnoException;
       missingPath.code = "ENOENT";
-      vi.mocked(realpath).mockImplementation(async (path, options) => {
+      const realpathWithMissingPath = async (path: string): Promise<string> => {
         if (String(path) === pluginDir) {throw missingPath;}
-        return actual.realpath(path, options);
-      });
+        return realpath(path);
+      };
 
       let error: unknown;
       try {
         await resolvePlugin(
           { name: "review-tools", source: "path:source", path: "plugins/review-tools" },
-          { stateDir: join(projectRoot, "state"), projectRoot },
+          {
+            stateDir: join(projectRoot, "state"),
+            projectRoot,
+            services: { realpath: realpathWithMissingPath },
+          },
         );
       } catch (err) {
         error = err;
       }
 
       expect(error).toBeInstanceOf(Error);
-      expect((error as Error).message).toBe("Plugin path source path does not exist: plugins/review-tools");
-      expect((error as Error).cause).toBe(missingPath);
+      if (!(error instanceof Error)) {throw new Error("expected resolvePlugin to reject");}
+      expect(error.message).toBe("Plugin path source path does not exist: plugins/review-tools");
+      expect(error.cause).toBe(missingPath);
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }

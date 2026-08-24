@@ -42,7 +42,7 @@ export async function fetchWellKnownIndex(
     });
     if (!response.ok) {return null;}
 
-    const data = (await response.json()) as unknown;
+    const data = await response.json();
     if (!isValidIndex(data)) {return null;}
     return data;
   } catch {
@@ -50,16 +50,20 @@ export async function fetchWellKnownIndex(
   }
 }
 
-function isValidIndex(data: unknown): data is WellKnownIndex {
+function isValidIndex<Value>(data: Value): data is Value & WellKnownIndex {
   if (!isSerializedObject(data)) {return false;}
   const skills = data["skills"];
   if (!Array.isArray(skills)) {return false;}
   return skills.every((entry) => (
     isSerializedObject(entry) &&
-    typeof entry["name"] === "string" &&
+    isString(entry["name"]) &&
     Array.isArray(entry["files"]) &&
-    entry["files"].every((file) => typeof file === "string")
+    entry["files"].every(isString)
   ));
+}
+
+function isString<Value>(value: Value): value is Value & string {
+  return typeof value === "string";
 }
 
 export interface WellKnownCacheResult {

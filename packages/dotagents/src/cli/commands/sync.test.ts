@@ -555,7 +555,7 @@ env = ["GITHUB_TOKEN"]
 
 [[mcp]]
 name = "remote"
-url = "https://mcp.example.com/sse"
+url = "https://mcp.example.com/mcp"
 headers = { Authorization = "Bearer tok" }
 `,
     );
@@ -585,7 +585,7 @@ headers = { Authorization = "Bearer tok" }
         },
         remote: {
           type: "http",
-          url: "https://mcp.example.com/sse",
+          url: "https://mcp.example.com/mcp",
           headers: { Authorization: "Bearer tok" },
         },
       },

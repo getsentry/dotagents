@@ -4,6 +4,11 @@ import type { SerializedObject, SerializedValue } from "@sentry/dotagents-lib";
 type CommandHook = { type: "command"; command: string };
 type ClaudeHookEntry = { matcher?: string; hooks: CommandHook[] };
 
+export interface CodexHeaders {
+  httpHeaders?: Record<string, string>;
+  envHttpHeaders?: Record<string, string>;
+}
+
 /** Build an agent-specific environment map from declared variable names. */
 export function envRecord(
   env: string[] | undefined,
@@ -11,7 +16,7 @@ export function envRecord(
   values?: Record<string, string>,
 ): Record<string, string> | undefined {
   if ((!env || env.length === 0) && !values) {return undefined;}
-  const rec: Record<string, string> = { ...values };
+  const rec = { ...values };
   for (const key of env ?? []) {rec[key] = template(key);}
   return rec;
 }
@@ -47,7 +52,7 @@ export function interpolateHeaders(
  */
 export function extractCodexHeaders(
   headers: Record<string, string> | undefined,
-): { httpHeaders?: Record<string, string>; envHttpHeaders?: Record<string, string> } {
+): CodexHeaders {
   if (!headers) {return {};}
   let httpHeaders: Record<string, string> | undefined;
   let envHttpHeaders: Record<string, string> | undefined;

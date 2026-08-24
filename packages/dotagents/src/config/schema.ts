@@ -131,7 +131,7 @@ const projectConfigSchema = z.object({
 export type ProjectConfig = z.infer<typeof projectConfigSchema>;
 
 /**
- * MCP server declaration: either stdio (command+args) or HTTP (url).
+ * MCP server declaration: either stdio (command+args) or Streamable HTTP (url).
  * env is an array of environment variable names (values come from the user's env).
  */
 const mcpSchema = z
@@ -148,7 +148,7 @@ const mcpSchema = z
       const hasStdio = !!m.command;
       const hasHttp = !!m.url;
       return (hasStdio || hasHttp) && !(hasStdio && hasHttp);
-    }, "MCP server must have either command (stdio) or url (http), but not both"),
+    }, "MCP server must have either command (stdio) or url (Streamable HTTP), but not both"),
   );
 
 export type McpConfig = z.infer<typeof mcpSchema>;

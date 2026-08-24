@@ -64,10 +64,10 @@ env = ["GITHUB_TOKEN"]
 
 [[mcp]]
 name = "remote-api"
-url = "https://mcp.example.com/sse"
+url = "https://mcp.example.com/mcp"
 headers = { Authorization = "Bearer tok" }
 
-# HTTP server with secrets via env vars
+# Streamable HTTP server with secrets via env vars
 [[mcp]]
 name = "authed-api"
 url = "https://${API_HOST}/mcp"
@@ -175,11 +175,11 @@ MCP server declarations. Each entry defines an MCP server that dotagents will co
 | `name` | Yes | Server name (used as key in generated config files). |
 | `command` | Conditional | Command to run (stdio transport). Required if `url` is not set. |
 | `args` | No | Arguments for the command. Defaults to `[]`. |
-| `url` | Conditional | URL for HTTP/SSE transport. Required if `command` is not set. |
+| `url` | Conditional | URL for Streamable HTTP transport. Required if `command` is not set. |
 | `headers` | No | HTTP headers (only for `url` servers). Supports `${VAR}` syntax for env var interpolation. |
 | `env` | No | Array of environment variable names. Values are referenced from the user's environment. Defaults to `[]`. |
 
-A server must have either `command` (stdio) or `url` (HTTP), but not both.
+A server must have either `command` (stdio) or `url` (Streamable HTTP), but not both.
 
 **Environment variable interpolation.** Use `${VAR}` in header values and `url` to reference secrets from the environment (e.g. `headers = { X-Api-Key = "${API_KEY}" }`). Write `${VAR}` in `agents.toml` — dotagents translates it to each agent's native syntax when generating config files:
 
@@ -244,7 +244,7 @@ Generated paths:
 
 Plugin dependencies. Each entry selects one plugin bundle from a source. dotagents installs the canonical plugin bundle into `.agents/plugins/<name>/` and writes deterministic runtime-specific plugin outputs for the configured agents selected by the plugin's `targets`.
 
-The target canonical plugin input is an [Agent Plugins](https://agent-plugins.org/) bundle under `.agents/plugins/<name>/`: required `plugin.json`, optional `skills/`, optional `mcp.json`, and client-specific extension namespaces. dotagents source declarations, lock entries, marketplaces, target selection, and generated runtime files remain management concerns outside the portable bundle. Generated Claude, Cursor, and Codex marketplaces or native manifests are adapters, not source-of-truth plugin metadata.
+The preferred canonical plugin input is an [Agent Plugins](https://agent-plugins.org/) bundle under `.agents/plugins/<name>/`: required `plugin.json`, optional `skills/`, optional `mcp.json`, and client-specific extension namespaces. During migration, a valid portable root may coexist with authored Claude, Cursor, or Codex manifests as a hybrid compatibility bundle. The portable root remains the source of truth. Dotagents ignores a native manifest when the target adapter can reproduce it from portable data, and retains it byte-for-byte as a matching-client fallback only when it contains behavior the adapter cannot represent. Generated adapters are managed, disposable output and never become input to later normalization. Source declarations, lock entries, marketplaces, target selection, and generated runtime files remain management concerns outside the portable bundle.
 
 See [Plugin Support Specification](plugins.md) for the Agent Plugins-aligned bundle contract, legacy migration plan, discovery rules, normalized internal model, downstream target transformations, and implementation gaps.
 
@@ -709,8 +709,9 @@ dotagents doctor [--fix]
 8. The selected scope's managed skills directory exists
 9. All declared skills are installed
 10. All declared plugins are installed
-11. Generated plugin runtime artifacts are intact
-12. In project scope, symlinks are intact
+11. Hybrid plugin compatibility diagnostics are reported
+12. Generated plugin runtime artifacts are intact
+13. In project scope, symlinks are intact
 
 **Flags:**
 - `--fix`: Auto-fix issues where possible (add gitignore entries, remove legacy fields, create missing `.agents/.gitignore`, and repair legacy managed project hooks)
@@ -728,7 +729,7 @@ dotagents list [--json]
 - `✗` missing — in agents.toml but not installed
 - `?` unlocked — installed but not in lockfile
 
-**Output:** name, source, status. Human output groups results under `Skills:` and `Plugins:` when both are present. JSON output is an object with `skills` and `plugins` arrays.
+**Output:** name, source, status, and optional plugin compatibility warnings. Human output groups results under `Skills:` and `Plugins:` when both are present and prints plugin warning lines below their plugin. JSON output is an object with `skills` and `plugins` arrays; a plugin entry includes `warnings` when diagnostics exist.
 
 ---
 

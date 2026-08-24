@@ -1,6 +1,20 @@
 import { describe, it, expect } from "vitest";
 import { agentsConfigSchema } from "./schema.js";
 
+function parseSkill(source: string) {
+  return agentsConfigSchema.safeParse({
+    version: 1,
+    skills: [{ name: "test", source }],
+  });
+}
+
+function parseWithName(name: string) {
+  return agentsConfigSchema.safeParse({
+    version: 1,
+    skills: [{ name, source: "owner/repo" }],
+  });
+}
+
 describe("agentsConfigSchema", () => {
   it("parses a minimal valid config", () => {
     const result = agentsConfigSchema.safeParse({ version: 1 });
@@ -125,12 +139,6 @@ describe("agentsConfigSchema", () => {
   });
 
   describe("source specifiers", () => {
-    const parseSkill = (source: string) =>
-      agentsConfigSchema.safeParse({
-        version: 1,
-        skills: [{ name: "test", source }],
-      });
-
     it("accepts owner/repo", () => {
       expect(parseSkill("anthropics/skills").success).toBe(true);
     });
@@ -238,12 +246,6 @@ describe("agentsConfigSchema", () => {
   });
 
   describe("skill name validation", () => {
-    const parseWithName = (name: string) =>
-      agentsConfigSchema.safeParse({
-        version: 1,
-        skills: [{ name, source: "owner/repo" }],
-      });
-
     it("accepts valid skill names", () => {
       expect(parseWithName("pdf-processing").success).toBe(true);
       expect(parseWithName("my_skill").success).toBe(true);
@@ -444,11 +446,11 @@ describe("agentsConfigSchema", () => {
     it("accepts an http MCP server", () => {
       const result = agentsConfigSchema.safeParse({
         version: 1,
-        mcp: [{ name: "remote", url: "https://mcp.example.com/sse" }],
+        mcp: [{ name: "remote", url: "https://mcp.example.com/mcp" }],
       });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.mcp[0]!.url).toBe("https://mcp.example.com/sse");
+        expect(result.data.mcp[0]!.url).toBe("https://mcp.example.com/mcp");
       }
     });
 

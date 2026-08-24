@@ -21,6 +21,6 @@ export type ToolName = (typeof TOOL_NAMES)[number];
 
 const TOOL_NAME_SET: ReadonlySet<string> = new Set(TOOL_NAMES);
 
-export function isToolName(value: unknown): value is ToolName {
+export function isToolName<Value>(value: Value): value is Value & ToolName {
   return typeof value === "string" && TOOL_NAME_SET.has(value);
 }

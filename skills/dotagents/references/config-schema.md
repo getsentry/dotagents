@@ -116,12 +116,12 @@ args = ["-y", "@modelcontextprotocol/server-github"]  # Optional
 env = ["GITHUB_TOKEN"]             # Optional, env vars to pass through
 ```
 
-### HTTP Transport
+### Streamable HTTP Transport
 
 ```toml
 [[mcp]]
 name = "remote-api"                 # Required, unique server name
-url = "https://mcp.example.com/sse" # Required for HTTP
+url = "https://mcp.example.com/mcp" # Required for Streamable HTTP
 ```
 
 | Field | Type | Required | Description |
@@ -130,7 +130,7 @@ url = "https://mcp.example.com/sse" # Required for HTTP
 | `command` | string | Stdio only | Command to execute |
 | `args` | string[] | No | Command arguments |
 | `env` | string[] | No | Environment variable names to pass through |
-| `url` | string | HTTP only | Server URL |
+| `url` | string | Streamable HTTP only | Server URL |
 | `headers` | table | No | HTTP headers |
 
 ## Hooks Section
