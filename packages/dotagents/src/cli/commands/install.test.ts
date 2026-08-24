@@ -11,7 +11,10 @@ import { writeLockfile } from "../../lockfile/writer.js";
 import type { Lockfile } from "../../lockfile/schema.js";
 import { resolveScope } from "../../scope.js";
 import { DOTAGENTS_SUBAGENT_MARKER } from "../../subagents/format.js";
-import { DOTAGENTS_MANAGED_PLUGIN_MARKER } from "../../plugins/store.js";
+import {
+  DOTAGENTS_MANAGED_PLUGIN_MARKER,
+  DOTAGENTS_NATIVE_FALLBACKS_MARKER,
+} from "../../plugins/store.js";
 import { AGENT_PLUGIN_MCP_SCHEMA, AGENT_PLUGIN_SCHEMA } from "../../plugins/schema.js";
 
 const SKILL_MD = (name: string) => `---
@@ -28,6 +31,15 @@ description: Review code for correctness.
 ---
 
 Review the current diff.
+`;
+
+const HYBRID_TARGET_CONFIG = (targets: string[]) => `version = 1
+agents = ["claude", "cursor"]
+
+[[plugins]]
+name = "hybrid-tools"
+source = "path:plugin-source/hybrid-tools"
+targets = [${targets.map((target) => `"${target}"`).join(", ")}]
 `;
 
 type HarnessEntry =
@@ -486,6 +498,280 @@ source = "path:plugin-source/portable-tools"
       expect(existsSync(join(installedDir, "executed"))).toBe(false);
     },
   );
+
+  it.each([undefined, "."] as const)(
+    "installs a reported-shape hybrid root with path %s",
+    async (pluginPath) => {
+      const sourceDir = join(projectRoot, "hybrid-source");
+      const claudeBytes = '{\n  "name": "hybrid-tools",\n  "description": "Hybrid tools",\n  "commands": "./commands",\n  "hooks": "./hooks/hooks.json"\n}\n';
+      await mkdir(join(sourceDir, ".claude-plugin"), { recursive: true });
+      await mkdir(join(sourceDir, ".codex-plugin"), { recursive: true });
+      await mkdir(join(sourceDir, "skills", "portable-qa"), { recursive: true });
+      await mkdir(join(sourceDir, "commands"), { recursive: true });
+      await mkdir(join(sourceDir, "agents"), { recursive: true });
+      await mkdir(join(sourceDir, "hooks"), { recursive: true });
+      await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "hybrid-tools",
+        description: "Hybrid tools",
+      }, null, 2));
+      await writeFile(join(sourceDir, ".claude-plugin", "plugin.json"), claudeBytes);
+      await writeFile(join(sourceDir, ".codex-plugin", "plugin.json"), JSON.stringify({
+        name: "hybrid-tools",
+        description: "Hybrid tools",
+        agents: "./agents",
+      }, null, 2));
+      await writeFile(join(sourceDir, "skills", "portable-qa", "SKILL.md"), SKILL_MD("portable-qa"));
+      await writeFile(join(sourceDir, "commands", "native.md"), "native command");
+      await writeFile(join(sourceDir, "agents", "native.md"), "native agent");
+      await writeFile(join(sourceDir, "hooks", "hooks.json"), "{}");
+      await writeFile(join(sourceDir, "marketplace.json"), JSON.stringify({
+        name: "external-catalog",
+        plugins: [{
+          name: "hybrid-tools",
+          source: { source: "github", repo: "example/hybrid-tools" },
+        }],
+      }));
+      await writeFile(join(projectRoot, "agents.toml"), `version = 1
+agents = ["claude", "opencode"]
+
+[[plugins]]
+name = "hybrid-tools"
+source = "path:hybrid-source"
+${pluginPath ? `path = "${pluginPath}"\n` : ""}`);
+
+      const scope = resolveScope("project", projectRoot);
+      const result = await runInstall({ scope });
+      const installedDir = join(projectRoot, ".agents", "plugins", "hybrid-tools");
+
+      expect(result.installedPlugins).toEqual(["hybrid-tools"]);
+      expect(result.pluginWarnings).toEqual([{
+        agent: "plugin",
+        name: "hybrid-tools",
+        message: 'Plugin "hybrid-tools" is a hybrid compatibility bundle: the portable core remains authoritative; authored Claude, Codex interfaces are retained only as matching-client fallbacks.',
+      }]);
+      expect(await readFile(join(installedDir, ".claude-plugin", "plugin.json"), "utf-8")).toBe(claudeBytes);
+      expect(existsSync(join(installedDir, ".claude-plugin", "plugin.json.dotagents-managed"))).toBe(false);
+      expect(existsSync(join(projectRoot, ".opencode", "skills", "portable-qa"))).toBe(true);
+      expect(existsSync(join(projectRoot, ".opencode", "agents", "native.md"))).toBe(false);
+      expect(existsSync(join(projectRoot, ".codex-plugin", "marketplace.json"))).toBe(false);
+      expect((await loadLockfile(scope.lockPath))!.plugins["hybrid-tools"]).toEqual({
+        source: "path:hybrid-source",
+      });
+
+      const sync = await runSync({ scope });
+      expect(sync.issues.some((issue) => issue.message === result.pluginWarnings[0]!.message)).toBe(true);
+      expect(await readFile(join(installedDir, ".claude-plugin", "plugin.json"), "utf-8")).toBe(claudeBytes);
+    },
+  );
+
+  it("replaces a reproducible native interface with a managed portable adapter", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "hybrid-tools");
+    await mkdir(join(sourceDir, ".claude-plugin"), { recursive: true });
+    await mkdir(join(sourceDir, "skills", "portable-qa"), { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "hybrid-tools",
+      description: "Portable description",
+    }));
+    await writeFile(join(sourceDir, ".claude-plugin", "plugin.json"), JSON.stringify({
+      name: "hybrid-tools",
+      description: "Native description",
+      skills: "./skills",
+    }));
+    await writeFile(join(sourceDir, "skills", "portable-qa", "SKILL.md"), SKILL_MD("portable-qa"));
+    await writeFile(join(projectRoot, "agents.toml"), HYBRID_TARGET_CONFIG(["claude"]));
+
+    const scope = resolveScope("project", projectRoot);
+    const result = await runInstall({ scope });
+    const installedDir = join(scope.pluginsDir, "hybrid-tools");
+    const manifestPath = join(installedDir, ".claude-plugin", "plugin.json");
+
+    expect(JSON.parse(await readFile(manifestPath, "utf-8"))).toMatchObject({
+      name: "hybrid-tools",
+      description: "Portable description",
+      skills: "./skills",
+    });
+    expect(existsSync(`${manifestPath}.dotagents-managed`)).toBe(true);
+    expect(existsSync(join(installedDir, DOTAGENTS_NATIVE_FALLBACKS_MARKER))).toBe(false);
+    expect(result.pluginWarnings.map((warning) => warning.message)).toEqual([
+      'Plugin "hybrid-tools" is a hybrid compatibility bundle: the portable core remains authoritative; redundant authored native interfaces are ignored in favor of portable generation.',
+      'Plugin "hybrid-tools" has an authored Claude interface that was ignored because the portable core can generate the Claude adapter.',
+    ]);
+  });
+
+  it("preflights all selected native interfaces before canonical or lockfile mutations", async () => {
+    const validDir = join(projectRoot, "plugin-source", "valid-tools");
+    const invalidDir = join(projectRoot, "plugin-source", "invalid-tools");
+    await mkdir(validDir, { recursive: true });
+    await mkdir(join(invalidDir, ".claude-plugin"), { recursive: true });
+    await writeFile(join(validDir, "plugin.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "valid-tools",
+    }));
+    await writeFile(join(invalidDir, "plugin.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "invalid-tools",
+    }));
+    await writeFile(join(invalidDir, ".claude-plugin", "plugin.json"), JSON.stringify({
+      name: "invalid-tools",
+      commands: "../outside",
+    }));
+    const originalLock: Lockfile = {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: { previous: { source: "path:previous" } },
+    };
+    await writeLockfile(join(projectRoot, "agents.lock"), originalLock);
+    await writeFile(join(projectRoot, "agents.toml"), `version = 1
+agents = ["claude"]
+
+[[plugins]]
+name = "valid-tools"
+source = "path:plugin-source/valid-tools"
+
+[[plugins]]
+name = "invalid-tools"
+source = "path:plugin-source/invalid-tools"
+`);
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow("Invalid Claude native fallback");
+
+    expect(existsSync(join(scope.pluginsDir, "valid-tools"))).toBe(false);
+    expect(existsSync(join(scope.pluginsDir, "invalid-tools"))).toBe(false);
+    expect(await loadLockfile(scope.lockPath)).toEqual(originalLock);
+    expect(existsSync(join(projectRoot, ".claude-plugin", "marketplace.json"))).toBe(false);
+  });
+
+  it("preserves and warns about a malformed unselected native interface", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "hybrid-tools");
+    await mkdir(join(sourceDir, ".claude-plugin"), { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "hybrid-tools",
+    }));
+    const malformedBytes = "{broken\n";
+    await writeFile(join(sourceDir, ".claude-plugin", "plugin.json"), malformedBytes);
+    await writeFile(join(projectRoot, "agents.toml"), `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "hybrid-tools"
+source = "path:plugin-source/hybrid-tools"
+targets = ["claude"]
+`);
+
+    const result = await runInstall({ scope: resolveScope("project", projectRoot) });
+    const installedDir = join(projectRoot, ".agents", "plugins", "hybrid-tools");
+
+    expect(result.pluginWarnings.map((warning) => warning.message)).toEqual([
+      'Plugin "hybrid-tools" is a hybrid compatibility bundle: the portable core remains authoritative; authored native interfaces are retained only as matching-client fallbacks.',
+      expect.stringContaining("malformed Claude native fallback that was ignored"),
+      'Plugin "hybrid-tools" targets "claude", but "claude" is not listed in agents.',
+    ]);
+    expect(await readFile(join(installedDir, ".claude-plugin", "plugin.json"), "utf-8")).toBe(malformedBytes);
+    expect(existsSync(join(projectRoot, ".claude-plugin", "marketplace.json"))).toBe(false);
+  });
+
+  it("prunes only managed target state when a hybrid target is removed", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "hybrid-tools");
+    await mkdir(join(sourceDir, ".claude-plugin"), { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "hybrid-tools",
+    }));
+    const claudeBytes = '{ "name": "hybrid-tools", "metadata": {"managedBy": "dotagents"}, "x-authored": true }\n';
+    await writeFile(join(sourceDir, ".claude-plugin", "plugin.json"), claudeBytes);
+    await writeFile(join(projectRoot, "agents.toml"), HYBRID_TARGET_CONFIG(["claude", "cursor"]));
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+    const installedDir = join(scope.pluginsDir, "hybrid-tools");
+    expect(existsSync(join(projectRoot, ".claude-plugin", "marketplace.json"))).toBe(true);
+    expect(existsSync(join(installedDir, ".cursor-plugin", "plugin.json.dotagents-managed"))).toBe(true);
+
+    await writeFile(join(projectRoot, "agents.toml"), HYBRID_TARGET_CONFIG(["cursor"]));
+    await runSync({ scope });
+
+    expect(existsSync(join(projectRoot, ".claude-plugin", "marketplace.json"))).toBe(false);
+    expect(await readFile(join(installedDir, ".claude-plugin", "plugin.json"), "utf-8")).toBe(claudeBytes);
+    expect(existsSync(join(installedDir, ".cursor-plugin", "plugin.json.dotagents-managed"))).toBe(true);
+  });
+
+  it("handles source upgrades between managed and authored native manifests", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "hybrid-tools");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "hybrid-tools",
+    }));
+    await writeFile(join(projectRoot, "agents.toml"), `version = 1
+agents = ["claude"]
+
+[[plugins]]
+    name = "hybrid-tools"
+source = "path:plugin-source/hybrid-tools"
+`);
+    const scope = resolveScope("project", projectRoot);
+    const installedDir = join(scope.pluginsDir, "hybrid-tools");
+    const installedManifest = join(installedDir, ".claude-plugin", "plugin.json");
+
+    await runInstall({ scope });
+    expect(existsSync(`${installedManifest}.dotagents-managed`)).toBe(true);
+
+    const authoredBytes = '{\n "name": "hybrid-tools", "metadata": {"managedBy": "dotagents"}, "x-authored": true\n}\n';
+    await mkdir(join(sourceDir, ".claude-plugin"), { recursive: true });
+    await writeFile(join(sourceDir, ".claude-plugin", "plugin.json"), authoredBytes);
+    await writeFile(
+      join(sourceDir, ".claude-plugin", "plugin.json.dotagents-managed"),
+      "managedBy=dotagents\n",
+    );
+    await runInstall({ scope });
+    expect(await readFile(installedManifest, "utf-8")).toBe(authoredBytes);
+    expect(existsSync(`${installedManifest}.dotagents-managed`)).toBe(false);
+    await runSync({ scope });
+    expect(await readFile(installedManifest, "utf-8")).toBe(authoredBytes);
+
+    const nativeSourceMarker = join(installedDir, ".dotagents-native-source");
+    await writeFile(nativeSourceMarker, "cursor\n");
+    const conflictingProvenance = await runSync({ scope });
+    expect(conflictingProvenance.issues.some((issue) =>
+      issue.message.includes("conflicting native interface provenance")
+    )).toBe(true);
+    await rm(nativeSourceMarker);
+
+    await rm(installedManifest);
+    const missingAuthored = await runSync({ scope });
+    expect(missingAuthored.issues.some((issue) =>
+      issue.message.includes("records a Claude native fallback") &&
+      issue.message.includes("Reinstall the plugin")
+    )).toBe(true);
+    expect(existsSync(installedManifest)).toBe(false);
+    await runInstall({ scope });
+    expect(await readFile(installedManifest, "utf-8")).toBe(authoredBytes);
+
+    const installedRootManifest = join(installedDir, "plugin.json");
+    await rm(installedRootManifest);
+    const missingCanonical = await runSync({ scope });
+    expect(missingCanonical.issues.some((issue) =>
+      issue.message.includes("missing plugin.json") && issue.message.includes("Reinstall the plugin")
+    )).toBe(true);
+    expect(await readFile(installedManifest, "utf-8")).toBe(authoredBytes);
+    await runInstall({ scope });
+
+    await rm(join(sourceDir, ".claude-plugin"), { recursive: true });
+    await runInstall({ scope });
+    expect(JSON.parse(await readFile(installedManifest, "utf-8"))).toMatchObject({ name: "hybrid-tools" });
+    expect(existsSync(`${installedManifest}.dotagents-managed`)).toBe(true);
+
+    const unmanagedBytes = '{ "name": "hybrid-tools", "x-unmanaged": true }\n';
+    await writeFile(installedManifest, unmanagedBytes);
+    await rm(`${installedManifest}.dotagents-managed`, { force: true });
+    const sync = await runSync({ scope });
+    expect(sync.issues.some((issue) => issue.message.includes("manifest exists and is not managed"))).toBe(true);
+    expect(await readFile(installedManifest, "utf-8")).toBe(unmanagedBytes);
+  });
 
   it("imports a native Claude bundle without cross-translating native components", async () => {
     const sourceDir = join(projectRoot, "plugin-source", "claude-tools");

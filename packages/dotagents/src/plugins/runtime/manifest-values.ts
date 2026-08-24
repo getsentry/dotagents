@@ -1,3 +1,4 @@
+import type { SerializedObject } from "@sentry/dotagents-lib";
 import { isStandardPluginManifest, type LegacyPluginManifest, type PluginManifest } from "../schema.js";
 import { isString } from "../../utils/type-guards.js";
 
@@ -30,4 +31,16 @@ export function titleCase(value: string): string {
     .filter(Boolean)
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
     .join(" ");
+}
+
+export function codexPluginInterface(name: string, manifest: PluginManifest): SerializedObject {
+  return {
+    displayName: titleCase(name),
+    shortDescription: manifestString(manifest, "description") ?? "",
+    developerName: manifest.author && isString(manifest.author.name)
+      ? manifest.author.name
+      : "Unknown",
+    category: legacyManifestString(manifest, "category") ?? "Coding",
+    capabilities: ["Interactive", "Write"],
+  };
 }
