@@ -252,18 +252,18 @@ source = "https://agents.example.com"
     await writeFile(
       configPath,
       `version = 1
-agents = ["claude", "codex", "cursor", "grok", "opencode", "pi"]
+agents = ["claude", "codex", "copilot", "cursor", "grok", "opencode", "pi"]
 
 [[plugins]]
 name = "review-tools"
 source = "getsentry/plugins"
-targets = ["claude", "codex", "cursor", "grok", "opencode", "pi"]
+targets = ["claude", "codex", "copilot", "cursor", "grok", "opencode", "pi"]
 `,
     );
 
     const config = await loadConfig(configPath);
     expect(config.plugins).toHaveLength(1);
-    expect(config.plugins[0]!.targets).toEqual(["claude", "codex", "cursor", "grok", "opencode", "pi"]);
+    expect(config.plugins[0]!.targets).toEqual(["claude", "codex", "copilot", "cursor", "grok", "opencode", "pi"]);
     expect(config.plugins[0]!.source).toBe("getsentry/plugins");
   });
 

@@ -24,6 +24,7 @@ files and repair behavior.
 
 - Claude validates, adds, installs, and lists the generated plugin, then checks
   the skill and MCP component inventory.
+- Copilot adds the generated marketplace, installs the plugin, and checks the skill and MCP component inventory.
 - Codex adds the marketplace, lists the plugin as available, installs it, and
   lists it as enabled.
 - Grok Build runs `plugin list` and `plugin details` when its CLI is installed.
@@ -74,6 +75,16 @@ Manual final check with model auth:
 
 Codex plugin install proof is strong; plugin component invocation still needs a
 model-backed prompt because the plugin management CLI does not execute skills.
+
+## GitHub Copilot
+
+Automated proof:
+
+```bash
+node skills/dotagents-qa/scripts/qa-example.mjs plugin-copilot
+```
+
+This command adds the generated marketplace to an isolated `COPILOT_HOME`. It installs the plugin and checks the cached skill and MCP files.
 
 ## OpenCode projection (not native plugin E2E)
 

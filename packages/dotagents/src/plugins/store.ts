@@ -118,6 +118,7 @@ const MARKETPLACE_PATHS = [
   ".claude-plugin/marketplace.json",
   ".cursor-plugin/marketplace.json",
   ".codex-plugin/marketplace.json",
+  ".github/plugin/marketplace.json",
   ".plugin/marketplace.json",
 ] as const;
 

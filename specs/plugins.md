@@ -276,7 +276,7 @@ name = "review-tools"
 source = "getsentry/agent-plugins"
 path = "plugins/review-tools"
 ref = "v1.0.0"
-targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+targets = ["claude", "copilot", "cursor", "codex", "grok", "opencode", "pi"]
 ```
 
 | Field | Required | Description |
@@ -427,6 +427,7 @@ Agent Plugin bundle
 | Target | Portable core | Target extension | Generated output |
 |--------|---------------|------------------|------------------|
 | Claude Code | Keep `plugin.json`, `skills/`, and `mcp.json` intact | Read only namespaces registered to the Claude adapter | Generate the project marketplace with `./`-prefixed project-root-relative plugin sources and, only when required by Claude's loader, a managed `.claude-plugin/plugin.json` adapter derived from core metadata plus its registered extension. |
+| GitHub Copilot | Keep portable core intact | Read only namespaces registered to the Copilot adapter | Generate `.github/plugin/marketplace.json` with project-root-relative plugin sources. Copilot reads the canonical Agent Plugins manifest directly. |
 | Cursor | Keep portable core intact | Read only namespaces registered to the Cursor adapter | Generate the project marketplace with the same project-root-relative source contract and, only when required, a managed `.cursor-plugin/plugin.json` adapter derived from core metadata plus its registered extension. |
 | Codex | Keep portable core intact | Read only namespaces registered to the Codex adapter | Generate `.agents/plugins/marketplace.json` with local source paths resolved from the project root, plus a managed `.codex-plugin/plugin.json` adapter only for Codex-only metadata the portable manifest cannot express. |
 | Grok Build | Copy the validated bundle without changing portable files | Read only namespaces registered to the Grok adapter | Generate `.grok/plugins/<name>/` as a managed copy until Grok can consume the canonical bundle directly. |
@@ -508,13 +509,13 @@ review-tools/
         `-- review.mdc
 ```
 
-With the current adapters, an install for
-`targets = ["claude", "cursor", "codex", "opencode", "pi"]` produces:
+With the current adapters, an install for `targets = ["claude", "copilot", "cursor", "codex", "opencode", "pi"]` produces:
 
 ```text
 .agents/plugins/review-tools/              # portable source files unchanged; managed adapter dirs added
 .claude-plugin/marketplace.json             # generated registration
 .agents/plugins/review-tools/.claude-plugin/plugin.json
+.github/plugin/marketplace.json             # generated Copilot registration
 .cursor-plugin/marketplace.json             # generated registration
 .agents/plugins/review-tools/.cursor-plugin/plugin.json
 .agents/plugins/marketplace.json             # generated Codex registration

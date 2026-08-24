@@ -104,8 +104,8 @@ args = ["server.js"]
     expect(await readFile(join(scope.skillsDir, "pdf", "SKILL.md"), "utf-8")).toBe(SKILL_MD);
 
     const skillsLink = join(homeDir, ".claude", "skills");
-    const stat = await lstat(skillsLink);
-    expect(stat.isSymbolicLink()).toBe(true);
+    const skillsLinkStat = await lstat(skillsLink);
+    expect(skillsLinkStat.isSymbolicLink()).toBe(true);
     expect(await readlink(skillsLink)).toBe(relative(join(homeDir, ".claude"), scope.skillsDir));
 
     expect(JSON.parse(await readFile(join(homeDir, ".claude.json"), "utf-8"))).toEqual({

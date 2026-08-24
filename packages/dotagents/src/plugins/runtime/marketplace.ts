@@ -13,6 +13,7 @@ export function marketplaceOutputPaths(root: PluginRuntimeRoot): string[] {
   return [
     layout.codexMarketplacePath,
     layout.claudeMarketplacePath,
+    layout.copilotMarketplacePath,
     layout.cursorMarketplacePath,
   ];
 }
@@ -28,6 +29,7 @@ export function marketplaceOutputs(
 
   const outputs: RuntimeOutput[] = [];
   const claudePlugins = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes("claude"));
+  const copilotPlugins = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes("copilot"));
   const cursorPlugins = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes("cursor"));
   const codexPlugins = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes("codex"));
 
@@ -37,6 +39,14 @@ export function marketplaceOutputs(
       agent: "claude",
       filePath,
       content: stableJson(pathMarketplace(layout.claudeMarketplaceRoot, "dotagents", claudePlugins)),
+    });
+  }
+  if (copilotPlugins.length > 0) {
+    const filePath = layout.copilotMarketplacePath;
+    outputs.push({
+      agent: "copilot",
+      filePath,
+      content: stableJson(pathMarketplace(layout.copilotMarketplaceRoot, "dotagents", copilotPlugins)),
     });
   }
   if (cursorPlugins.length > 0) {
@@ -77,8 +87,8 @@ function pathMarketplace(
 }
 
 /**
- * Claude and Cursor marketplace projections use path strings instead of Codex's
- * structured local source objects, so keep this projection format separate.
+ * Claude, Copilot, and Cursor marketplace projections use path strings instead
+ * of Codex's structured local source objects, so keep this format separate.
  */
 function pathMarketplaceEntry(
   projectRoot: string,

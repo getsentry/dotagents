@@ -149,7 +149,7 @@ targets = ["claude", "codex", "opencode"]
 name = "review-tools"
 source = "getsentry/agent-plugins"
 path = "plugins/review-tools"
-targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+targets = ["claude", "copilot", "cursor", "codex", "grok", "opencode", "pi"]
 ```
 
 ### Top-level Fields
@@ -160,7 +160,7 @@ targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 | `defaultRepositorySource` | string | No | `github` | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. |
 | `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `copilot`, `grok`, `vscode`, `opencode`, `pi`. Creates symlinks and config files for each where supported. `grok` and `pi` are plugin-only targets. |
 | `subagents` | table[] | No | `[]` | Custom subagent declarations. Generates runtime-specific files for Claude, Cursor, Codex, and OpenCode. |
-| `plugins` | table[] | No | `[]` | Plugin declarations. Installs canonical bundles into `.agents/plugins/` and generates runtime plugin outputs for Claude, Cursor, Codex, Grok, OpenCode, and Pi skill projection where supported. |
+| `plugins` | table[] | No | `[]` | Plugin declarations. Installs canonical bundles into `.agents/plugins/` and generates runtime plugin outputs for Claude, Copilot, Cursor, Codex, Grok, OpenCode, and Pi skill projection where supported. |
 | `minimum_release_age` | integer | No | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install. |
 | `minimum_release_age_exclude` | string[] | No | `[]` | Sources that bypass the minimum release age gate. Supports org names, `org/repo`, and `org/*`. |
 
@@ -306,15 +306,16 @@ dotagents installs canonical plugin bundles under `.agents/plugins/<name>/`. New
 
 Generated project-scope plugin outputs:
 - Claude: `.claude-plugin/marketplace.json` and `.agents/plugins/<name>/.claude-plugin/plugin.json`
+- GitHub Copilot: `.github/plugin/marketplace.json`; Copilot consumes the canonical `.agents/plugins/<name>/plugin.json`
 - Cursor: `.cursor-plugin/marketplace.json` and `.agents/plugins/<name>/.cursor-plugin/plugin.json`
 - Codex: `.agents/plugins/marketplace.json` and `.agents/plugins/<name>/.codex-plugin/plugin.json`
 - Grok: `.grok/plugins/<name>/` managed copy
 - OpenCode: plugin `skills/` symlinked into `.opencode/skills/`; portable `mcp.json` servers merged into `.opencode/opencode.jsonc` under `plugin.<plugin>.<server>` keys; generalized legacy plugin Markdown `agents/` symlinked into `.opencode/agents/`. Standard extension agents are preserved but not projected yet.
 - Pi: plugin `skills/` symlinked into `.agents/skills/` when `pi` is a configured plugin target
 
-Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated marketplaces and Claude/Cursor/Codex manifests use adjacent `.dotagents-managed` sidecars so client-owned JSON remains schema-native; legacy `metadata.managedBy` output remains recognizable during migration. Managed Grok copies and OpenCode/Pi component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when their on-disk `.dotagents-managed` marker proves ownership.
+Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated marketplaces and Claude, Cursor, and Codex manifests use adjacent `.dotagents-managed` sidecars so client-owned JSON remains schema-native; legacy `metadata.managedBy` output remains recognizable during migration. Managed Grok copies and OpenCode and Pi component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when their on-disk `.dotagents-managed` marker proves ownership.
 
-Global plugins install under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated below `~/.agents/`, Codex uses `~/.agents/plugins/marketplace.json` with paths rooted at the user's home, Grok plugins are copied into `~/.grok/plugins/`, OpenCode skills use `~/.config/opencode/skills/`, portable plugin MCP servers are merged into `~/.config/opencode/opencode.json`, and Pi skill projections use `~/.agents/skills/`.
+Global plugins install under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated below `~/.agents/`. Copilot uses `~/.agents/.github/plugin/marketplace.json`. Codex uses `~/.agents/plugins/marketplace.json` with paths rooted at the user's home. Grok plugins are copied into `~/.grok/plugins/`. OpenCode skills use `~/.config/opencode/skills/`, portable plugin MCP servers use `~/.config/opencode/opencode.json`, and Pi skill projections use `~/.agents/skills/`.
 
 ### Trust
 

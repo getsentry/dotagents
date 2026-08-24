@@ -6,9 +6,11 @@ import { isString } from "../../utils/type-guards.js";
 
 export interface PluginRuntimeLayout {
   claudeMarketplaceRoot: string;
+  copilotMarketplaceRoot: string;
   cursorMarketplaceRoot: string;
   codexMarketplaceRoot: string;
   claudeMarketplacePath: string;
+  copilotMarketplacePath: string;
   cursorMarketplacePath: string;
   codexMarketplacePath: string;
   canonicalPluginsDir: string;
@@ -32,9 +34,11 @@ export function projectPluginRuntimeLayout(root: string): PluginRuntimeLayout {
   ];
   return {
     claudeMarketplaceRoot: root,
+    copilotMarketplaceRoot: root,
     cursorMarketplaceRoot: root,
     codexMarketplaceRoot: root,
     claudeMarketplacePath: join(root, ".claude-plugin", "marketplace.json"),
+    copilotMarketplacePath: join(root, ".github", "plugin", "marketplace.json"),
     cursorMarketplacePath: join(root, ".cursor-plugin", "marketplace.json"),
     codexMarketplacePath: join(root, ".agents", "plugins", "marketplace.json"),
     canonicalPluginsDir: join(root, ".agents", "plugins"),
@@ -54,9 +58,11 @@ export function userPluginRuntimeLayout(root: string): PluginRuntimeLayout {
   const usesDefaultRoot = resolve(root) === resolve(defaultRoot);
   return {
     claudeMarketplaceRoot: root,
+    copilotMarketplaceRoot: root,
     cursorMarketplaceRoot: root,
     codexMarketplaceRoot: usesDefaultRoot ? home : root,
     claudeMarketplacePath: join(root, ".claude-plugin", "marketplace.json"),
+    copilotMarketplacePath: join(root, ".github", "plugin", "marketplace.json"),
     cursorMarketplacePath: join(root, ".cursor-plugin", "marketplace.json"),
     codexMarketplacePath: usesDefaultRoot
       ? join(root, "plugins", "marketplace.json")

@@ -60,6 +60,19 @@ codex plugin list --json
 
 The local marketplace source must be the project directory, not the marketplace JSON file or its containing `.agents/plugins` directory.
 
+### GitHub Copilot
+
+```bash
+export COPILOT_HOME=/sandbox/copilot-home
+mkdir -p "$COPILOT_HOME"
+copilot plugin marketplace add ./
+copilot plugin marketplace browse dotagents
+copilot plugin install <name>@dotagents
+copilot plugin list
+```
+
+The marketplace source must be the project directory. Copilot reads `.github/plugin/marketplace.json` and caches installed plugins under `COPILOT_HOME`.
+
 ### OpenCode
 
 Use an OpenCode-only plugin target, then run:
@@ -101,6 +114,7 @@ Expected default-home outputs:
 
 - canonical bundle: `$HOME/.agents/plugins/<name>/`
 - Claude marketplace: `$HOME/.agents/.claude-plugin/marketplace.json`
+- Copilot marketplace: `$HOME/.agents/.github/plugin/marketplace.json`
 - Codex marketplace: `$HOME/.agents/plugins/marketplace.json`
 - OpenCode skills: `$HOME/.config/opencode/skills/<skill>`
 - OpenCode MCP config: `$HOME/.config/opencode/opencode.json`
@@ -114,6 +128,10 @@ Native user proof:
 cd "$DOTAGENTS_HOME"
 claude plugin marketplace add ./ --scope user
 claude plugin install <name>@dotagents --scope user
+
+export COPILOT_HOME="$HOME/.copilot"
+copilot plugin marketplace add "$DOTAGENTS_HOME"
+copilot plugin install <name>@dotagents
 
 cd "$HOME"
 codex plugin marketplace add ./ --json

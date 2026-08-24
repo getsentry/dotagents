@@ -1,6 +1,6 @@
 ---
 name: dotagents-qa
-description: QA dotagents changes and published releases in Docker, including CLI lifecycles, user/global scope, real plugins, and Claude, Codex, OpenCode, or Pi projections. Use when behavior, packaging, scopes, or harness integration needs runtime proof.
+description: QA dotagents changes and published releases in Docker, including CLI lifecycles, user/global scope, real plugins, and Claude, Copilot, Codex, OpenCode, or Pi projections. Use when behavior, packaging, scopes, or harness integration needs runtime proof.
 spec_hash: eda48b96deb3
 ---
 
@@ -102,6 +102,7 @@ Use a fresh project per source. Record source commits. Do not guess repository n
 Keep per-harness fixtures isolated. In particular, do not enable Pi in the OpenCode proof: OpenCode can read Pi's shared `.agents/skills` links and create a false pass.
 
 - Claude: validate generated plugin and marketplace manifests, then marketplace add, install, list, and details.
+- Copilot: add the generated marketplace, browse it, install the plugin, and list the installed plugin.
 - Codex: add the project or user marketplace root, list available plugins, install, and list enabled plugins.
 - OpenCode: run `opencode debug skill` and `opencode debug config`; assert exact projected skill names and locations plus every portable plugin MCP entry under `plugin.<plugin>.<server>` with expanded paths and environment.
 - Pi: in a separate Pi-only fixture, verify expected skill links, resolved targets, and `.dotagents-managed/<skill>` ownership markers.
