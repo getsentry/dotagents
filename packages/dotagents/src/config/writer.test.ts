@@ -31,25 +31,16 @@ describe("writer", () => {
   });
 
   describe("generateDefaultConfig", () => {
-    it("produces valid TOML that parses", async () => {
+    it("produces a minimal valid config without legacy or optional fields", async () => {
+      const content = await readFile(configPath, "utf-8");
       const config = await loadConfig(configPath);
+
       expect(config.version).toBe(1);
       expect(config.skills).toEqual([]);
-    });
-
-    it("does not contain gitignore field", () => {
-      const content = generateDefaultConfig();
       expect(content).not.toContain("gitignore");
-    });
-
-    it("does not contain pin", () => {
-      const content = generateDefaultConfig();
       expect(content).not.toContain("pin");
-    });
-
-    it("includes agents when provided via options object", () => {
-      const content = generateDefaultConfig({ agents: ["claude", "cursor"] });
-      expect(content).toContain('agents = ["claude", "cursor"]');
+      expect(content).not.toContain("[[skills]]");
+      expect(content).not.toContain("[trust]");
     });
 
     it("backwards-compat: accepts bare string[]", () => {
@@ -57,90 +48,67 @@ describe("writer", () => {
       expect(content).toContain('agents = ["claude"]');
     });
 
-    it("includes [trust] with allow_all", () => {
+    it("emits an explicit allow-all trust policy", async () => {
       const content = generateDefaultConfig({
         trust: { allow_all: true, github_orgs: [], github_repos: [], git_domains: [] },
       });
-      expect(content).toContain("[trust]");
-      expect(content).toContain("allow_all = true");
+      await writeFile(configPath, content);
+
+      const config = await loadConfig(configPath);
+      expect(config.trust).toEqual({
+        allow_all: true,
+        github_orgs: [],
+        github_repos: [],
+        git_domains: [],
+      });
     });
 
-    it("includes [trust] with restrictions", () => {
+    it("round-trips agents, restricted trust, and skill shapes together", async () => {
       const content = generateDefaultConfig({
+        agents: ["claude", "cursor"],
         trust: {
           allow_all: false,
           github_orgs: ["anthropics"],
           github_repos: ["owner/repo"],
           git_domains: ["gitlab.example.com"],
         },
-      });
-      expect(content).toContain("[trust]");
-      expect(content).toMatch(/github_orgs\s*=.*"anthropics"/);
-      expect(content).toMatch(/github_repos\s*=.*"owner\/repo"/);
-      expect(content).toMatch(/git_domains\s*=.*"gitlab\.example\.com"/);
-      expect(content).not.toContain("allow_all");
-    });
-
-    it("omits [trust] when no restrictions set", () => {
-      const content = generateDefaultConfig({
-        trust: { allow_all: false, github_orgs: [], github_repos: [], git_domains: [] },
-      });
-      expect(content).not.toContain("[trust]");
-    });
-
-    it("generates valid TOML with all options combined", async () => {
-      const content = generateDefaultConfig({
-        agents: ["claude"],
-        trust: { allow_all: false, github_orgs: ["my-org"], github_repos: [], git_domains: [] },
-      });
-      await writeFile(configPath, content);
-      const config = await loadConfig(configPath);
-      expect(config.version).toBe(1);
-      expect(config.agents).toEqual(["claude"]);
-      expect(config.trust?.github_orgs).toEqual(["my-org"]);
-    });
-
-    it("includes [[skills]] when skills are provided", () => {
-      const content = generateDefaultConfig({
-        skills: [{ name: "dotagents", source: "getsentry/dotagents" }],
-      });
-      expect(content).toContain("[[skills]]");
-      expect(content).toContain('name = "dotagents"');
-      expect(content).toContain('source = "getsentry/dotagents"');
-    });
-
-    it("includes ref and path in skills when provided", () => {
-      const content = generateDefaultConfig({
-        skills: [{ name: "my-skill", source: "org/repo", ref: "v1.0.0", path: "skills/my-skill" }],
-      });
-      expect(content).toContain('ref = "v1.0.0"');
-      expect(content).toContain('path = "skills/my-skill"');
-    });
-
-    it("has no skills when skills option is omitted", () => {
-      const content = generateDefaultConfig();
-      expect(content).not.toContain("[[skills]]");
-    });
-
-    it("has no skills when skills array is empty", () => {
-      const content = generateDefaultConfig({ skills: [] });
-      expect(content).not.toContain("[[skills]]");
-    });
-
-    it("round-trips skills through loadConfig", async () => {
-      const content = generateDefaultConfig({
         skills: [
           { name: "dotagents", source: "getsentry/dotagents" },
-          { name: "find-bugs", source: "getsentry/skills", ref: "v2.0.0" },
+          {
+            name: "find-bugs",
+            source: "getsentry/skills",
+            ref: "v2.0.0",
+            path: "skills/find-bugs",
+          },
         ],
       });
       await writeFile(configPath, content);
+
       const config = await loadConfig(configPath);
-      expect(config.skills).toHaveLength(2);
-      expect(config.skills[0]!.name).toBe("dotagents");
-      expect(config.skills[0]!.source).toBe("getsentry/dotagents");
-      expect(config.skills[1]!.name).toBe("find-bugs");
-      expect(config.skills[1]!.ref).toBe("v2.0.0");
+      expect(config.agents).toEqual(["claude", "cursor"]);
+      expect(config.trust).toEqual({
+        allow_all: false,
+        github_orgs: ["anthropics"],
+        github_repos: ["owner/repo"],
+        git_domains: ["gitlab.example.com"],
+      });
+      expect(config.skills).toEqual([
+        { name: "dotagents", source: "getsentry/dotagents" },
+        {
+          name: "find-bugs",
+          source: "getsentry/skills",
+          ref: "v2.0.0",
+          path: "skills/find-bugs",
+        },
+      ]);
+    });
+
+    it("omits an empty restricted trust policy", () => {
+      const content = generateDefaultConfig({
+        trust: { allow_all: false, github_orgs: [], github_repos: [], git_domains: [] },
+      });
+
+      expect(content).not.toContain("[trust]");
     });
   });
 

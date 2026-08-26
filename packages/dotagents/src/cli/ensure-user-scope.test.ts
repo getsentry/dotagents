@@ -46,12 +46,6 @@ describe("ensureUserScopeBootstrapped", () => {
     for (const id of allAgentIds()) {
       expect(content).toContain(`"${id}"`);
     }
-  });
-
-  it("prints a message when bootstrapping", async () => {
-    const scope = userScope(tmpDir);
-    await ensureUserScopeBootstrapped(scope);
-
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("Initialized"),
     );
