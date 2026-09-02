@@ -5,6 +5,7 @@ import type { McpTargetResolver } from "./mcp-writer.js";
 export interface UserMcpTarget {
   filePath: string;
   shared: boolean;
+  mode?: number;
 }
 
 /**
@@ -25,6 +26,14 @@ export function getUserMcpTarget(agentId: string): UserMcpTarget {
       return { filePath: vscodeMcpPath(), shared: false };
     case "opencode":
       return { filePath: join(home, ".config", "opencode", "opencode.json"), shared: true };
+    case "copilot": {
+      const target: UserMcpTarget = {
+        filePath: join(process.env["COPILOT_HOME"] ?? join(home, ".copilot"), "mcp-config.json"),
+        shared: false,
+      };
+      if (process.platform !== "win32") {target.mode = 0o600;}
+      return target;
+    }
     default:
       throw new Error(`Unknown agent for user-scope MCP: ${agentId}`);
   }

@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
+import { chmod, readFile, writeFile, mkdir, rm, stat } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
@@ -23,6 +23,8 @@ import { hasErrorCode, isObject, isString } from "../utils/type-guards.js";
 export interface McpResolvedTarget {
   filePath: string;
   shared: boolean;
+  mode?: number;
+  preferredFilePath?: string;
 }
 
 export type McpTargetResolver = (agentId: string, spec: McpConfigSpec) => McpResolvedTarget;
@@ -74,9 +76,12 @@ export function projectMcpResolver(projectRoot: string): McpTargetResolver {
     const candidates = [spec.filePath, ...(spec.fallbackFilePaths ?? [])];
     const relativePath = candidates.find((candidate) => existsSync(join(projectRoot, candidate)))
       ?? spec.filePath;
+    const filePath = join(projectRoot, relativePath);
+    const preferredFilePath = join(projectRoot, spec.filePath);
     return {
-      filePath: join(projectRoot, relativePath),
+      filePath,
       shared: spec.shared,
+      ...(filePath !== preferredFilePath && { preferredFilePath }),
     };
   };
 }
@@ -122,12 +127,25 @@ export async function reconcileMcpConfigs(
   const normalized = servers.map(normalizeMcpDeclaration);
   if (normalized.length === 0) {return { issues, unresolved, written };}
 
-  for (const id of agentIds) {
+  const initialTargets = agentIds.flatMap((id) => {
     const agent = getAgent(id);
-    if (!agent) {continue;}
+    if (!agent) {return [];}
+    return [{ id, agent, target: resolveTarget(id, agent.mcp) }];
+  });
+  const claimedPaths = new Set(initialTargets.map(({ target }) => target.filePath));
+  const promotedFallbacks = new Map<string, string>();
+  const targets = initialTargets.map((entry) => {
+    const preferredFilePath = entry.target.preferredFilePath;
+    if (!preferredFilePath || !claimedPaths.has(preferredFilePath)) {return entry;}
+    promotedFallbacks.set(preferredFilePath, entry.target.filePath);
+    return Object.assign({}, entry, {
+      target: Object.assign({}, entry.target, { filePath: preferredFilePath }),
+    });
+  });
 
+  for (const { id, agent, target } of targets) {
     const { mcp } = agent;
-    const { filePath } = resolveTarget(id, mcp);
+    const { filePath } = target;
     if (seen.has(filePath)) {continue;}
     seen.add(filePath);
 
@@ -137,7 +155,26 @@ export async function reconcileMcpConfigs(
     if (!existsSync(filePath)) {
       issues.push({ agent: id, issue: `MCP config missing: ${filePath}` });
       if (mode === "apply") {
-        await writeDocument(filePath, mcp, expected);
+        const fallbackPath = promotedFallbacks.get(filePath);
+        if (fallbackPath) {
+          let fallback: SerializedObject;
+          let fallbackServers: SerializedObject;
+          try {
+            fallback = await readExisting(fallbackPath, mcp);
+            fallbackServers = readServerRoot(fallback, mcp.rootKey, fallbackPath);
+          } catch {
+            const issue = { agent: id, issue: `Failed to read MCP config: ${fallbackPath}` };
+            issues.push(issue);
+            unresolved.push(issue);
+            continue;
+          }
+          await writeDocument(filePath, mcp, {
+            ...fallback,
+            [mcp.rootKey]: { ...fallbackServers, ...expectedServers },
+          }, target.mode);
+        } else {
+          await writeDocument(filePath, mcp, expected, target.mode);
+        }
         written.push(filePath);
       }
       continue;
@@ -158,13 +195,29 @@ export async function reconcileMcpConfigs(
 
     const targetIssues = desiredIssues(id, filePath, existingServers, expectedServers);
     issues.push(...targetIssues);
+    const modeCheck = await desiredModeIssue(id, filePath, target.mode);
+    if (modeCheck) {issues.push(modeCheck.issue);}
 
-    if (mode === "apply" && targetIssues.length > 0) {
+    if (mode === "apply" && (targetIssues.length > 0 || modeCheck)) {
       const next = {
         ...existing,
         [mcp.rootKey]: { ...existingServers, ...expectedServers },
       };
-      await writeReconciledDocument(filePath, mcp, next, expectedServers);
+      if (targetIssues.length > 0) {
+        await writeReconciledDocument(filePath, mcp, next, expectedServers, target.mode);
+      }
+      if (modeCheck && target.mode !== undefined) {
+        if (modeCheck.missing && targetIssues.length === 0) {
+          await writeDocument(filePath, mcp, next, target.mode);
+        } else if (!modeCheck.missing) {
+          try {
+            await chmod(filePath, target.mode);
+          } catch (err) {
+            if (!isNotFoundError(err)) {throw err;}
+            await writeDocument(filePath, mcp, next, target.mode);
+          }
+        }
+      }
       written.push(filePath);
     }
   }
@@ -218,7 +271,12 @@ export async function reconcileManagedMcpConfig(
       issues.push({ agent: agentId, issue: `MCP config missing: ${target.filePath}` });
       if (mode === "apply") {
         const expected = Object.fromEntries(managed.map((name) => [name, desired[name]]));
-        await writeDocument(target.filePath, agent.mcp, { [agent.mcp.rootKey]: expected });
+        await writeDocument(
+          target.filePath,
+          agent.mcp,
+          { [agent.mcp.rootKey]: expected },
+          target.mode,
+        );
         written.push(target.filePath);
         if (await writeManagedMcpState(statePath, managed)) {written.push(statePath);}
       }
@@ -267,11 +325,14 @@ export async function reconcileManagedMcpConfig(
       issues.push({ agent: agentId, issue: `Managed MCP server "${name}" is stale in ${target.filePath}` });
     }
   }
-  issues.push(...desiredIssues(agentId, target.filePath, existingServers, expected));
+  const targetIssues = desiredIssues(agentId, target.filePath, existingServers, expected);
+  issues.push(...targetIssues);
+  const modeCheck = await desiredModeIssue(agentId, target.filePath, target.mode);
+  if (modeCheck) {issues.push(modeCheck.issue);}
 
   if (mode === "apply") {
     const targetChanged = stale.some((name) => name in existingServers) ||
-      desiredIssues(agentId, target.filePath, existingServers, expected).length > 0;
+      targetIssues.length > 0;
     if (targetChanged) {
       await writeManagedReconciledDocument(
         target.filePath,
@@ -280,10 +341,27 @@ export async function reconcileManagedMcpConfig(
         existingServers,
         expected,
         stale,
+        target.mode,
       );
-      written.push(target.filePath);
       removed.push(...stale.filter((name) => name in existingServers));
     }
+    if (modeCheck && target.mode !== undefined) {
+      const nextServers = { ...existingServers };
+      for (const name of stale) {delete nextServers[name];}
+      Object.assign(nextServers, expected);
+      const next = { ...existing, [agent.mcp.rootKey]: nextServers };
+      if (modeCheck.missing && !targetChanged) {
+        await writeDocument(target.filePath, agent.mcp, next, target.mode);
+      } else if (!modeCheck.missing) {
+        try {
+          await chmod(target.filePath, target.mode);
+        } catch (err) {
+          if (!isNotFoundError(err)) {throw err;}
+          await writeDocument(target.filePath, agent.mcp, next, target.mode);
+        }
+      }
+    }
+    if (targetChanged || modeCheck) {written.push(target.filePath);}
     if (managed.length > 0) {
       if (await writeManagedMcpState(statePath, managed)) {written.push(statePath);}
     } else if (stateResult.state) {
@@ -364,9 +442,10 @@ async function writeDocument(
   filePath: string,
   spec: McpConfigSpec,
   doc: SerializedObject,
+  mode?: number,
 ): Promise<void> {
   await mkdir(dirname(filePath), { recursive: true });
-  await writeFileIfChanged(filePath, serialize(doc, spec.format));
+  await writeFileIfChanged(filePath, serialize(doc, spec.format), mode);
 }
 
 async function readExisting(
@@ -404,20 +483,28 @@ async function writeReconciledDocument(
   spec: McpConfigSpec,
   doc: SerializedObject,
   expectedServers: SerializedObject,
+  mode?: number,
 ): Promise<void> {
   if (spec.format !== "jsonc") {
-    await writeDocument(filePath, spec, doc);
+    await writeDocument(filePath, spec, doc, mode);
     return;
   }
 
-  let raw = await readFile(filePath, "utf-8");
+  let raw: string;
+  try {
+    raw = await readFile(filePath, "utf-8");
+  } catch (err) {
+    if (!isNotFoundError(err)) {throw err;}
+    await writeDocument(filePath, spec, doc, mode);
+    return;
+  }
   for (const [name, server] of Object.entries(expectedServers)) {
     const edits = modifyJsonc(raw, [spec.rootKey, name], server, {
       formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
     });
     raw = applyJsoncEdits(raw, edits);
   }
-  await writeFileIfChanged(filePath, raw.endsWith("\n") ? raw : `${raw}\n`);
+  await writeFileIfChanged(filePath, raw.endsWith("\n") ? raw : `${raw}\n`, mode);
 }
 
 async function writeManagedReconciledDocument(
@@ -427,16 +514,26 @@ async function writeManagedReconciledDocument(
   existingServers: SerializedObject,
   expectedServers: SerializedObject,
   removedNames: string[],
+  mode?: number,
 ): Promise<void> {
+  const servers = { ...existingServers };
+  for (const name of removedNames) {delete servers[name];}
+  Object.assign(servers, expectedServers);
+  const next = { ...document, [spec.rootKey]: servers };
+
   if (spec.format !== "jsonc") {
-    const servers = { ...existingServers };
-    for (const name of removedNames) {delete servers[name];}
-    Object.assign(servers, expectedServers);
-    await writeDocument(filePath, spec, { ...document, [spec.rootKey]: servers });
+    await writeDocument(filePath, spec, next, mode);
     return;
   }
 
-  let raw = await readFile(filePath, "utf-8");
+  let raw: string;
+  try {
+    raw = await readFile(filePath, "utf-8");
+  } catch (err) {
+    if (!isNotFoundError(err)) {throw err;}
+    await writeDocument(filePath, spec, next, mode);
+    return;
+  }
   for (const name of removedNames) {
     raw = applyJsoncEdits(raw, modifyJsonc(raw, [spec.rootKey, name], undefined, {
       formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
@@ -447,7 +544,7 @@ async function writeManagedReconciledDocument(
       formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
     }));
   }
-  await writeFileIfChanged(filePath, raw.endsWith("\n") ? raw : `${raw}\n`);
+  await writeFileIfChanged(filePath, raw.endsWith("\n") ? raw : `${raw}\n`, mode);
 }
 
 async function readManagedMcpState(
@@ -497,14 +594,44 @@ function serialize(doc: SerializedObject, format: "json" | "jsonc" | "toml"): st
   return `${JSON.stringify(doc, null, 2)}\n`;
 }
 
-async function writeFileIfChanged(filePath: string, content: string): Promise<void> {
+async function writeFileIfChanged(
+  filePath: string,
+  content: string,
+  mode?: number,
+): Promise<void> {
   try {
     if ((await readFile(filePath, "utf-8")) === content) {return;}
   } catch (err) {
     if (!isNotFoundError(err)) {throw err;}
   }
 
-  await writeFile(filePath, content, "utf-8");
+  await writeFile(filePath, content, { encoding: "utf-8", mode });
+}
+
+async function desiredModeIssue(
+  agent: string,
+  filePath: string,
+  expectedMode?: number,
+): Promise<{ issue: McpReconcileIssue; missing: boolean } | undefined> {
+  if (expectedMode === undefined) {return undefined;}
+  let actualMode: number;
+  try {
+    actualMode = (await stat(filePath)).mode & 0o777;
+  } catch (err) {
+    if (!isNotFoundError(err)) {throw err;}
+    return {
+      issue: { agent, issue: `MCP config missing: ${filePath}` },
+      missing: true,
+    };
+  }
+  if (actualMode === expectedMode) {return undefined;}
+  return {
+    issue: {
+      agent,
+      issue: `MCP config mode is ${actualMode.toString(8)}, expected ${expectedMode.toString(8)}: ${filePath}`,
+    },
+    missing: false,
+  };
 }
 
 function isNotFoundError<ErrorValue>(err: ErrorValue): boolean {

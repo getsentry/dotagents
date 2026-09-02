@@ -2,7 +2,7 @@
 
 > Shared tooling for coding agents
 
-dotagents manages agent skills, MCP servers, hooks, subagents, and plugins declared in `agents.toml`, and handles symlinks and config generation so tools like Claude Code, Cursor, Codex, Grok, VS Code, and OpenCode are configured from a single source of truth.
+dotagents manages agent skills, MCP servers, hooks, subagents, and plugins declared in `agents.toml`, and handles symlinks and config generation so tools like Claude Code, Cursor, Codex, GitHub Copilot CLI/Desktop, Grok, VS Code, and OpenCode are configured from a single source of truth.
 
 Install: `npm install -g @sentry/dotagents`
 Run without installing: `npx @sentry/dotagents <command>`
@@ -66,7 +66,7 @@ Full example with all sections:
 
 ```toml
 version = 1
-agents = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+agents = ["claude", "cursor", "codex", "copilot", "grok", "opencode", "pi"]
 minimum_release_age = 60
 minimum_release_age_exclude = ["getsentry/*"]
 
@@ -149,7 +149,7 @@ targets = ["claude", "codex", "opencode"]
 name = "review-tools"
 source = "getsentry/agent-plugins"
 path = "plugins/review-tools"
-targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+targets = ["claude", "copilot", "cursor", "codex", "grok", "opencode", "pi"]
 ```
 
 ### Top-level Fields
@@ -158,9 +158,9 @@ targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version. Always `1`. |
 | `defaultRepositorySource` | string | No | `github` | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. |
-| `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `grok`, `vscode`, `opencode`, `pi`. Creates symlinks and config files for each where supported. `grok` and `pi` are plugin-only targets. |
+| `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `copilot`, `grok`, `vscode`, `opencode`, `pi`. Creates symlinks and config files for each where supported. `grok` and `pi` are plugin-only targets. |
 | `subagents` | table[] | No | `[]` | Custom subagent declarations. Generates runtime-specific files for Claude, Cursor, Codex, and OpenCode. |
-| `plugins` | table[] | No | `[]` | Plugin declarations. Installs canonical bundles into `.agents/plugins/` and generates runtime plugin outputs for Claude, Cursor, Codex, Grok, OpenCode, and Pi skill projection where supported. |
+| `plugins` | table[] | No | `[]` | Plugin declarations. Installs canonical bundles into `.agents/plugins/` and generates runtime plugin outputs for Claude, Copilot, Cursor, Codex, Grok, OpenCode, and Pi skill projection where supported. |
 | `minimum_release_age` | integer | No | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install. |
 | `minimum_release_age_exclude` | string[] | No | `[]` | Sources that bypass the minimum release age gate. Supports org names, `org/repo`, and `org/*`. |
 
@@ -211,7 +211,7 @@ Each `[[mcp]]` entry requires `name` and either `command` (stdio) or `url` (Stre
 | `headers` | table | No | HTTP headers (url servers only). Supports `${VAR}` syntax for env var interpolation. |
 | `env` | string[] | No | Environment variable names to pass through |
 
-Use `${VAR}` in header values and `url` to reference secrets from the environment. Write `${VAR}` in `agents.toml` — dotagents translates it to each agent's native syntax when generating config files. Claude keeps `${VAR}`, Cursor and VS Code use `${env:VAR}`, OpenCode uses `{env:VAR}`, and Codex splits pure refs into a separate `env_http_headers` field (mixed values like `"Bearer ${TOKEN}"` stay as literals).
+Use `${VAR}` in header values and `url` to reference secrets from the environment. Write `${VAR}` in `agents.toml`. Dotagents keeps this syntax for Claude and GitHub Copilot. Cursor and VS Code use `${env:VAR}`, OpenCode uses `{env:VAR}`, and Codex moves pure references to `env_http_headers`. Mixed Codex values such as `"Bearer ${TOKEN}"` stay as literals.
 
 Config files generated per agent:
 - Claude: `.mcp.json` (JSON)
@@ -219,6 +219,9 @@ Config files generated per agent:
 - Codex: `.codex/config.toml` (TOML, shared with other Codex config)
 - VS Code: `.vscode/mcp.json` (JSON)
 - OpenCode: `.opencode/opencode.jsonc` by default (JSONC, shared). Existing `.opencode/opencode.json`, `opencode.jsonc`, or `opencode.json` files are reused in precedence order.
+- GitHub Copilot: `.mcp.json` by default (JSON). An existing `.github/mcp.json` is reused when `.mcp.json` is absent.
+
+GitHub Copilot accepts the same implicit stdio shape as Claude, so both targets produce stable shared `.mcp.json` output. In user scope, GitHub Copilot uses `COPILOT_HOME/mcp-config.json` when `COPILOT_HOME` is set and `~/.copilot/mcp-config.json` otherwise. On POSIX systems, dotagents creates and repairs this file with mode `0600`.
 
 ### Hooks
 
@@ -303,15 +306,16 @@ dotagents installs canonical plugin bundles under `.agents/plugins/<name>/`. New
 
 Generated project-scope plugin outputs:
 - Claude: `.claude-plugin/marketplace.json` and `.agents/plugins/<name>/.claude-plugin/plugin.json`
+- GitHub Copilot: `.github/plugin/marketplace.json`; Copilot consumes the canonical `.agents/plugins/<name>/plugin.json`
 - Cursor: `.cursor-plugin/marketplace.json` and `.agents/plugins/<name>/.cursor-plugin/plugin.json`
 - Codex: `.agents/plugins/marketplace.json` and `.agents/plugins/<name>/.codex-plugin/plugin.json`
 - Grok: `.grok/plugins/<name>/` managed copy
 - OpenCode: plugin `skills/` symlinked into `.opencode/skills/`; portable `mcp.json` servers merged into `.opencode/opencode.jsonc` under `plugin.<plugin>.<server>` keys; generalized legacy plugin Markdown `agents/` symlinked into `.opencode/agents/`. Standard extension agents are preserved but not projected yet.
 - Pi: plugin `skills/` symlinked into `.agents/skills/` when `pi` is a configured plugin target
 
-Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated marketplaces and Claude/Cursor/Codex manifests use adjacent `.dotagents-managed` sidecars so client-owned JSON remains schema-native; legacy `metadata.managedBy` output remains recognizable during migration. Managed Grok copies and OpenCode/Pi component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when their on-disk `.dotagents-managed` marker proves ownership.
+Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated marketplaces and Claude, Cursor, and Codex manifests use adjacent `.dotagents-managed` sidecars so client-owned JSON remains schema-native; legacy `metadata.managedBy` output remains recognizable during migration. Managed Grok copies and OpenCode and Pi component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when their on-disk `.dotagents-managed` marker proves ownership.
 
-Global plugins install under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated below `~/.agents/`, Codex uses `~/.agents/plugins/marketplace.json` with paths rooted at the user's home, Grok plugins are copied into `~/.grok/plugins/`, OpenCode skills use `~/.config/opencode/skills/`, portable plugin MCP servers are merged into `~/.config/opencode/opencode.json`, and Pi skill projections use `~/.agents/skills/`.
+Global plugins install under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated below `~/.agents/`. Copilot uses `~/.agents/.github/plugin/marketplace.json`. Codex uses `~/.agents/plugins/marketplace.json` with paths rooted at the user's home. Grok plugins are copied into `~/.grok/plugins/`. OpenCode skills use `~/.config/opencode/skills/`, portable plugin MCP servers use `~/.config/opencode/opencode.json`, and Pi skill projections use `~/.agents/skills/`.
 
 ### Trust
 
@@ -501,8 +505,9 @@ Check selected-scope health: gitignore setup where applicable, installed skills 
 | `codex` | Codex | `.codex` | (reads `.agents/skills/` natively) | `.codex/config.toml` | Not supported | `.codex/agents/*.toml` |
 | `vscode` | VS Code Copilot | `.vscode` | (reads `.agents/skills/` natively) | `.vscode/mcp.json` | `.claude/settings.json` | Not supported |
 | `opencode` | OpenCode | `.opencode` | (reads `.agents/skills/` natively) | `.opencode/opencode.jsonc` by default | Not supported | `.opencode/agents/*.md` |
+| `copilot` | GitHub Copilot CLI/Desktop | `.copilot` | (reads `.agents/skills/` natively) | `.mcp.json` or `.github/mcp.json` | Not supported | Not supported |
 
-Claude uses `.claude/skills/`, and Cursor shares the same Claude-compatible skills symlink. Codex, VS Code, and OpenCode read `.agents/skills/` directly.
+Claude uses `.claude/skills/`, and Cursor shares the same Claude-compatible skills symlink. Codex, VS Code, OpenCode, and GitHub Copilot read `.agents/skills/` directly.
 
 [Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively. Normal skills need no Pi-specific target or symlink configuration; plugin bundles can target `pi` when their `skills/` components should be exposed there.
 

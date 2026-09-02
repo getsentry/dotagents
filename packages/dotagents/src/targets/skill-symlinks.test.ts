@@ -26,7 +26,7 @@ describe("skillSymlinkTargets", () => {
     expect(
       skillSymlinkTargets(
         scope,
-        ["claude", "cursor", "codex", "vscode", "opencode"],
+        ["claude", "cursor", "codex", "vscode", "opencode", "copilot"],
         [".legacy"],
       ),
     ).toEqual([join(homedir(), ".claude")]);

@@ -6,9 +6,9 @@ Use this reference for release QA, plugin CLI changes, real plugin compatibility
 
 Inspect manifests before testing; do not guess names or layouts. The default high-signal set is:
 
-- `getsentry/agent-plugin` — standalone Agent Plugins v1 bundle
-- `vercel/vercel-plugin` — large native Claude plugin with skills, hooks, MCP, commands, and agents
-- `anthropics/claude-plugins-official` — select one high-signal plugin from its current nested marketplace after inspection
+- `getsentry/agent-plugin`: Standalone Agent Plugins v1 bundle
+- `vercel/vercel-plugin`: Large native Claude plugin with skills, hooks, MCP, commands, and agents
+- `anthropics/claude-plugins-official`: Select one high-signal plugin from its current nested marketplace after inspection
 
 Confirm current manifests and repository activity with `gh api`, `gh search code`, or cloned files. Use fewer plugins only when a source is unavailable and report that limitation.
 
@@ -60,6 +60,19 @@ codex plugin list --json
 
 The local marketplace source must be the project directory, not the marketplace JSON file or its containing `.agents/plugins` directory.
 
+### GitHub Copilot
+
+```bash
+export COPILOT_HOME=/sandbox/copilot-home
+mkdir -p "$COPILOT_HOME"
+copilot plugin marketplace add ./
+copilot plugin marketplace browse dotagents
+copilot plugin install <name>@dotagents
+copilot plugin list
+```
+
+The marketplace source must be the project directory. Copilot reads `.github/plugin/marketplace.json`. Copilot 1.0.83 loads local plugins from that directory and records enabled state under `COPILOT_HOME`. Use `copilot skill list --json` and `copilot mcp list --json` to inspect live resources.
+
 ### OpenCode
 
 Use an OpenCode-only plugin target, then run:
@@ -101,6 +114,7 @@ Expected default-home outputs:
 
 - canonical bundle: `$HOME/.agents/plugins/<name>/`
 - Claude marketplace: `$HOME/.agents/.claude-plugin/marketplace.json`
+- Copilot marketplace: `$HOME/.agents/.github/plugin/marketplace.json`
 - Codex marketplace: `$HOME/.agents/plugins/marketplace.json`
 - OpenCode skills: `$HOME/.config/opencode/skills/<skill>`
 - OpenCode MCP config: `$HOME/.config/opencode/opencode.json`
@@ -114,6 +128,10 @@ Native user proof:
 cd "$DOTAGENTS_HOME"
 claude plugin marketplace add ./ --scope user
 claude plugin install <name>@dotagents --scope user
+
+export COPILOT_HOME="$HOME/.copilot"
+copilot plugin marketplace add "$DOTAGENTS_HOME"
+copilot plugin install <name>@dotagents
 
 cd "$HOME"
 codex plugin marketplace add ./ --json

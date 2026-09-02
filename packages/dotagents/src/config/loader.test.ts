@@ -20,7 +20,7 @@ describe("loadConfig", () => {
     await writeFile(
       configPath,
       `version = 1
-agents = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+agents = ["claude", "cursor", "codex", "copilot", "grok", "opencode", "pi"]
 
 [symlinks]
 targets = [".legacy"]
@@ -53,7 +53,7 @@ targets = ["claude", "codex", "opencode"]
 [[plugins]]
 name = "review-tools"
 source = "getsentry/plugins"
-targets = ["claude", "codex", "cursor", "grok", "opencode", "pi"]
+targets = ["claude", "codex", "copilot", "cursor", "grok", "opencode", "pi"]
 `,
     );
 
@@ -64,6 +64,7 @@ targets = ["claude", "codex", "cursor", "grok", "opencode", "pi"]
       "claude",
       "cursor",
       "codex",
+      "copilot",
       "grok",
       "opencode",
       "pi",
@@ -101,7 +102,7 @@ targets = ["claude", "codex", "cursor", "grok", "opencode", "pi"]
       {
         name: "review-tools",
         source: "getsentry/plugins",
-        targets: ["claude", "codex", "cursor", "grok", "opencode", "pi"],
+        targets: ["claude", "codex", "copilot", "cursor", "grok", "opencode", "pi"],
       },
     ]);
   });
