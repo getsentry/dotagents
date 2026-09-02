@@ -116,7 +116,7 @@ Tasks:
   install-files    Install the full example and assert generated files
   sync-repair      Delete representative generated files and assert sync repairs them
   plugin-claude    Validate generated Claude plugin and marketplace with Claude Code
-  plugin-codex     Add/list/install generated Codex marketplace with Codex CLI
+  plugin-codex     Add/list/install project and global Codex marketplaces
   plugin-grok      Confirm Grok Build discovers the generated project plugin
   opencode-projections  Assert generated OpenCode resource projections
   plugin-clients   Run every installed no-auth plugin client proof
@@ -239,23 +239,47 @@ async function runGrokPluginProof() {
 
 async function runCodexPluginProof() {
   prepareClientHarness("codex");
+  runCodexPluginLifecycle(projectDir, "project");
+
+  rmSync(dotagentsHomeDir, { recursive: true, force: true });
+  mkdirSync(join(dotagentsHomeDir, "plugin-source"), { recursive: true });
+  cpSync(
+    join(projectDir, "local-plugins", "qa-tools"),
+    join(dotagentsHomeDir, "plugin-source", "qa-tools"),
+    { recursive: true },
+  );
+  writeFileSync(
+    join(dotagentsHomeDir, "agents.toml"),
+    `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "qa-tools"
+source = "path:plugin-source/qa-tools"
+`,
+  );
+  runCli(["install"]);
+  runCodexPluginLifecycle(dotagentsHomeDir, "global");
+}
+
+function runCodexPluginLifecycle(marketplaceRoot, scope) {
   rmSync(codexHomeDir, { recursive: true, force: true });
   mkdirSync(codexHomeDir, { recursive: true });
   const env = { ...fixtureEnv, CODEX_HOME: codexHomeDir };
 
-  const add = execJson("codex", ["plugin", "marketplace", "add", projectDir, "--json"], env);
-  if (add.marketplaceName !== "dotagents-local") {
-    throw new Error("Codex marketplace add did not return dotagents-local");
+  const add = execJson("codex", ["plugin", "marketplace", "add", marketplaceRoot, "--json"], env);
+  if (add.marketplaceName !== "dotagents") {
+    throw new Error(`Codex ${scope} marketplace add did not return dotagents`);
   }
 
   const available = execJson("codex", ["plugin", "list", "--available", "--json"], env);
-  if (!available.available?.some((plugin) => plugin.pluginId === "qa-tools@dotagents-local")) {
-    throw new Error("Codex available plugin list did not include qa-tools@dotagents-local");
+  if (!available.available?.some((plugin) => plugin.pluginId === "qa-tools@dotagents")) {
+    throw new Error(`Codex ${scope} available plugin list did not include qa-tools@dotagents`);
   }
 
-  const installed = execJson("codex", ["plugin", "add", "qa-tools@dotagents-local", "--json"], env);
-  if (installed.pluginId !== "qa-tools@dotagents-local") {
-    throw new Error("Codex plugin add did not install qa-tools@dotagents-local");
+  const installed = execJson("codex", ["plugin", "add", "qa-tools@dotagents", "--json"], env);
+  if (installed.pluginId !== "qa-tools@dotagents") {
+    throw new Error(`Codex ${scope} plugin add did not install qa-tools@dotagents`);
   }
   const installedMcp = JSON.parse(readFileSync(join(installed.installedPath, "mcp.json"), "utf-8"));
   const installedMcpNames = Object.keys(installedMcp.mcpServers ?? {}).toSorted();
@@ -264,8 +288,8 @@ async function runCodexPluginProof() {
   }
 
   const list = execJson("codex", ["plugin", "list", "--json"], env);
-  if (!list.installed?.some((plugin) => plugin.pluginId === "qa-tools@dotagents-local" && plugin.enabled === true)) {
-    throw new Error("Codex installed plugin list did not include enabled qa-tools@dotagents-local");
+  if (!list.installed?.some((plugin) => plugin.pluginId === "qa-tools@dotagents" && plugin.enabled === true)) {
+    throw new Error(`Codex ${scope} installed plugin list did not include enabled qa-tools@dotagents`);
   }
 }
 
@@ -495,7 +519,7 @@ function assertPluginOutputs() {
   assertFileIncludes("agents.lock", "qa-tools");
   assertFile(".agents/plugins/marketplace.json");
   assertFile(".agents/plugins/marketplace.json.dotagents-managed");
-  assertFileIncludes(".agents/plugins/marketplace.json", '"name": "dotagents-local"');
+  assertFileIncludes(".agents/plugins/marketplace.json", '"name": "dotagents"');
   assertFileExcludes(".agents/plugins/marketplace.json", '"managedBy"');
   assertFileIncludes(".agents/plugins/marketplace.json", '"path": "./.agents/plugins/qa-tools"');
   assertFileIncludes(".agents/plugins/marketplace.json", '"installation": "AVAILABLE"');

@@ -309,6 +309,8 @@ Generated project-scope plugin outputs:
 - OpenCode: plugin `skills/` symlinked into `.opencode/skills/`; portable `mcp.json` servers merged into `.opencode/opencode.jsonc` under `plugin.<plugin>.<server>` keys; generalized legacy plugin Markdown `agents/` symlinked into `.opencode/agents/`. Standard extension agents are preserved but not projected yet.
 - Pi: plugin `skills/` symlinked into `.agents/skills/` when `pi` is a configured plugin target
 
+Every generated marketplace uses the name `dotagents`. Native plugin selectors use `<name>@dotagents`.
+
 Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated marketplaces and Claude/Cursor/Codex manifests use adjacent `.dotagents-managed` sidecars so client-owned JSON remains schema-native; legacy `metadata.managedBy` output remains recognizable during migration. Managed Grok copies and OpenCode/Pi component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when their on-disk `.dotagents-managed` marker proves ownership.
 
 Global plugins install under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated below `~/.agents/`, Codex uses `~/.agents/plugins/marketplace.json` with paths rooted at the user's home, Grok plugins are copied into `~/.grok/plugins/`, OpenCode skills use `~/.config/opencode/skills/`, portable plugin MCP servers are merged into `~/.config/opencode/opencode.json`, and Pi skill projections use `~/.agents/skills/`.

@@ -487,6 +487,8 @@ manifests, Grok plugin directories, OpenCode skill links and portable MCP
 entries, and Pi skill links. OpenCode MCP keys use
 `plugin.<plugin>.<server>`; dotagents expands `${PLUGIN_ROOT}` and
 `${PLUGIN_DATA}` and preserves unrelated entries in the shared config.
+Every generated marketplace uses the name `dotagents`. Native plugin selectors
+use `<name>@dotagents`.
 Generalized legacy bundles can also project Markdown agents into OpenCode;
 standard extension agents are preserved but not projected yet. dotagents rejects
 plugin sources that resolve to the same project's
