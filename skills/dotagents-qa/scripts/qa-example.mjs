@@ -234,6 +234,13 @@ async function runCopilotPluginProof() {
     env,
     stdio: "inherit",
   });
+  const marketplaces = execFileSync("copilot", ["plugin", "marketplace", "list"], {
+    cwd: projectDir,
+    env,
+    encoding: "utf-8",
+  });
+  assertIncludes(marketplaces, "dotagents", "Copilot marketplace list should include dotagents");
+  assertIncludes(marketplaces, projectDir, "Copilot marketplace list should include the local project path");
   const available = execFileSync(
     "copilot",
     ["plugin", "marketplace", "browse", "dotagents"],
@@ -254,14 +261,60 @@ async function runCopilotPluginProof() {
   });
   assertIncludes(installed, "qa-tools@dotagents", "Copilot plugin list should include qa-tools@dotagents");
 
-  const installedDir = join(copilotHomeDir, "installed-plugins", "dotagents", "qa-tools");
-  if (!existsSync(join(installedDir, "skills", "plugin-qa", "SKILL.md"))) {
-    throw new Error("Copilot installed plugin did not include plugin-qa");
+  const realProjectDir = realpathSync(projectDir);
+  const pluginRoot = realpathSync(join(projectDir, ".agents", "plugins", "qa-tools"));
+  const pluginState = execJson("copilot", ["plugins", "list", "--json"], env);
+  const livePlugin = pluginState.plugins?.find((plugin) => plugin.name === "qa-tools");
+  if (
+    livePlugin?.enabled !== true
+    || livePlugin.source !== "live-marketplace:dotagents"
+    || !isStringValue(livePlugin.installedFrom)
+    || realpathSync(livePlugin.installedFrom) !== realProjectDir
+  ) {
+    throw new Error("Copilot did not report enabled qa-tools from the live local marketplace");
   }
-  const installedMcp = JSON.parse(readFileSync(join(installedDir, "mcp.json"), "utf-8"));
-  const installedMcpNames = Object.keys(installedMcp.mcpServers ?? {}).toSorted();
-  if (JSON.stringify(installedMcpNames) !== JSON.stringify(["fixture-http", "fixture-stdio"])) {
-    throw new Error(`Copilot installed plugin MCP servers were unexpected: ${installedMcpNames.join(", ")}`);
+
+  const skills = execJson("copilot", ["skill", "list", "--json"], env);
+  const skill = skills.find((entry) => entry.name === "plugin-qa");
+  if (
+    skill?.source !== "plugin"
+    || skill.enabled !== true
+    || realpathSync(skill.path) !== realpathSync(join(pluginRoot, "skills", "plugin-qa"))
+  ) {
+    throw new Error("Copilot did not discover plugin-qa from the live local plugin");
+  }
+
+  const mcpServers = execJson("copilot", ["mcp", "list", "--json"], env).mcpServers ?? {};
+  const pluginMcpNames = Object.entries(mcpServers)
+    .filter(([, server]) => server.source === "plugin" && server.sourcePlugin === "qa-tools")
+    .map(([name]) => name)
+    .toSorted();
+  if (JSON.stringify(pluginMcpNames) !== JSON.stringify(["fixture-http", "fixture-stdio"])) {
+    throw new Error(`Copilot plugin MCP servers were unexpected: ${pluginMcpNames.join(", ")}`);
+  }
+  const local = mcpServers["fixture-stdio"];
+  if (
+    local?.source !== "plugin"
+    || local.sourcePlugin !== "qa-tools"
+    || local.enabled !== true
+    || local.type !== "stdio"
+    || local.command !== "node"
+    || JSON.stringify(local.args) !== JSON.stringify(["${PLUGIN_ROOT}/server.mjs"])
+    || !isStringValue(local.env?.PLUGIN_ROOT)
+    || realpathSync(local.env.PLUGIN_ROOT) !== pluginRoot
+  ) {
+    throw new Error("Copilot did not discover the live plugin stdio MCP server");
+  }
+  const remote = mcpServers["fixture-http"];
+  if (
+    remote?.source !== "plugin"
+    || remote.sourcePlugin !== "qa-tools"
+    || remote.enabled !== true
+    || remote.type !== "http"
+    || remote.url !== "https://example.com/${DEPLOYMENT}/mcp"
+    || !Object.hasOwn(remote.headers ?? {}, "X-Fixture")
+  ) {
+    throw new Error("Copilot did not discover the live plugin HTTP MCP server");
   }
 }
 

@@ -84,7 +84,7 @@ Automated proof:
 node skills/dotagents-qa/scripts/qa-example.mjs plugin-copilot
 ```
 
-This command adds the generated marketplace to an isolated `COPILOT_HOME`. It installs the plugin and checks the cached skill and MCP files.
+This command adds the generated marketplace to an isolated `COPILOT_HOME`. It installs and lists the plugin. Copilot 1.0.83 loads a local plugin from its marketplace directory without a copied cache. The proof uses native commands to inspect the live plugin, its skill, and both MCP servers.
 
 ## OpenCode projection (not native plugin E2E)
 
