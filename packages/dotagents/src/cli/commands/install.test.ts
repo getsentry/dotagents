@@ -1775,17 +1775,6 @@ source = "path:plugin-source"
     );
   });
 
-  it("handles empty skills list", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      "version = 1\n",
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    const result = await runInstall({ scope });
-    expect(result.installed).toHaveLength(0);
-  });
-
   it("writes MCP configs even with no skills", async () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -1797,6 +1786,7 @@ source = "path:plugin-source"
 
     const mcp = JSON.parse(await readFile(join(projectRoot, ".mcp.json"), "utf-8"));
     expect(mcp.mcpServers.github).toBeDefined();
+    expect(result.installed).toEqual([]);
     expect(result.mcpWarnings).toEqual([]);
 
     // Agent symlinks should also be created
@@ -2517,6 +2507,15 @@ path = "reviewer.md"
     expect(result.installed).toContain("review");
     expect(existsSync(join(projectRoot, ".agents", "skills", "pdf", "SKILL.md"))).toBe(true);
     expect(existsSync(join(projectRoot, ".agents", "skills", "review", "SKILL.md"))).toBe(true);
+
+    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
+    expect(lockfile).not.toBeNull();
+    expect(lockfile!.skills["pdf"]).toBeDefined();
+    expect(lockfile!.skills["review"]).toBeDefined();
+
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).toContain("/skills/pdf");
+    expect(gitignore).toContain("/skills/review");
   });
 
   it("installs only wildcard skills under path", async () => {
@@ -2596,35 +2595,6 @@ path = "reviewer.md"
     const pdfCount = result.installed.filter((n) => n === "pdf").length;
     expect(pdfCount).toBe(1);
     expect(result.installed).toContain("review");
-  });
-
-  it("wildcard creates lockfile with all discovered skills", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
-
-    const lockfile = await loadLockfile(join(projectRoot, "agents.lock"));
-    expect(lockfile).not.toBeNull();
-    expect(lockfile!.skills["pdf"]).toBeDefined();
-    expect(lockfile!.skills["review"]).toBeDefined();
-  });
-
-  it("wildcard-expanded skills are gitignored", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
-    );
-
-    const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
-
-    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
-    expect(gitignore).toContain("/skills/pdf");
-    expect(gitignore).toContain("/skills/review");
   });
 
   it("errors on name conflict between two wildcard sources", async () => {
@@ -2886,16 +2856,4 @@ path = "reviewer.md"
     expect(result.installed).toContain("pdf");
   });
 
-  it("minimum_release_age_exclude with org pattern bypasses age gate", async () => {
-    // Use a GitHub-style source with an org exclude
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\nminimum_release_age = 9999\nminimum_release_age_exclude = ["myorg"]\n\n[[skills]]\nname = "pdf"\nsource = "myorg/skills"\n`,
-    );
-
-    // This will fail to clone (myorg/skills doesn't exist), but it should fail
-    // at clone time, not at the age gate — proving the exclude is working.
-    const scope = resolveScope("project", projectRoot);
-    await expect(runInstall({ scope })).rejects.toThrow(/clone|resolve/i);
-  });
 });

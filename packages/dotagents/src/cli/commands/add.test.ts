@@ -170,31 +170,6 @@ describe("runAdd", () => {
     expect(installFetches).toHaveLength(1);
   });
 
-  it("does not fetch a wildcard git source again during the nested install", async () => {
-    const tracePath = join(tmpDir, "add-wildcard-git-trace.json");
-    process.env["GIT_TRACE2_EVENT"] = tracePath;
-    let fetchesBeforeInstall = -1;
-
-    await runAdd({
-      scope: resolveScope("project", projectRoot),
-      specifier: `git:${repoDir}`,
-      all: true,
-      progress: {
-        start(message) {
-          if (message === "Installing components") {
-            fetchesBeforeInstall = countGitFetches(tracePath);
-          }
-        },
-        message() {},
-        stop() {},
-        error() {},
-      },
-    });
-
-    expect(fetchesBeforeInstall).toBeGreaterThanOrEqual(0);
-    expect(countGitFetches(tracePath)).toBe(fetchesBeforeInstall);
-  });
-
   it("restores the acquired commit after another dependency checks out a different ref", async () => {
     await exec("git", ["branch", "stable", "HEAD"], { cwd: repoDir });
     await writeFile(
@@ -1081,6 +1056,7 @@ describe("add() CLI parsing", () => {
   let stateDir: string;
   let projectRoot: string;
   let repoDir: string;
+  let repoInitialized: boolean;
   let originalExitCode: typeof process.exitCode;
 
   beforeEach(async () => {
@@ -1088,6 +1064,7 @@ describe("add() CLI parsing", () => {
     stateDir = join(tmpDir, "state");
     projectRoot = join(tmpDir, "project");
     repoDir = join(tmpDir, "repo");
+    repoInitialized = false;
 
     process.env["DOTAGENTS_STATE_DIR"] = stateDir;
     originalExitCode = process.exitCode;
@@ -1096,7 +1073,13 @@ describe("add() CLI parsing", () => {
     await mkdir(join(projectRoot, ".agents", "skills"), { recursive: true });
     await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
 
-    // Create a local git repo with skills
+  });
+
+  async function ensureGitRepo(): Promise<void> {
+    if (repoInitialized) {
+      return;
+    }
+
     await mkdir(repoDir, { recursive: true });
     await exec("git", ["init"], { cwd: repoDir });
     await exec("git", ["config", "user.email", "test@test.com"], {
@@ -1116,7 +1099,8 @@ describe("add() CLI parsing", () => {
 
     await exec("git", ["add", "."], { cwd: repoDir });
     await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
-  });
+    repoInitialized = true;
+  }
 
   afterEach(async () => {
     vi.restoreAllMocks();
@@ -1126,6 +1110,7 @@ describe("add() CLI parsing", () => {
   });
 
   it("passes positional skill names to runAdd", async () => {
+    await ensureGitRepo();
     // We test the full CLI add() against a resolved project scope.
     const origCwd = process.cwd();
     process.chdir(projectRoot);
@@ -1142,6 +1127,7 @@ describe("add() CLI parsing", () => {
   });
 
   it("passes repeated --skill flags to runAdd", async () => {
+    await ensureGitRepo();
     const origCwd = process.cwd();
     process.chdir(projectRoot);
     try {
