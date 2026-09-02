@@ -192,6 +192,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       pluginsDir,
       runtimePluginConfigs.filter((plugin) => existsSync(join(pluginsDir, plugin.name))),
       `${cmd} install`,
+      config.agents,
     );
     await writeAgentsGitignore(
       agentsDir,
@@ -334,7 +335,12 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   // 8. Verify and repair plugin runtime projections
   let pluginsRepaired = 0;
   const installedPluginConfigs = runtimePluginConfigs.filter((plugin) => existsSync(join(pluginsDir, plugin.name)));
-  const installedPluginResult = await loadInstalledPlugins(pluginsDir, installedPluginConfigs, `${cmd} install`);
+  const installedPluginResult = await loadInstalledPlugins(
+    pluginsDir,
+    installedPluginConfigs,
+    `${cmd} install`,
+    config.agents,
+  );
   const pluginDecls = installedPluginResult.plugins;
   const prunedInstalledPlugins = await pruneInstalledPlugins(pluginsDir, staleManagedPluginNames);
   let pluginIssues: Awaited<ReturnType<typeof verifyPluginOutputs>> = [];

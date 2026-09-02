@@ -11,6 +11,7 @@ import {
   isProjectPluginSource,
   lockEntryForPlugin,
   pruneInstalledPlugins,
+  preparePluginForTargets,
   resolvePlugin,
 } from "../../../plugins/store.js";
 import type { PluginDeclaration } from "../../../plugins/types.js";
@@ -62,9 +63,9 @@ export async function installPlugins(
   const plugins: PluginDeclaration[] = [];
   const pruned: string[] = [];
   const lockEntries: Lockfile["plugins"] = {};
+  const resolvedPlugins: Awaited<ReturnType<typeof resolvePlugin>>[] = [];
 
   if (config.plugins.length > 0) {
-    await mkdir(scope.pluginsDir, { recursive: true });
     for (const pluginConfig of config.plugins) {
       let resolved: Awaited<ReturnType<typeof resolvePlugin>>;
       try {
@@ -89,8 +90,17 @@ export async function installPlugins(
         );
       }
       await assertPluginDestinationIsManaged(scope.pluginsDir, pluginConfig.name);
-      plugins.push(await installPluginBundle(scope.pluginsDir, resolved));
+      resolved = {
+        ...resolved,
+        plugin: preparePluginForTargets(resolved.plugin, config.agents),
+      };
+      resolvedPlugins.push(resolved);
       lockEntries[resolved.plugin.name] = lockEntryForPlugin(resolved);
+    }
+
+    await mkdir(scope.pluginsDir, { recursive: true });
+    for (const resolved of resolvedPlugins) {
+      plugins.push(await installPluginBundle(scope.pluginsDir, resolved));
     }
   }
 

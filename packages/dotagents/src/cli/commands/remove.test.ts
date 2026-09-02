@@ -11,7 +11,7 @@ import {
   runRemoveSource,
   WildcardSkillRemoveError,
 } from "./remove.js";
-import { runInstall } from "./install.js";
+import { runInstall as runInstallCommand } from "./install.js";
 import { exec } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
@@ -35,18 +35,25 @@ describe("runRemove", () => {
   let stateDir: string;
   let projectRoot: string;
   let repoDir: string;
+  let repoInitialized: boolean;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "dotagents-remove-"));
     stateDir = join(tmpDir, "state");
     projectRoot = join(tmpDir, "project");
     repoDir = join(tmpDir, "repo");
+    repoInitialized = false;
 
     process.env["DOTAGENTS_STATE_DIR"] = stateDir;
 
     await mkdir(join(projectRoot, ".agents", "skills"), { recursive: true });
+  });
 
-    // Create a local git repo with skills
+  async function ensureGitRepo(): Promise<void> {
+    if (repoInitialized) {
+      return;
+    }
+
     await mkdir(repoDir, { recursive: true });
     await exec("git", ["init"], { cwd: repoDir });
     await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
@@ -61,7 +68,18 @@ describe("runRemove", () => {
 
     await exec("git", ["add", "."], { cwd: repoDir });
     await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
-  });
+    repoInitialized = true;
+  }
+
+  async function runInstall(
+    opts: Parameters<typeof runInstallCommand>[0],
+  ): ReturnType<typeof runInstallCommand> {
+    const config = await readFile(opts.scope.configPath, "utf-8").catch(() => "");
+    if (config.includes(`git:${repoDir}`)) {
+      await ensureGitRepo();
+    }
+    return runInstallCommand(opts);
+  }
 
   afterEach(async () => {
     delete process.env["DOTAGENTS_STATE_DIR"];
@@ -494,7 +512,13 @@ source = "path:plugins/pdf"
   it("preserves an installed plugin without an ownership marker", async () => {
     const pluginSource = join(projectRoot, "plugins", "review-tools");
     await mkdir(join(pluginSource, "skills", "review"), { recursive: true });
-    await writeFile(join(pluginSource, "plugin.json"), JSON.stringify({ name: "review-tools" }, null, 2));
+    await mkdir(join(pluginSource, ".codex-plugin"), { recursive: true });
+    await writeFile(join(pluginSource, "plugin.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+    }, null, 2));
+    const authoredBytes = '{ "name": "review-tools", "metadata": {"managedBy": "dotagents"}, "x-authored": true }\n';
+    await writeFile(join(pluginSource, ".codex-plugin", "plugin.json"), authoredBytes);
     await writeFile(join(pluginSource, "skills", "review", "SKILL.md"), SKILL_MD("review"));
     await writeFile(
       join(projectRoot, "agents.toml"),
@@ -519,6 +543,10 @@ source = "path:plugins/review-tools"
     const config = await loadConfig(join(projectRoot, "agents.toml"));
     expect(config.plugins.find((plugin) => plugin.name === "review-tools")).toBeUndefined();
     expect(existsSync(join(projectRoot, ".agents", "plugins", "review-tools"))).toBe(true);
+    expect(await readFile(
+      join(projectRoot, ".agents", "plugins", "review-tools", ".codex-plugin", "plugin.json"),
+      "utf-8",
+    )).toBe(authoredBytes);
     expect(existsSync(join(projectRoot, ".agents", "skills", "review"))).toBe(false);
   });
 
@@ -608,8 +636,14 @@ source = "path:plugins/review-tools"
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
 
-    // Trying to remove "pdf" which is wildcard-sourced
-    await expect(runRemove({ scope, name: "pdf" })).rejects.toThrow(WildcardSkillRemoveError);
+    const error = await runRemove({ scope, name: "pdf" }).catch(
+      (cause: unknown) => cause,
+    );
+    expect(error).toBeInstanceOf(WildcardSkillRemoveError);
+    if (!(error instanceof WildcardSkillRemoveError)) {
+      throw new Error("expected wildcard removal to reject");
+    }
+    expect(error.source).toBe(`git:${repoDir}`);
   });
 
   it("does not treat skills outside wildcard path scope as wildcard-owned", async () => {
@@ -625,24 +659,6 @@ source = "path:plugins/review-tools"
     );
 
     await expect(runRemove({ scope, name: "pdf" })).rejects.toThrow(RemoveError);
-  });
-
-  it("WildcardSkillRemoveError carries the source", async () => {
-    await writeFile(
-      join(projectRoot, "agents.toml"),
-      `version = 1\n\n[[skills]]\nname = "*"\nsource = "git:${repoDir}"\n`,
-    );
-    const scope = resolveScope("project", projectRoot);
-    await runInstall({ scope });
-
-    try {
-      await runRemove({ scope, name: "pdf" });
-      expect.unreachable("should have thrown");
-    } catch (err) {
-      expect(err).toBeInstanceOf(WildcardSkillRemoveError);
-      if (!(err instanceof WildcardSkillRemoveError)) {throw err;}
-      expect(err.source).toBe(`git:${repoDir}`);
-    }
   });
 
   it("removes explicit entry even when wildcard exists for same source", async () => {
@@ -670,6 +686,7 @@ describe("runRemoveSource", () => {
   let projectRoot: string;
   let repoDir: string;
   let otherRepoDir: string;
+  let reposInitialized: boolean;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "dotagents-remove-source-"));
@@ -677,12 +694,18 @@ describe("runRemoveSource", () => {
     projectRoot = join(tmpDir, "project");
     repoDir = join(tmpDir, "repo");
     otherRepoDir = join(tmpDir, "other-repo");
+    reposInitialized = false;
 
     process.env["DOTAGENTS_STATE_DIR"] = stateDir;
 
     await mkdir(join(projectRoot, ".agents", "skills"), { recursive: true });
+  });
 
-    // Create a local git repo with skills
+  async function ensureGitRepos(): Promise<void> {
+    if (reposInitialized) {
+      return;
+    }
+
     await mkdir(repoDir, { recursive: true });
     await exec("git", ["init"], { cwd: repoDir });
     await exec("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
@@ -710,7 +733,15 @@ describe("runRemoveSource", () => {
 
     await exec("git", ["add", "."], { cwd: otherRepoDir });
     await exec("git", ["commit", "-m", "initial"], { cwd: otherRepoDir });
-  });
+    reposInitialized = true;
+  }
+
+  async function runInstall(
+    opts: Parameters<typeof runInstallCommand>[0],
+  ): ReturnType<typeof runInstallCommand> {
+    await ensureGitRepos();
+    return runInstallCommand(opts);
+  }
 
   afterEach(async () => {
     delete process.env["DOTAGENTS_STATE_DIR"];

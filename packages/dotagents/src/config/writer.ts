@@ -1,12 +1,16 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { stringify } from "smol-toml";
+import { parse as parseTOML, stringify } from "smol-toml";
 import type {
   WildcardSkillDependency,
   TrustConfig,
   McpConfig,
   PluginConfig,
 } from "./schema.js";
-import { sourcesMatch, type SerializedObject } from "@sentry/dotagents-lib";
+import {
+  isSerializedObject,
+  sourcesMatch,
+  type SerializedObject,
+} from "@sentry/dotagents-lib";
 
 export interface DefaultConfigOptions {
   agents?: string[];
@@ -213,7 +217,7 @@ export async function removeMcpFromConfig(
   name: string,
 ): Promise<void> {
   const content = await readFile(filePath, "utf-8");
-  await writeFile(filePath, removeBlockByHeader(content, "[[mcp]]", name), "utf-8");
+  await writeFile(filePath, removeBlockByHeader(content, "[[mcp]]", name, "mcp"), "utf-8");
 }
 
 /** Extract a TOML string value from a line like `key = "value"` or `key = 'value'`. */
@@ -222,13 +226,34 @@ function extractTomlStringValue(line: string, key: string): string | undefined {
   return match?.[1] ?? match?.[2];
 }
 
-/** Half-open table range ending before its separator blank lines or the next header. */
+/** Half-open table range, with fields ending before the first nested table. */
 interface ArrayTableSpan {
   start: number;
+  fieldsEnd: number;
   end: number;
 }
 
-function findArrayTables(lines: string[], header: string): ArrayTableSpan[] {
+function classifyTableHeader(
+  line: string,
+  nestedTableName?: string,
+): "nested" | "other" | undefined {
+  if (!line.startsWith("[")) {return undefined;}
+
+  try {
+    const parsed = parseTOML(line);
+    const root = nestedTableName ? parsed[nestedTableName] : undefined;
+    const definesNestedTable = isSerializedObject(root) && Object.keys(root).length > 0;
+    return definesNestedTable ? "nested" : "other";
+  } catch {
+    return undefined;
+  }
+}
+
+function findArrayTables(
+  lines: string[],
+  header: string,
+  nestedTableName?: string,
+): ArrayTableSpan[] {
   const spans: ArrayTableSpan[] = [];
   let i = 0;
   while (i < lines.length) {
@@ -238,11 +263,18 @@ function findArrayTables(lines: string[], header: string): ArrayTableSpan[] {
     }
 
     const start = i;
+    let fieldsEnd: number | undefined;
     i++;
-    while (i < lines.length && !lines[i]!.trim().startsWith("[")) {i++;}
+    while (i < lines.length) {
+      const line = lines[i]!.trim();
+      const tableHeader = classifyTableHeader(line, nestedTableName);
+      if (tableHeader === "other") {break;}
+      if (tableHeader === "nested") {fieldsEnd ??= i;}
+      i++;
+    }
     let end = i;
     while (end > start + 1 && lines[end - 1]!.trim() === "") {end--;}
-    spans.push({ start, end });
+    spans.push({ start, fieldsEnd: fieldsEnd ?? end, end });
   }
   return spans;
 }
@@ -253,7 +285,7 @@ function findFieldLine(
   key: string,
 ): number | undefined {
   const assignment = new RegExp(`^${key}\\s*=`);
-  for (let i = span.start + 1; i < span.end; i++) {
+  for (let i = span.start + 1; i < span.fieldsEnd; i++) {
     const trimmed = lines[i]!.trim();
     if (assignment.test(trimmed)) {return i;}
   }
@@ -275,8 +307,9 @@ function removeArrayTables(
   lines: string[],
   header: string,
   shouldRemove: (span: ArrayTableSpan) => boolean,
+  nestedTableName?: string,
 ): string {
-  const spans = findArrayTables(lines, header).filter(shouldRemove);
+  const spans = findArrayTables(lines, header, nestedTableName).filter(shouldRemove);
   for (const span of spans.toReversed()) {
     let start = span.start;
     while (start > 0 && lines[start - 1]!.trim() === "") {start--;}
@@ -285,12 +318,18 @@ function removeArrayTables(
   return lines.join("\n");
 }
 
-function removeBlockByHeader(content: string, header: string, name: string): string {
+function removeBlockByHeader(
+  content: string,
+  header: string,
+  name: string,
+  nestedTableName?: string,
+): string {
   const lines = content.split("\n");
   return removeArrayTables(
     lines,
     header,
     (span) => getStringField(lines, span, "name") === name,
+    nestedTableName,
   );
 }
 

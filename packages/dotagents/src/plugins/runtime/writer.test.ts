@@ -5,10 +5,16 @@ import { dirname, join, relative, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse as parseJSONC } from "jsonc-parser";
 import type { PluginDeclaration } from "../types.js";
-import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest, type LegacyPluginManifest } from "../schema.js";
+import {
+  AGENT_PLUGIN_MCP_SCHEMA,
+  AGENT_PLUGIN_SCHEMA,
+  isStandardPluginManifest,
+  type LegacyPluginManifest,
+} from "../schema.js";
 import {
   prunePluginOutputs,
   projectedPiSkillNames,
+  reconcilePluginOutputs,
   verifyPluginOutputs,
   writePluginOutputs,
 } from "./writer.js";
@@ -94,6 +100,8 @@ describe("plugin writer", () => {
       source: `path:.agents/plugins/${name}`,
       pluginDir,
       manifest,
+      authoredNativeInterfaces: overrides.authoredNativeInterfaces,
+      compatibilityWarnings: overrides.compatibilityWarnings,
       nativeSource: overrides.nativeSource,
       targets: overrides.targets,
     };
@@ -248,6 +256,191 @@ describe("plugin writer", () => {
         await readFile(join(nativePlugin.pluginDir, `.${nativeSource}-plugin`, "plugin.json"), "utf-8"),
       );
       expect(manifest["skills"]).toBe("./custom-skills");
+    }
+  });
+
+  it.each(["claude", "cursor", "codex"] as const)(
+    "preserves an authored %s manifest byte-for-byte",
+    async (target) => {
+      const alpha = await plugin("alpha-tools", {
+        manifest: {
+          $schema: AGENT_PLUGIN_SCHEMA,
+          name: "alpha-tools",
+          description: "Portable description",
+        },
+      });
+      const manifestDir = `.${target}-plugin`;
+      const manifestPath = join(alpha.pluginDir, manifestDir, "plugin.json");
+      const authoredBytes = '{\n  "name": "alpha-tools",\n  "description": "Native description",\n  "x-native": true\n}\n';
+      await mkdir(dirname(manifestPath), { recursive: true });
+      await writeFile(manifestPath, authoredBytes);
+      alpha.authoredNativeInterfaces = {
+        [target]: {
+          path: `${manifestDir}/plugin.json`,
+          fallback: true,
+          manifest: {
+            name: "alpha-tools",
+            description: "Native description",
+            "x-native": true,
+          },
+        },
+      };
+
+      const result = await writePluginOutputs([target], [alpha], root);
+
+      expect(result.warnings.some((warning) => warning.message.includes("not managed"))).toBe(false);
+      expect(await readFile(manifestPath, "utf-8")).toBe(authoredBytes);
+      expect(existsSync(`${manifestPath}.dotagents-managed`)).toBe(false);
+    },
+  );
+
+  it("keeps native authority target-local when generating another client adapter", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: {
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "alpha-tools",
+        description: "Portable description",
+      },
+    });
+    const claudePath = join(alpha.pluginDir, ".claude-plugin", "plugin.json");
+    await mkdir(dirname(claudePath), { recursive: true });
+    await writeFile(claudePath, JSON.stringify({
+      name: "alpha-tools",
+      commands: "./commands",
+      mcpServers: "./native-mcp.json",
+      "x-claude": true,
+    }));
+    alpha.authoredNativeInterfaces = {
+      claude: {
+        path: ".claude-plugin/plugin.json",
+        fallback: true,
+        manifest: {
+          name: "alpha-tools",
+          commands: "./commands",
+          mcpServers: "./native-mcp.json",
+          "x-claude": true,
+        },
+      },
+    };
+
+    await writePluginOutputs(["claude", "cursor"], [alpha], root);
+
+    const cursor = parseJsonObject(
+      await readFile(join(alpha.pluginDir, ".cursor-plugin", "plugin.json"), "utf-8"),
+    );
+    expect(cursor).toMatchObject({ name: "alpha-tools", description: "Portable description" });
+    expect(cursor["commands"]).toBeUndefined();
+    expect(cursor["mcpServers"]).toBeUndefined();
+    expect(cursor["x-claude"]).toBeUndefined();
+  });
+
+  it("rejects a malformed fallback at the selected projection boundary", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: { $schema: AGENT_PLUGIN_SCHEMA, name: "alpha-tools" },
+      authoredNativeInterfaces: {
+        claude: {
+          path: ".claude-plugin/plugin.json",
+          fallback: true,
+          error: "invalid native manifest",
+        },
+      },
+    });
+
+    await expect(writePluginOutputs(["claude"], [alpha], root)).rejects.toThrow(
+      "Invalid Claude native fallback",
+    );
+  });
+
+  it("projects only portable hybrid components to OpenCode and Pi", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: {
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "alpha-tools",
+      },
+    });
+    await writePluginSkill(alpha.pluginDir, "portable-skill");
+    await writeFile(join(alpha.pluginDir, "agents", "native-agent.md"), "native agent");
+    await writeFile(join(alpha.pluginDir, "commands", "native-command.md"), "native command");
+    alpha.authoredNativeInterfaces = {
+      claude: {
+        path: ".claude-plugin/plugin.json",
+        fallback: true,
+        manifest: {
+          name: "alpha-tools",
+          agents: "./agents",
+          commands: "./commands",
+        },
+      },
+    };
+
+    await writePluginOutputs(["opencode", "pi"], [alpha], root);
+
+    await expectSymlinkTarget(
+      join(root, ".opencode", "skills", "portable-skill"),
+      join(alpha.pluginDir, "skills", "portable-skill"),
+    );
+    await expectSymlinkTarget(
+      join(root, ".agents", "skills", "portable-skill"),
+      join(alpha.pluginDir, "skills", "portable-skill"),
+    );
+    expect(existsSync(join(root, ".opencode", "agents", "native-agent.md"))).toBe(false);
+    expect(existsSync(join(root, ".opencode", "commands", "native-command.md"))).toBe(false);
+  });
+
+  it("sanitizes hybrid bundles copied to Grok", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: {
+        $schema: AGENT_PLUGIN_SCHEMA,
+        name: "alpha-tools",
+      },
+    });
+    await writePluginSkill(alpha.pluginDir, "portable-skill");
+    await writeFile(join(alpha.pluginDir, "plugin.json"), JSON.stringify(alpha.manifest));
+    await mkdir(join(alpha.pluginDir, ".claude-plugin"), { recursive: true });
+    await mkdir(join(alpha.pluginDir, "hooks"), { recursive: true });
+    await writeFile(join(alpha.pluginDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "alpha-tools" }));
+    await writeFile(join(alpha.pluginDir, "commands", "native.md"), "native command");
+    await writeFile(join(alpha.pluginDir, "commands", "real-server"), "portable command");
+    await symlink("real-server", join(alpha.pluginDir, "commands", "server"));
+    await writeFile(join(alpha.pluginDir, "agents", "native.md"), "native agent");
+    await writeFile(join(alpha.pluginDir, "hooks", "hooks.json"), "{}");
+    await mkdir(join(alpha.pluginDir, "bin"), { recursive: true });
+    await writeFile(join(alpha.pluginDir, "bin", "server"), "portable executable");
+    await writeFile(join(alpha.pluginDir, "mcp.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: {
+        portable: {
+          type: "stdio",
+          command: "node",
+          env: {
+            PATH: "${PLUGIN_ROOT}/bin:/usr/bin",
+            NATIVE_LIKE: "${PLUGIN_ROOT}/.claude-plugin/tool",
+          },
+        },
+        portableCommand: { type: "stdio", command: "./commands/server" },
+      },
+    }));
+    await writeFile(join(alpha.pluginDir, "asset.txt"), "ordinary asset");
+    alpha.authoredNativeInterfaces = {
+      claude: {
+        path: ".claude-plugin/plugin.json",
+        fallback: true,
+        manifest: { name: "alpha-tools" },
+      },
+    };
+
+    await writePluginOutputs(["grok"], [alpha], root);
+
+    const projected = join(root, ".grok", "plugins", "alpha-tools");
+    expect(existsSync(join(projected, "plugin.json"))).toBe(true);
+    expect(existsSync(join(projected, "skills", "portable-skill", "SKILL.md"))).toBe(true);
+    expect(await readFile(join(projected, "bin", "server"), "utf-8")).toBe("portable executable");
+    expect(await readFile(join(projected, "commands", "server"), "utf-8")).toBe("portable command");
+    expect(existsSync(join(projected, "commands", "real-server"))).toBe(true);
+    expect(existsSync(join(projected, "commands", "native.md"))).toBe(false);
+    expect(await readFile(join(projected, "asset.txt"), "utf-8")).toBe("ordinary asset");
+    for (const path of [".claude-plugin", "agents", "hooks"]) {
+      expect(existsSync(join(projected, path))).toBe(false);
     }
   });
 
@@ -517,12 +710,17 @@ describe("plugin writer", () => {
     expect(await readFile(manifestPath, "utf-8")).toBe("{ \"name\": \"mine\" }\n");
   });
 
-  it("does not generate runtime outputs when no agent targets are selected", async () => {
-    const alpha = await plugin("alpha-tools");
+  it("reports compatibility without generating outputs when no agent targets are selected", async () => {
+    const alpha = await plugin("alpha-tools", {
+      compatibilityWarnings: ["hybrid compatibility warning"],
+    });
 
     const result = await writePluginOutputs([], [alpha], root);
 
-    expect(result).toEqual({ warnings: [], written: 0 });
+    expect(result).toEqual({
+      warnings: [{ agent: "plugin", name: "alpha-tools", message: "hybrid compatibility warning" }],
+      written: 0,
+    });
     expect(existsSync(join(root, ".agents", "plugins", "marketplace.json"))).toBe(false);
     expect(existsSync(join(root, ".claude-plugin", "marketplace.json"))).toBe(false);
     expect(existsSync(join(root, ".cursor-plugin", "marketplace.json"))).toBe(false);
@@ -1143,6 +1341,31 @@ describe("plugin writer", () => {
     expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json"))).toBe(false);
     expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".cursor-plugin", "plugin.json"))).toBe(false);
     expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"))).toBe(false);
+  });
+
+  it("preserves orphan native outputs when fallback provenance is corrupt", async () => {
+    const pluginDir = join(root, ".agents", "plugins", "orphan-tools");
+    const manifestPaths = ["claude", "cursor", "codex"].map(
+      (target) => join(pluginDir, `.${target}-plugin`, "plugin.json"),
+    );
+    for (const manifestPath of manifestPaths) {
+      await mkdir(dirname(manifestPath), { recursive: true });
+      await writeFile(manifestPath, JSON.stringify({ name: "orphan-tools" }));
+      await writeFile(`${manifestPath}.dotagents-managed`, "managedBy=dotagents\n");
+    }
+    await writeFile(join(pluginDir, ".dotagents-native-fallbacks"), "not-a-target\n");
+
+    const { result, pruned } = await reconcilePluginOutputs([], [], root);
+
+    for (const manifestPath of manifestPaths) {
+      expect(pruned).not.toContain(manifestPath);
+      expect(existsSync(manifestPath)).toBe(true);
+    }
+    expect(result.warnings).toEqual([{
+      agent: "plugin",
+      name: "orphan-tools",
+      message: 'Plugin "orphan-tools" native fallback provenance could not be verified, so its native outputs were preserved: Invalid native fallback provenance: not-a-target',
+    }]);
   });
 
   it("does not prune arbitrary component links into canonical plugin sources", async () => {
