@@ -5,24 +5,15 @@ import { tmpdir } from "node:os";
 import { compareSemver, formatUpdateMessage, checkForUpdate } from "./update-notifier.js";
 
 describe("compareSemver", () => {
-  it("returns positive when b is newer", () => {
+  it("orders versions by major, minor, and patch", () => {
     expect(compareSemver("0.7.0", "0.8.0")).toBeGreaterThan(0);
     expect(compareSemver("1.0.0", "2.0.0")).toBeGreaterThan(0);
     expect(compareSemver("1.2.3", "1.2.4")).toBeGreaterThan(0);
     expect(compareSemver("0.1.0", "0.2.0")).toBeGreaterThan(0);
-  });
-
-  it("returns negative when a is newer", () => {
     expect(compareSemver("0.8.0", "0.7.0")).toBeLessThan(0);
     expect(compareSemver("2.0.0", "1.0.0")).toBeLessThan(0);
-  });
-
-  it("returns zero when versions are equal", () => {
     expect(compareSemver("1.0.0", "1.0.0")).toBe(0);
     expect(compareSemver("0.7.0", "0.7.0")).toBe(0);
-  });
-
-  it("compares major before minor before patch", () => {
     expect(compareSemver("1.9.9", "2.0.0")).toBeGreaterThan(0);
     expect(compareSemver("1.0.9", "1.1.0")).toBeGreaterThan(0);
   });

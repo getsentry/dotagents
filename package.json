@@ -12,7 +12,6 @@
     "typecheck": "pnpm -r typecheck",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "dev": "pnpm --filter @sentry/dotagents dev",
-    "smoke:examples": "pnpm qa:example",
     "qa:example": "pnpm build && node skills/dotagents-qa/scripts/qa-example.mjs",
     "qa:plugins": "pnpm build && node skills/dotagents-qa/scripts/qa-example.mjs plugin-clients"
   },

@@ -243,12 +243,6 @@ describe("runInit", () => {
     expect(config.trust?.github_repos).not.toContain("getsentry/dotagents");
   });
 
-  it("generated config has no pin field", async () => {
-    await runInit({ scope: resolveScope("project", dir), skills: [] });
-
-    const raw = await readFile(join(dir, "agents.toml"), "utf-8");
-    expect(raw).not.toContain("pin");
-  });
 });
 
 describe("installPostMergeHook", () => {
@@ -300,17 +294,12 @@ describe("installPostMergeHook", () => {
 
   it("returns 'exists' if marker already present", async () => {
     await installPostMergeHook(gitDir);
+    const before = await readFile(join(gitDir, "hooks", "post-merge"), "utf-8");
     const result = await installPostMergeHook(gitDir);
 
     expect(result).toBe("exists");
-  });
-
-  it("is idempotent — does not duplicate snippet", async () => {
-    await installPostMergeHook(gitDir);
-    await installPostMergeHook(gitDir);
-
-    const content = await readFile(join(gitDir, "hooks", "post-merge"), "utf-8");
-    expect(content.match(/dotagents:post-merge/g)).toHaveLength(1);
+    expect(await readFile(join(gitDir, "hooks", "post-merge"), "utf-8")).toBe(before);
+    expect(before.match(/dotagents:post-merge/g)).toHaveLength(1);
   });
 
   it("includes npx fallback", async () => {

@@ -16,122 +16,51 @@ describe("writeLockfile + loadLockfile", () => {
     await rm(dir, { recursive: true });
   });
 
-  it("round-trips a lockfile with git skills", async () => {
+  it("round-trips and sorts every lockfile entry type", async () => {
     const lockPath = join(dir, "agents.lock");
     await writeLockfile(lockPath, {
       version: 1,
       skills: {
-        "pdf-processing": {
+        "z-git": {
           source: "anthropics/skills",
           resolved_url: "https://github.com/anthropics/skills.git",
-          resolved_path: "pdf-processing",
+          resolved_path: "z-git",
           resolved_ref: "v1.2.0",
         },
+        "a-local": {
+          source: "path:../shared/a-local",
+          resolved_path: "engineering/a-local",
+        },
+      },
+      subagents: {
+        "z-reviewer": { source: "org/z-repo" },
+        "a-reviewer": { source: "org/a-repo" },
+      },
+      plugins: {
+        "z-plugin": { source: "org/z-repo" },
+        "a-plugin": { source: "org/a-repo" },
       },
     });
 
     const loaded = await loadLockfile(lockPath);
     expect(loaded).not.toBeNull();
     expect(loaded!.version).toBe(1);
-    expect(loaded!.skills["pdf-processing"]?.source).toBe("anthropics/skills");
-  });
-
-  it("round-trips a lockfile with local skills", async () => {
-    const lockPath = join(dir, "agents.lock");
-    await writeLockfile(lockPath, {
-      version: 1,
-      skills: {
-        "my-skill": {
-          source: "path:../shared/my-skill",
-          resolved_path: "engineering/my-skill",
-        },
-      },
+    expect(Object.keys(loaded!.skills)).toEqual(["a-local", "z-git"]);
+    expect(Object.keys(loaded!.subagents)).toEqual(["a-reviewer", "z-reviewer"]);
+    expect(Object.keys(loaded!.plugins)).toEqual(["a-plugin", "z-plugin"]);
+    expect(loaded!.skills["a-local"]).toEqual({
+      source: "path:../shared/a-local",
+      resolved_path: "engineering/a-local",
     });
-
-    const loaded = await loadLockfile(lockPath);
-    expect(loaded!.skills["my-skill"]?.source).toBe("path:../shared/my-skill");
-    expect(loaded!.skills["my-skill"]).toEqual({
-      source: "path:../shared/my-skill",
-      resolved_path: "engineering/my-skill",
+    expect(loaded!.skills["z-git"]).toEqual({
+      source: "anthropics/skills",
+      resolved_url: "https://github.com/anthropics/skills.git",
+      resolved_path: "z-git",
+      resolved_ref: "v1.2.0",
     });
   });
 
-  it("sorts skills alphabetically", async () => {
-    const lockPath = join(dir, "agents.lock");
-    await writeLockfile(lockPath, {
-      version: 1,
-      skills: {
-        "z-skill": {
-          source: "path:z-skill",
-        },
-        "a-skill": {
-          source: "path:a-skill",
-        },
-      },
-    });
-
-    const loaded = await loadLockfile(lockPath);
-    const keys = Object.keys(loaded!.skills);
-    expect(keys).toEqual(["a-skill", "z-skill"]);
-  });
-
-  it("sorts subagents alphabetically", async () => {
-    const lockPath = join(dir, "agents.lock");
-    await writeLockfile(lockPath, {
-      version: 1,
-      skills: {},
-      subagents: {
-        "z-reviewer": {
-          source: "org/z-repo",
-        },
-        "a-reviewer": {
-          source: "org/a-repo",
-        },
-      },
-    });
-
-    const loaded = await loadLockfile(lockPath);
-    const keys = Object.keys(loaded!.subagents);
-    expect(keys).toEqual(["a-reviewer", "z-reviewer"]);
-  });
-
-  it("sorts plugins alphabetically", async () => {
-    const lockPath = join(dir, "agents.lock");
-    await writeLockfile(lockPath, {
-      version: 1,
-      skills: {},
-      subagents: {},
-      plugins: {
-        "z-plugin": {
-          source: "org/z-repo",
-        },
-        "a-plugin": {
-          source: "org/a-repo",
-        },
-      },
-    });
-
-    const loaded = await loadLockfile(lockPath);
-    const keys = Object.keys(loaded!.plugins);
-    expect(keys).toEqual(["a-plugin", "z-plugin"]);
-  });
-
-  it("omits empty subagents from the serialized lockfile", async () => {
-    const lockPath = join(dir, "agents.lock");
-    await writeLockfile(lockPath, {
-      version: 1,
-      skills: {},
-      subagents: {},
-    });
-
-    const content = await readFile(lockPath, "utf-8");
-    expect(content).not.toContain("[subagents]");
-
-    const loaded = await loadLockfile(lockPath);
-    expect(loaded!.subagents).toEqual({});
-  });
-
-  it("omits empty plugins from the serialized lockfile", async () => {
+  it("omits empty optional entry sections", async () => {
     const lockPath = join(dir, "agents.lock");
     await writeLockfile(lockPath, {
       version: 1,
@@ -141,29 +70,27 @@ describe("writeLockfile + loadLockfile", () => {
     });
 
     const content = await readFile(lockPath, "utf-8");
+    expect(content).not.toContain("[subagents]");
     expect(content).not.toContain("[plugins]");
-
-    const loaded = await loadLockfile(lockPath);
-    expect(loaded!.plugins).toEqual({});
+    expect(await loadLockfile(lockPath)).toEqual({
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: {},
+    });
   });
 
   it("ends with exactly one trailing newline", async () => {
     const lockPath = join(dir, "agents.lock");
     await writeLockfile(lockPath, {
       version: 1,
-      skills: {
-        "test-skill": {
-          source: "org/repo",
-        },
-      },
+      skills: { "test-skill": { source: "org/repo" } },
     });
 
-    const content = await readFile(lockPath, "utf-8");
-    expect(content).toMatch(/[^\n]\n$/);
+    expect(await readFile(lockPath, "utf-8")).toMatch(/[^\n]\n$/);
   });
 
-  it("returns null for missing lockfile", async () => {
-    const result = await loadLockfile(join(dir, "nope.lock"));
-    expect(result).toBeNull();
+  it("returns null for a missing lockfile", async () => {
+    await expect(loadLockfile(join(dir, "nope.lock"))).resolves.toBeNull();
   });
 });

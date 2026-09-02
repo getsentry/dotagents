@@ -27,48 +27,28 @@ describe("writeAgentsGitignore", () => {
     ]);
   });
 
-  it("lists managed skill directories", async () => {
+  it("writes a sorted inventory of every managed artifact type", async () => {
     const agentsDir = join(dir, ".agents");
-    await writeAgentsGitignore(agentsDir, ["pdf", "find-bugs", "code-review"]);
+    await writeAgentsGitignore(
+      agentsDir,
+      ["zebra", "alpha", "middle"],
+      ["reviewer", "test-runner"],
+      ["review-tools"],
+    );
 
     const content = await readFile(join(agentsDir, ".gitignore"), "utf-8");
-    expect(content).toContain("/skills/code-review");
-    expect(content).toContain("/skills/find-bugs");
-    expect(content).toContain("/skills/pdf");
-  });
-
-  it("lists managed subagent files", async () => {
-    const agentsDir = join(dir, ".agents");
-    await writeAgentsGitignore(agentsDir, [], ["reviewer", "test-runner"]);
-
-    const content = await readFile(join(agentsDir, ".gitignore"), "utf-8");
-    expect(content).toContain("/agents/reviewer.md");
-    expect(content).toContain("/agents/test-runner.md");
-  });
-
-  it("lists managed plugin directories", async () => {
-    const agentsDir = join(dir, ".agents");
-    await writeAgentsGitignore(agentsDir, [], [], ["review-tools"]);
-
-    const content = await readFile(join(agentsDir, ".gitignore"), "utf-8");
-    expect(content).toContain("/plugins/review-tools/");
-    expect(content).toContain("/plugin-data/");
-    expect(content).toContain("/plugin-mcp/");
-    expect(content).not.toContain("/plugins/marketplace.json");
-  });
-
-  it("sorts skill names alphabetically", async () => {
-    const agentsDir = join(dir, ".agents");
-    await writeAgentsGitignore(agentsDir, ["zebra", "alpha", "middle"]);
-
-    const content = await readFile(join(agentsDir, ".gitignore"), "utf-8");
-    const lines = content.split("\n").filter((l) => l.startsWith("/skills/"));
-    expect(lines).toEqual([
+    expect(content.split("\n").filter((line) => line.startsWith("/skills/"))).toEqual([
       "/skills/.dotagents-managed/",
       "/skills/alpha",
       "/skills/middle",
       "/skills/zebra",
     ]);
+    expect(content).toContain("/agents/reviewer.md");
+    expect(content).toContain("/agents/test-runner.md");
+    expect(content).toContain("/plugins/review-tools/");
+    expect(content).toContain("/plugin-data/");
+    expect(content).toContain("/plugin-mcp/");
+    expect(content).not.toContain("/plugins/marketplace.json");
   });
 
   it("overwrites existing gitignore", async () => {

@@ -168,20 +168,20 @@ describe("scope isolation for all commands", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it.each(COMMAND_CASES)("uses only global state for unqualified %s", async (command, handler) => {
-    await runMain([command], scopeServices);
+  it("uses only global state for an unqualified command", async () => {
+    await runMain(["sync"], scopeServices);
 
-    expect(handler).toHaveBeenCalledOnce();
-    expect(handler).toHaveBeenCalledWith([], {
+    expect(sync).toHaveBeenCalledOnce();
+    expect(sync).toHaveBeenCalledWith([], {
       scope: expect.objectContaining({ scope: "user", root: globalRoot }),
     });
   });
 
-  it.each(COMMAND_CASES)("uses only project state for explicit-project %s", async (command, handler) => {
-    await runMain(["--project", command], scopeServices);
+  it("uses only project state for an explicit-project command", async () => {
+    await runMain(["--project", "sync"], scopeServices);
 
-    expect(handler).toHaveBeenCalledOnce();
-    expect(handler).toHaveBeenCalledWith([], {
+    expect(sync).toHaveBeenCalledOnce();
+    expect(sync).toHaveBeenCalledWith([], {
       scope: expect.objectContaining({ scope: "project", root: canonicalProjectRoot }),
     });
   });

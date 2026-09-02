@@ -228,17 +228,24 @@ describe("resolveWildcardSkills integration", () => {
   let stateDir: string;
   let projectRoot: string;
   let repoDir: string;
+  let repoInitialized: boolean;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "dotagents-wildcard-"));
     stateDir = join(tmpDir, "state");
     projectRoot = join(tmpDir, "project");
     repoDir = join(tmpDir, "repo");
+    repoInitialized = false;
 
     await mkdir(stateDir, { recursive: true });
     await mkdir(projectRoot, { recursive: true });
+  });
 
-    // Create a local git repo with multiple skills
+  async function ensureGitRepo(): Promise<void> {
+    if (repoInitialized) {
+      return;
+    }
+
     await mkdir(repoDir, { recursive: true });
     await initTestGitRepo(repoDir);
 
@@ -256,13 +263,15 @@ describe("resolveWildcardSkills integration", () => {
 
     await exec("git", ["add", "."], { cwd: repoDir });
     await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
-  });
+    repoInitialized = true;
+  }
 
   afterEach(async () => {
     await rm(tmpDir, { recursive: true });
   });
 
   it("discovers all skills from a git source", async () => {
+    await ensureGitRepo();
     const results = await resolveWildcardSkills(
       { source: `git:${repoDir}`, exclude: [] },
       { stateDir, projectRoot },
@@ -274,6 +283,7 @@ describe("resolveWildcardSkills integration", () => {
   });
 
   it("filters excluded skills", async () => {
+    await ensureGitRepo();
     const results = await resolveWildcardSkills(
       { source: `git:${repoDir}`, exclude: ["review"] },
       { stateDir, projectRoot },
@@ -284,6 +294,7 @@ describe("resolveWildcardSkills integration", () => {
   });
 
   it("scopes wildcard discovery to path and preserves repo-relative paths", async () => {
+    await ensureGitRepo();
     await mkdir(join(repoDir, "skills", "engineering", "deploy"), { recursive: true });
     await writeFile(
       join(repoDir, "skills", "engineering", "deploy", "SKILL.md"),
@@ -323,6 +334,7 @@ describe("resolveWildcardSkills integration", () => {
   });
 
   it("returns empty array when all skills excluded", async () => {
+    await ensureGitRepo();
     const results = await resolveWildcardSkills(
       { source: `git:${repoDir}`, exclude: ["pdf", "review"] },
       { stateDir, projectRoot },
@@ -500,6 +512,7 @@ describe("resolveWildcardSkills integration", () => {
   });
 
   it("each resolved skill has correct commit and path", async () => {
+    await ensureGitRepo();
     const results = await resolveWildcardSkills(
       { source: `git:${repoDir}`, exclude: [] },
       { stateDir, projectRoot },

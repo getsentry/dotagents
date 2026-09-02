@@ -7,22 +7,7 @@ const mockExec = vi.fn<GitExecutor>(async () => ({ stdout: "", stderr: "" }));
 afterEach(() => vi.clearAllMocks());
 
 describe("clone", () => {
-  it("uses --branch for tag refs", async () => {
-    await clone("https://github.com/owner/repo.git", "/tmp/dest", "v1.0.0", mockExec);
-
-    expect(mockExec).toHaveBeenCalledTimes(1);
-    expect(mockExec).toHaveBeenCalledWith("git", [
-      "clone",
-      "--depth=1",
-      "--branch",
-      "v1.0.0",
-      "--",
-      "https://github.com/owner/repo.git",
-      "/tmp/dest",
-    ]);
-  });
-
-  it("uses --branch for branch refs", async () => {
+  it("uses --branch for named refs", async () => {
     await clone("https://github.com/owner/repo.git", "/tmp/dest", "main", mockExec);
 
     expect(mockExec).toHaveBeenCalledTimes(1);

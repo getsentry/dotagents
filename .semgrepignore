@@ -1,7 +1,0 @@
-# Semgrep Ignore File
-# This file specifies intentional exclusions from security scanning
-
-# Documentation files containing examples of dangerous code patterns
-# These files document security vulnerabilities for educational purposes
-# and do not contain actual malicious code
-.agents/skills/skill-scanner/references/dangerous-code-patterns.md
