@@ -115,7 +115,7 @@ Shorthand (`owner/repo`) resolves to GitHub by default. Set `defaultRepositorySo
 The `agents` field tells dotagents which tools to configure:
 
 ```toml
-agents = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+agents = ["claude", "cursor", "codex", "vscode", "grok", "opencode", "pi"]
 ```
 
 | Agent | Config Dir | MCP Config | Hooks | Subagents |
@@ -153,7 +153,7 @@ dotagents can also import native runtime subagent files from `.claude/agents/`, 
 
 OpenCode reuses an existing project config from `.opencode/opencode.jsonc`, `.opencode/opencode.json`, `opencode.jsonc`, or `opencode.json`, in that order. New projects use `.opencode/opencode.jsonc`.
 
-Plugins are declared with `[[plugins]]` entries. In project scope, dotagents installs canonical bundles into `.agents/plugins/<name>/` and generates runtime plugin outputs such as `.claude-plugin/marketplace.json`, `.agents/plugins/<name>/.claude-plugin/plugin.json`, `.cursor-plugin/marketplace.json`, `.agents/plugins/<name>/.cursor-plugin/plugin.json`, `.agents/plugins/marketplace.json`, `.agents/plugins/<name>/.codex-plugin/plugin.json`, `.grok/plugins/<name>/`, `.opencode/skills/<skill>/`, OpenCode MCP entries, and Pi skill links under `.agents/skills/<skill>/` where supported. During legacy migration, generalized bundles can also project Markdown agents into `.opencode/agents/`; standard extension agents are preserved but are not projected yet:
+Plugins are declared with `[[plugins]]` entries. In project scope, dotagents installs canonical bundles into `.agents/plugins/<name>/`. It generates marketplaces for Claude, Cursor, and Codex. These clients also receive native manifests when required. Grok receives a managed copy. OpenCode receives skill links and MCP entries. Pi receives skill links under `.agents/skills/<skill>/`. During legacy migration, generalized bundles can also project Markdown agents into `.opencode/agents/`. Standard extension agents are preserved but are not projected yet:
 
 ```toml
 [[plugins]]
@@ -165,7 +165,23 @@ targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
 
 The canonical portable format is an [Agent Plugins](https://agent-plugins.org/) v1 bundle: required `plugin.json`, optional `skills/`, optional `mcp.json`, and reverse-domain client extensions. dotagents preserves those portable source files under `.agents/plugins/<name>/` and generates isolated target harnesses. OpenCode receives portable MCP servers under managed keys such as `plugin.<plugin>.<server>`; `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` are expanded into the installed bundle and persistent `.agents/plugin-data/` paths. Generated JSON uses adjacent ownership sidecars, while component symlinks use markers in reserved `.dotagents-managed/` directories, so client-owned JSON remains unchanged. Legacy generalized and native Claude/Cursor/Codex manifests remain discoverable during migration. A valid standard root may also coexist with authored native manifests as a hybrid compatibility bundle: the portable root remains the source of truth, reproducible native manifests are ignored in favor of portable generation, and manifests with behavior an adapter cannot represent are retained byte-for-byte only as matching-client fallbacks. Generated adapters are disposable output and are never imported back into the portable core. Native commands, agents, hooks, MCP, and other resources never leak into unrelated targets. Invalid standard roots still fail instead of falling back to legacy parsing.
 
-Global plugins install canonical bundles under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated under `~/.agents/`, the Codex marketplace is generated at `~/.agents/plugins/marketplace.json`, Grok plugins are copied into `~/.grok/plugins/`, OpenCode skills are linked into `~/.config/opencode/skills/`, portable MCP servers are merged into `~/.config/opencode/opencode.json`, and Pi skills are linked into `~/.agents/skills/`. `--user` remains a compatibility alias for `--global`.
+Global plugins install canonical bundles under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated under `~/.agents/`, and Codex uses `~/.agents/plugins/marketplace.json`. Grok plugins are copied into `~/.grok/plugins/`. OpenCode skills are linked into `~/.config/opencode/skills/`, and portable MCP servers are merged into `~/.config/opencode/opencode.json`. Pi skills are linked into `~/.agents/skills/`. `--user` remains a compatibility alias for `--global`.
+
+### Plugin activation
+
+Dotagents plugin installation and native client installation are separate stages. `dotagents add` and `dotagents install` install the canonical bundle and write each selected runtime output. Marketplace-based clients still require native registration and installation.
+
+| Agent ID | Dotagents output | Native action |
+| --- | --- | --- |
+| `claude` | Generated marketplace and native manifest when required | Register the Dotagents root, then install `<name>@dotagents` with the Claude CLI. |
+| `cursor` | Generated marketplace and native manifest when required | Use Customize, a team marketplace, `~/.cursor/plugins/local`, or `cursor-agent --plugin-dir`. Cursor has no marketplace CLI command. |
+| `codex` | Generated `.agents/plugins/marketplace.json` and native manifest when required | Register the correct source root, then install `<name>@dotagents-local` with the Codex CLI. |
+| `grok` | Managed copy under `.grok/plugins/` | None. Grok reads the managed copy directly. |
+| `opencode` | Managed skill links and MCP entries | None. OpenCode reads the generated projections directly. |
+| `pi` | Managed skill links under `.agents/skills/` | None. Pi reads this directory directly. |
+| `vscode` | No plugin adapter | None. VS Code does not receive Dotagents plugin output. |
+
+Native clients can cache registered marketplaces and installed plugins. A later Dotagents update or removal does not update those caches. The guide and CLI reference list project, global, update, and removal commands.
 
 Pi plugin targets are global skill projections rather than isolated plugin installs: a Pi-targeted plugin skill is added to `.agents/skills/` and is therefore visible to other clients that consume that shared directory.
 

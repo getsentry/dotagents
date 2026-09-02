@@ -2,7 +2,7 @@
 
 > Shared tooling for coding agents
 
-dotagents manages agent skills, MCP servers, hooks, subagents, and plugins declared in `agents.toml`, and handles symlinks and config generation so tools like Claude Code, Cursor, Codex, Grok, VS Code, and OpenCode are configured from a single source of truth.
+dotagents manages agent skills, MCP servers, hooks, subagents, and plugins declared in `agents.toml`. It generates configuration and symlinks for Claude Code, Cursor, Codex, Grok, VS Code, and OpenCode.
 
 Install: `npm install -g @sentry/dotagents`
 Run without installing: `npx @sentry/dotagents <command>`
@@ -311,7 +311,70 @@ Generated project-scope plugin outputs:
 
 Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated marketplaces and Claude/Cursor/Codex manifests use adjacent `.dotagents-managed` sidecars so client-owned JSON remains schema-native; legacy `metadata.managedBy` output remains recognizable during migration. Managed Grok copies and OpenCode/Pi component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when their on-disk `.dotagents-managed` marker proves ownership.
 
-Global plugins install under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated below `~/.agents/`, Codex uses `~/.agents/plugins/marketplace.json` with paths rooted at the user's home, Grok plugins are copied into `~/.grok/plugins/`, OpenCode skills use `~/.config/opencode/skills/`, portable plugin MCP servers are merged into `~/.config/opencode/opencode.json`, and Pi skill projections use `~/.agents/skills/`.
+Global plugins install under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated below `~/.agents/`, and Codex uses `~/.agents/plugins/marketplace.json` with paths rooted at the user's home. Grok plugins are copied into `~/.grok/plugins/`, OpenCode skills use `~/.config/opencode/skills/`, portable plugin MCP servers are merged into `~/.config/opencode/opencode.json`, and Pi skill projections use `~/.agents/skills/`.
+
+### Plugin activation
+
+Dotagents plugin installation and native client installation are separate stages. `dotagents add` and `dotagents install` install the canonical bundle and generate runtime output. Marketplace-based clients must register that output and install the plugin into native client state.
+
+| Agent ID | Project output | Native action |
+| --- | --- | --- |
+| `claude` | `.claude-plugin/marketplace.json` and a native manifest when required | Register the project root, then install `<name>@dotagents`. |
+| `cursor` | `.cursor-plugin/marketplace.json` and a native manifest when required | Use Customize, a team marketplace, a local plugin, or `cursor-agent --plugin-dir`. |
+| `codex` | `.agents/plugins/marketplace.json` and a native manifest when required | Register the project root, then install `<name>@dotagents-local`. |
+| `grok` | `.grok/plugins/<name>/` | None. Grok reads the managed copy directly. |
+| `opencode` | `.opencode/skills/` links and managed MCP entries | None. OpenCode reads the projections directly. |
+| `pi` | `.agents/skills/` links | None. Pi reads the links directly. |
+| `vscode` | No plugin output | None. VS Code has no plugin adapter. |
+
+Project activation:
+
+```shell
+claude plugin marketplace add ./ --scope project
+claude plugin install <name>@dotagents --scope project
+codex plugin marketplace add ./ --json
+codex plugin add <name>@dotagents-local --json
+```
+
+Default global activation:
+
+```shell
+claude plugin marketplace add "$HOME/.agents" --scope user
+claude plugin install <name>@dotagents --scope user
+codex plugin marketplace add "$HOME" --json
+codex plugin add <name>@dotagents-local --json
+```
+
+Codex uses `$HOME` because its default catalog is at `$HOME/.agents/plugins/marketplace.json`.
+
+Custom global activation:
+
+```shell
+claude plugin marketplace add "$DOTAGENTS_HOME" --scope user
+claude plugin install <name>@dotagents --scope user
+codex plugin marketplace add "$DOTAGENTS_HOME" --json
+codex plugin add <name>@dotagents-local --json
+```
+
+Cursor has no marketplace CLI command. Cursor Agent can load `.agents/plugins/<name>`, `$HOME/.agents/plugins/<name>`, or `$DOTAGENTS_HOME/plugins/<name>` with `--plugin-dir`. Cursor Desktop can load a canonical bundle from `~/.cursor/plugins/local/<name>`. A team marketplace requires a Git repository that contains the generated marketplace and every referenced plugin path.
+
+Native clients can cache installed plugins. After Dotagents updates a plugin, use the native update or reinstall flow. Replace `<scope>` with `project` or `user`:
+
+```shell
+claude plugin marketplace update dotagents
+claude plugin update <name>@dotagents --scope <scope>
+codex plugin remove <name>@dotagents-local --json
+codex plugin add <name>@dotagents-local --json
+```
+
+After `dotagents remove`, remove cached native state separately. Replace `<scope>` with `project` or `user`:
+
+```shell
+claude plugin uninstall <name>@dotagents --scope <scope>
+codex plugin remove <name>@dotagents-local --json
+```
+
+Dotagents updates and removes Grok, OpenCode, and Pi projections directly. `dotagents doctor` checks canonical bundles and generated outputs. It does not check native marketplace registration, plugin installation, enablement, or caches.
 
 ### Trust
 
@@ -501,7 +564,6 @@ Check selected-scope health: gitignore setup where applicable, installed skills 
 | `codex` | Codex | `.codex` | (reads `.agents/skills/` natively) | `.codex/config.toml` | Not supported | `.codex/agents/*.toml` |
 | `vscode` | VS Code Copilot | `.vscode` | (reads `.agents/skills/` natively) | `.vscode/mcp.json` | `.claude/settings.json` | Not supported |
 | `opencode` | OpenCode | `.opencode` | (reads `.agents/skills/` natively) | `.opencode/opencode.jsonc` by default | Not supported | `.opencode/agents/*.md` |
-
 Claude uses `.claude/skills/`, and Cursor shares the same Claude-compatible skills symlink. Codex, VS Code, and OpenCode read `.agents/skills/` directly.
 
 [Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively. Normal skills need no Pi-specific target or symlink configuration; plugin bundles can target `pi` when their `skills/` components should be exposed there.

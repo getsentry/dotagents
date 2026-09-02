@@ -65,6 +65,119 @@ dotagents --project install
 Commit `agents.toml`. Collaborators use the project-scoped `install` command to
 recreate managed local state.
 
+## Plugin activation
+
+Dotagents plugin installation and native client installation are separate stages:
+
+1. Dotagents installs the canonical bundle under `.agents/plugins/<name>/` for project scope or the global plugin directory.
+1. Dotagents writes the runtime output for each selected agent.
+1. Marketplace-based clients register that output and install the plugin into native client state.
+
+`dotagents add` and `dotagents install` complete the first two stages. They do not register a native marketplace or install a plugin into a native client cache.
+
+| Agent ID | Project output | Native action |
+| --- | --- | --- |
+| `claude` | `.claude-plugin/marketplace.json` and a native manifest when required | Register the project root, then install `<name>@dotagents`. |
+| `cursor` | `.cursor-plugin/marketplace.json` and a native manifest when required | Use Customize, a team marketplace, a local plugin, or `cursor-agent --plugin-dir`. |
+| `codex` | `.agents/plugins/marketplace.json` and a native manifest when required | Register the project root, then install `<name>@dotagents-local`. |
+| `grok` | `.grok/plugins/<name>/` | None. Grok reads the managed copy directly. |
+| `opencode` | `.opencode/skills/` links and `.opencode/opencode.jsonc` MCP entries | None. OpenCode reads the generated projections directly. |
+| `pi` | `.agents/skills/` links | None. Pi reads the generated links directly. |
+| `vscode` | No plugin output | None. VS Code has no Dotagents plugin adapter. |
+
+### Project activation
+
+Run these commands from the project root after `dotagents --project add` or `dotagents --project install`:
+
+```shell
+claude plugin marketplace add ./ --scope project
+claude plugin install <name>@dotagents --scope project
+
+codex plugin marketplace add ./ --json
+codex plugin add <name>@dotagents-local --json
+```
+
+Claude records project marketplace and plugin declarations in project scope. Codex records native plugin state for the current user, even when the source is a project directory.
+
+### Global activation
+
+The default global Dotagents root is `~/.agents`. Claude scans that root for its generated marketplace. Codex must scan `$HOME` because its generated catalog is at `$HOME/.agents/plugins/marketplace.json`:
+
+```shell
+claude plugin marketplace add "$HOME/.agents" --scope user
+claude plugin install <name>@dotagents --scope user
+
+codex plugin marketplace add "$HOME" --json
+codex plugin add <name>@dotagents-local --json
+```
+
+If `DOTAGENTS_HOME` overrides the global root, both clients register that custom root. Codex finds its catalog at `$DOTAGENTS_HOME/.agents/plugins/marketplace.json`:
+
+```shell
+claude plugin marketplace add "$DOTAGENTS_HOME" --scope user
+claude plugin install <name>@dotagents --scope user
+
+codex plugin marketplace add "$DOTAGENTS_HOME" --json
+codex plugin add <name>@dotagents-local --json
+```
+
+### Cursor activation
+
+Cursor has no marketplace command in its CLI. Choose one of these paths:
+
+- In Cursor Desktop, open Customize and install a plugin from the official marketplace or a team marketplace. Choose project or user scope.
+- A team admin can import a Git repository that contains the generated `.cursor-plugin/marketplace.json` and every referenced plugin path. Managed Dotagents bundles are usually local and gitignored, so the imported repository must contain those bundles.
+- For local Desktop use, link or copy the canonical bundle to `~/.cursor/plugins/local/<name>`, then restart Cursor or run **Developer: Reload Window**.
+- For Cursor Agent, load the current canonical bundle with `cursor-agent --plugin-dir <plugin-path>`.
+
+Project, default global, and custom global Cursor Agent examples use these canonical paths:
+
+```shell
+cursor-agent --plugin-dir .agents/plugins/<name>
+cursor-agent --plugin-dir "$HOME/.agents/plugins/<name>"
+cursor-agent --plugin-dir "$DOTAGENTS_HOME/plugins/<name>"
+```
+
+The generated global Cursor marketplace is at `~/.agents/.cursor-plugin/marketplace.json`. A custom root uses `$DOTAGENTS_HOME/.cursor-plugin/marketplace.json`. Cursor cannot register either local marketplace through a CLI command.
+
+### Update or remove a native plugin
+
+Run Dotagents `install` or `sync` first. Then refresh marketplace and installed-plugin state for each native client.
+
+For Claude, replace `<scope>` with `project` or `user`:
+
+```shell
+claude plugin marketplace update dotagents
+claude plugin update <name>@dotagents --scope <scope>
+```
+
+Codex reads a registered local marketplace from its current source path, but it caches each installed plugin. Remove and add the plugin again after Dotagents updates it:
+
+```shell
+codex plugin remove <name>@dotagents-local --json
+codex plugin add <name>@dotagents-local --json
+```
+
+Cursor team marketplaces require a manual refresh or configured auto refresh. Update or reinstall the plugin from Customize after the catalog refreshes. Local Desktop plugins use the current linked or copied files after Cursor reloads. Each `cursor-agent --plugin-dir` invocation loads the current directory.
+
+Remove native state separately when you remove a Dotagents declaration:
+
+```shell
+claude plugin uninstall <name>@dotagents --scope <scope>
+codex plugin remove <name>@dotagents-local --json
+```
+
+After the last plugin from a marketplace is removed, you can also remove its registration:
+
+```shell
+claude plugin marketplace remove dotagents --scope <scope>
+codex plugin marketplace remove dotagents-local --json
+```
+
+Remove a Cursor local-plugin link or copy yourself. For team or marketplace installations, uninstall the plugin from Customize. Dotagents updates and removes Grok, OpenCode, and Pi projections directly.
+
+`dotagents doctor` checks canonical bundles and Dotagents-managed runtime outputs. It does not prove that a native marketplace is registered or that a plugin is installed and enabled.
+
 ## What Gets Gitignored
 
 In project scope, dotagents keeps two generated files out of version control:
