@@ -501,8 +501,8 @@ describe("writeMcpConfigs", () => {
     const content = parseTomlObject(raw);
     expect(childObject(content, "mcp_servers")["authed-api"]).toEqual({
       url: "https://${API_HOST}/mcp",
-      // Pure ref: X-Api-Key = "${API_KEY}" → env_http_headers.API_KEY = "X-Api-Key"
-      env_http_headers: { API_KEY: "X-Api-Key" },
+      // Pure ref: X-Api-Key = "${API_KEY}" → env_http_headers.X-Api-Key = "API_KEY"
+      env_http_headers: { "X-Api-Key": "API_KEY" },
       // Mixed ref stays as literal in http_headers
       http_headers: { Authorization: "Bearer ${TOKEN}" },
     });
