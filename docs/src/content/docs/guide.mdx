@@ -101,7 +101,7 @@ copilot plugin marketplace add ./
 copilot plugin install <name>@dotagents
 ```
 
-Claude records project marketplace and plugin declarations in project scope. Codex records native plugin state for the current user, even when the source is a project directory. Copilot also records plugin state for the current user, keyed by `COPILOT_HOME`.
+Claude records project marketplace and plugin declarations in project scope. Codex records native plugin state for the current user, even when the source is a project directory. Copilot also records native plugin and marketplace state for the current user, under `COPILOT_HOME`, the Copilot CLI's own configuration and state directory (`~/.copilot` by default).
 
 ### Global activation
 
