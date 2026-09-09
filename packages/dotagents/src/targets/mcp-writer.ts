@@ -19,6 +19,7 @@ import type {
 import type { McpConfig } from "../config/schema.js";
 import { isSerializedObject, type SerializedObject } from "@sentry/dotagents-lib";
 import { hasErrorCode, isObject, isString } from "../utils/type-guards.js";
+import { resolveProjectPath } from "../scope.js";
 
 export interface McpResolvedTarget {
   filePath: string;
@@ -78,8 +79,8 @@ export function projectMcpResolver(projectRoot: string): McpTargetResolver {
     const candidates = [spec.filePath, ...(spec.fallbackFilePaths ?? [])];
     const relativePath = candidates.find((candidate) => existsSync(join(projectRoot, candidate)))
       ?? spec.filePath;
-    const filePath = join(projectRoot, relativePath);
-    const preferredFilePath = join(projectRoot, spec.filePath);
+    const filePath = resolveProjectPath(projectRoot, relativePath);
+    const preferredFilePath = resolveProjectPath(projectRoot, spec.filePath);
     return {
       filePath,
       shared: spec.shared,

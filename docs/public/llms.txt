@@ -366,7 +366,7 @@ Create the selected scope's `agents.toml` and managed directories. Automatically
 npx @sentry/dotagents install
 ```
 
-Install and refresh dependencies from `agents.toml`. Resolves sources, copies skills, installs subagents and plugins in the active scope, writes the lockfile, creates symlinks, and generates MCP, hook, subagent, and plugin configs. There is no separate update command. The deprecated `--frozen` flag prints a warning and performs the same normal install; use explicit `ref` values to pin sources.
+Install and refresh dependencies from `agents.toml`. Resolves sources, copies skills, installs subagents and plugins in the active scope, writes the lockfile, creates symlinks, and generates MCP, hook, subagent, and plugin configs. Project-managed paths must resolve inside the project root; traversal and outward-pointing symlinks are rejected, while in-project symlink aliases are allowed. There is no separate update command. The deprecated `--frozen` flag prints a warning and performs the same normal install; use explicit `ref` values to pin sources.
 
 ### add
 

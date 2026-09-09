@@ -144,6 +144,18 @@ targets = ["claude", "codex", "copilot", "cursor", "grok", "opencode", "pi"]
     await expect(loadConfig(configPath)).rejects.toThrow(/Duplicate wildcard source/);
   });
 
+  it("rejects symlink targets outside the project", async () => {
+    const configPath = join(dir, "agents.toml");
+    await writeFile(
+      configPath,
+      `version = 1\n\n[symlinks]\ntargets = ["../../.claude"]\n`,
+    );
+
+    await expect(loadConfig(configPath)).rejects.toThrow(
+      /Symlink targets must be contained within the project root/,
+    );
+  });
+
   it("rejects unknown subagent targets", async () => {
     const configPath = join(dir, "agents.toml");
     await writeFile(

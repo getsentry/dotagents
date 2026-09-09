@@ -155,7 +155,7 @@ Trust is checked before any network work in `dotagents add` for dependencies and
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `targets` | No | Array of directories to symlink. Each gets a `skills/` subdirectory pointing to `.agents/skills/`. Defaults to `[]`. |
+| `targets` | No | Array of relative directories contained within the project root. Each gets a `skills/` subdirectory pointing to `.agents/skills/`. Defaults to `[]`. |
 
 #### `[[skills]]`
 
@@ -551,6 +551,8 @@ dotagents install
 12. Write generated subagent files for each declared agent that supports custom subagents
 13. Write generated plugin runtime projections for each declared agent that supports plugins
 14. Print summary
+
+In project scope, every managed or generated path must remain physically contained within the project root. Paths with lexical traversal and existing symlinks that resolve outside the project are rejected; symlinks that resolve elsewhere inside the project remain valid. User-scope paths and a Git worktree's common hook directory are outside this project-path constraint by design.
 
 The deprecated `--frozen` option is accepted for compatibility, prints a warning, and follows this normal install flow. Use explicit `ref` values to pin sources.
 

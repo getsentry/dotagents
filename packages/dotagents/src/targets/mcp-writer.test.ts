@@ -120,6 +120,20 @@ describe("writeMcpConfigs", () => {
     });
   });
 
+  it("rejects a project config directory that resolves outside the project", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "dotagents-mcp-outside-"));
+    await symlink(outside, join(dir, ".codex"), process.platform === "win32" ? "junction" : "dir");
+
+    try {
+      await expect(
+        writeMcpConfigs(["codex"], [STDIO_SERVER], projectMcpResolver(dir)),
+      ).rejects.toThrow(/outside the project root/);
+      expect(existsSync(join(outside, "config.toml"))).toBe(false);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
   it("writes .opencode/opencode.jsonc by default", async () => {
     await writeMcpConfigs(["opencode"], [STDIO_SERVER], projectMcpResolver(dir));
 

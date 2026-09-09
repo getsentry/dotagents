@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
+import { hasErrorCode } from "./utils/type-guards.js";
 
 export type Scope = "project" | "user";
 
@@ -41,15 +42,15 @@ export function resolveScope(scope: Scope, projectRoot?: string): ScopeRoot {
   }
 
   const root = projectRoot ?? process.cwd();
-  const agentsDir = join(root, ".agents");
+  const agentsDir = resolveProjectPath(root, ".agents");
   return {
     scope: "project",
     root,
     agentsDir,
-    configPath: join(root, "agents.toml"),
-    lockPath: join(root, "agents.lock"),
-    skillsDir: join(agentsDir, "skills"),
-    pluginsDir: join(agentsDir, "plugins"),
+    configPath: resolveProjectPath(root, "agents.toml"),
+    lockPath: resolveProjectPath(root, "agents.lock"),
+    skillsDir: resolveProjectPath(root, ".agents/skills"),
+    pluginsDir: resolveProjectPath(root, ".agents/plugins"),
   };
 }
 
@@ -121,6 +122,56 @@ export class ScopeError extends Error {
     super(message);
     this.name = "ScopeError";
   }
+}
+
+/** Resolve a path while keeping project-scope reads and writes inside the project. */
+export function resolveProjectPath(projectRoot: string, projectPath: string): string {
+  const root = resolve(projectRoot);
+  const target = resolve(root, projectPath);
+
+  if (isOutside(root, target) || isOutside(physicalPath(root), physicalPath(target))) {
+    throw new ScopeError(
+      `Project path resolves outside the project root: ${projectPath}`,
+    );
+  }
+
+  return isAbsolute(projectPath) ? target : join(projectRoot, projectPath);
+}
+
+function physicalPath(path: string): string {
+  const target = resolve(path);
+  let existing = target;
+
+  while (true) {
+    try {
+      lstatSync(existing);
+      break;
+    } catch (err) {
+      if (!hasErrorCode(err, "ENOENT") && !hasErrorCode(err, "ENOTDIR")) {
+        throw new ScopeError(`Could not verify project path containment: ${path}`);
+      }
+      const parent = dirname(existing);
+      if (parent === existing) {
+        throw new ScopeError(`Could not verify project path containment: ${path}`);
+      }
+      existing = parent;
+    }
+  }
+
+  let physicalExisting: string;
+  try {
+    physicalExisting = realpathSync(existing);
+  } catch {
+    throw new ScopeError(
+      `Project path resolves outside the project root or through an invalid symlink: ${path}`,
+    );
+  }
+  return resolve(physicalExisting, relative(existing, target));
+}
+
+function isOutside(root: string, path: string): boolean {
+  const rel = relative(root, path);
+  return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
 }
 
 /** Resolve explicit project scope without falling back to global state. */
