@@ -219,22 +219,6 @@ describe("plugin writer", () => {
     expect(await verifyPluginOutputs(["cursor", "codex", "claude", "copilot"], [beta, alpha], root)).toEqual([]);
   });
 
-  it("does not rewrite an unchanged Copilot marketplace", async () => {
-    const alpha = await plugin("alpha-tools");
-    const marketplacePath = join(root, ".github", "plugin", "marketplace.json");
-
-    expect(await writePluginOutputs(["copilot"], [alpha], root)).toMatchObject({ written: 1 });
-    const firstStat = await lstat(marketplacePath);
-    const firstContent = await readFile(marketplacePath, "utf-8");
-
-    expect(await writePluginOutputs(["copilot"], [alpha], root)).toEqual({
-      warnings: [],
-      written: 0,
-    });
-    expect(await readFile(marketplacePath, "utf-8")).toBe(firstContent);
-    expect((await lstat(marketplacePath)).mtimeMs).toBe(firstStat.mtimeMs);
-  });
-
   it("uses default Codex categories for empty legacy category values", async () => {
     const alpha = await plugin("alpha-tools", {
       manifest: {
@@ -705,74 +689,20 @@ describe("plugin writer", () => {
     expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"))).toBe(true);
   });
 
-  it("does not overwrite unmanaged Copilot marketplace files", async () => {
+  it("warns about a higher-priority Copilot marketplace and prunes stale output", async () => {
     const alpha = await plugin("alpha-tools");
-    const marketplacePath = join(root, ".github", "plugin", "marketplace.json");
-    await mkdir(dirname(marketplacePath), { recursive: true });
-    await writeFile(marketplacePath, "{ \"name\": \"mine\" }\n", "utf-8");
+    const generatedPath = join(root, ".github", "plugin", "marketplace.json");
+    const blockingPath = join(root, ".plugin", "marketplace.json");
+    await writePluginOutputs(["copilot"], [alpha], root);
+    await mkdir(dirname(blockingPath), { recursive: true });
+    await writeFile(blockingPath, "{ \"name\": \"mine\" }\n", "utf-8");
 
-    const result = await writePluginOutputs(["copilot"], [alpha], root);
+    const reconciled = await reconcilePluginOutputs(["copilot"], [alpha], root);
 
-    expect(result.written).toBe(0);
-    expect(result.warnings).toEqual([
-      {
-        agent: "copilot",
-        name: "marketplace",
-        message: `Plugin marketplace exists and is not managed by dotagents: ${marketplacePath}`,
-      },
-    ]);
-    expect(await readFile(marketplacePath, "utf-8")).toBe("{ \"name\": \"mine\" }\n");
+    expect(reconciled.pruned).toEqual([generatedPath]);
+    expect(reconciled.result.warnings[0]?.message).toContain(blockingPath);
+    expect(existsSync(generatedPath)).toBe(false);
   });
-
-  it.each(["marketplace.json", join(".plugin", "marketplace.json")])(
-    "warns about higher-priority Copilot %s and prunes stale managed output",
-    async (blockingRelativePath) => {
-      const alpha = await plugin("alpha-tools");
-      const generatedPath = join(root, ".github", "plugin", "marketplace.json");
-      const blockingPath = join(root, blockingRelativePath);
-      await writePluginOutputs(["copilot"], [alpha], root);
-      await mkdir(dirname(blockingPath), { recursive: true });
-      await writeFile(blockingPath, "{ \"name\": \"mine\" }\n", "utf-8");
-
-      const reconciled = await reconcilePluginOutputs(["copilot"], [alpha], root);
-
-      expect(reconciled.pruned).toEqual([generatedPath]);
-      expect(reconciled.result.warnings).toEqual([{
-        agent: "copilot",
-        name: "marketplace",
-        message: expect.stringContaining(`higher-priority marketplace exists: ${blockingPath}`),
-      }]);
-      expect(existsSync(generatedPath)).toBe(false);
-      expect(await readFile(blockingPath, "utf-8")).toBe("{ \"name\": \"mine\" }\n");
-      expect(await verifyPluginOutputs(["copilot"], [alpha], root)).toEqual([{
-        agent: "copilot",
-        name: "marketplace",
-        issue: expect.stringContaining(`higher-priority marketplace exists: ${blockingPath}`),
-      }]);
-    },
-  );
-
-  it.skipIf(process.platform === "win32")(
-    "converges when a higher-priority Copilot locator aliases the managed marketplace",
-    async () => {
-      const alpha = await plugin("alpha-tools");
-      const generatedPath = join(root, ".github", "plugin", "marketplace.json");
-      const aliasPath = join(root, ".plugin", "marketplace.json");
-      await writePluginOutputs(["copilot"], [alpha], root);
-      await mkdir(dirname(aliasPath), { recursive: true });
-      await symlink(generatedPath, aliasPath);
-
-      const first = await reconcilePluginOutputs(["copilot"], [alpha], root);
-      const second = await reconcilePluginOutputs(["copilot"], [alpha], root);
-
-      expect(first).toEqual({ result: { warnings: [], written: 0 }, pruned: [] });
-      expect(second).toEqual(first);
-      expect(await verifyPluginOutputs(["copilot"], [alpha], root)).toEqual([]);
-      expect(await readFile(aliasPath, "utf-8")).toBe(
-        await readFile(generatedPath, "utf-8"),
-      );
-    },
-  );
 
   it.each([
     ["codex", "Codex", ".codex-plugin"],

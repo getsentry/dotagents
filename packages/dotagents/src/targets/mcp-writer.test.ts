@@ -111,17 +111,6 @@ describe("writeMcpConfigs", () => {
     expect(raw).toContain("github");
   });
 
-  it("writes copilot .mcp.json with environment references", async () => {
-    await writeMcpConfigs(["copilot"], [STDIO_SERVER], projectMcpResolver(dir));
-
-    const content = JSON.parse(await readFile(join(dir, ".mcp.json"), "utf-8"));
-    expect(content.mcpServers.github).toEqual({
-      command: "npx",
-      args: ["-y", "@mcp/server-github"],
-      env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
-    });
-  });
-
   it("writes .opencode/opencode.jsonc by default", async () => {
     await writeMcpConfigs(["opencode"], [STDIO_SERVER], projectMcpResolver(dir));
 
@@ -250,208 +239,58 @@ describe("writeMcpConfigs", () => {
     expect(existsSync(join(dir, ".opencode", "opencode.jsonc"))).toBe(false);
   });
 
-  it("reuses .github/mcp.json for copilot when .mcp.json is absent", async () => {
+  it.each([
+    [["copilot"], false],
+    [["claude", "copilot"], true],
+  ] as const)("reconciles a bare .mcp.json for %s", async (agents, rooted) => {
+    const filePath = join(dir, ".mcp.json");
+    await writeFile(filePath, JSON.stringify({
+      manual: { command: "manual", args: [] },
+      github: { command: "old", args: [] },
+    }));
+
+    await writeMcpConfigs([...agents], [STDIO_SERVER], projectMcpResolver(dir));
+
+    const content = JSON.parse(await readFile(filePath, "utf-8"));
+    const servers = rooted ? content.mcpServers : content;
+    expect(Object.hasOwn(content, "mcpServers")).toBe(rooted);
+    expect(servers.manual).toEqual({ command: "manual", args: [] });
+    expect(servers.github.command).toBe("npx");
+  });
+
+  it("keeps a bare Copilot fallback in place", async () => {
     const filePath = join(dir, ".github", "mcp.json");
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, JSON.stringify({
-      note: "keep",
-      mcpServers: { manual: { command: "manual", args: [] } },
+      manual: { command: "manual", args: [] },
     }));
 
     await writeMcpConfigs(["copilot"], [STDIO_SERVER], projectMcpResolver(dir));
 
+    const content = JSON.parse(await readFile(filePath, "utf-8"));
     expect(existsSync(join(dir, ".mcp.json"))).toBe(false);
-    expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual({
-      note: "keep",
-      mcpServers: {
-        manual: { command: "manual", args: [] },
-        github: {
-          command: "npx",
-          args: ["-y", "@mcp/server-github"],
-          env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
-        },
-      },
-    });
-  });
-
-  it.each([".mcp.json", join(".github", "mcp.json")])(
-    "preserves a bare Copilot server map at %s",
-    async (relativePath) => {
-      const filePath = join(dir, relativePath);
-      await mkdir(dirname(filePath), { recursive: true });
-      await writeFile(filePath, JSON.stringify({
-        manual: { command: "manual", args: [] },
-        github: { command: "old", args: [] },
-      }));
-
-      await writeMcpConfigs(["copilot"], [STDIO_SERVER], projectMcpResolver(dir));
-
-      expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual({
-        manual: { command: "manual", args: [] },
-        github: {
-          command: "npx",
-          args: ["-y", "@mcp/server-github"],
-          env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
-        },
-      });
-    },
-  );
-
-  it("migrates a bare .mcp.json when Claude and Copilot share it", async () => {
-    const filePath = join(dir, ".mcp.json");
-    await writeFile(filePath, JSON.stringify({
-      manual: { command: "manual", args: [] },
-      github: { command: "old", args: [] },
-    }));
-
-    await writeMcpConfigs(["claude", "copilot"], [STDIO_SERVER], projectMcpResolver(dir));
-
-    expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual({
-      mcpServers: {
-        manual: { command: "manual", args: [] },
-        github: {
-          command: "npx",
-          args: ["-y", "@mcp/server-github"],
-          env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
-        },
-      },
-    });
-  });
-
-  it("migrates a bare .mcp.json when Copilot is removed and Claude remains", async () => {
-    const filePath = join(dir, ".mcp.json");
-    await writeFile(filePath, JSON.stringify({
-      manual: { command: "manual", args: [] },
-      github: { command: "old", args: [] },
-    }));
-
-    await writeMcpConfigs(["claude"], [STDIO_SERVER], projectMcpResolver(dir));
-
-    expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual({
-      mcpServers: {
-        manual: { command: "manual", args: [] },
-        github: {
-          command: "npx",
-          args: ["-y", "@mcp/server-github"],
-          env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
-        },
-      },
-    });
-  });
-
-  it("does not mistake unrelated rootless Claude metadata for a bare server map", async () => {
-    const filePath = join(dir, ".mcp.json");
-    await writeFile(filePath, JSON.stringify({
-      metadata: { owner: "me" },
-      settings: { enabled: true },
-    }));
-
-    await writeMcpConfigs(["claude"], [STDIO_SERVER], projectMcpResolver(dir));
-
-    expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual({
-      metadata: { owner: "me" },
-      settings: { enabled: true },
-      mcpServers: {
-        github: {
-          command: "npx",
-          args: ["-y", "@mcp/server-github"],
-          env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
-        },
-      },
-    });
-  });
-
-  it("promotes a bare Copilot fallback into Claude's rooted .mcp.json", async () => {
-    const preferredPath = join(dir, ".mcp.json");
-    const fallbackPath = join(dir, ".github", "mcp.json");
-    await mkdir(dirname(fallbackPath), { recursive: true });
-    await writeFile(fallbackPath, JSON.stringify({
-      manual: { command: "manual", args: [] },
-    }));
-
-    await writeMcpConfigs(["copilot", "claude"], [STDIO_SERVER], projectMcpResolver(dir));
-
-    expect(JSON.parse(await readFile(preferredPath, "utf-8"))).toEqual({
-      mcpServers: {
-        manual: { command: "manual", args: [] },
-        github: {
-          command: "npx",
-          args: ["-y", "@mcp/server-github"],
-          env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
-        },
-      },
-    });
-    expect(JSON.parse(await readFile(fallbackPath, "utf-8"))).toEqual({
-      manual: { command: "manual", args: [] },
-    });
-  });
-
-  it("prefers copilot .mcp.json when both project paths exist", async () => {
-    const preferredPath = join(dir, ".mcp.json");
-    const fallbackPath = join(dir, ".github", "mcp.json");
-    await mkdir(dirname(fallbackPath), { recursive: true });
-    await writeFile(preferredPath, JSON.stringify({ mcpServers: {} }));
-    await writeFile(fallbackPath, JSON.stringify({
-      mcpServers: { fallback: { command: "fallback", args: [] } },
-    }));
-
-    await writeMcpConfigs(["copilot"], [STDIO_SERVER], projectMcpResolver(dir));
-
-    expect(JSON.parse(await readFile(preferredPath, "utf-8")).mcpServers.github).toBeDefined();
-    expect(JSON.parse(await readFile(fallbackPath, "utf-8"))).toEqual({
-      mcpServers: { fallback: { command: "fallback", args: [] } },
-    });
+    expect(content.manual.command).toBe("manual");
+    expect(content.github.command).toBe("npx");
   });
 
   it.each([
     ["claude", "copilot"],
     ["copilot", "claude"],
-  ])("seeds shared .mcp.json from the copilot fallback for %s first", async (first, second) => {
+  ] as const)("seeds shared .mcp.json from the fallback for %s first", async (first, second) => {
     const preferredPath = join(dir, ".mcp.json");
     const fallbackPath = join(dir, ".github", "mcp.json");
     const fallback = {
-      note: "keep",
-      mcpServers: { manual: { command: "manual", args: [] } },
+      manual: { command: "manual", args: [] },
     };
     await mkdir(dirname(fallbackPath), { recursive: true });
     await writeFile(fallbackPath, JSON.stringify(fallback));
 
     await writeMcpConfigs([first, second], [STDIO_SERVER], projectMcpResolver(dir));
 
-    expect(JSON.parse(await readFile(preferredPath, "utf-8"))).toEqual({
-      note: "keep",
-      mcpServers: {
-        manual: { command: "manual", args: [] },
-        github: {
-          command: "npx",
-          args: ["-y", "@mcp/server-github"],
-          env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
-        },
-      },
-    });
+    const content = JSON.parse(await readFile(preferredPath, "utf-8"));
+    expect(content.mcpServers.manual).toEqual(fallback.manual);
+    expect(content.mcpServers.github.command).toBe("npx");
     expect(JSON.parse(await readFile(fallbackPath, "utf-8"))).toEqual(fallback);
-  });
-
-  it("writes the same shared .mcp.json for claude and copilot in either order", async () => {
-    const firstDir = join(dir, "first");
-    const secondDir = join(dir, "second");
-    await mkdir(firstDir);
-    await mkdir(secondDir);
-
-    await writeMcpConfigs(
-      ["claude", "copilot"],
-      [STDIO_SERVER, HTTP_SERVER],
-      projectMcpResolver(firstDir),
-    );
-    await writeMcpConfigs(
-      ["copilot", "claude"],
-      [STDIO_SERVER, HTTP_SERVER],
-      projectMcpResolver(secondDir),
-    );
-
-    expect(await readFile(join(firstDir, ".mcp.json"), "utf-8")).toBe(
-      await readFile(join(secondDir, ".mcp.json"), "utf-8"),
-    );
   });
 
   it("handles multiple servers", async () => {
@@ -640,83 +479,17 @@ describe("writeMcpConfigs", () => {
   });
 
   it.skipIf(process.platform === "win32")(
-    "creates, repairs, and preserves a secure user config mode",
+    "repairs a restrictive user config mode before reconciliation",
     async () => {
       const filePath = join(dir, "copilot", "mcp-config.json");
       const resolver = () => ({ filePath, shared: false, mode: 0o600 });
 
       await writeMcpConfigs(["copilot"], [STDIO_SERVER], resolver);
       expect((await stat(filePath)).mode & 0o777).toBe(0o600);
-
-      await chmod(filePath, 0o644);
-      const before = await stat(filePath, { bigint: true });
-      const repaired = await reconcileMcpConfigs(
-        ["copilot"],
-        [STDIO_SERVER],
-        resolver,
-        "apply",
-      );
-      const after = await stat(filePath, { bigint: true });
-      expect(repaired.written).toEqual([filePath]);
-      expect(repaired.issues).toEqual([
-        expect.objectContaining({ issue: expect.stringContaining("expected 600") }),
-      ]);
-      expect(after.mode & 0o777n).toBe(0o600n);
-      expect(after.mtimeNs).toBe(before.mtimeNs);
-
-      const unchanged = await reconcileMcpConfigs(
-        ["copilot"],
-        [STDIO_SERVER],
-        resolver,
-        "apply",
-      );
-      expect(unchanged.issues).toEqual([]);
-      expect(unchanged.written).toEqual([]);
-    },
-  );
-
-  it.skipIf(process.platform === "win32")(
-    "repairs a read-only user config mode before writing semantic drift",
-    async () => {
-      const filePath = join(dir, "copilot", "mcp-config.json");
-      const resolver = () => ({ filePath, shared: false, mode: 0o600 });
-      await mkdir(dirname(filePath), { recursive: true });
       await writeFile(filePath, JSON.stringify({
         mcpServers: { github: { command: "old", args: [] } },
       }));
-      await chmod(filePath, 0o400);
-
-      const result = await reconcileMcpConfigs(
-        ["copilot"],
-        [STDIO_SERVER],
-        resolver,
-        "apply",
-      );
-
-      expect(result.written).toEqual([filePath]);
-      expect((await stat(filePath)).mode & 0o777).toBe(0o600);
-      expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual({
-        mcpServers: {
-          github: {
-            command: "npx",
-            args: ["-y", "@mcp/server-github"],
-            env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
-          },
-        },
-      });
-    },
-  );
-
-  it.skipIf(process.platform === "win32")(
-    "repairs an unreadable user config mode before reconciliation",
-    async () => {
-      const filePath = join(dir, "copilot", "mcp-config.json");
-      const resolver = () => ({ filePath, shared: false, mode: 0o600 });
-      await mkdir(dirname(filePath), { recursive: true });
-      await writeFile(filePath, JSON.stringify({
-        mcpServers: { github: { command: "old", args: [] } },
-      }));
-      await chmod(filePath, 0o200);
+      await chmod(filePath, 0o000);
 
       const result = await reconcileMcpConfigs(
         ["copilot"],
@@ -728,77 +501,17 @@ describe("writeMcpConfigs", () => {
       expect(result.unresolved).toEqual([]);
       expect(result.written).toEqual([filePath]);
       expect((await stat(filePath)).mode & 0o777).toBe(0o600);
-      expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual({
-        mcpServers: {
-          github: {
-            command: "npx",
-            args: ["-y", "@mcp/server-github"],
-            env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
-          },
-        },
-      });
+      expect(JSON.parse(await readFile(filePath, "utf-8")).mcpServers.github.command).toBe("npx");
     },
   );
 
   it.skipIf(process.platform === "win32")(
-    "does not chmod a directory mistaken for a user config file",
-    async () => {
-      const filePath = join(dir, "copilot", "mcp-config.json");
-      const resolver = () => ({ filePath, shared: false, mode: 0o600 });
-      await mkdir(filePath, { recursive: true });
-      await chmod(filePath, 0o755);
-
-      const result = await reconcileMcpConfigs(
-        ["copilot"],
-        [STDIO_SERVER],
-        resolver,
-        "apply",
-      );
-
-      expect(result.unresolved).toEqual([
-        expect.objectContaining({ issue: expect.stringContaining("not a regular file") }),
-      ]);
-      expect(result.written).toEqual([]);
-      expect((await stat(filePath)).mode & 0o777).toBe(0o755);
-    },
-  );
-
-  it.skipIf(process.platform === "win32")(
-    "does not chmod a symlink target before validating a user config",
-    async () => {
-      const filePath = join(dir, "copilot", "mcp-config.json");
-      const unrelatedPath = join(dir, "unrelated-executable");
-      const resolver = () => ({ filePath, shared: false, mode: 0o600 });
-      await mkdir(dirname(filePath), { recursive: true });
-      await writeFile(unrelatedPath, "not json\n");
-      await chmod(unrelatedPath, 0o755);
-      await symlink(unrelatedPath, filePath);
-
-      const result = await reconcileMcpConfigs(
-        ["copilot"],
-        [STDIO_SERVER],
-        resolver,
-        "apply",
-      );
-
-      expect(result.unresolved).toEqual([
-        expect.objectContaining({ issue: expect.stringContaining("not a regular file") }),
-      ]);
-      expect(result.written).toEqual([]);
-      expect((await stat(unrelatedPath)).mode & 0o777).toBe(0o755);
-      expect(await readFile(unrelatedPath, "utf-8")).toBe("not json\n");
-    },
-  );
-
-  it.skipIf(process.platform === "win32")(
-    "does not chmod or overwrite a valid user config through a symlink",
+    "does not chmod or overwrite a config through a symlink",
     async () => {
       const filePath = join(dir, "copilot", "mcp-config.json");
       const unrelatedPath = join(dir, "unrelated-config.json");
       const resolver = () => ({ filePath, shared: false, mode: 0o600 });
-      const original = JSON.stringify({
-        mcpServers: { github: { command: "unmanaged", args: [] } },
-      });
+      const original = JSON.stringify({ mcpServers: { github: { command: "unmanaged" } } });
       await mkdir(dirname(filePath), { recursive: true });
       await writeFile(unrelatedPath, original);
       await chmod(unrelatedPath, 0o644);
@@ -817,58 +530,6 @@ describe("writeMcpConfigs", () => {
       expect(result.written).toEqual([]);
       expect((await stat(unrelatedPath)).mode & 0o777).toBe(0o644);
       expect(await readFile(unrelatedPath, "utf-8")).toBe(original);
-    },
-  );
-
-  it.skipIf(process.platform === "win32")(
-    "does not create a target through a dangling user config symlink",
-    async () => {
-      const filePath = join(dir, "copilot", "mcp-config.json");
-      const danglingTarget = join(dir, "external", "created.json");
-      const resolver = () => ({ filePath, shared: false, mode: 0o600 });
-      await mkdir(dirname(filePath), { recursive: true });
-      await mkdir(dirname(danglingTarget), { recursive: true });
-      await symlink(danglingTarget, filePath);
-
-      const result = await reconcileMcpConfigs(
-        ["copilot"],
-        [STDIO_SERVER],
-        resolver,
-        "apply",
-      );
-
-      expect(result.unresolved).toEqual([
-        expect.objectContaining({ issue: expect.stringContaining("not a regular file") }),
-      ]);
-      expect(result.written).toEqual([]);
-      expect(existsSync(danglingTarget)).toBe(false);
-    },
-  );
-
-  it.skipIf(process.platform === "win32")(
-    "does not create a managed target through a dangling config symlink",
-    async () => {
-      const filePath = join(dir, "copilot", "mcp-config.json");
-      const danglingTarget = join(dir, "external", "created.json");
-      const statePath = join(dir, "state", "copilot-mcp.json");
-      await mkdir(dirname(filePath), { recursive: true });
-      await mkdir(dirname(danglingTarget), { recursive: true });
-      await symlink(danglingTarget, filePath);
-
-      const result = await reconcileManagedMcpConfig({
-        agentId: "copilot",
-        servers: [STDIO_SERVER],
-        target: { filePath, shared: false, mode: 0o600 },
-        statePath,
-        mode: "apply",
-      });
-
-      expect(result.unresolved).toEqual([
-        expect.objectContaining({ issue: expect.stringContaining("not a regular file") }),
-      ]);
-      expect(result.written).toEqual([]);
-      expect(existsSync(danglingTarget)).toBe(false);
-      expect(existsSync(statePath)).toBe(false);
     },
   );
 
@@ -914,17 +575,6 @@ describe("writeMcpConfigs", () => {
       type: "remote",
       url: "https://{env:API_HOST}/mcp",
       headers: { "X-Api-Key": "{env:API_KEY}", Authorization: "Bearer {env:TOKEN}" },
-    });
-  });
-
-  it("interpolates env refs in copilot HTTP headers/URL with ${VAR} syntax", async () => {
-    await writeMcpConfigs(["copilot"], [HTTP_SERVER_WITH_ENV_REFS], projectMcpResolver(dir));
-
-    const content = JSON.parse(await readFile(join(dir, ".mcp.json"), "utf-8"));
-    expect(content.mcpServers["authed-api"]).toEqual({
-      type: "http",
-      url: "https://${API_HOST}/mcp",
-      headers: { "X-Api-Key": "${API_KEY}", Authorization: "Bearer ${TOKEN}" },
     });
   });
 

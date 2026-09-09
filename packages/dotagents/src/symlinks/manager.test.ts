@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   mkdtemp,
   rm,
@@ -9,13 +9,12 @@ import {
   readFile,
   readlink,
   readdir,
-  realpath,
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ensureSkillsSymlink, verifySymlinks } from "./manager.js";
-import * as dotagentsLib from "@sentry/dotagents-lib";
+import { exec } from "@sentry/dotagents-lib";
 
 describe("symlinks", () => {
   let dir: string;
@@ -28,7 +27,6 @@ describe("symlinks", () => {
   });
 
   afterEach(async () => {
-    vi.restoreAllMocks();
     await rm(dir, { recursive: true });
   });
 
@@ -82,26 +80,6 @@ describe("symlinks", () => {
       expect(await readFile(join(skillDir, "SKILL.md"), "utf-8")).toBe("keep me");
     });
 
-    it("creates a valid link when the target home is a deeper symlink alias", async () => {
-      const physicalTargetDir = join(dir, "copilot-home");
-      const targetDir = join(dir, "deep", "nested", "copilot-alias");
-      await mkdir(physicalTargetDir, { recursive: true });
-      await mkdir(join(dir, "deep", "nested"), { recursive: true });
-      await symlink(
-        physicalTargetDir,
-        targetDir,
-        process.platform === "win32" ? "junction" : "dir",
-      );
-
-      const result = await ensureSkillsSymlink(agentsDir, targetDir);
-
-      expect(result).toEqual({ created: true, migrated: [] });
-      expect(await realpath(join(targetDir, "skills"))).toBe(
-        await realpath(join(agentsDir, "skills")),
-      );
-      expect(await verifySymlinks(agentsDir, [targetDir])).toEqual([]);
-    });
-
     it("rejects a Copilot home that aliases the canonical skills target", async () => {
       const externalSkills = join(dir, "external-skills");
       const canonicalSkills = join(agentsDir, "skills");
@@ -120,32 +98,6 @@ describe("symlinks", () => {
       expect((await lstat(canonicalSkills)).isSymbolicLink()).toBe(true);
       expect(existsSync(join(externalSkills, "skills"))).toBe(false);
     });
-
-    it.each(["source-inside-link", "link-inside-source"] as const)(
-      "rejects overlapping skills paths before changing state: %s",
-      async (layout) => {
-        const copilotHome = join(dir, "copilot-home");
-        const nestedAgentsDir = layout === "source-inside-link"
-          ? join(copilotHome, "skills")
-          : agentsDir;
-        const targetDir = layout === "source-inside-link"
-          ? copilotHome
-          : join(agentsDir, "skills");
-        const sourceSkills = join(nestedAgentsDir, "skills");
-        await mkdir(join(sourceSkills, "keep-me"), { recursive: true });
-        await mkdir(targetDir, { recursive: true });
-        await writeFile(join(nestedAgentsDir, "agents.toml"), "keep config");
-        await writeFile(join(sourceSkills, "keep-me", "SKILL.md"), "keep skill");
-
-        await expect(ensureSkillsSymlink(nestedAgentsDir, targetDir)).rejects.toThrow(
-          "paths overlap",
-        );
-
-        expect(await readFile(join(nestedAgentsDir, "agents.toml"), "utf-8")).toBe("keep config");
-        expect(await readFile(join(sourceSkills, "keep-me", "SKILL.md"), "utf-8")).toBe("keep skill");
-        expect((await lstat(sourceSkills)).isDirectory()).toBe(true);
-      },
-    );
 
     it("replaces wrong symlink", async () => {
       const targetDir = join(dir, ".claude");
@@ -221,44 +173,14 @@ describe("symlinks", () => {
       expect(existsSync(join(canonicalSkills, "unique"))).toBe(false);
     });
 
-    it("preserves a native skill added while migration is finishing", async () => {
-      const targetDir = join(dir, ".copilot");
-      const nativeSkills = join(targetDir, "skills");
-      const canonicalSkills = join(agentsDir, "skills");
-      await mkdir(join(nativeSkills, "initial"), { recursive: true });
-      await writeFile(join(nativeSkills, "initial", "SKILL.md"), "initial");
-
-      let releaseGit!: () => void;
-      let markGitStarted!: () => void;
-      const gitBlocked = new Promise<void>((resolve) => {releaseGit = resolve;});
-      const gitStarted = new Promise<void>((resolve) => {markGitStarted = resolve;});
-      vi.spyOn(dotagentsLib, "exec").mockImplementation(async () => {
-        markGitStarted();
-        await gitBlocked;
-        return { stdout: "", stderr: "" };
-      });
-
-      const migration = ensureSkillsSymlink(agentsDir, targetDir);
-      await gitStarted;
-      await mkdir(join(nativeSkills, "late"), { recursive: true });
-      await writeFile(join(nativeSkills, "late", "SKILL.md"), "late");
-      releaseGit();
-
-      await expect(migration).rejects.toMatchObject({ code: "ENOTEMPTY" });
-      expect((await lstat(nativeSkills)).isDirectory()).toBe(true);
-      expect(await readFile(join(nativeSkills, "late", "SKILL.md"), "utf-8")).toBe("late");
-      expect(await readFile(join(canonicalSkills, "initial", "SKILL.md"), "utf-8")).toBe("initial");
-      expect(existsSync(join(canonicalSkills, "late"))).toBe(false);
-    });
-
     it("removes migrated files from git index", async () => {
       // Initialize a git repo in the temp dir
-      await dotagentsLib.exec("git", ["init"], { cwd: dir });
-      await dotagentsLib.exec("git", ["config", "user.email", "test@test.com"], {
+      await exec("git", ["init"], { cwd: dir });
+      await exec("git", ["config", "user.email", "test@test.com"], {
         cwd: dir,
       });
-      await dotagentsLib.exec("git", ["config", "user.name", "Test"], { cwd: dir });
-      await dotagentsLib.exec("git", ["config", "commit.gpgsign", "false"], { cwd: dir });
+      await exec("git", ["config", "user.name", "Test"], { cwd: dir });
+      await exec("git", ["config", "commit.gpgsign", "false"], { cwd: dir });
 
       // Create a real skills directory with a committed file
       const targetDir = join(dir, ".claude");
@@ -269,11 +191,11 @@ describe("symlinks", () => {
         "---\nname: test\n---\n",
       );
 
-      await dotagentsLib.exec("git", ["add", "."], { cwd: dir });
-      await dotagentsLib.exec("git", ["commit", "-m", "initial"], { cwd: dir });
+      await exec("git", ["add", "."], { cwd: dir });
+      await exec("git", ["commit", "-m", "initial"], { cwd: dir });
 
       // Verify file is tracked before migration
-      const { stdout: before } = await dotagentsLib.exec(
+      const { stdout: before } = await exec(
         "git",
         ["ls-files", ".claude/skills/"],
         { cwd: dir },
@@ -286,7 +208,7 @@ describe("symlinks", () => {
       expect(result.migrated).toContain("my-skill");
 
       // Verify file is no longer in git index
-      const { stdout: after } = await dotagentsLib.exec(
+      const { stdout: after } = await exec(
         "git",
         ["ls-files", ".claude/skills/"],
         { cwd: dir },

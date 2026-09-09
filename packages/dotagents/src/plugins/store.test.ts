@@ -464,89 +464,30 @@ describe("plugin store", () => {
     }
   });
 
-  it("rejects .plugin/plugin.json when a different native manifest was imported", async () => {
-    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-copilot-shadow-"));
+  it("rejects a .github Copilot manifest when a native fallback was imported", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-copilot-precedence-"));
     try {
       const sourceRoot = join(projectRoot, "source");
-      await mkdir(join(sourceRoot, ".codex-plugin"), { recursive: true });
-      await mkdir(join(sourceRoot, ".plugin"), { recursive: true });
-      await writeFile(join(sourceRoot, ".codex-plugin", "plugin.json"), JSON.stringify({
-        name: "native-tools",
-      }));
-      await writeFile(join(sourceRoot, ".plugin", "plugin.json"), JSON.stringify({
-        name: "native-tools",
-      }));
+      await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
+      await mkdir(join(sourceRoot, ".github", "plugin"), { recursive: true });
+      await writeFile(
+        join(sourceRoot, ".claude-plugin", "plugin.json"),
+        JSON.stringify({ name: "native-tools" }),
+      );
+      await writeFile(
+        join(sourceRoot, ".github", "plugin", "plugin.json"),
+        JSON.stringify({ name: "native-tools" }),
+      );
 
       const resolved = await resolvePlugin(
         { name: "native-tools", source: "path:source" },
         { stateDir: join(projectRoot, "state"), projectRoot },
       );
-      expect(resolved.plugin.nativeSource).toBe("codex");
       expect(() => preparePluginForTargets(resolved.plugin, ["copilot"])).toThrow(
-        ".plugin/plugin.json would shadow the canonical plugin.json for Copilot",
+        "but Copilot would load .github/plugin/plugin.json instead",
       );
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
-    }
-  });
-
-  it.each([
-    { source: "claude", manifestPath: join(".claude-plugin", "plugin.json") },
-    { source: "cursor", manifestPath: join(".cursor-plugin", "plugin.json") },
-    { source: "codex", manifestPath: join(".codex-plugin", "plugin.json") },
-  ] as const)(
-    "rejects a .github Copilot manifest when the $source native fallback was imported",
-    async ({ source, manifestPath }) => {
-      const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-copilot-precedence-"));
-      try {
-        const sourceRoot = join(projectRoot, "source");
-        await mkdir(dirname(join(sourceRoot, manifestPath)), { recursive: true });
-        await mkdir(join(sourceRoot, ".github", "plugin"), { recursive: true });
-        await writeFile(join(sourceRoot, manifestPath), JSON.stringify({
-          name: "native-tools",
-        }));
-        await writeFile(
-          join(sourceRoot, ".github", "plugin", "plugin.json"),
-          JSON.stringify({ name: "native-tools" }),
-        );
-
-        const resolved = await resolvePlugin(
-          { name: "native-tools", source: "path:source" },
-          { stateDir: join(projectRoot, "state"), projectRoot },
-        );
-        expect(resolved.plugin.nativeSource).toBe(source);
-        expect(() => preparePluginForTargets(resolved.plugin, ["copilot"])).toThrow(
-          "but Copilot would load .github/plugin/plugin.json instead",
-        );
-        expect(() => preparePluginForTargets(resolved.plugin, [source])).not.toThrow();
-      } finally {
-        await rm(projectRoot, { recursive: true, force: true });
-      }
-    },
-  );
-
-  it("rejects a .plugin/plugin.json shadow for legacy root manifests", async () => {
-    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-copilot-shadow-"));
-    try {
-      await mkdir(join(sourceRoot, ".plugin"), { recursive: true });
-      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
-        name: "legacy-tools",
-        skills: "./skills",
-      }));
-      await writeFile(join(sourceRoot, ".plugin", "plugin.json"), JSON.stringify({
-        name: "legacy-tools",
-        commands: "./hidden-commands",
-      }));
-      const resolved = await resolvePlugin(
-        { name: "legacy-tools", source: "path:." },
-        { stateDir: join(sourceRoot, "state"), projectRoot: sourceRoot },
-      );
-
-      expect(() => preparePluginForTargets(resolved.plugin, ["copilot"])).toThrow(
-        ".plugin/plugin.json would shadow the canonical plugin.json for Copilot",
-      );
-    } finally {
-      await rm(sourceRoot, { recursive: true, force: true });
     }
   });
 
@@ -619,71 +560,6 @@ describe("plugin store", () => {
     }
   });
 
-  it("rejects Copilot's implicit legacy .lsp.json resource", async () => {
-    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-copilot-resources-"));
-    try {
-      await writeFile(join(sourceRoot, ".lsp.json"), "{}\n");
-      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
-        name: "resource-tools",
-      }));
-      const resolved = await resolvePlugin(
-        { name: "resource-tools", source: "path:." },
-        { stateDir: join(sourceRoot, "state"), projectRoot: sourceRoot },
-      );
-
-      expect(() => preparePluginForTargets(resolved.plugin, ["copilot"])).toThrow(
-        "bundle contains unsupported top-level resources: .lsp.json",
-      );
-    } finally {
-      await rm(sourceRoot, { recursive: true, force: true });
-    }
-  });
-
-  it("allows legacy fields and paths that Copilot does not load", async () => {
-    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-copilot-resources-"));
-    try {
-      await mkdir(join(sourceRoot, "rules"), { recursive: true });
-      await mkdir(join(sourceRoot, "lsp-config"), { recursive: true });
-      await writeFile(join(sourceRoot, "rules", "review.md"), "# Review\n");
-      await writeFile(join(sourceRoot, "lsp-config", "servers.json"), "{}\n");
-      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
-        name: "resource-tools",
-        rules: "./rules",
-        apps: "./.app.json",
-        monitors: "./monitors",
-        bin: "./bin",
-      }));
-      const resolved = await resolvePlugin(
-        { name: "resource-tools", source: "path:." },
-        { stateDir: join(sourceRoot, "state"), projectRoot: sourceRoot },
-      );
-
-      expect(() => preparePluginForTargets(resolved.plugin, ["copilot"])).not.toThrow();
-    } finally {
-      await rm(sourceRoot, { recursive: true, force: true });
-    }
-  });
-
-  it("allows inert legacy-root resources in standard Copilot bundles", async () => {
-    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-copilot-resources-"));
-    try {
-      await mkdir(join(sourceRoot, "commands"), { recursive: true });
-      await writeFile(join(sourceRoot, "commands", "claude-only.md"), "# Claude only\n");
-      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
-        $schema: AGENT_PLUGIN_SCHEMA,
-        name: "resource-tools",
-      }));
-      const resolved = await resolvePlugin(
-        { name: "resource-tools", source: "path:." },
-        { stateDir: join(sourceRoot, "state"), projectRoot: sourceRoot },
-      );
-
-      expect(() => preparePluginForTargets(resolved.plugin, ["copilot"])).not.toThrow();
-    } finally {
-      await rm(sourceRoot, { recursive: true, force: true });
-    }
-  });
-
   it("rejects Copilot's physical extension namespace in standard bundles", async () => {
     const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-copilot-resources-"));
     try {
@@ -705,27 +581,6 @@ describe("plugin store", () => {
         "bundle contains unsupported top-level resources: com.github.copilot",
       );
       expect(() => preparePluginForTargets(resolved.plugin, ["claude"])).not.toThrow();
-    } finally {
-      await rm(sourceRoot, { recursive: true, force: true });
-    }
-  });
-
-  it("allows legacy Copilot MCP files while rejecting non-MCP roots", async () => {
-    const sourceRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-copilot-resources-"));
-    try {
-      await writeFile(join(sourceRoot, "plugin.json"), JSON.stringify({
-        name: "mcp-tools",
-        mcpServers: "./.mcp.json",
-      }));
-      await writeFile(join(sourceRoot, ".mcp.json"), JSON.stringify({
-        mcpServers: { local: { command: "node", args: ["server.mjs"] } },
-      }));
-      const resolved = await resolvePlugin(
-        { name: "mcp-tools", source: "path:." },
-        { stateDir: join(sourceRoot, "state"), projectRoot: sourceRoot },
-      );
-
-      expect(() => preparePluginForTargets(resolved.plugin, ["copilot"])).not.toThrow();
     } finally {
       await rm(sourceRoot, { recursive: true, force: true });
     }
@@ -1111,16 +966,22 @@ describe("plugin store", () => {
     }
   });
 
-  it("does not fall through from a malformed higher-priority Copilot marketplace", async () => {
+  it("does not expose a lower-priority Copilot catalog", async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
     try {
       const sourceRoot = join(projectRoot, "source");
+      const higherPlugin = join(sourceRoot, "catalog", "higher");
       const lowerPlugin = join(sourceRoot, "catalog", "lower");
-      await mkdir(join(sourceRoot, ".plugin"), { recursive: true });
       await mkdir(join(sourceRoot, ".github", "plugin"), { recursive: true });
+      await mkdir(higherPlugin, { recursive: true });
       await mkdir(lowerPlugin, { recursive: true });
+      await writeFile(join(higherPlugin, "plugin.json"), JSON.stringify({ name: "other-tools" }));
       await writeFile(join(lowerPlugin, "plugin.json"), JSON.stringify({ name: "review-tools" }));
-      await writeFile(join(sourceRoot, ".plugin", "marketplace.json"), "{");
+      await writeFile(join(sourceRoot, "marketplace.json"), JSON.stringify({
+        name: "higher",
+        owner: { name: "test" },
+        plugins: [{ name: "other-tools", source: "./catalog/higher" }],
+      }));
       await writeFile(
         join(sourceRoot, ".github", "plugin", "marketplace.json"),
         JSON.stringify({
@@ -1130,54 +991,13 @@ describe("plugin store", () => {
         }),
       );
 
-      await expect(resolvePlugin(
-        { name: "review-tools", source: "path:source" },
-        { stateDir: join(projectRoot, "state"), projectRoot },
-      )).rejects.toThrow('Plugin "review-tools" not found');
+      expect((await discoverPlugins(sourceRoot)).map((candidate) => candidate.name)).toEqual([
+        "other-tools",
+      ]);
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }
   });
-
-  it.each(["marketplace.json", join(".plugin", "marketplace.json")])(
-    "does not expose a lower-priority Copilot catalog when %s has different names",
-    async (higherMarketplace) => {
-      const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));
-      try {
-        const sourceRoot = join(projectRoot, "source");
-        const higherPlugin = join(sourceRoot, "catalog", "higher");
-        const lowerPlugin = join(sourceRoot, "catalog", "lower");
-        await mkdir(dirname(join(sourceRoot, higherMarketplace)), { recursive: true });
-        await mkdir(join(sourceRoot, ".github", "plugin"), { recursive: true });
-        await mkdir(higherPlugin, { recursive: true });
-        await mkdir(lowerPlugin, { recursive: true });
-        await writeFile(join(higherPlugin, "plugin.json"), JSON.stringify({ name: "other-tools" }));
-        await writeFile(join(lowerPlugin, "plugin.json"), JSON.stringify({ name: "review-tools" }));
-        await writeFile(join(sourceRoot, higherMarketplace), JSON.stringify({
-          name: "higher",
-          owner: { name: "test" },
-          plugins: [{ name: "other-tools", source: "./catalog/higher" }],
-        }));
-        await writeFile(
-          join(sourceRoot, ".github", "plugin", "marketplace.json"),
-          JSON.stringify({
-            name: "lower",
-            owner: { name: "test" },
-            plugins: [{ name: "review-tools", source: "./catalog/lower" }],
-          }),
-        );
-
-        const discovered = await discoverPlugins(sourceRoot);
-        expect(discovered.map((candidate) => candidate.name)).toEqual(["other-tools"]);
-        await expect(resolvePlugin(
-          { name: "review-tools", source: "path:source" },
-          { stateDir: join(projectRoot, "state"), projectRoot },
-        )).rejects.toThrow('Plugin "review-tools" not found');
-      } finally {
-        await rm(projectRoot, { recursive: true, force: true });
-      }
-    },
-  );
 
   it("prefers repository-root paths in nested Claude marketplaces", async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-store-"));

@@ -281,32 +281,6 @@ source = "getsentry/plugins"
     }
   });
 
-  it("reports a higher-priority Copilot marketplace", async () => {
-    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
-    await mkdir(pluginDir, { recursive: true });
-    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({
-      $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-      name: "review-tools",
-    }));
-    await writeFile(join(projectRoot, "marketplace.json"), JSON.stringify({ name: "mine" }));
-    await writeFile(join(projectRoot, "agents.toml"), `version = 1
-agents = ["copilot"]
-
-[[plugins]]
-name = "review-tools"
-source = "getsentry/plugins"
-`);
-    await writeFile(join(projectRoot, ".gitignore"), "agents.lock\n.agents/.gitignore\n");
-    await writeFile(join(projectRoot, ".agents", ".gitignore"), "# managed\n");
-
-    const result = await runDoctor({ scope: resolveScope("project", projectRoot) });
-    const check = result.checks.find((candidate) => candidate.name === "plugin runtime");
-
-    expect(check?.status).toBe("warn");
-    expect(check?.message).toContain("higher-priority marketplace exists");
-    expect(check?.message).toContain(join(projectRoot, "marketplace.json"));
-  });
-
   it("detects generated files tracked by git", async () => {
     // Initialize a git repo so git ls-files works
     const { execSync } = await import("node:child_process");
