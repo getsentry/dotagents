@@ -1,5 +1,32 @@
 # Changelog
 
+## 3.1.0
+
+### New Features ✨
+
+- (copilot) Add skills, MCP, and plugin support by @mishamilovidov in [#166](https://github.com/getsentry/dotagents/pull/166)
+- (plugins) Support hybrid plugin bundles by @gricha in [#169](https://github.com/getsentry/dotagents/pull/169)
+
+### Bug Fixes 🐛
+
+- (codex) Pass through stdio MCP environment variables by @gricha in [#181](https://github.com/getsentry/dotagents/pull/181)
+- (project) Contain managed paths within project root by @gricha in [#182](https://github.com/getsentry/dotagents/pull/182)
+- Correct codex environment header mapping by @mishamilovidov in [#173](https://github.com/getsentry/dotagents/pull/173)
+- Remove nested mcp tables by @mishamilovidov in [#174](https://github.com/getsentry/dotagents/pull/174)
+
+### Documentation 📚
+
+- (mcp) Recommend Streamable HTTP by @gricha in [#168](https://github.com/getsentry/dotagents/pull/168)
+- Align scope and plugin guidance by @gricha in [#164](https://github.com/getsentry/dotagents/pull/164)
+
+### Internal Changes 🔧
+
+- (deps) Patch root and docs vulnerabilities by @gricha in [#165](https://github.com/getsentry/dotagents/pull/165)
+- (lint) Enforce anti-slop rules by @gricha in [#170](https://github.com/getsentry/dotagents/pull/170)
+- Prune redundant coverage and stale tooling by @gricha in [#180](https://github.com/getsentry/dotagents/pull/180)
+- Ban untyped string records by @gricha in [#160](https://github.com/getsentry/dotagents/pull/160)
+- Add ast-grep lint rules by @gricha in [#159](https://github.com/getsentry/dotagents/pull/159)
+
 ## 3.0.1
 
 ### Bug Fixes 🐛
