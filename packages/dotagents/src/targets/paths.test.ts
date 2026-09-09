@@ -71,6 +71,22 @@ describe("getUserMcpTarget", () => {
     }
   });
 
+  it("copilot treats an empty COPILOT_HOME as unset", () => {
+    const previous = process.env["COPILOT_HOME"];
+    process.env["COPILOT_HOME"] = "";
+    try {
+      expect(getUserMcpTarget("copilot").filePath).toBe(
+        join(home, ".copilot", "mcp-config.json"),
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env["COPILOT_HOME"];
+      } else {
+        process.env["COPILOT_HOME"] = previous;
+      }
+    }
+  });
+
   it("throws for unknown agent", () => {
     expect(() => getUserMcpTarget("emacs")).toThrow("Unknown agent");
   });
@@ -111,10 +127,12 @@ describe("skill discovery paths", () => {
     expect(agent.userSkillsParentDirs).toBeUndefined();
   });
 
-  it("copilot reads .agents/skills/ natively", () => {
+  it("copilot reads project skills natively and projects global skills into its home", () => {
     const agent = getAgent("copilot")!;
     expect(agent.skillsParentDir).toBeUndefined();
-    expect(agent.userSkillsParentDirs).toBeUndefined();
+    expect(agent.userSkillsParentDirs).toEqual([
+      process.env["COPILOT_HOME"] || join(home, ".copilot"),
+    ]);
   });
 });
 

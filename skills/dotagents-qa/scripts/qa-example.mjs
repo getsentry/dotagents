@@ -11,6 +11,7 @@ import {
   mkdtempSync,
   realpathSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -227,7 +228,11 @@ async function runCopilotPluginProof() {
   prepareClientHarness("copilot");
   rmSync(copilotHomeDir, { recursive: true, force: true });
   mkdirSync(copilotHomeDir, { recursive: true });
-  const env = { ...fixtureEnv, COPILOT_HOME: copilotHomeDir };
+  const env = {
+    ...fixtureEnv,
+    COPILOT_HOME: copilotHomeDir,
+    COPILOT_ALLOW_ALL: "true",
+  };
 
   execFileSync("copilot", ["plugin", "marketplace", "add", projectDir], {
     cwd: projectDir,
@@ -299,7 +304,7 @@ async function runCopilotPluginProof() {
     || local.enabled !== true
     || local.type !== "stdio"
     || local.command !== "node"
-    || JSON.stringify(local.args) !== JSON.stringify(["${PLUGIN_ROOT}/server.mjs"])
+    || JSON.stringify(local.args) !== JSON.stringify(["${PLUGIN_ROOT}/runtime/server.mjs"])
     || !isStringValue(local.env?.PLUGIN_ROOT)
     || realpathSync(local.env.PLUGIN_ROOT) !== pluginRoot
   ) {
@@ -389,7 +394,7 @@ async function runOpenCodePluginProof() {
   const pluginData = realpathSync(join(projectDir, ".agents", "plugin-data", "qa-tools"));
   if (JSON.stringify(local) !== JSON.stringify({
     type: "local",
-    command: ["node", join(pluginRoot, "server.mjs")],
+    command: ["node", join(pluginRoot, "runtime", "server.mjs")],
     cwd: pluginRoot,
     environment: {
       PLUGIN_ROOT: pluginRoot,
@@ -411,6 +416,15 @@ async function runOpenCodePluginProof() {
 function prepareClientHarness(agent) {
   rmSync(projectDir, { recursive: true, force: true });
   cpSync(exampleRoot, projectDir, { recursive: true });
+  if (agent === "copilot") {
+    const sourcePluginDir = join(projectDir, "local-plugins", "qa-tools");
+    const copilotManifestDir = join(sourcePluginDir, ".github", "plugin");
+    mkdirSync(copilotManifestDir, { recursive: true });
+    renameSync(
+      join(sourcePluginDir, "plugin.json"),
+      join(copilotManifestDir, "plugin.json"),
+    );
+  }
   const configPath = join(projectDir, "agents.toml");
   const config = readFileSync(configPath, "utf-8").replace(/^agents = .*$/m, `agents = ["${agent}"]`);
   writeFileSync(configPath, config);
@@ -584,7 +598,7 @@ function assertPluginOutputs() {
   assertFile(".agents/plugins/qa-tools/mcp.json");
   assertFileIncludes(".agents/plugins/qa-tools/mcp.json", '"fixture-stdio"');
   assertFileIncludes(".agents/plugins/qa-tools/mcp.json", '"fixture-http"');
-  assertFile(".agents/plugins/qa-tools/server.mjs");
+  assertFile(".agents/plugins/qa-tools/runtime/server.mjs");
   assertFile(".agents/plugins/qa-tools/skills/plugin-qa/SKILL.md");
   assertFile(".agents/plugins/qa-tools/com.example.client/commands/plugin-qa.md");
   assertFile(".agents/plugins/qa-tools/com.example.client/agents/plugin-reviewer.md");
@@ -638,7 +652,7 @@ function assertPluginOutputs() {
 
   assertFile(".grok/plugins/qa-tools/.dotagents-managed");
   assertFile(".grok/plugins/qa-tools/plugin.json");
-  assertFile(".grok/plugins/qa-tools/server.mjs");
+  assertFile(".grok/plugins/qa-tools/runtime/server.mjs");
   assertFile(".grok/plugins/qa-tools/com.example.client/commands/plugin-qa.md");
   assertFile(".grok/plugins/qa-tools/com.example.client/agents/plugin-reviewer.md");
   assertFileIncludes(".grok/plugins/qa-tools/skills/plugin-qa/SKILL.md", "DOTAGENTS_PLUGIN_QA_FIXTURE");

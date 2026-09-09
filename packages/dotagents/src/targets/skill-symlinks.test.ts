@@ -20,7 +20,7 @@ describe("skillSymlinkTargets", () => {
     ]);
   });
 
-  it("returns deduplicated user targets and skips native readers", () => {
+  it("returns deduplicated user targets and skips only global native readers", () => {
     const scope = resolveScope("user");
 
     expect(
@@ -29,7 +29,10 @@ describe("skillSymlinkTargets", () => {
         ["claude", "cursor", "codex", "vscode", "opencode", "copilot"],
         [".legacy"],
       ),
-    ).toEqual([join(homedir(), ".claude")]);
+    ).toEqual([
+      join(homedir(), ".claude"),
+      process.env["COPILOT_HOME"] || join(homedir(), ".copilot"),
+    ]);
   });
 
   it("returns absolute project targets for a relative scope root", () => {

@@ -28,7 +28,7 @@ export function getUserMcpTarget(agentId: string): UserMcpTarget {
       return { filePath: join(home, ".config", "opencode", "opencode.json"), shared: true };
     case "copilot": {
       const target: UserMcpTarget = {
-        filePath: join(process.env["COPILOT_HOME"] ?? join(home, ".copilot"), "mcp-config.json"),
+        filePath: join(process.env["COPILOT_HOME"] || join(home, ".copilot"), "mcp-config.json"),
         shared: false,
       };
       if (process.platform !== "win32") {target.mode = 0o600;}

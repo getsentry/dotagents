@@ -9,6 +9,7 @@ import { loadLockfile } from "../../lockfile/loader.js";
 import { loadConfig } from "../../config/loader.js";
 import { resolveScope } from "../../scope.js";
 import { DOTAGENTS_SUBAGENT_MARKER } from "../../subagents/format.js";
+import { AGENT_PLUGIN_SCHEMA } from "../../plugins/schema.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -88,6 +89,33 @@ describe("runSync", () => {
 
     expect(result.adopted).toEqual([]);
     expect((await loadConfig(join(projectRoot, "agents.toml"))).skills).toEqual([]);
+  });
+
+  it("reports a Copilot marketplace precedence conflict once", async () => {
+    const pluginDir = join(projectRoot, ".agents", "plugins", "review-tools");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "review-tools",
+    }));
+    await writeFile(join(projectRoot, "marketplace.json"), JSON.stringify({ name: "mine" }));
+    await writeFile(join(projectRoot, "agents.toml"), `version = 1
+agents = ["copilot"]
+
+[[plugins]]
+name = "review-tools"
+source = "getsentry/plugins"
+`);
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+    const conflicts = result.issues.filter(
+      (issue) => issue.type === "plugins"
+        && issue.message.includes("higher-priority marketplace exists"),
+    );
+
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]?.message).toContain(join(projectRoot, "marketplace.json"));
+    expect(existsSync(join(projectRoot, ".github", "plugin", "marketplace.json"))).toBe(false);
   });
 
   it("prunes stale managed skills removed from config instead of re-adopting them", async () => {

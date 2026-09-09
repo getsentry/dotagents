@@ -4,7 +4,7 @@ description: Manage dotagents dependencies and runtime config. Use when asked to
 spec_hash: 98920b9b8a05
 ---
 
-Manage dependencies declared in `agents.toml`. dotagents resolves skills, subagents, plugins, MCP servers, and hooks so agent tools (Claude Code, Cursor, Codex, Grok, VS Code, OpenCode, Pi) can use shared global or project config.
+Manage dependencies declared in `agents.toml`. dotagents resolves skills, subagents, plugins, MCP servers, and hooks so agent tools (Claude Code, GitHub Copilot, Cursor, Codex, Grok, VS Code, OpenCode, Pi) can use shared global or project config.
 
 ## Running dotagents
 
@@ -119,6 +119,7 @@ When trust blocks a source, inspect syntax without mutation using `npx @sentry/d
 - **Hooks**: `[[hooks]]` declarations write tool-event hooks to each agent's config
 - **Subagents**: `[[subagents]]` declarations install portable or native subagent files
 - **Plugins**: `[[plugins]]` declarations install canonical bundles and generate runtime-specific plugin outputs
+- **Copilot**: Project skills are native; global skills link into `COPILOT_HOME/skills`; project MCP and canonical plugin bundles receive thin native projections without hooks or subagents
 - **Gitignore**: In project scope, managed skills, subagents, and plugin bundles are gitignored; custom in-place sources are tracked
 - **Global scope**: the default; manages dependencies in `~/.agents/` shared across projects, including plugins
 - **Project scope**: `--project` manages repository-local `agents.toml`, `agents.lock`, and `.agents/`

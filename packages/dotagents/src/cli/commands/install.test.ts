@@ -216,7 +216,7 @@ describe("runInstall", () => {
     await writeFile(
       join(projectRoot, "agents.toml"),
       `version = 1
-agents = ["codex", "claude", "copilot", "cursor"]
+agents = ["codex", "claude", "cursor"]
 
 [[plugins]]
 name = "review-tools"
@@ -291,7 +291,6 @@ source = "path:plugin-source/review-tools"
       join(projectRoot, ".agents", "plugins", "review-tools"),
     );
     expect(await readFile(join(projectRoot, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(claudeMarketplaceJson);
-    expect(await readFile(join(projectRoot, ".github", "plugin", "marketplace.json"), "utf-8")).toBe(claudeMarketplaceJson);
 
     const claudeManifest = parseJsonObject(await readFile(
       join(projectRoot, ".agents", "plugins", "review-tools", ".claude-plugin", "plugin.json"),
@@ -649,6 +648,41 @@ source = "path:plugin-source/invalid-tools"
     expect(existsSync(join(scope.pluginsDir, "invalid-tools"))).toBe(false);
     expect(await loadLockfile(scope.lockPath)).toEqual(originalLock);
     expect(existsSync(join(projectRoot, ".claude-plugin", "marketplace.json"))).toBe(false);
+  });
+
+  it("preflights a Copilot manifest shadow before canonical or lockfile mutations", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "portable-tools");
+    await mkdir(join(sourceDir, ".plugin"), { recursive: true });
+    await writeFile(join(sourceDir, "plugin.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_SCHEMA,
+      name: "portable-tools",
+    }));
+    await writeFile(join(sourceDir, ".plugin", "plugin.json"), JSON.stringify({
+      name: "portable-tools",
+    }));
+    const originalLock: Lockfile = {
+      version: 1,
+      skills: {},
+      subagents: {},
+      plugins: { previous: { source: "path:previous" } },
+    };
+    await writeLockfile(join(projectRoot, "agents.lock"), originalLock);
+    await writeFile(join(projectRoot, "agents.toml"), `version = 1
+agents = ["copilot"]
+
+[[plugins]]
+name = "portable-tools"
+source = "path:plugin-source/portable-tools"
+`);
+
+    const scope = resolveScope("project", projectRoot);
+    await expect(runInstall({ scope })).rejects.toThrow(
+      ".plugin/plugin.json would shadow the canonical plugin.json for Copilot",
+    );
+
+    expect(existsSync(join(scope.pluginsDir, "portable-tools"))).toBe(false);
+    expect(await loadLockfile(scope.lockPath)).toEqual(originalLock);
+    expect(existsSync(join(projectRoot, ".github", "plugin", "marketplace.json"))).toBe(false);
   });
 
   it("preserves and warns about a malformed unselected native interface", async () => {

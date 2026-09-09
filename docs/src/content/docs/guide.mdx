@@ -146,8 +146,12 @@ version.
 ## Global Paths
 
 Global config, skills, plugins, and the lockfile live under `~/.agents/`. Plugin
-outputs are written to the global Claude, Cursor, Codex, Grok, OpenCode, and Pi
-locations. Override the dotagents root with `DOTAGENTS_HOME`.
+outputs are written to the global Claude, Copilot, Cursor, Codex, Grok,
+OpenCode, and Pi locations. Override the dotagents root with `DOTAGENTS_HOME`.
+Copilot global skills and MCP use `COPILOT_HOME` when it is a non-empty
+absolute path and `~/.copilot/` when it is unset. Do not export an empty value:
+Copilot CLI then resolves personal skills from working-directory-relative
+`./skills`.
 
 `--global` selects global scope explicitly. `--user` remains a compatibility
 alias.
@@ -160,7 +164,7 @@ alias.
 
 ```toml
 version = 1
-agents = ["claude", "cursor", "codex", "opencode"]
+agents = ["claude", "copilot", "cursor", "codex", "opencode"]
 minimum_release_age = 60
 minimum_release_age_exclude = ["getsentry/*"]
 
@@ -217,7 +221,7 @@ targets = ["claude", "codex", "opencode"]
 [[plugins]]
 name = "review-tools"
 source = "getsentry/agent-pack"
-targets = ["claude", "cursor", "codex", "opencode"]
+targets = ["claude", "copilot", "cursor", "codex", "opencode"]
 ```
 
 Portable Agent Plugins may coexist with authored Claude, Cursor, or Codex
@@ -225,6 +229,22 @@ manifests during migration. The portable root remains the source of truth.
 Dotagents ignores reproducible native manifests and retains only behavior it
 cannot generate as a matching-client fallback; unrelated targets receive only
 portable skills and MCP.
+
+Copilot is a native projection of that same portable core. It accepts project
+MCP files as either a bare server map or under `mcpServers`; dotagents preserves
+the existing form unless Claude shares the file or remains after Copilot is
+removed, in which case a recognized bare map is nested without dropping
+unmanaged servers. For plugins, root
+`marketplace.json` and `.plugin/marketplace.json` shadow the generated
+`.github/plugin/marketplace.json`. Copilot resolves plugin manifests in
+`.plugin`, root, `.github/plugin`, then `.claude-plugin` order. A source with
+only `.plugin/plugin.json` or `.github/plugin/plugin.json` is canonicalized;
+conflicting locators fail preflight if dotagents and Copilot would select
+different manifests. Legacy Copilot
+manifests reject native agent, command, hook, LSP, and executable-extension
+resources so they do not expand the adapter's scope. Standard manifest
+extension data is preserved, but a physical `com.github.copilot/` extension
+directory is rejected because Copilot would activate its native components.
 
 See the [CLI reference](/cli/#configuration-agentstoml) for all fields and
 options.

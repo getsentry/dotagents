@@ -104,6 +104,15 @@ MCP configs are written per-agent in the appropriate format:
 - Codex: `.codex/config.toml` (TOML, shared with other Codex config)
 - VS Code: `.vscode/mcp.json` (JSON)
 - OpenCode: `.opencode/opencode.jsonc` by default (JSONC, shared); existing nested or root OpenCode config files are reused.
+- GitHub Copilot: `.mcp.json` by default; an existing `.github/mcp.json` is reused. Copilot-only projects preserve either a bare server map or an `mcpServers` document. Sharing the file with Claude, including after Copilot is removed, promotes a recognized bare map under `mcpServers` without dropping unmanaged entries.
+
+Global Copilot MCP uses `COPILOT_HOME/mcp-config.json`, or
+`~/.copilot/mcp-config.json` when `COPILOT_HOME` is empty or unset. Dotagents
+enforces mode `0600` on POSIX.
+
+For global skill discovery, leave `COPILOT_HOME` unset or set it to a non-empty
+absolute path. Copilot CLI interprets an explicitly empty value as the
+working-directory-relative `./skills` directory.
 
 ## Hooks
 
@@ -151,25 +160,39 @@ Declare plugin bundles with `[[plugins]]`. dotagents installs canonical bundles 
 name = "review-tools"
 source = "getsentry/agent-plugins"
 path = "plugins/review-tools"
-targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+targets = ["claude", "copilot", "cursor", "codex", "grok", "opencode", "pi"]
 ```
 
 Plugin declarations work in global and project scope. Canonical bundles and runtime projections use the selected scope's paths.
 
 Global bundles live under `~/.agents/plugins/`. Runtime outputs use global
-Claude, Cursor, Codex, Grok (`~/.grok/plugins/`), OpenCode, and Pi locations.
+Claude, Copilot, Cursor, Codex, Grok (`~/.grok/plugins/`), OpenCode, and Pi
+locations.
+
+Copilot consumes a generated `.github/plugin/marketplace.json` that points to
+the canonical bundle. Root `marketplace.json` and `.plugin/marketplace.json`
+take precedence, so dotagents warns and prunes stale managed Copilot output
+when either exists. Copilot resolves plugin manifests in `.plugin`, root,
+`.github/plugin`, then `.claude-plugin` order. Sources with only
+`.plugin/plugin.json` or `.github/plugin/plugin.json` are canonicalized during
+installation; conflicting locators cannot target Copilot when dotagents and
+Copilot would select different manifests. Legacy Copilot manifests may declare
+skills and MCP servers, but native agent, command, hook, LSP, and executable-extension fields and
+implicitly discovered paths are rejected. Standard manifest extension
+data is preserved, but a physical `com.github.copilot/` extension directory is
+rejected because Copilot loads client-native components from it.
 
 ## Agents
 
 The `agents` array controls which agent tools get symlinks and configs.
 
 ```toml
-agents = ["claude", "cursor", "codex", "vscode", "grok", "opencode", "pi"]
+agents = ["claude", "copilot", "cursor", "codex", "vscode", "grok", "opencode", "pi"]
 ```
 
 Each agent gets:
 - A `<agent-dir>/skills/` symlink pointing to the selected scope's managed skills directory (Claude, Cursor)
-- Or native discovery from the selected scope's managed skills directory (Codex, VS Code, OpenCode)
+- Or native project discovery from the selected scope's managed skills directory (Codex, GitHub Copilot, VS Code, OpenCode)
 - MCP server configs in the agent's config file
 - Hook configs (where supported)
 - Subagent and plugin runtime outputs (where supported)
@@ -186,7 +209,10 @@ npx @sentry/dotagents add getsentry/agent-plugins review-tools
 npx @sentry/dotagents install
 ```
 
-Global symlinks include `~/.claude/skills/` for Claude and Cursor.
+Global symlinks include `~/.claude/skills/` for Claude and Cursor, plus
+`COPILOT_HOME/skills/` for Copilot (default `~/.copilot/skills/`). The Copilot
+link is skipped when its home is the dotagents home and the skills directory is
+already the canonical one.
 
 ### Project Scope (`--project`)
 

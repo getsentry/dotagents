@@ -434,6 +434,21 @@ Agent Plugin bundle
 | OpenCode | Project plugin skills and merge normalized MCP servers into OpenCode config when needed | Read only namespaces registered to the OpenCode adapter | Symlink skills into `.opencode/skills/`; generalized legacy bundles may project Markdown agents, while standard extension resources are preserved but not projected yet; do not generate JavaScript or TypeScript plugin modules. |
 | Pi | Project supported skills | Read only namespaces registered to the Pi adapter | Symlink skills into `.agents/skills/`; ignore unsupported MCP or extension components with warnings. |
 
+Copilot resolves `marketplace.json` and `.plugin/marketplace.json` before the
+generated `.github/plugin/marketplace.json`. If either higher-priority catalog
+exists, dotagents reports the conflict and prunes stale managed Copilot output.
+Copilot resolves plugin manifests in `.plugin`, root, `.github/plugin`, then
+`.claude-plugin` order. A source containing only `.plugin/plugin.json` or
+`.github/plugin/plugin.json` is canonicalized to root `plugin.json` during
+installation. Conflicting locators cannot target Copilot if they would hide the
+canonical source or make dotagents and Copilot select different manifests. For
+legacy manifests targeting Copilot, dotagents rejects native agent, command, hook, LSP, and
+executable-extension fields plus implicitly discovered active paths.
+Standard manifest extension data is preserved, but a physical
+`com.github.copilot/` extension directory is rejected because Copilot loads
+client-native components from it even without a matching manifest entry. These
+are harness constraints, not extensions of the portable plugin format.
+
 For Claude, Cursor, and Codex, a retained matching native fallback replaces the
 generated-manifest step for that target only. A reproducible authored manifest
 does not. For Grok, hybrid compatibility copies exclude `.claude-plugin`,

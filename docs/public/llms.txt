@@ -2,7 +2,7 @@
 
 > Shared tooling for coding agents
 
-dotagents manages agent skills, MCP servers, hooks, subagents, and plugins declared in `agents.toml`, and handles symlinks and config generation so tools like Claude Code, Cursor, Codex, GitHub Copilot CLI/Desktop, Grok, VS Code, and OpenCode are configured from a single source of truth.
+dotagents manages agent skills, MCP servers, hooks, subagents, and plugins declared in `agents.toml`, and handles symlinks and config generation so tools like Claude Code, Cursor, Codex, GitHub Copilot CLI, Grok, VS Code, and OpenCode are configured from a single source of truth.
 
 Install: `npm install -g @sentry/dotagents`
 Run without installing: `npx @sentry/dotagents <command>`
@@ -57,7 +57,7 @@ And a lockfile (`agents.lock`) tracking which skills, subagents, and plugins are
 2. `install` clones or refreshes sources and copies skills, subagents, and plugins into the selected scope's managed directories
 3. `agents.lock` tracks which skills, subagents, and plugins are managed (automatically gitignored in project scope)
 4. Managed project skills, canonical installed subagents, and managed plugin bundles under `.agents/` are gitignored. Collaborators run `npx @sentry/dotagents --project install` after cloning. Custom skills in `.agents/skills/` and project-authored plugin source directories in `.agents/plugins/` are tracked by git normally when they are not installed dependencies.
-5. Symlinks connect `.agents/skills/` to each agent's expected location (`.claude/skills/` for Claude and Cursor)
+5. Symlinks connect managed skills to each agent's expected global or project location (`.claude/skills/` for Claude and Cursor, and `$COPILOT_HOME/skills/` for global Copilot)
 6. MCP, hook, subagent, and plugin configs are generated for each declared agent where supported
 
 ## Configuration (agents.toml)
@@ -221,7 +221,7 @@ Config files generated per agent:
 - OpenCode: `.opencode/opencode.jsonc` by default (JSONC, shared). Existing `.opencode/opencode.json`, `opencode.jsonc`, or `opencode.json` files are reused in precedence order.
 - GitHub Copilot: `.mcp.json` by default (JSON). An existing `.github/mcp.json` is reused when `.mcp.json` is absent.
 
-GitHub Copilot accepts the same implicit stdio shape as Claude, so both targets produce stable shared `.mcp.json` output. In user scope, GitHub Copilot uses `COPILOT_HOME/mcp-config.json` when `COPILOT_HOME` is set and `~/.copilot/mcp-config.json` otherwise. On POSIX systems, dotagents creates and repairs this file with mode `0600`.
+GitHub Copilot accepts the same implicit stdio shape as Claude and accepts both an `mcpServers` document and a bare server map. Copilot-only projects preserve the existing form. When Claude shares `.mcp.json`, including after Copilot is removed from the configured agents, dotagents nests a recognized bare server map under `mcpServers` while preserving unmanaged entries. In global scope, GitHub Copilot uses `COPILOT_HOME/mcp-config.json` when `COPILOT_HOME` is non-empty and `~/.copilot/mcp-config.json` otherwise. On POSIX systems, dotagents repairs access and enforces mode `0600`.
 
 ### Hooks
 
@@ -312,6 +312,8 @@ Generated project-scope plugin outputs:
 - Grok: `.grok/plugins/<name>/` managed copy
 - OpenCode: plugin `skills/` symlinked into `.opencode/skills/`; portable `mcp.json` servers merged into `.opencode/opencode.jsonc` under `plugin.<plugin>.<server>` keys; generalized legacy plugin Markdown `agents/` symlinked into `.opencode/agents/`. Standard extension agents are preserved but not projected yet.
 - Pi: plugin `skills/` symlinked into `.agents/skills/` when `pi` is a configured plugin target
+
+Copilot loads the canonical Agent Plugins bundle directly. Its `marketplace.json` and `.plugin/marketplace.json` locations take precedence over dotagents' `.github/plugin/marketplace.json`; when either exists, dotagents warns and prunes stale managed Copilot marketplace output. Copilot resolves plugin manifests in `.plugin`, root, `.github/plugin`, then `.claude-plugin` order. A source containing only `.plugin/plugin.json` or `.github/plugin/plugin.json` is canonicalized to root `plugin.json`. Conflicting locators fail preflight when Copilot is selected if they would hide the canonical source or make dotagents and Copilot select different manifests. Legacy Copilot manifests may declare skills and MCP servers; native agent, command, hook, LSP, and executable-extension fields and implicitly discovered paths are rejected. Standard manifest extension data is preserved, but a physical `com.github.copilot/` extension directory is rejected because Copilot loads client-native components from it. Remove unsupported or conflicting fields and resources, or exclude `copilot` from the plugin's `targets`.
 
 Generated plugin JSON is deterministic: object keys and plugin entries are sorted, output is two-space indented, and files end with one trailing newline. Generated marketplaces and Claude, Cursor, and Codex manifests use adjacent `.dotagents-managed` sidecars so client-owned JSON remains schema-native; legacy `metadata.managedBy` output remains recognizable during migration. Managed Grok copies and OpenCode and Pi component symlinks are pruned when their plugin or target is removed. Plugin sources that resolve to this project's `.agents/plugins/<name>/` install destination are rejected so dotagents never installs a same-repo plugin onto itself. Existing plugin install destinations are overwritten only when their on-disk `.dotagents-managed` marker proves ownership.
 
@@ -505,9 +507,9 @@ Check selected-scope health: gitignore setup where applicable, installed skills 
 | `codex` | Codex | `.codex` | (reads `.agents/skills/` natively) | `.codex/config.toml` | Not supported | `.codex/agents/*.toml` |
 | `vscode` | VS Code Copilot | `.vscode` | (reads `.agents/skills/` natively) | `.vscode/mcp.json` | `.claude/settings.json` | Not supported |
 | `opencode` | OpenCode | `.opencode` | (reads `.agents/skills/` natively) | `.opencode/opencode.jsonc` by default | Not supported | `.opencode/agents/*.md` |
-| `copilot` | GitHub Copilot CLI/Desktop | `.copilot` | (reads `.agents/skills/` natively) | `.mcp.json` or `.github/mcp.json` | Not supported | Not supported |
+| `copilot` | GitHub Copilot CLI | `.copilot` | Project: reads `.agents/skills/`; global: `$COPILOT_HOME/skills/` symlink | `.mcp.json` or `.github/mcp.json` | Not supported | Not supported |
 
-Claude uses `.claude/skills/`, and Cursor shares the same Claude-compatible skills symlink. Codex, VS Code, OpenCode, and GitHub Copilot read `.agents/skills/` directly.
+Claude uses `.claude/skills/`, and Cursor shares the same Claude-compatible skills symlink. Codex, VS Code, and OpenCode read `.agents/skills/` directly. Copilot does so in project scope; global installs link the selected global skills directory into `COPILOT_HOME/skills/`, defaulting to `~/.copilot/skills/` when `COPILOT_HOME` is unset. Overrides must be non-empty absolute paths because Copilot CLI interprets an explicitly empty value as working-directory-relative `./skills`.
 
 [Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively. Normal skills need no Pi-specific target or symlink configuration; plugin bundles can target `pi` when their `skills/` components should be exposed there.
 
@@ -524,7 +526,7 @@ Operates on `DOTAGENTS_HOME` when set and otherwise `~/.agents/`, regardless of 
 - Override location: `DOTAGENTS_HOME` environment variable
 - Explicit spellings: `--global`, or compatibility alias `--user`
 
-Global-scope symlinks include `~/.claude/skills/` for Claude and Cursor.
+Global-scope symlinks include `~/.claude/skills/` for Claude and Cursor, plus `COPILOT_HOME/skills/` (default `~/.copilot/skills/`) for Copilot.
 
 ### Project Scope (`--project`)
 
@@ -614,6 +616,7 @@ Location: `~/.local/dotagents/` (override: `DOTAGENTS_STATE_DIR`)
 |----------|-------------|
 | `DOTAGENTS_STATE_DIR` | Override cache location (default: `~/.local/dotagents`) |
 | `DOTAGENTS_HOME` | Override global-scope location (default: `~/.agents`) |
+| `COPILOT_HOME` | Override Copilot's global skill and MCP location with a non-empty absolute path (default when unset: `~/.copilot`) |
 
 ## Gitignore
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { mkdtemp, mkdir, readFile, readlink, rm, writeFile, lstat, stat } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readlink, rm, symlink, writeFile, lstat, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
@@ -135,44 +135,62 @@ source = "path:skill-source/pdf"
     expect(lockfile!.skills["pdf"]).toEqual({ source: "path:skill-source/pdf" });
   });
 
-  it("writes copilot MCP config without a skill symlink", async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), "dotagents-user-copilot-"));
-    const homeDir = join(tmpDir, "home");
-    const dotagentsHome = join(tmpDir, "agents");
-    const stateDir = join(tmpDir, "state");
-    const copilotHome = join(tmpDir, "copilot");
-    const sourceDir = join(dotagentsHome, "skill-source", "pdf");
+  it.each(["default", "custom", "shared", "aliased"] as const)(
+    "writes Copilot global config with a %s home",
+    async (homeMode) => {
+      tmpDir = await mkdtemp(join(tmpdir(), "dotagents-user-copilot-"));
+      const homeDir = join(tmpDir, "home");
+      const dotagentsHome = join(tmpDir, "agents");
+      const stateDir = join(tmpDir, "state");
+      const copilotHome = homeMode === "default"
+        ? join(homeDir, ".copilot")
+        : homeMode === "shared"
+          ? dotagentsHome
+          : join(tmpDir, homeMode === "aliased" ? "copilot-alias" : "copilot");
+      const sourceDir = join(dotagentsHome, "skill-source", "pdf");
 
-    process.env["HOME"] = homeDir;
-    process.env["DOTAGENTS_HOME"] = dotagentsHome;
-    process.env["DOTAGENTS_STATE_DIR"] = stateDir;
-    process.env["COPILOT_HOME"] = copilotHome;
-    vi.resetModules();
+      process.env["HOME"] = homeDir;
+      process.env["DOTAGENTS_HOME"] = dotagentsHome;
+      process.env["DOTAGENTS_STATE_DIR"] = stateDir;
+      if (homeMode === "default") {
+        delete process.env["COPILOT_HOME"];
+      } else {
+        process.env["COPILOT_HOME"] = copilotHome;
+      }
+      vi.resetModules();
 
-    const [{ runInstall }, { resolveScope }] = await Promise.all([
-      import("./install.js"),
-      import("../../scope.js"),
-    ]);
+      const [{ runInstall }, { resolveScope }] = await Promise.all([
+        import("./install.js"),
+        import("../../scope.js"),
+      ]);
 
-    await mkdir(sourceDir, { recursive: true });
-    await mkdir(copilotHome, { recursive: true });
-    await writeFile(join(sourceDir, "SKILL.md"), SKILL_MD);
-    await writeFile(
-      join(copilotHome, "mcp-config.json"),
-      JSON.stringify({
-        note: "keep",
-        mcpServers: {
-          manual: { command: "manual", args: [] },
-          fixture: { command: "old", args: [] },
-        },
-      }),
-    );
+      await mkdir(sourceDir, { recursive: true });
+      if (homeMode === "aliased") {
+        await symlink(
+          dotagentsHome,
+          copilotHome,
+          process.platform === "win32" ? "junction" : "dir",
+        );
+      } else {
+        await mkdir(copilotHome, { recursive: true });
+      }
+      await writeFile(join(sourceDir, "SKILL.md"), SKILL_MD);
+      await writeFile(
+        join(copilotHome, "mcp-config.json"),
+        JSON.stringify({
+          note: "keep",
+          mcpServers: {
+            manual: { command: "manual", args: [] },
+            fixture: { command: "old", args: [] },
+          },
+        }),
+      );
 
-    const scope = resolveScope("user");
-    await mkdir(scope.root, { recursive: true });
-    await writeFile(
-      scope.configPath,
-      `version = 1
+      const scope = resolveScope("user");
+      await mkdir(scope.root, { recursive: true });
+      await writeFile(
+        scope.configPath,
+        `version = 1
 agents = ["copilot"]
 
 [[skills]]
@@ -184,21 +202,65 @@ name = "fixture"
 command = "node"
 args = ["server.js"]
 `,
+      );
+
+      await runInstall({ scope });
+
+      expect(existsSync(join(scope.skillsDir, "pdf", "SKILL.md"))).toBe(true);
+      const copilotSkills = join(copilotHome, "skills");
+      if (homeMode === "shared" || homeMode === "aliased") {
+        expect((await lstat(copilotSkills)).isDirectory()).toBe(true);
+      } else {
+        expect((await lstat(copilotSkills)).isSymbolicLink()).toBe(true);
+        expect(await readlink(copilotSkills)).toBe(relative(copilotHome, scope.skillsDir));
+      }
+      expect(JSON.parse(await readFile(join(copilotHome, "mcp-config.json"), "utf-8"))).toEqual({
+        note: "keep",
+        mcpServers: {
+          manual: { command: "manual", args: [] },
+          fixture: { command: "node", args: ["server.js"] },
+        },
+      });
+      if (process.platform !== "win32") {
+        expect((await stat(join(copilotHome, "mcp-config.json"))).mode & 0o777).toBe(0o600);
+      }
+    },
+  );
+
+  it("rejects nested Copilot and dotagents homes before moving global state", async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "dotagents-user-copilot-overlap-"));
+    const copilotHome = join(tmpDir, "copilot");
+    const dotagentsHome = join(copilotHome, "skills");
+    const sourceDir = join(dotagentsHome, "skill-source", "pdf");
+    process.env["HOME"] = join(tmpDir, "home");
+    process.env["DOTAGENTS_HOME"] = dotagentsHome;
+    process.env["DOTAGENTS_STATE_DIR"] = join(tmpDir, "state");
+    process.env["COPILOT_HOME"] = copilotHome;
+    vi.resetModules();
+
+    const [{ runInstall }, { resolveScope }] = await Promise.all([
+      import("./install.js"),
+      import("../../scope.js"),
+    ]);
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "SKILL.md"), SKILL_MD);
+    const scope = resolveScope("user");
+    await writeFile(
+      scope.configPath,
+      `version = 1
+agents = ["copilot"]
+
+[[skills]]
+name = "pdf"
+source = "path:skill-source/pdf"
+`,
     );
 
-    await runInstall({ scope });
+    await expect(runInstall({ scope })).rejects.toThrow("paths overlap");
 
-    expect(existsSync(join(scope.skillsDir, "pdf", "SKILL.md"))).toBe(true);
-    expect(existsSync(join(copilotHome, "skills"))).toBe(false);
-    expect(JSON.parse(await readFile(join(copilotHome, "mcp-config.json"), "utf-8"))).toEqual({
-      note: "keep",
-      mcpServers: {
-        manual: { command: "manual", args: [] },
-        fixture: { command: "node", args: ["server.js"] },
-      },
-    });
-    if (process.platform !== "win32") {
-      expect((await stat(join(copilotHome, "mcp-config.json"))).mode & 0o777).toBe(0o600);
-    }
+    expect(await readFile(scope.configPath, "utf-8")).toContain('agents = ["copilot"]');
+    expect(existsSync(scope.lockPath)).toBe(true);
+    expect(await readFile(join(scope.skillsDir, "pdf", "SKILL.md"), "utf-8")).toBe(SKILL_MD);
+    expect(existsSync(join(copilotHome, "agents.toml"))).toBe(false);
   });
 });

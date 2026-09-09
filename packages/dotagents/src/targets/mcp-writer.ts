@@ -1,4 +1,4 @@
-import { chmod, readFile, writeFile, mkdir, rm, stat } from "node:fs/promises";
+import { chmod, lstat, readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
@@ -25,6 +25,8 @@ export interface McpResolvedTarget {
   shared: boolean;
   mode?: number;
   preferredFilePath?: string;
+  acceptsBareServerMap?: boolean;
+  recognizesBareServerMap?: boolean;
 }
 
 export type McpTargetResolver = (agentId: string, spec: McpConfigSpec) => McpResolvedTarget;
@@ -82,6 +84,10 @@ export function projectMcpResolver(projectRoot: string): McpTargetResolver {
       filePath,
       shared: spec.shared,
       ...(filePath !== preferredFilePath && { preferredFilePath }),
+      ...(spec.acceptsBareServerMap && { acceptsBareServerMap: true }),
+      ...((spec.acceptsBareServerMap || spec.recognizesBareServerMap) && {
+        recognizesBareServerMap: true,
+      }),
     };
   };
 }
@@ -133,45 +139,77 @@ export async function reconcileMcpConfigs(
     return [{ id, agent, target: resolveTarget(id, agent.mcp) }];
   });
   const claimedPaths = new Set(initialTargets.map(({ target }) => target.filePath));
-  const promotedFallbacks = new Map<string, string>();
+  const promotedFallbacks = new Map<string, McpResolvedTarget>();
   const targets = initialTargets.map((entry) => {
     const preferredFilePath = entry.target.preferredFilePath;
     if (!preferredFilePath || !claimedPaths.has(preferredFilePath)) {return entry;}
-    promotedFallbacks.set(preferredFilePath, entry.target.filePath);
+    promotedFallbacks.set(preferredFilePath, entry.target);
     return Object.assign({}, entry, {
       target: Object.assign({}, entry.target, { filePath: preferredFilePath }),
     });
   });
+  const pathFormats = new Map<string, { recognizesBare: boolean; requiresRoot: boolean }>();
+  for (const { target } of targets) {
+    const format = pathFormats.get(target.filePath) ?? {
+      recognizesBare: false,
+      requiresRoot: false,
+    };
+    format.recognizesBare ||= target.recognizesBareServerMap === true ||
+      target.acceptsBareServerMap === true;
+    format.requiresRoot ||= target.acceptsBareServerMap !== true;
+    pathFormats.set(target.filePath, format);
+  }
 
   for (const { id, agent, target } of targets) {
     const { mcp } = agent;
     const { filePath } = target;
+    const pathFormat = pathFormats.get(filePath)!;
     if (seen.has(filePath)) {continue;}
     seen.add(filePath);
 
     const expectedServers = renderServers(agent.serializeServer, normalized);
     const expected = { [mcp.rootKey]: expectedServers };
+    const modeCheck = await desiredModeIssue(id, filePath, target.mode);
+    if (modeCheck && !modeCheck.missing && !modeCheck.directRegularFile) {
+      issues.push(modeCheck.issue);
+      unresolved.push(modeCheck.issue);
+      continue;
+    }
 
     if (!existsSync(filePath)) {
       issues.push({ agent: id, issue: `MCP config missing: ${filePath}` });
       if (mode === "apply") {
-        const fallbackPath = promotedFallbacks.get(filePath);
-        if (fallbackPath) {
+        const fallbackTarget = promotedFallbacks.get(filePath);
+        if (fallbackTarget) {
           let fallback: SerializedObject;
-          let fallbackServers: SerializedObject;
+          let fallbackRoot: McpServerRoot;
           try {
-            fallback = await readExisting(fallbackPath, mcp);
-            fallbackServers = readServerRoot(fallback, mcp.rootKey, fallbackPath);
+            fallback = await readExisting(fallbackTarget.filePath, mcp);
+            fallbackRoot = readServerRootOrBare(
+              fallback,
+              mcp.rootKey,
+              fallbackTarget.filePath,
+              fallbackTarget.recognizesBareServerMap === true ||
+                fallbackTarget.acceptsBareServerMap === true,
+            );
           } catch {
-            const issue = { agent: id, issue: `Failed to read MCP config: ${fallbackPath}` };
+            const issue = { agent: id, issue: `Failed to read MCP config: ${fallbackTarget.filePath}` };
             issues.push(issue);
             unresolved.push(issue);
             continue;
           }
-          await writeDocument(filePath, mcp, {
-            ...fallback,
-            [mcp.rootKey]: { ...fallbackServers, ...expectedServers },
-          }, target.mode);
+          await writeDocument(
+            filePath,
+            mcp,
+            mergeServerDocument(
+              fallback,
+              mcp.rootKey,
+              fallbackRoot,
+              expectedServers,
+              !pathFormat.requiresRoot,
+            ),
+            target.mode,
+          );
         } else {
           await writeDocument(filePath, mcp, expected, target.mode);
         }
@@ -180,11 +218,21 @@ export async function reconcileMcpConfigs(
       continue;
     }
 
+    if (modeCheck) {issues.push(modeCheck.issue);}
+    if (mode === "apply") {
+      await repairModeBeforeRead(filePath, modeCheck, target.mode);
+    }
+
     let existing: SerializedObject;
-    let existingServers: SerializedObject;
+    let existingRoot: McpServerRoot;
     try {
       existing = await readExisting(filePath, mcp);
-      existingServers = readServerRoot(existing, mcp.rootKey, filePath);
+      existingRoot = readServerRootOrBare(
+        existing,
+        mcp.rootKey,
+        filePath,
+        pathFormat.recognizesBare,
+      );
     } catch {
       const issue = { agent: id, issue: `Failed to read MCP config: ${filePath}` };
       issues.push(issue);
@@ -193,31 +241,28 @@ export async function reconcileMcpConfigs(
       continue;
     }
 
-    const targetIssues = desiredIssues(id, filePath, existingServers, expectedServers);
+    const targetIssues = desiredIssues(id, filePath, existingRoot.servers, expectedServers);
     issues.push(...targetIssues);
-    const modeCheck = await desiredModeIssue(id, filePath, target.mode);
-    if (modeCheck) {issues.push(modeCheck.issue);}
-
-    if (mode === "apply" && (targetIssues.length > 0 || modeCheck)) {
-      const next = {
-        ...existing,
-        [mcp.rootKey]: { ...existingServers, ...expectedServers },
-      };
-      if (targetIssues.length > 0) {
+    const envelopeIssue = existingRoot.bare && pathFormat.requiresRoot
+      ? {
+          agent: id,
+          issue: `MCP config bare server map must be nested under "${mcp.rootKey}" to share ${filePath}`,
+        }
+      : undefined;
+    if (envelopeIssue) {issues.push(envelopeIssue);}
+    const contentChanged = targetIssues.length > 0 || envelopeIssue !== undefined;
+    if (mode === "apply" && (contentChanged || modeCheck)) {
+      const next = mergeServerDocument(
+        existing,
+        mcp.rootKey,
+        existingRoot,
+        expectedServers,
+        !pathFormat.requiresRoot,
+      );
+      if (contentChanged) {
         await writeReconciledDocument(filePath, mcp, next, expectedServers, target.mode);
       }
-      if (modeCheck && target.mode !== undefined) {
-        if (modeCheck.missing && targetIssues.length === 0) {
-          await writeDocument(filePath, mcp, next, target.mode);
-        } else if (!modeCheck.missing) {
-          try {
-            await chmod(filePath, target.mode);
-          } catch (err) {
-            if (!isNotFoundError(err)) {throw err;}
-            await writeDocument(filePath, mcp, next, target.mode);
-          }
-        }
-      }
+      await enforceMode(filePath, mcp, next, modeCheck, target.mode);
       written.push(filePath);
     }
   }
@@ -257,6 +302,12 @@ export async function reconcileManagedMcpConfig(
   const written: string[] = [];
   const removed: string[] = [];
   const skipped: McpReconcileIssue[] = [];
+  const modeCheck = await desiredModeIssue(agentId, target.filePath, target.mode);
+  if (modeCheck && !modeCheck.missing && !modeCheck.directRegularFile) {
+    issues.push(modeCheck.issue);
+    unresolved.push(modeCheck.issue);
+    return { issues, unresolved, written, managed: [], removed, skipped };
+  }
 
   if (!existsSync(target.filePath)) {
     const managed = Object.keys(desired).filter((name) => !protectedNames.has(name)).toSorted();
@@ -285,6 +336,11 @@ export async function reconcileManagedMcpConfig(
       removed.push(statePath);
     }
     return { issues, unresolved, written, managed, removed, skipped };
+  }
+
+  if (modeCheck) {issues.push(modeCheck.issue);}
+  if (mode === "apply") {
+    await repairModeBeforeRead(target.filePath, modeCheck, target.mode);
   }
 
   let existing: SerializedObject;
@@ -327,12 +383,13 @@ export async function reconcileManagedMcpConfig(
   }
   const targetIssues = desiredIssues(agentId, target.filePath, existingServers, expected);
   issues.push(...targetIssues);
-  const modeCheck = await desiredModeIssue(agentId, target.filePath, target.mode);
-  if (modeCheck) {issues.push(modeCheck.issue);}
-
   if (mode === "apply") {
     const targetChanged = stale.some((name) => name in existingServers) ||
       targetIssues.length > 0;
+    const nextServers = { ...existingServers };
+    for (const name of stale) {delete nextServers[name];}
+    Object.assign(nextServers, expected);
+    const next = { ...existing, [agent.mcp.rootKey]: nextServers };
     if (targetChanged) {
       await writeManagedReconciledDocument(
         target.filePath,
@@ -345,22 +402,7 @@ export async function reconcileManagedMcpConfig(
       );
       removed.push(...stale.filter((name) => name in existingServers));
     }
-    if (modeCheck && target.mode !== undefined) {
-      const nextServers = { ...existingServers };
-      for (const name of stale) {delete nextServers[name];}
-      Object.assign(nextServers, expected);
-      const next = { ...existing, [agent.mcp.rootKey]: nextServers };
-      if (modeCheck.missing && !targetChanged) {
-        await writeDocument(target.filePath, agent.mcp, next, target.mode);
-      } else if (!modeCheck.missing) {
-        try {
-          await chmod(target.filePath, target.mode);
-        } catch (err) {
-          if (!isNotFoundError(err)) {throw err;}
-          await writeDocument(target.filePath, agent.mcp, next, target.mode);
-        }
-      }
-    }
+    await enforceMode(target.filePath, agent.mcp, next, modeCheck, target.mode);
     if (targetChanged || modeCheck) {written.push(target.filePath);}
     if (managed.length > 0) {
       if (await writeManagedMcpState(statePath, managed)) {written.push(statePath);}
@@ -436,6 +478,48 @@ function readServerRoot(
     throw new TypeError(`MCP config root must contain an object: ${filePath}`);
   }
   return root;
+}
+
+interface McpServerRoot {
+  servers: SerializedObject;
+  bare: boolean;
+}
+
+function readServerRootOrBare(
+  document: SerializedObject,
+  rootKey: string,
+  filePath: string,
+  acceptsBare: boolean,
+): McpServerRoot {
+  if (
+    document[rootKey] === undefined &&
+    acceptsBare &&
+    isBareMcpServerMap(document)
+  ) {
+    return { servers: document, bare: true };
+  }
+  return { servers: readServerRoot(document, rootKey, filePath), bare: false };
+}
+
+function isBareMcpServerMap(document: SerializedObject): boolean {
+  return Object.values(document).every((value) => (
+    isSerializedObject(value) &&
+    (isString(value["command"]) || isString(value["url"]))
+  ));
+}
+
+function mergeServerDocument(
+  document: SerializedObject,
+  rootKey: string,
+  root: McpServerRoot,
+  expectedServers: SerializedObject,
+  preserveBare: boolean,
+): SerializedObject {
+  const servers = { ...root.servers, ...expectedServers };
+  if (root.bare) {
+    return preserveBare ? servers : { [rootKey]: servers };
+  }
+  return { ...document, [rootKey]: servers };
 }
 
 async function writeDocument(
@@ -605,25 +689,49 @@ async function writeFileIfChanged(
     if (!isNotFoundError(err)) {throw err;}
   }
 
-  await writeFile(filePath, content, { encoding: "utf-8", mode });
+  try {
+    await writeFile(filePath, content, { encoding: "utf-8", mode });
+  } catch (err) {
+    if (
+      mode === undefined
+      || (!hasErrorCode(err, "EACCES") && !hasErrorCode(err, "EPERM"))
+    ) {
+      throw err;
+    }
+    try {
+      await chmod(filePath, mode);
+    } catch (chmodError) {
+      if (!isNotFoundError(chmodError)) {throw chmodError;}
+    }
+    await writeFile(filePath, content, { encoding: "utf-8", mode });
+  }
 }
 
 async function desiredModeIssue(
   agent: string,
   filePath: string,
   expectedMode?: number,
-): Promise<{ issue: McpReconcileIssue; missing: boolean } | undefined> {
+): Promise<{ issue: McpReconcileIssue; missing: boolean; directRegularFile: boolean } | undefined> {
   if (expectedMode === undefined) {return undefined;}
-  let actualMode: number;
+  let fileStat: Awaited<ReturnType<typeof lstat>>;
   try {
-    actualMode = (await stat(filePath)).mode & 0o777;
+    fileStat = await lstat(filePath);
   } catch (err) {
     if (!isNotFoundError(err)) {throw err;}
     return {
       issue: { agent, issue: `MCP config missing: ${filePath}` },
       missing: true,
+      directRegularFile: false,
     };
   }
+  if (!fileStat.isFile()) {
+    return {
+      issue: { agent, issue: `MCP config is not a regular file: ${filePath}` },
+      missing: false,
+      directRegularFile: false,
+    };
+  }
+  const actualMode = fileStat.mode & 0o777;
   if (actualMode === expectedMode) {return undefined;}
   return {
     issue: {
@@ -631,7 +739,37 @@ async function desiredModeIssue(
       issue: `MCP config mode is ${actualMode.toString(8)}, expected ${expectedMode.toString(8)}: ${filePath}`,
     },
     missing: false,
+    directRegularFile: true,
   };
+}
+
+async function repairModeBeforeRead(
+  filePath: string,
+  modeCheck: Awaited<ReturnType<typeof desiredModeIssue>>,
+  expectedMode?: number,
+): Promise<void> {
+  if (!modeCheck || modeCheck.missing || !modeCheck.directRegularFile || expectedMode === undefined) {return;}
+  try {
+    await chmod(filePath, expectedMode);
+  } catch (err) {
+    if (!isNotFoundError(err)) {throw err;}
+  }
+}
+
+async function enforceMode(
+  filePath: string,
+  spec: McpConfigSpec,
+  document: SerializedObject,
+  modeCheck: Awaited<ReturnType<typeof desiredModeIssue>>,
+  expectedMode?: number,
+): Promise<void> {
+  if (!modeCheck || expectedMode === undefined) {return;}
+  try {
+    await chmod(filePath, expectedMode);
+  } catch (err) {
+    if (!isNotFoundError(err)) {throw err;}
+    await writeDocument(filePath, spec, document, expectedMode);
+  }
 }
 
 function isNotFoundError<ErrorValue>(err: ErrorValue): boolean {

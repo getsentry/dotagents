@@ -724,6 +724,56 @@ describe("plugin writer", () => {
     expect(await readFile(marketplacePath, "utf-8")).toBe("{ \"name\": \"mine\" }\n");
   });
 
+  it.each(["marketplace.json", join(".plugin", "marketplace.json")])(
+    "warns about higher-priority Copilot %s and prunes stale managed output",
+    async (blockingRelativePath) => {
+      const alpha = await plugin("alpha-tools");
+      const generatedPath = join(root, ".github", "plugin", "marketplace.json");
+      const blockingPath = join(root, blockingRelativePath);
+      await writePluginOutputs(["copilot"], [alpha], root);
+      await mkdir(dirname(blockingPath), { recursive: true });
+      await writeFile(blockingPath, "{ \"name\": \"mine\" }\n", "utf-8");
+
+      const reconciled = await reconcilePluginOutputs(["copilot"], [alpha], root);
+
+      expect(reconciled.pruned).toEqual([generatedPath]);
+      expect(reconciled.result.warnings).toEqual([{
+        agent: "copilot",
+        name: "marketplace",
+        message: expect.stringContaining(`higher-priority marketplace exists: ${blockingPath}`),
+      }]);
+      expect(existsSync(generatedPath)).toBe(false);
+      expect(await readFile(blockingPath, "utf-8")).toBe("{ \"name\": \"mine\" }\n");
+      expect(await verifyPluginOutputs(["copilot"], [alpha], root)).toEqual([{
+        agent: "copilot",
+        name: "marketplace",
+        issue: expect.stringContaining(`higher-priority marketplace exists: ${blockingPath}`),
+      }]);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "converges when a higher-priority Copilot locator aliases the managed marketplace",
+    async () => {
+      const alpha = await plugin("alpha-tools");
+      const generatedPath = join(root, ".github", "plugin", "marketplace.json");
+      const aliasPath = join(root, ".plugin", "marketplace.json");
+      await writePluginOutputs(["copilot"], [alpha], root);
+      await mkdir(dirname(aliasPath), { recursive: true });
+      await symlink(generatedPath, aliasPath);
+
+      const first = await reconcilePluginOutputs(["copilot"], [alpha], root);
+      const second = await reconcilePluginOutputs(["copilot"], [alpha], root);
+
+      expect(first).toEqual({ result: { warnings: [], written: 0 }, pruned: [] });
+      expect(second).toEqual(first);
+      expect(await verifyPluginOutputs(["copilot"], [alpha], root)).toEqual([]);
+      expect(await readFile(aliasPath, "utf-8")).toBe(
+        await readFile(generatedPath, "utf-8"),
+      );
+    },
+  );
+
   it.each([
     ["codex", "Codex", ".codex-plugin"],
     ["claude", "Claude", ".claude-plugin"],

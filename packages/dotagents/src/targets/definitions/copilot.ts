@@ -1,17 +1,22 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { AgentDefinition } from "../types.js";
 import { UnsupportedFeature } from "../errors.js";
 import claude from "./claude.js";
+
+const copilotHome = process.env["COPILOT_HOME"] || join(homedir(), ".copilot");
 
 const copilot: AgentDefinition = {
   id: "copilot",
   displayName: "GitHub Copilot",
   configDir: ".copilot",
-  // reads .agents/skills/ natively at both project and user scope
+  // Reads project .agents/skills/ natively. Global discovery follows COPILOT_HOME.
   skillsParentDir: undefined,
-  userSkillsParentDirs: undefined,
+  userSkillsParentDirs: [copilotHome],
   mcp: {
     filePath: ".mcp.json",
     fallbackFilePaths: [".github/mcp.json"],
+    acceptsBareServerMap: true,
     rootKey: "mcpServers",
     format: "json",
     shared: false,

@@ -18,7 +18,7 @@ hero:
         <strong>agents.toml</strong>
       </div>
       <pre><code>{`version = 1
-agents = ["claude", "cursor", "codex", "vscode", "opencode"]
+agents = ["claude", "copilot", "cursor", "codex", "vscode", "opencode"]
 
 [trust]
 github_orgs = ["getsentry"]
@@ -40,7 +40,7 @@ targets = ["claude", "codex", "opencode"]
 name = "review-tools"
 source = "getsentry/agent-plugins"
 path = "plugins/review-tools"
-targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
+targets = ["claude", "copilot", "cursor", "codex", "opencode"]`}</code></pre>
     </div>
   </section>
 
@@ -97,7 +97,7 @@ targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
   <section className="dotagents-section">
     <div className="dotagents-section-heading">
       <h2 id="supported-agents">Supported Agents</h2>
-      <p>The `agents` array tells dotagents which tools to configure. Grok and Pi are plugin-only targets. Copilot and Pi read `.agents/skills/` directly.</p>
+      <p>The `agents` array tells dotagents which tools to configure. Grok and Pi are plugin-only targets. Copilot reads project skills directly and receives a global skills link.</p>
     </div>
 
     | Agent | Config Dir | MCP Config | Hooks | Subagents |
@@ -105,11 +105,11 @@ targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
     | `claude` | `.claude` | `.mcp.json` | `.claude/settings.json` | `.claude/agents/*.md` |
     | `cursor` | `.cursor` | `.cursor/mcp.json` | `.cursor/hooks.json` | `.cursor/agents/*.md` |
     | `codex` | `.codex` | `.codex/config.toml` | None | `.codex/agents/*.toml` |
-    | `copilot` | `.copilot` | `.mcp.json` | None | None |
+    | `copilot` | `.copilot` | `.mcp.json` or `.github/mcp.json` | None | None |
     | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` | None |
     | `opencode` | `.opencode` | `.opencode/opencode.jsonc` | None | `.opencode/agents/*.md` |
 
-    GitHub Copilot reads user MCP configuration from `~/.copilot/mcp-config.json`. Projects use `.mcp.json`, or reuse `.github/mcp.json` when it exists.
+    GitHub Copilot reads project skills from `.agents/skills/`. Global installs link skills into `$COPILOT_HOME/skills/`, defaulting to `~/.copilot/skills/`. User MCP configuration follows the same home and uses `mcp-config.json`. Projects use `.mcp.json`, or reuse `.github/mcp.json` when it exists; existing bare and `mcpServers` forms are both supported.
 
     OpenCode reuses existing project config from `.opencode/opencode.jsonc`, `.opencode/opencode.json`, `opencode.jsonc`, or `opencode.json`, in that order. New projects use `.opencode/opencode.jsonc`.
   </section>
