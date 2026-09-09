@@ -1058,6 +1058,30 @@ describe("plugin writer", () => {
     );
   });
 
+  it("projects nested native plugin skills into Pi's agentskills location", async () => {
+    const alpha = await plugin("alpha-tools", {
+      nativeSource: "claude",
+      manifest: {
+        name: "alpha-tools",
+        skills: ["./skills/engineering/code-review"],
+      },
+    });
+    const skillDir = join(alpha.pluginDir, "skills", "engineering", "code-review");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(
+      join(skillDir, "SKILL.md"),
+      "---\nname: code-review\ndescription: Review code\n---\n",
+      "utf-8",
+    );
+
+    const result = await writePluginOutputs(["pi"], [alpha], root);
+
+    expect(result.warnings).toEqual([]);
+    expect(result.written).toBe(1);
+    await expectSymlinkTarget(join(root, ".agents", "skills", "code-review"), skillDir);
+    await expect(projectedPiSkillNames(["pi"], [alpha])).resolves.toEqual(["code-review"]);
+  });
+
   it("warns and skips invalid Pi plugin skill names", async () => {
     const alpha = await plugin("alpha-tools");
     await mkdir(join(alpha.pluginDir, "skills", "bad"), { recursive: true });

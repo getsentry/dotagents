@@ -713,7 +713,12 @@ async function discoverSkillComponents(
     if (!entry.isDirectory() && !entry.isSymbolicLink()) {continue;}
     const sourcePath = join(skillsDir, entry.name);
     const skillMd = join(sourcePath, "SKILL.md");
-    if (!existsSync(skillMd)) {continue;}
+    if (!existsSync(skillMd)) {
+      if (entry.isDirectory()) {
+        skills.push(...await discoverSkillComponents(agent, plugin, sourcePath, warnings));
+      }
+      continue;
+    }
     if (
       !await isContainedPluginPath(plugin.pluginDir, sourcePath) ||
       !await isContainedPluginPath(plugin.pluginDir, skillMd)
