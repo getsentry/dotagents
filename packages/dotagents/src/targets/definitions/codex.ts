@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import type { AgentDefinition } from "../types.js";
 import { UnsupportedFeature } from "../errors.js";
 import claude from "./claude.js";
-import { envRecord, extractCodexHeaders } from "./helpers.js";
+import { extractCodexHeaders } from "./helpers.js";
 import { markManagedTomlSubagent, serializeCodexSubagent } from "../../subagents/format.js";
 
 const codex: AgentDefinition = {
@@ -31,8 +31,12 @@ const codex: AgentDefinition = {
         ...(envHttpHeaders && { env_http_headers: envHttpHeaders }),
       }];
     }
-    const env = envRecord(s.env, (k) => `\${${k}}`, s.envValues);
-    return [s.name, { command: s.command, args: s.args ?? [], ...(env && { env }) }];
+    return [s.name, {
+      command: s.command,
+      args: s.args ?? [],
+      ...(s.envValues && { env: s.envValues }),
+      ...(s.env?.length && { env_vars: s.env }),
+    }];
   },
   hooks: undefined,
   serializeHooks() {

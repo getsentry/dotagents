@@ -103,12 +103,21 @@ describe("writeMcpConfigs", () => {
     });
   });
 
-  it("writes codex .codex/config.toml", async () => {
-    await writeMcpConfigs(["codex"], [STDIO_SERVER], projectMcpResolver(dir));
+  it("writes codex stdio environment names and literal values in their native fields", async () => {
+    await writeMcpConfigs(["codex"], [{
+      ...STDIO_SERVER,
+      envValues: { PLUGIN_ROOT: "/plugins/github" },
+    }], projectMcpResolver(dir));
 
-    const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
-    expect(raw).toContain("mcp_servers");
-    expect(raw).toContain("github");
+    const content = parseTomlObject(
+      await readFile(join(dir, ".codex", "config.toml"), "utf-8"),
+    );
+    expect(childObject(content, "mcp_servers")["github"]).toEqual({
+      command: "npx",
+      args: ["-y", "@mcp/server-github"],
+      env: { PLUGIN_ROOT: "/plugins/github" },
+      env_vars: ["GITHUB_TOKEN"],
+    });
   });
 
   it("writes .opencode/opencode.jsonc by default", async () => {
