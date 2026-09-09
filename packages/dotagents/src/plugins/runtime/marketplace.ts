@@ -78,7 +78,7 @@ export function marketplaceOutputs(
     outputs.push({
       agent: "copilot",
       filePath,
-      content: stableJson(pathMarketplace(layout.copilotMarketplaceRoot, "dotagents", copilotPlugins)),
+      content: stableJson(pathMarketplace(layout.copilotMarketplaceRoot, copilotPlugins)),
     });
   }
   if (cursorPlugins.length > 0) {
