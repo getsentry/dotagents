@@ -1071,8 +1071,8 @@ async function ensureCanonicalManifest(plugin: PluginDeclaration): Promise<void>
   const filePath = join(plugin.pluginDir, "plugin.json");
   if (existsSync(filePath)) {return;}
   await writeFile(filePath, `${JSON.stringify(plugin.manifest, null, 2)}\n`, "utf-8");
-  // A source discovered only through Copilot's locator is now represented by
-  // the portable canonical manifest. Leaving the locator would shadow it.
+  // Only .plugin/plugin.json outranks the new canonical root. Copilot's
+  // lower-priority .github/plugin/plugin.json locator remains preserved.
   if (!plugin.nativeSource) {
     await rm(join(plugin.pluginDir, ".plugin", "plugin.json"), { force: true });
   }

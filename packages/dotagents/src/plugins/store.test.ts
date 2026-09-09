@@ -1095,6 +1095,7 @@ describe("plugin store", () => {
         plugin: preparePluginForTargets(fromMarketplace.plugin, ["copilot"]),
       });
       expect(existsSync(join(installed.pluginDir, "plugin.json"))).toBe(true);
+      expect(existsSync(join(installed.pluginDir, ".github", "plugin", "plugin.json"))).toBe(true);
 
       const reloaded = await loadInstalledPlugins(
         pluginsDir,
