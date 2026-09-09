@@ -11,6 +11,7 @@ import {
   mkdtempSync,
   realpathSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -37,6 +38,7 @@ const tasks = {
   "install-files": runInstallFiles,
   "sync-repair": runSyncRepair,
   "plugin-claude": runClaudePluginProof,
+  "plugin-copilot": runCopilotPluginProof,
   "plugin-codex": runCodexPluginProof,
   "plugin-grok": runGrokPluginProof,
   "opencode-projections": runOpenCodePluginProof,
@@ -66,6 +68,7 @@ const projectDir = join(tmp, "project");
 const homeDir = join(tmp, "home");
 const stateDir = join(tmp, "state");
 const dotagentsHomeDir = join(tmp, "dotagents-home");
+const copilotHomeDir = join(homeDir, ".copilot");
 const codexHomeDir = join(tmp, "codex-home");
 mkdirSync(homeDir, { recursive: true });
 mkdirSync(stateDir, { recursive: true });
@@ -74,6 +77,7 @@ cpSync(exampleRoot, projectDir, { recursive: true });
 
 const fixtureEnv = {
   ...process.env,
+  COPILOT_HOME: copilotHomeDir,
   HOME: homeDir,
   DOTAGENTS_HOME: dotagentsHomeDir,
   DOTAGENTS_STATE_DIR: stateDir,
@@ -116,6 +120,7 @@ Tasks:
   install-files    Install the full example and assert generated files
   sync-repair      Delete representative generated files and assert sync repairs them
   plugin-claude    Validate generated Claude plugin and marketplace with Claude Code
+  plugin-copilot   Add, install, and list the generated marketplace with Copilot CLI
   plugin-codex     Add/list/install generated Codex marketplace with Codex CLI
   plugin-grok      Confirm Grok Build discovers the generated project plugin
   opencode-projections  Assert generated OpenCode resource projections
@@ -139,6 +144,7 @@ async function runSyncRepair() {
   rmSync(join(projectDir, ".codex", "agents", "code-reviewer.toml"), { force: true });
   rmSync(join(projectDir, ".agents", "plugins", "marketplace.json"), { force: true });
   rmSync(join(projectDir, ".claude-plugin", "marketplace.json"), { force: true });
+  rmSync(join(projectDir, ".github", "plugin", "marketplace.json"), { force: true });
   rmSync(join(projectDir, ".cursor-plugin", "marketplace.json"), { force: true });
   rmSync(join(projectDir, ".agents", "plugins", "qa-tools", ".claude-plugin", "plugin.json"), { force: true });
   rmSync(join(projectDir, ".agents", "plugins", "qa-tools", ".cursor-plugin", "plugin.json"), { force: true });
@@ -199,6 +205,7 @@ async function runClaudePluginProof() {
 async function runAvailablePluginClientProofs() {
   const proofs = [
     ["claude", runClaudePluginProof],
+    ["copilot", runCopilotPluginProof],
     ["codex", runCodexPluginProof],
     ["grok", runGrokPluginProof],
   ];
@@ -214,6 +221,105 @@ async function runAvailablePluginClientProofs() {
   }
   if (ran === 0) {
     throw new Error("No supported plugin client CLI is installed");
+  }
+}
+
+async function runCopilotPluginProof() {
+  prepareClientHarness("copilot");
+  rmSync(copilotHomeDir, { recursive: true, force: true });
+  mkdirSync(copilotHomeDir, { recursive: true });
+  const env = {
+    ...fixtureEnv,
+    COPILOT_HOME: copilotHomeDir,
+    COPILOT_ALLOW_ALL: "true",
+  };
+
+  execFileSync("copilot", ["plugin", "marketplace", "add", projectDir], {
+    cwd: projectDir,
+    env,
+    stdio: "inherit",
+  });
+  const marketplaces = execFileSync("copilot", ["plugin", "marketplace", "list"], {
+    cwd: projectDir,
+    env,
+    encoding: "utf-8",
+  });
+  assertIncludes(marketplaces, "dotagents", "Copilot marketplace list should include dotagents");
+  assertIncludes(marketplaces, projectDir, "Copilot marketplace list should include the local project path");
+  const available = execFileSync(
+    "copilot",
+    ["plugin", "marketplace", "browse", "dotagents"],
+    { cwd: projectDir, env, encoding: "utf-8" },
+  );
+  assertIncludes(available, "qa-tools", "Copilot marketplace should include qa-tools");
+
+  const install = execFileSync(
+    "copilot",
+    ["plugin", "install", "qa-tools@dotagents"],
+    { cwd: projectDir, env, encoding: "utf-8" },
+  );
+  assertIncludes(install, 'Plugin "qa-tools" installed successfully.', "Copilot should install qa-tools");
+  const installed = execFileSync("copilot", ["plugin", "list"], {
+    cwd: projectDir,
+    env,
+    encoding: "utf-8",
+  });
+  assertIncludes(installed, "qa-tools@dotagents", "Copilot plugin list should include qa-tools@dotagents");
+
+  const realProjectDir = realpathSync(projectDir);
+  const pluginRoot = realpathSync(join(projectDir, ".agents", "plugins", "qa-tools"));
+  const pluginState = execJson("copilot", ["plugins", "list", "--json"], env);
+  const livePlugin = pluginState.plugins?.find((plugin) => plugin.name === "qa-tools");
+  if (
+    livePlugin?.enabled !== true
+    || livePlugin.source !== "live-marketplace:dotagents"
+    || !isStringValue(livePlugin.installedFrom)
+    || realpathSync(livePlugin.installedFrom) !== realProjectDir
+  ) {
+    throw new Error("Copilot did not report enabled qa-tools from the live local marketplace");
+  }
+
+  const skills = execJson("copilot", ["skill", "list", "--json"], env);
+  const skill = skills.find((entry) => entry.name === "plugin-qa");
+  if (
+    skill?.source !== "plugin"
+    || skill.enabled !== true
+    || realpathSync(skill.path) !== realpathSync(join(pluginRoot, "skills", "plugin-qa"))
+  ) {
+    throw new Error("Copilot did not discover plugin-qa from the live local plugin");
+  }
+
+  const mcpServers = execJson("copilot", ["mcp", "list", "--json"], env).mcpServers ?? {};
+  const pluginMcpNames = Object.entries(mcpServers)
+    .filter(([, server]) => server.source === "plugin" && server.sourcePlugin === "qa-tools")
+    .map(([name]) => name)
+    .toSorted();
+  if (JSON.stringify(pluginMcpNames) !== JSON.stringify(["fixture-http", "fixture-stdio"])) {
+    throw new Error(`Copilot plugin MCP servers were unexpected: ${pluginMcpNames.join(", ")}`);
+  }
+  const local = mcpServers["fixture-stdio"];
+  if (
+    local?.source !== "plugin"
+    || local.sourcePlugin !== "qa-tools"
+    || local.enabled !== true
+    || local.type !== "stdio"
+    || local.command !== "node"
+    || JSON.stringify(local.args) !== JSON.stringify(["${PLUGIN_ROOT}/runtime/server.mjs"])
+    || !isStringValue(local.env?.PLUGIN_ROOT)
+    || realpathSync(local.env.PLUGIN_ROOT) !== pluginRoot
+  ) {
+    throw new Error("Copilot did not discover the live plugin stdio MCP server");
+  }
+  const remote = mcpServers["fixture-http"];
+  if (
+    remote?.source !== "plugin"
+    || remote.sourcePlugin !== "qa-tools"
+    || remote.enabled !== true
+    || remote.type !== "http"
+    || remote.url !== "https://example.com/${DEPLOYMENT}/mcp"
+    || !Object.hasOwn(remote.headers ?? {}, "X-Fixture")
+  ) {
+    throw new Error("Copilot did not discover the live plugin HTTP MCP server");
   }
 }
 
@@ -288,7 +394,7 @@ async function runOpenCodePluginProof() {
   const pluginData = realpathSync(join(projectDir, ".agents", "plugin-data", "qa-tools"));
   if (JSON.stringify(local) !== JSON.stringify({
     type: "local",
-    command: ["node", join(pluginRoot, "server.mjs")],
+    command: ["node", join(pluginRoot, "runtime", "server.mjs")],
     cwd: pluginRoot,
     environment: {
       PLUGIN_ROOT: pluginRoot,
@@ -310,6 +416,15 @@ async function runOpenCodePluginProof() {
 function prepareClientHarness(agent) {
   rmSync(projectDir, { recursive: true, force: true });
   cpSync(exampleRoot, projectDir, { recursive: true });
+  if (agent === "copilot") {
+    const sourcePluginDir = join(projectDir, "local-plugins", "qa-tools");
+    const copilotManifestDir = join(sourcePluginDir, ".github", "plugin");
+    mkdirSync(copilotManifestDir, { recursive: true });
+    renameSync(
+      join(sourcePluginDir, "plugin.json"),
+      join(copilotManifestDir, "plugin.json"),
+    );
+  }
   const configPath = join(projectDir, "agents.toml");
   const config = readFileSync(configPath, "utf-8").replace(/^agents = .*$/m, `agents = ["${agent}"]`);
   writeFileSync(configPath, config);
@@ -483,7 +598,7 @@ function assertPluginOutputs() {
   assertFile(".agents/plugins/qa-tools/mcp.json");
   assertFileIncludes(".agents/plugins/qa-tools/mcp.json", '"fixture-stdio"');
   assertFileIncludes(".agents/plugins/qa-tools/mcp.json", '"fixture-http"');
-  assertFile(".agents/plugins/qa-tools/server.mjs");
+  assertFile(".agents/plugins/qa-tools/runtime/server.mjs");
   assertFile(".agents/plugins/qa-tools/skills/plugin-qa/SKILL.md");
   assertFile(".agents/plugins/qa-tools/com.example.client/commands/plugin-qa.md");
   assertFile(".agents/plugins/qa-tools/com.example.client/agents/plugin-reviewer.md");
@@ -508,6 +623,9 @@ function assertPluginOutputs() {
   assertFileExcludes(".claude-plugin/marketplace.json", '"managedBy"');
   assertFileIncludes(".claude-plugin/marketplace.json", '"name": "qa-tools"');
   assertFileIncludes(".claude-plugin/marketplace.json", '"source": "./.agents/plugins/qa-tools"');
+  assertFile(".github/plugin/marketplace.json");
+  assertFile(".github/plugin/marketplace.json.dotagents-managed");
+  assertSameFile(".github/plugin/marketplace.json", ".claude-plugin/marketplace.json");
   assertFile(".cursor-plugin/marketplace.json");
   assertFile(".cursor-plugin/marketplace.json.dotagents-managed");
   assertSameFile(".cursor-plugin/marketplace.json", ".claude-plugin/marketplace.json");
@@ -534,7 +652,7 @@ function assertPluginOutputs() {
 
   assertFile(".grok/plugins/qa-tools/.dotagents-managed");
   assertFile(".grok/plugins/qa-tools/plugin.json");
-  assertFile(".grok/plugins/qa-tools/server.mjs");
+  assertFile(".grok/plugins/qa-tools/runtime/server.mjs");
   assertFile(".grok/plugins/qa-tools/com.example.client/commands/plugin-qa.md");
   assertFile(".grok/plugins/qa-tools/com.example.client/agents/plugin-reviewer.md");
   assertFileIncludes(".grok/plugins/qa-tools/skills/plugin-qa/SKILL.md", "DOTAGENTS_PLUGIN_QA_FIXTURE");

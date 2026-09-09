@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { dirname, join, resolve } from "node:path";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import {
   resolveScope,
@@ -54,6 +54,32 @@ describe("resolveScope", () => {
   it("project scope defaults to cwd when no projectRoot given", () => {
     const s = resolveScope("project");
     expect(s.root).toBe(process.cwd());
+  });
+
+  it("rejects canonical project directories that resolve outside the project", () => {
+    const root = mkdtempSync(join(tmpdir(), "scope-containment-test-"));
+    const project = join(root, "project");
+    const outside = join(root, "outside");
+    mkdirSync(project);
+    mkdirSync(outside);
+    symlinkSync(outside, join(project, ".agents"), process.platform === "win32" ? "junction" : "dir");
+
+    expect(() => resolveScope("project", project)).toThrow(/outside the project root/);
+
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("allows canonical project directories that resolve within the project", () => {
+    const root = mkdtempSync(join(tmpdir(), "scope-containment-test-"));
+    const project = join(root, "project");
+    const managed = join(project, "managed");
+    mkdirSync(project);
+    mkdirSync(managed);
+    symlinkSync(managed, join(project, ".agents"), process.platform === "win32" ? "junction" : "dir");
+
+    expect(resolveScope("project", project).agentsDir).toBe(join(project, ".agents"));
+
+    rmSync(root, { recursive: true, force: true });
   });
 });
 

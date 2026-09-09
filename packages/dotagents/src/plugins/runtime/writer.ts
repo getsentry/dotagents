@@ -17,7 +17,12 @@ import {
   targetWarnings,
   usesLegacyPluginComponents,
 } from "../targets.js";
-import { marketplaceOutputPaths, marketplaceOutputs } from "./marketplace.js";
+import {
+  copilotMarketplaceConflict,
+  copilotMarketplaceConflictMessage,
+  marketplaceOutputPaths,
+  marketplaceOutputs,
+} from "./marketplace.js";
 import {
   type PluginVerifyIssue,
   type PluginWriteResult,
@@ -110,7 +115,19 @@ export async function writePluginOutputs(
     warnings.push(warning);
   }
 
-  for (const output of marketplaceOutputs(agentIds, layout, selected)) {
+  const desiredMarketplaces = marketplaceOutputs(agentIds, layout, selected);
+  const copilotConflict = desiredMarketplaces.some((output) => output.agent === "copilot")
+    ? copilotMarketplaceConflict(layout)
+    : undefined;
+  for (const output of desiredMarketplaces) {
+    if (output.agent === "copilot" && copilotConflict) {
+      warnings.push({
+        agent: "copilot",
+        name: "marketplace",
+        message: copilotMarketplaceConflictMessage(layout, copilotConflict),
+      });
+      continue;
+    }
     if (await writeManagedJsonOutput(output, warnings)) {written++;}
   }
 
@@ -177,7 +194,19 @@ export async function verifyPluginOutputs(
     loadedMcp.set(plugin.name, await loadStandardMcp(plugin, mcpWarnings));
   }
 
-  for (const output of marketplaceOutputs(agentIds, layout, selected)) {
+  const desiredMarketplaces = marketplaceOutputs(agentIds, layout, selected);
+  const copilotConflict = desiredMarketplaces.some((output) => output.agent === "copilot")
+    ? copilotMarketplaceConflict(layout)
+    : undefined;
+  for (const output of desiredMarketplaces) {
+    if (output.agent === "copilot" && copilotConflict) {
+      issues.push({
+        agent: "copilot",
+        name: "marketplace",
+        issue: copilotMarketplaceConflictMessage(layout, copilotConflict),
+      });
+      continue;
+    }
     if (!existsSync(output.filePath)) {
       issues.push({ agent: output.agent, name: "marketplace", issue: `Plugin marketplace missing: ${output.filePath}` });
       continue;
@@ -244,9 +273,13 @@ export async function prunePluginOutputs(
 ): Promise<string[]> {
   const layout = normalizePluginRuntimeLayout(root);
   const pruned: string[] = [];
-  const desiredMarketplacePaths = new Set(
-    marketplaceOutputs(agentIds, layout, plugins).map((output) => output.filePath),
-  );
+  const desiredMarketplaces = marketplaceOutputs(agentIds, layout, plugins);
+  const copilotConflict = desiredMarketplaces.some((output) => output.agent === "copilot")
+    ? copilotMarketplaceConflict(layout)
+    : undefined;
+  const desiredMarketplacePaths = new Set(desiredMarketplaces
+    .filter((output) => output.agent !== "copilot" || !copilotConflict)
+    .map((output) => output.filePath));
   for (const filePath of marketplaceOutputPaths(layout)) {
     if (desiredMarketplacePaths.has(filePath)) {continue;}
     if (!await isManagedJsonFile(filePath)) {continue;}

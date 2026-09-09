@@ -1,14 +1,16 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
-import type { ScopeRoot } from "../../scope.js";
+import { join, relative, resolve } from "node:path";
+import { resolveProjectPath, type ScopeRoot } from "../../scope.js";
 import { isString } from "../../utils/type-guards.js";
 
 export interface PluginRuntimeLayout {
   claudeMarketplaceRoot: string;
+  copilotMarketplaceRoot: string;
   cursorMarketplaceRoot: string;
   codexMarketplaceRoot: string;
   claudeMarketplacePath: string;
+  copilotMarketplacePath: string;
   cursorMarketplacePath: string;
   codexMarketplacePath: string;
   canonicalPluginsDir: string;
@@ -30,21 +32,25 @@ export function projectPluginRuntimeLayout(root: string): PluginRuntimeLayout {
     join(root, "opencode.jsonc"),
     join(root, "opencode.json"),
   ];
+  const opencodeMcpPath = opencodeCandidates.find((path) => existsSync(path))
+    ?? opencodeCandidates[0]!;
   return {
     claudeMarketplaceRoot: root,
+    copilotMarketplaceRoot: root,
     cursorMarketplaceRoot: root,
     codexMarketplaceRoot: root,
-    claudeMarketplacePath: join(root, ".claude-plugin", "marketplace.json"),
-    cursorMarketplacePath: join(root, ".cursor-plugin", "marketplace.json"),
-    codexMarketplacePath: join(root, ".agents", "plugins", "marketplace.json"),
-    canonicalPluginsDir: join(root, ".agents", "plugins"),
-    grokPluginsDir: join(root, ".grok", "plugins"),
-    opencodeSkillsDir: join(root, ".opencode", "skills"),
-    opencodeAgentsDir: join(root, ".opencode", "agents"),
-    opencodeMcpPath: opencodeCandidates.find((path) => existsSync(path)) ?? opencodeCandidates[0]!,
-    opencodeMcpStatePath: join(root, ".agents", "plugin-mcp", "opencode.json"),
-    pluginDataDir: join(root, ".agents", "plugin-data"),
-    piSkillsDir: join(root, ".agents", "skills"),
+    claudeMarketplacePath: resolveProjectPath(root, ".claude-plugin/marketplace.json"),
+    copilotMarketplacePath: resolveProjectPath(root, ".github/plugin/marketplace.json"),
+    cursorMarketplacePath: resolveProjectPath(root, ".cursor-plugin/marketplace.json"),
+    codexMarketplacePath: resolveProjectPath(root, ".agents/plugins/marketplace.json"),
+    canonicalPluginsDir: resolveProjectPath(root, ".agents/plugins"),
+    grokPluginsDir: resolveProjectPath(root, ".grok/plugins"),
+    opencodeSkillsDir: resolveProjectPath(root, ".opencode/skills"),
+    opencodeAgentsDir: resolveProjectPath(root, ".opencode/agents"),
+    opencodeMcpPath: resolveProjectPath(root, relative(root, opencodeMcpPath)),
+    opencodeMcpStatePath: resolveProjectPath(root, ".agents/plugin-mcp/opencode.json"),
+    pluginDataDir: resolveProjectPath(root, ".agents/plugin-data"),
+    piSkillsDir: resolveProjectPath(root, ".agents/skills"),
   };
 }
 
@@ -54,9 +60,11 @@ export function userPluginRuntimeLayout(root: string): PluginRuntimeLayout {
   const usesDefaultRoot = resolve(root) === resolve(defaultRoot);
   return {
     claudeMarketplaceRoot: root,
+    copilotMarketplaceRoot: root,
     cursorMarketplaceRoot: root,
     codexMarketplaceRoot: usesDefaultRoot ? home : root,
     claudeMarketplacePath: join(root, ".claude-plugin", "marketplace.json"),
+    copilotMarketplacePath: join(root, ".github", "plugin", "marketplace.json"),
     cursorMarketplacePath: join(root, ".cursor-plugin", "marketplace.json"),
     codexMarketplacePath: usesDefaultRoot
       ? join(root, "plugins", "marketplace.json")

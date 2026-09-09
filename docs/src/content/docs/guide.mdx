@@ -80,6 +80,7 @@ Dotagents plugin installation and native client installation are separate stages
 | `claude` | `.claude-plugin/marketplace.json` and a native manifest when required | Register the project root, then install `<name>@dotagents`. |
 | `cursor` | `.cursor-plugin/marketplace.json` and a native manifest when required | Use Customize, a team marketplace, a local plugin, or `cursor-agent --plugin-dir`. |
 | `codex` | `.agents/plugins/marketplace.json` and a native manifest when required | Register the project root, then install `<name>@dotagents-local`. |
+| `copilot` | `.github/plugin/marketplace.json` | Register the project root, then install `<name>@dotagents`. |
 | `grok` | `.grok/plugins/<name>/` | None. Grok reads the managed copy directly. |
 | `opencode` | `.opencode/skills/` links and `.opencode/opencode.jsonc` MCP entries | None. OpenCode reads the generated projections directly. |
 | `pi` | `.agents/skills/` links | None. Pi reads the generated links directly. |
@@ -95,13 +96,16 @@ claude plugin install <name>@dotagents --scope project
 
 codex plugin marketplace add ./ --json
 codex plugin add <name>@dotagents-local --json
+
+copilot plugin marketplace add ./
+copilot plugin install <name>@dotagents
 ```
 
-Claude records project marketplace and plugin declarations in project scope. Codex records native plugin state for the current user, even when the source is a project directory.
+Claude records project marketplace and plugin declarations in project scope. Codex records native plugin state for the current user, even when the source is a project directory. Copilot also records plugin state for the current user, keyed by `COPILOT_HOME`.
 
 ### Global activation
 
-The default global Dotagents root is `~/.agents`. Claude scans that root for its generated marketplace. Codex must scan `$HOME` because its generated catalog is at `$HOME/.agents/plugins/marketplace.json`:
+The default global Dotagents root is `~/.agents`. Claude and Copilot scan that root for their generated marketplace. Codex must scan `$HOME` because its generated catalog is at `$HOME/.agents/plugins/marketplace.json`:
 
 ```shell
 claude plugin marketplace add "$HOME/.agents" --scope user
@@ -109,9 +113,12 @@ claude plugin install <name>@dotagents --scope user
 
 codex plugin marketplace add "$HOME" --json
 codex plugin add <name>@dotagents-local --json
+
+copilot plugin marketplace add "$HOME/.agents"
+copilot plugin install <name>@dotagents
 ```
 
-If `DOTAGENTS_HOME` overrides the global root, both clients register that custom root. Codex finds its catalog at `$DOTAGENTS_HOME/.agents/plugins/marketplace.json`:
+If `DOTAGENTS_HOME` overrides the global root, all three clients register that custom root. Codex finds its catalog at `$DOTAGENTS_HOME/.agents/plugins/marketplace.json`:
 
 ```shell
 claude plugin marketplace add "$DOTAGENTS_HOME" --scope user
@@ -119,6 +126,9 @@ claude plugin install <name>@dotagents --scope user
 
 codex plugin marketplace add "$DOTAGENTS_HOME" --json
 codex plugin add <name>@dotagents-local --json
+
+copilot plugin marketplace add "$DOTAGENTS_HOME"
+copilot plugin install <name>@dotagents
 ```
 
 ### Cursor activation
@@ -158,6 +168,13 @@ codex plugin remove <name>@dotagents-local --json
 codex plugin add <name>@dotagents-local --json
 ```
 
+Copilot also caches each installed plugin. Refresh the marketplace catalog, then update the plugin:
+
+```shell
+copilot plugin marketplace update dotagents
+copilot plugin update <name>@dotagents
+```
+
 Cursor team marketplaces require a manual refresh or configured auto refresh. Update or reinstall the plugin from Customize after the catalog refreshes. Local Desktop plugins use the current linked or copied files after Cursor reloads. Each `cursor-agent --plugin-dir` invocation loads the current directory.
 
 Remove native state separately when you remove a Dotagents declaration:
@@ -165,6 +182,7 @@ Remove native state separately when you remove a Dotagents declaration:
 ```shell
 claude plugin uninstall <name>@dotagents --scope <scope>
 codex plugin remove <name>@dotagents-local --json
+copilot plugin uninstall <name>@dotagents
 ```
 
 After the last plugin from a marketplace is removed, you can also remove its registration:
@@ -172,6 +190,7 @@ After the last plugin from a marketplace is removed, you can also remove its reg
 ```shell
 claude plugin marketplace remove dotagents --scope <scope>
 codex plugin marketplace remove dotagents-local --json
+copilot plugin marketplace remove dotagents
 ```
 
 Remove a Cursor local-plugin link or copy yourself. For team or marketplace installations, uninstall the plugin from Customize. Dotagents updates and removes Grok, OpenCode, and Pi projections directly.
@@ -259,8 +278,8 @@ version.
 ## Global Paths
 
 Global config, skills, plugins, and the lockfile live under `~/.agents/`. Plugin
-outputs are written to the global Claude, Cursor, Codex, Grok, OpenCode, and Pi
-locations. Override the dotagents root with `DOTAGENTS_HOME`.
+outputs are written to the global Claude, Cursor, Codex, Copilot, Grok,
+OpenCode, and Pi locations. Override the dotagents root with `DOTAGENTS_HOME`.
 
 `--global` selects global scope explicitly. `--user` remains a compatibility
 alias.
@@ -273,7 +292,7 @@ alias.
 
 ```toml
 version = 1
-agents = ["claude", "cursor", "codex", "opencode"]
+agents = ["claude", "cursor", "codex", "copilot", "opencode"]
 minimum_release_age = 60
 minimum_release_age_exclude = ["getsentry/*"]
 
@@ -330,7 +349,7 @@ targets = ["claude", "codex", "opencode"]
 [[plugins]]
 name = "review-tools"
 source = "getsentry/agent-pack"
-targets = ["claude", "cursor", "codex", "opencode"]
+targets = ["claude", "cursor", "codex", "copilot", "opencode"]
 ```
 
 Portable Agent Plugins may coexist with authored Claude, Cursor, or Codex

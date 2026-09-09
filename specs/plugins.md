@@ -276,7 +276,7 @@ name = "review-tools"
 source = "getsentry/agent-plugins"
 path = "plugins/review-tools"
 ref = "v1.0.0"
-targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+targets = ["claude", "cursor", "codex", "copilot", "grok", "opencode", "pi"]
 ```
 
 | Field | Required | Description |
@@ -429,9 +429,20 @@ Agent Plugin bundle
 | Claude Code | Keep `plugin.json`, `skills/`, and `mcp.json` intact | Read only namespaces registered to the Claude adapter | Generate the project marketplace with `./`-prefixed project-root-relative plugin sources and, only when required by Claude's loader, a managed `.claude-plugin/plugin.json` adapter derived from core metadata plus its registered extension. |
 | Cursor | Keep portable core intact | Read only namespaces registered to the Cursor adapter | Generate the project marketplace with the same project-root-relative source contract and, only when required, a managed `.cursor-plugin/plugin.json` adapter derived from core metadata plus its registered extension. |
 | Codex | Keep portable core intact | Read only namespaces registered to the Codex adapter | Generate `.agents/plugins/marketplace.json` with local source paths resolved from the project root, plus a managed `.codex-plugin/plugin.json` adapter only for Codex-only metadata the portable manifest cannot express. |
+| GitHub Copilot | Keep portable core intact | Read only namespaces registered to the Copilot adapter | Generate `.github/plugin/marketplace.json` with project-root-relative plugin sources. Copilot reads the canonical Agent Plugins manifest directly. |
 | Grok Build | Copy the validated bundle without changing portable files | Read only namespaces registered to the Grok adapter | Generate `.grok/plugins/<name>/` as a managed copy until Grok can consume the canonical bundle directly. |
 | OpenCode | Project plugin skills and merge normalized MCP servers into OpenCode config when needed | Read only namespaces registered to the OpenCode adapter | Symlink skills into `.opencode/skills/`; generalized legacy bundles may project Markdown agents, while standard extension resources are preserved but not projected yet; do not generate JavaScript or TypeScript plugin modules. |
 | Pi | Project supported skills | Read only namespaces registered to the Pi adapter | Symlink skills into `.agents/skills/`; ignore unsupported MCP or extension components with warnings. |
+
+Copilot follows its native precedence for marketplaces (`marketplace.json`,
+`.plugin/marketplace.json`, then `.github/plugin/marketplace.json`) and plugin
+manifests (`.plugin`, root, `.github/plugin`, then `.claude-plugin`). Dotagents
+canonicalizes a lone alternate manifest, but rejects shadowing locators and
+warns while pruning stale managed output behind a higher-priority marketplace.
+Legacy Copilot targets allow skills and MCP only; native agents, commands,
+hooks, LSP, executables, implicit component paths, and a physical
+`com.github.copilot/` extension are rejected. Standard extension metadata is
+preserved. These are harness constraints, not additions to the portable format.
 
 For Claude, Cursor, and Codex, a retained matching native fallback replaces the
 generated-manifest step for that target only. A reproducible authored manifest
@@ -508,13 +519,13 @@ review-tools/
         `-- review.mdc
 ```
 
-With the current adapters, an install for
-`targets = ["claude", "cursor", "codex", "opencode", "pi"]` produces:
+With the current adapters, an install for `targets = ["claude", "cursor", "codex", "copilot", "opencode", "pi"]` produces:
 
 ```text
 .agents/plugins/review-tools/              # portable source files unchanged; managed adapter dirs added
 .claude-plugin/marketplace.json             # generated registration
 .agents/plugins/review-tools/.claude-plugin/plugin.json
+.github/plugin/marketplace.json             # generated Copilot registration
 .cursor-plugin/marketplace.json             # generated registration
 .agents/plugins/review-tools/.cursor-plugin/plugin.json
 .agents/plugins/marketplace.json             # generated Codex registration

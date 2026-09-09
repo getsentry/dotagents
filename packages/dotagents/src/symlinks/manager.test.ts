@@ -6,9 +6,11 @@ import {
   symlink,
   writeFile,
   lstat,
+  readFile,
   readlink,
   readdir,
 } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ensureSkillsSymlink, verifySymlinks } from "./manager.js";
@@ -64,6 +66,39 @@ describe("symlinks", () => {
       expect(result.created).toBe(false);
     });
 
+    it("does not replace canonical skills when the target aliases the agents directory", async () => {
+      const targetDir = join(dir, "agents-alias");
+      const skillDir = join(agentsDir, "skills", "keep-me");
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(join(skillDir, "SKILL.md"), "keep me");
+      await symlink(agentsDir, targetDir, process.platform === "win32" ? "junction" : "dir");
+
+      const result = await ensureSkillsSymlink(agentsDir, targetDir);
+
+      expect(result).toEqual({ created: false, migrated: [] });
+      expect((await lstat(join(agentsDir, "skills"))).isDirectory()).toBe(true);
+      expect(await readFile(join(skillDir, "SKILL.md"), "utf-8")).toBe("keep me");
+    });
+
+    it("rejects a Copilot home that aliases the canonical skills target", async () => {
+      const externalSkills = join(dir, "external-skills");
+      const canonicalSkills = join(agentsDir, "skills");
+      await rm(canonicalSkills, { recursive: true });
+      await mkdir(externalSkills, { recursive: true });
+      await symlink(
+        externalSkills,
+        canonicalSkills,
+        process.platform === "win32" ? "junction" : "dir",
+      );
+
+      await expect(ensureSkillsSymlink(agentsDir, externalSkills)).rejects.toThrow(
+        "paths overlap",
+      );
+
+      expect((await lstat(canonicalSkills)).isSymbolicLink()).toBe(true);
+      expect(existsSync(join(externalSkills, "skills"))).toBe(false);
+    });
+
     it("replaces wrong symlink", async () => {
       const targetDir = join(dir, ".claude");
       await mkdir(targetDir, { recursive: true });
@@ -98,6 +133,44 @@ describe("symlinks", () => {
       // Verify symlink is now in place
       const stat = await lstat(join(targetDir, "skills"));
       expect(stat.isSymbolicLink()).toBe(true);
+    });
+
+    it("recreates a missing canonical skills directory before migration", async () => {
+      const targetDir = join(dir, ".copilot");
+      const nativeSkill = join(targetDir, "skills", "native-only");
+      const canonicalSkills = join(agentsDir, "skills");
+      await mkdir(nativeSkill, { recursive: true });
+      await writeFile(join(nativeSkill, "SKILL.md"), "native skill");
+      await rm(canonicalSkills, { recursive: true });
+
+      const result = await ensureSkillsSymlink(agentsDir, targetDir);
+
+      expect(result).toEqual({ created: true, migrated: ["native-only"] });
+      expect(await readFile(join(canonicalSkills, "native-only", "SKILL.md"), "utf-8"))
+        .toBe("native skill");
+      expect((await lstat(join(targetDir, "skills"))).isSymbolicLink()).toBe(true);
+    });
+
+    it("fails before moving or deleting skills when migration names conflict", async () => {
+      const targetDir = join(dir, ".copilot");
+      const nativeSkills = join(targetDir, "skills");
+      const canonicalSkills = join(agentsDir, "skills");
+      await mkdir(join(nativeSkills, "unique"), { recursive: true });
+      await mkdir(join(nativeSkills, "shared"), { recursive: true });
+      await mkdir(join(canonicalSkills, "shared"), { recursive: true });
+      await writeFile(join(nativeSkills, "unique", "SKILL.md"), "native unique");
+      await writeFile(join(nativeSkills, "shared", "SKILL.md"), "native shared");
+      await writeFile(join(canonicalSkills, "shared", "SKILL.md"), "canonical shared");
+
+      await expect(ensureSkillsSymlink(agentsDir, targetDir)).rejects.toThrow(
+        "these entries already exist",
+      );
+
+      expect((await lstat(nativeSkills)).isDirectory()).toBe(true);
+      expect(await readFile(join(nativeSkills, "unique", "SKILL.md"), "utf-8")).toBe("native unique");
+      expect(await readFile(join(nativeSkills, "shared", "SKILL.md"), "utf-8")).toBe("native shared");
+      expect(await readFile(join(canonicalSkills, "shared", "SKILL.md"), "utf-8")).toBe("canonical shared");
+      expect(existsSync(join(canonicalSkills, "unique"))).toBe(false);
     });
 
     it("removes migrated files from git index", async () => {

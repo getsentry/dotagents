@@ -112,13 +112,13 @@ describe("plugin writer", () => {
     const beta = await plugin("beta-tools");
 
     const result = await writePluginOutputs(
-      ["cursor", "codex", "claude"],
+      ["cursor", "codex", "claude", "copilot"],
       [beta, alpha],
       root,
     );
 
     expect(result.warnings).toEqual([]);
-    expect(result.written).toBe(9);
+    expect(result.written).toBe(10);
     const codexMarketplace = parseJsonObject(await readFile(join(root, ".agents", "plugins", "marketplace.json"), "utf-8"));
     expect(codexMarketplace).toEqual({
       interface: {
@@ -188,6 +188,7 @@ describe("plugin writer", () => {
     const claudeMarketplace = parseJsonObject(claudeMarketplaceJson);
     const claudePlugin = objectValue(arrayField(claudeMarketplace, "plugins")[0]);
     expect(resolve(root, String(claudePlugin["source"]))).toBe(alpha.pluginDir);
+    expect(await readFile(join(root, ".github", "plugin", "marketplace.json"), "utf-8")).toBe(claudeMarketplaceJson);
     expect(await readFile(join(root, ".cursor-plugin", "marketplace.json"), "utf-8")).toBe(claudeMarketplaceJson);
 
     const claudeManifest = parseJsonObject(await readFile(join(root, ".agents", "plugins", "alpha-tools", ".claude-plugin", "plugin.json"), "utf-8"));
@@ -215,7 +216,7 @@ describe("plugin writer", () => {
       shortDescription: "Tools for alpha-tools",
     });
 
-    expect(await verifyPluginOutputs(["cursor", "codex", "claude"], [beta, alpha], root)).toEqual([]);
+    expect(await verifyPluginOutputs(["cursor", "codex", "claude", "copilot"], [beta, alpha], root)).toEqual([]);
   });
 
   it("uses default Codex categories for empty legacy category values", async () => {
@@ -688,6 +689,21 @@ describe("plugin writer", () => {
     expect(existsSync(join(root, ".agents", "plugins", "alpha-tools", ".codex-plugin", "plugin.json"))).toBe(true);
   });
 
+  it("warns about a higher-priority Copilot marketplace and prunes stale output", async () => {
+    const alpha = await plugin("alpha-tools");
+    const generatedPath = join(root, ".github", "plugin", "marketplace.json");
+    const blockingPath = join(root, ".plugin", "marketplace.json");
+    await writePluginOutputs(["copilot"], [alpha], root);
+    await mkdir(dirname(blockingPath), { recursive: true });
+    await writeFile(blockingPath, "{ \"name\": \"mine\" }\n", "utf-8");
+
+    const reconciled = await reconcilePluginOutputs(["copilot"], [alpha], root);
+
+    expect(reconciled.pruned).toEqual([generatedPath]);
+    expect(reconciled.result.warnings[0]?.message).toContain(blockingPath);
+    expect(existsSync(generatedPath)).toBe(false);
+  });
+
   it.each([
     ["codex", "Codex", ".codex-plugin"],
     ["claude", "Claude", ".claude-plugin"],
@@ -723,6 +739,7 @@ describe("plugin writer", () => {
     });
     expect(existsSync(join(root, ".agents", "plugins", "marketplace.json"))).toBe(false);
     expect(existsSync(join(root, ".claude-plugin", "marketplace.json"))).toBe(false);
+    expect(existsSync(join(root, ".github", "plugin", "marketplace.json"))).toBe(false);
     expect(existsSync(join(root, ".cursor-plugin", "marketplace.json"))).toBe(false);
   });
 
@@ -1315,13 +1332,14 @@ describe("plugin writer", () => {
       "---\ndescription: Plugin reviewer\n---\nReview plugin output.\n",
       "utf-8",
     );
-    await writePluginOutputs(["claude", "cursor", "codex", "grok", "opencode", "pi"], [alpha], root);
+    await writePluginOutputs(["claude", "copilot", "cursor", "codex", "grok", "opencode", "pi"], [alpha], root);
 
     const pruned = await prunePluginOutputs([], [alpha], root);
 
     expect(pruned).toEqual([
       join(root, ".agents", "plugins", "marketplace.json"),
       join(root, ".claude-plugin", "marketplace.json"),
+      join(root, ".github", "plugin", "marketplace.json"),
       join(root, ".cursor-plugin", "marketplace.json"),
       join(root, ".grok", "plugins", "alpha-tools"),
       join(root, ".opencode", "skills", "plugin-qa"),
@@ -1333,6 +1351,7 @@ describe("plugin writer", () => {
     ]);
     expect(existsSync(join(root, ".agents", "plugins", "marketplace.json"))).toBe(false);
     expect(existsSync(join(root, ".claude-plugin", "marketplace.json"))).toBe(false);
+    expect(existsSync(join(root, ".github", "plugin", "marketplace.json"))).toBe(false);
     expect(existsSync(join(root, ".cursor-plugin", "marketplace.json"))).toBe(false);
     expect(existsSync(join(root, ".grok", "plugins", "alpha-tools"))).toBe(false);
     expect(existsSync(join(root, ".opencode", "skills", "plugin-qa"))).toBe(false);

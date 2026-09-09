@@ -5,9 +5,11 @@ import { getAgent } from "../targets/registry.js";
 import { hasDotagentsMarkdownSubagentMarker, hasDotagentsTomlSubagentMarker } from "./format.js";
 import { generatedSubagentIdentity, readSubagentFileIdentity } from "./identity.js";
 import type { SubagentConfigSpec, SubagentDeclaration } from "./types.js";
+import { resolveProjectPath } from "../scope.js";
 
 export interface SubagentResolvedTarget {
   dirPath: string;
+  resolveFilePath?: (fileName: string) => string;
 }
 
 export type SubagentTargetResolver = (
@@ -59,7 +61,11 @@ interface PlannedWrite {
 
 export function projectSubagentResolver(projectRoot: string): SubagentTargetResolver {
   return (_id: string, spec: SubagentConfigSpec) => ({
-    dirPath: join(projectRoot, spec.projectDir),
+    dirPath: resolveProjectPath(projectRoot, spec.projectDir),
+    resolveFilePath: (fileName) => resolveProjectPath(
+      projectRoot,
+      join(spec.projectDir, fileName),
+    ),
   });
 }
 
@@ -136,9 +142,11 @@ export async function reconcileSubagentConfigs(
         continue;
       }
 
-      const { dirPath } = resolveTarget(agentId, agent.subagents);
       const generated = agent.subagents.serialize(subagent);
-      const filePath = join(dirPath, generated.fileName);
+      const target = resolveTarget(agentId, agent.subagents);
+      const { dirPath } = target;
+      const filePath = target.resolveFilePath?.(generated.fileName)
+        ?? join(dirPath, generated.fileName);
       if (seen.has(filePath)) {continue;}
       seen.add(filePath);
       const content = normalizeContent(generated.content);

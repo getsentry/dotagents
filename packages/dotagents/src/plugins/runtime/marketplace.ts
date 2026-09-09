@@ -1,4 +1,5 @@
-import { relative } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { join, relative } from "node:path";
 import type { PluginDeclaration } from "../types.js";
 import { selectedAgentIds } from "../targets.js";
 import { stableJson } from "../managed-files.js";
@@ -13,8 +14,38 @@ export function marketplaceOutputPaths(root: PluginRuntimeRoot): string[] {
   return [
     layout.codexMarketplacePath,
     layout.claudeMarketplacePath,
+    layout.copilotMarketplacePath,
     layout.cursorMarketplacePath,
   ];
+}
+
+/** Returns the first Copilot catalog that takes precedence over dotagents output. */
+export function copilotMarketplaceConflict(root: PluginRuntimeRoot): string | undefined {
+  const layout = normalizePluginRuntimeLayout(root);
+  const managedRealPath = tryRealpath(layout.copilotMarketplacePath);
+  return [
+    join(layout.copilotMarketplaceRoot, "marketplace.json"),
+    join(layout.copilotMarketplaceRoot, ".plugin", "marketplace.json"),
+  ].find((filePath) => (
+    existsSync(filePath) &&
+    (managedRealPath === undefined || tryRealpath(filePath) !== managedRealPath)
+  ));
+}
+
+function tryRealpath(filePath: string): string | undefined {
+  try {
+    return realpathSync(filePath);
+  } catch {
+    return undefined;
+  }
+}
+
+export function copilotMarketplaceConflictMessage(
+  root: PluginRuntimeRoot,
+  conflictPath: string,
+): string {
+  const layout = normalizePluginRuntimeLayout(root);
+  return `Copilot will ignore the dotagents marketplace at ${layout.copilotMarketplacePath} because a higher-priority marketplace exists: ${conflictPath}. Remove or rename the higher-priority file, or exclude "copilot" from the plugin targets.`;
 }
 
 /** Builds target-specific marketplace JSON outputs for selected plugins. */
@@ -28,6 +59,7 @@ export function marketplaceOutputs(
 
   const outputs: RuntimeOutput[] = [];
   const claudePlugins = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes("claude"));
+  const copilotPlugins = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes("copilot"));
   const cursorPlugins = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes("cursor"));
   const codexPlugins = plugins.filter((plugin) => selectedAgentIds(agentIds, plugin).includes("codex"));
 
@@ -37,6 +69,14 @@ export function marketplaceOutputs(
       agent: "claude",
       filePath,
       content: stableJson(pathMarketplace(layout.claudeMarketplaceRoot, "dotagents", claudePlugins)),
+    });
+  }
+  if (copilotPlugins.length > 0) {
+    const filePath = layout.copilotMarketplacePath;
+    outputs.push({
+      agent: "copilot",
+      filePath,
+      content: stableJson(pathMarketplace(layout.copilotMarketplaceRoot, "dotagents", copilotPlugins)),
     });
   }
   if (cursorPlugins.length > 0) {
@@ -77,8 +117,8 @@ function pathMarketplace(
 }
 
 /**
- * Claude and Cursor marketplace projections use path strings instead of Codex's
- * structured local source objects, so keep this projection format separate.
+ * Claude, Copilot, and Cursor marketplace projections use path strings instead
+ * of Codex's structured local source objects, so keep this format separate.
  */
 function pathMarketplaceEntry(
   projectRoot: string,

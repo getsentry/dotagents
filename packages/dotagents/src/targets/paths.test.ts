@@ -38,6 +38,55 @@ describe("getUserMcpTarget", () => {
     expect(t.shared).toBe(true);
   });
 
+  it("copilot targets ~/.copilot/mcp-config.json by default", () => {
+    const previous = process.env["COPILOT_HOME"];
+    delete process.env["COPILOT_HOME"];
+    try {
+      const t = getUserMcpTarget("copilot");
+      expect(t.filePath).toBe(join(home, ".copilot", "mcp-config.json"));
+      expect(t.shared).toBe(false);
+      expect(t.mode).toBe(process.platform === "win32" ? undefined : 0o600);
+    } finally {
+      if (previous === undefined) {
+        delete process.env["COPILOT_HOME"];
+      } else {
+        process.env["COPILOT_HOME"] = previous;
+      }
+    }
+  });
+
+  it("copilot honors COPILOT_HOME", () => {
+    const previous = process.env["COPILOT_HOME"];
+    process.env["COPILOT_HOME"] = join(home, "custom-copilot");
+    try {
+      expect(getUserMcpTarget("copilot").filePath).toBe(
+        join(home, "custom-copilot", "mcp-config.json"),
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env["COPILOT_HOME"];
+      } else {
+        process.env["COPILOT_HOME"] = previous;
+      }
+    }
+  });
+
+  it("copilot treats an empty COPILOT_HOME as unset", () => {
+    const previous = process.env["COPILOT_HOME"];
+    process.env["COPILOT_HOME"] = "";
+    try {
+      expect(getUserMcpTarget("copilot").filePath).toBe(
+        join(home, ".copilot", "mcp-config.json"),
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env["COPILOT_HOME"];
+      } else {
+        process.env["COPILOT_HOME"] = previous;
+      }
+    }
+  });
+
   it("throws for unknown agent", () => {
     expect(() => getUserMcpTarget("emacs")).toThrow("Unknown agent");
   });
@@ -77,6 +126,14 @@ describe("skill discovery paths", () => {
     expect(agent.skillsParentDir).toBeUndefined();
     expect(agent.userSkillsParentDirs).toBeUndefined();
   });
+
+  it("copilot reads project skills natively and projects global skills into its home", () => {
+    const agent = getAgent("copilot")!;
+    expect(agent.skillsParentDir).toBeUndefined();
+    expect(agent.userSkillsParentDirs).toEqual([
+      process.env["COPILOT_HOME"] || join(home, ".copilot"),
+    ]);
+  });
 });
 
 describe("subagent paths", () => {
@@ -108,5 +165,9 @@ describe("subagent paths", () => {
 
   it("vscode does not support custom subagents", () => {
     expect(getAgent("vscode")!.subagents).toBeUndefined();
+  });
+
+  it("copilot does not support custom subagents", () => {
+    expect(getAgent("copilot")!.subagents).toBeUndefined();
   });
 });

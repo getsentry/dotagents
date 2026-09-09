@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, readFile, writeFile, rm, stat } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, writeFile, rm, stat, symlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
@@ -103,12 +103,35 @@ describe("writeMcpConfigs", () => {
     });
   });
 
-  it("writes codex .codex/config.toml", async () => {
-    await writeMcpConfigs(["codex"], [STDIO_SERVER], projectMcpResolver(dir));
+  it("writes codex stdio environment names and literal values in their native fields", async () => {
+    await writeMcpConfigs(["codex"], [{
+      ...STDIO_SERVER,
+      envValues: { PLUGIN_ROOT: "/plugins/github" },
+    }], projectMcpResolver(dir));
 
-    const raw = await readFile(join(dir, ".codex", "config.toml"), "utf-8");
-    expect(raw).toContain("mcp_servers");
-    expect(raw).toContain("github");
+    const content = parseTomlObject(
+      await readFile(join(dir, ".codex", "config.toml"), "utf-8"),
+    );
+    expect(childObject(content, "mcp_servers")["github"]).toEqual({
+      command: "npx",
+      args: ["-y", "@mcp/server-github"],
+      env: { PLUGIN_ROOT: "/plugins/github" },
+      env_vars: ["GITHUB_TOKEN"],
+    });
+  });
+
+  it("rejects a project config directory that resolves outside the project", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "dotagents-mcp-outside-"));
+    await symlink(outside, join(dir, ".codex"), process.platform === "win32" ? "junction" : "dir");
+
+    try {
+      await expect(
+        writeMcpConfigs(["codex"], [STDIO_SERVER], projectMcpResolver(dir)),
+      ).rejects.toThrow(/outside the project root/);
+      expect(existsSync(join(outside, "config.toml"))).toBe(false);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 
   it("writes .opencode/opencode.jsonc by default", async () => {
@@ -237,6 +260,60 @@ describe("writeMcpConfigs", () => {
     const content = JSON.parse(await readFile(filePath, "utf-8"));
     expect(content.mcp.github).toBeDefined();
     expect(existsSync(join(dir, ".opencode", "opencode.jsonc"))).toBe(false);
+  });
+
+  it.each([
+    [["copilot"], false],
+    [["claude", "copilot"], true],
+  ] as const)("reconciles a bare .mcp.json for %s", async (agents, rooted) => {
+    const filePath = join(dir, ".mcp.json");
+    await writeFile(filePath, JSON.stringify({
+      manual: { command: "manual", args: [] },
+      github: { command: "old", args: [] },
+    }));
+
+    await writeMcpConfigs([...agents], [STDIO_SERVER], projectMcpResolver(dir));
+
+    const content = JSON.parse(await readFile(filePath, "utf-8"));
+    const servers = rooted ? content.mcpServers : content;
+    expect(Object.hasOwn(content, "mcpServers")).toBe(rooted);
+    expect(servers.manual).toEqual({ command: "manual", args: [] });
+    expect(servers.github.command).toBe("npx");
+  });
+
+  it("keeps a bare Copilot fallback in place", async () => {
+    const filePath = join(dir, ".github", "mcp.json");
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, JSON.stringify({
+      manual: { command: "manual", args: [] },
+    }));
+
+    await writeMcpConfigs(["copilot"], [STDIO_SERVER], projectMcpResolver(dir));
+
+    const content = JSON.parse(await readFile(filePath, "utf-8"));
+    expect(existsSync(join(dir, ".mcp.json"))).toBe(false);
+    expect(content.manual.command).toBe("manual");
+    expect(content.github.command).toBe("npx");
+  });
+
+  it.each([
+    ["claude", "copilot"],
+    ["copilot", "claude"],
+  ] as const)("seeds shared .mcp.json from the fallback for %s first", async (first, second) => {
+    const preferredPath = join(dir, ".mcp.json");
+    const fallbackPath = join(dir, ".github", "mcp.json");
+    const fallback = {
+      manual: { command: "manual", args: [] },
+    };
+    await mkdir(dirname(fallbackPath), { recursive: true });
+    await writeFile(fallbackPath, JSON.stringify(fallback));
+
+    await writeMcpConfigs([first, second], [STDIO_SERVER], projectMcpResolver(dir));
+
+    const content = JSON.parse(await readFile(preferredPath, "utf-8"));
+    expect(content.mcpServers.manual).toEqual(fallback.manual);
+    expect(content.mcpServers.github.command).toBe("npx");
+    expect(JSON.parse(await readFile(fallbackPath, "utf-8"))).toEqual(fallback);
   });
 
   it("handles multiple servers", async () => {
@@ -423,6 +500,61 @@ describe("writeMcpConfigs", () => {
 
     expect(second.mtimeNs).toBe(first.mtimeNs);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "repairs a restrictive user config mode before reconciliation",
+    async () => {
+      const filePath = join(dir, "copilot", "mcp-config.json");
+      const resolver = () => ({ filePath, shared: false, mode: 0o600 });
+
+      await writeMcpConfigs(["copilot"], [STDIO_SERVER], resolver);
+      expect((await stat(filePath)).mode & 0o777).toBe(0o600);
+      await writeFile(filePath, JSON.stringify({
+        mcpServers: { github: { command: "old", args: [] } },
+      }));
+      await chmod(filePath, 0o000);
+
+      const result = await reconcileMcpConfigs(
+        ["copilot"],
+        [STDIO_SERVER],
+        resolver,
+        "apply",
+      );
+
+      expect(result.unresolved).toEqual([]);
+      expect(result.written).toEqual([filePath]);
+      expect((await stat(filePath)).mode & 0o777).toBe(0o600);
+      expect(JSON.parse(await readFile(filePath, "utf-8")).mcpServers.github.command).toBe("npx");
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "does not chmod or overwrite a config through a symlink",
+    async () => {
+      const filePath = join(dir, "copilot", "mcp-config.json");
+      const unrelatedPath = join(dir, "unrelated-config.json");
+      const resolver = () => ({ filePath, shared: false, mode: 0o600 });
+      const original = JSON.stringify({ mcpServers: { github: { command: "unmanaged" } } });
+      await mkdir(dirname(filePath), { recursive: true });
+      await writeFile(unrelatedPath, original);
+      await chmod(unrelatedPath, 0o644);
+      await symlink(unrelatedPath, filePath);
+
+      const result = await reconcileMcpConfigs(
+        ["copilot"],
+        [STDIO_SERVER],
+        resolver,
+        "apply",
+      );
+
+      expect(result.unresolved).toEqual([
+        expect.objectContaining({ issue: expect.stringContaining("not a regular file") }),
+      ]);
+      expect(result.written).toEqual([]);
+      expect((await stat(unrelatedPath)).mode & 0o777).toBe(0o644);
+      expect(await readFile(unrelatedPath, "utf-8")).toBe(original);
+    },
+  );
 
   it("interpolates env refs in claude HTTP headers/URL with ${VAR} syntax", async () => {
     await writeMcpConfigs(["claude"], [HTTP_SERVER_WITH_ENV_REFS], projectMcpResolver(dir));

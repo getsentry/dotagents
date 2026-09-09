@@ -43,7 +43,7 @@ npx @sentry/dotagents --project init
 
 | Flag | Description |
 |------|-------------|
-| `--agents <list>` | Comma-separated agent targets (claude, cursor, codex, vscode, grok, opencode, pi) |
+| `--agents <list>` | Comma-separated agent targets (claude, cursor, codex, copilot, vscode, grok, opencode, pi) |
 | `--force` | Overwrite existing `agents.toml` |
 
 **Interactive mode** (when TTY is available):

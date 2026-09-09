@@ -119,6 +119,13 @@ const MARKETPLACE_PATHS = [
   ".cursor-plugin/marketplace.json",
   ".codex-plugin/marketplace.json",
   ".plugin/marketplace.json",
+  ".github/plugin/marketplace.json",
+] as const;
+
+const COPILOT_MARKETPLACE_PATH = ".github/plugin/marketplace.json";
+const COPILOT_HIGHER_PRIORITY_MARKETPLACES = [
+  "marketplace.json",
+  ".plugin/marketplace.json",
 ] as const;
 
 const FALLBACK_MANIFEST_PATHS: ReadonlyArray<{ path: string; nativeSource?: NativePluginSource }> = [
@@ -126,7 +133,10 @@ const FALLBACK_MANIFEST_PATHS: ReadonlyArray<{ path: string; nativeSource?: Nati
   { path: ".claude-plugin/plugin.json", nativeSource: "claude" },
   { path: ".cursor-plugin/plugin.json", nativeSource: "cursor" },
   { path: ".plugin/plugin.json" },
+  { path: ".github/plugin/plugin.json" },
 ] as const;
+
+const COPILOT_GITHUB_MANIFEST_PATH = ".github/plugin/plugin.json";
 
 const NATIVE_MANIFEST_PATHS: ReadonlyArray<{
   source: NativePluginSource;
@@ -158,6 +168,26 @@ export const HYBRID_LEGACY_ROOTS = [
 export const DOTAGENTS_MANAGED_PLUGIN_MARKER = ".dotagents-managed";
 export const DOTAGENTS_NATIVE_FALLBACKS_MARKER = ".dotagents-native-fallbacks";
 const DOTAGENTS_NATIVE_SOURCE_MARKER = ".dotagents-native-source";
+const COPILOT_UNSUPPORTED_LEGACY_FIELDS = [
+  "agents",
+  "commands",
+  "hooks",
+  "lspServers",
+  "extensions",
+] as const;
+const COPILOT_UNSUPPORTED_STANDARD_RESOURCE_PATHS = [
+  "com.github.copilot",
+] as const;
+const COPILOT_UNSUPPORTED_LEGACY_RESOURCE_PATHS = [
+  ...COPILOT_UNSUPPORTED_STANDARD_RESOURCE_PATHS,
+  "agents",
+  "commands",
+  "hooks.json",
+  "hooks/hooks.json",
+  ".lsp.json",
+  "lsp.json",
+  ".github/lsp.json",
+] as const;
 
 let tempInstallCounter = 0;
 
@@ -622,6 +652,15 @@ async function discoverFromMarketplaces(
   const issues: PluginCatalog["issues"] = [];
   const referencedDirs = new Set<string>();
   for (const marketplacePath of MARKETPLACE_PATHS) {
+    // The Copilot-specific .github locator is invisible whenever either
+    // higher-priority native locator exists. Other generic discovery inputs
+    // retain their existing union behavior.
+    if (
+      marketplacePath === COPILOT_MARKETPLACE_PATH &&
+      COPILOT_HIGHER_PRIORITY_MARKETPLACES.some((path) => existsSync(join(sourceDir, path)))
+    ) {
+      continue;
+    }
     const filePath = join(sourceDir, marketplacePath);
     if (!existsSync(filePath)) {continue;}
 
@@ -1032,6 +1071,11 @@ async function ensureCanonicalManifest(plugin: PluginDeclaration): Promise<void>
   const filePath = join(plugin.pluginDir, "plugin.json");
   if (existsSync(filePath)) {return;}
   await writeFile(filePath, `${JSON.stringify(plugin.manifest, null, 2)}\n`, "utf-8");
+  // Only .plugin/plugin.json outranks the new canonical root. Copilot's
+  // lower-priority .github/plugin/plugin.json locator remains preserved.
+  if (!plugin.nativeSource) {
+    await rm(join(plugin.pluginDir, ".plugin", "plugin.json"), { force: true });
+  }
 }
 
 async function writeManagedMarker(pluginDir: string): Promise<void> {
@@ -1151,6 +1195,56 @@ export function preparePluginForTargets(
 ): PluginDeclaration {
   const interfaces = plugin.authoredNativeInterfaces ?? {};
   const selectedTargets = new Set(selectedAgentIds(agentIds, plugin));
+  const canonicalManifestPath = join(plugin.pluginDir, "plugin.json");
+  const copilotShadowPath = join(plugin.pluginDir, ".plugin", "plugin.json");
+  const copilotGitHubManifestPath = join(plugin.pluginDir, COPILOT_GITHUB_MANIFEST_PATH);
+  const importedFromCopilotLocator = !existsSync(canonicalManifestPath) &&
+    plugin.nativeSource === undefined;
+  if (
+    selectedTargets.has("copilot") &&
+    existsSync(copilotShadowPath) &&
+    !importedFromCopilotLocator
+  ) {
+    throw new Error(
+      `Plugin "${plugin.name}" cannot target Copilot because .plugin/plugin.json would shadow the canonical plugin.json for Copilot: ${copilotShadowPath}. Remove or rename the shadow manifest, or exclude "copilot" from this plugin's targets.`,
+    );
+  }
+  if (
+    selectedTargets.has("copilot") &&
+    existsSync(copilotGitHubManifestPath) &&
+    !existsSync(canonicalManifestPath) &&
+    !existsSync(copilotShadowPath) &&
+    plugin.nativeSource !== undefined
+  ) {
+    throw new Error(
+      `Plugin "${plugin.name}" cannot target Copilot because dotagents selected its ${nativeDisplayName(plugin.nativeSource)} native manifest, but Copilot would load ${COPILOT_GITHUB_MANIFEST_PATH} instead. Remove one manifest or exclude "copilot" from this plugin's targets.`,
+    );
+  }
+  if (selectedTargets.has("copilot")) {
+    const unsupportedPaths = isStandardPluginManifest(plugin.manifest)
+      ? COPILOT_UNSUPPORTED_STANDARD_RESOURCE_PATHS
+      : COPILOT_UNSUPPORTED_LEGACY_RESOURCE_PATHS;
+    const unsupportedRoots = unsupportedPaths.filter(
+      (path) => existsSync(join(plugin.pluginDir, path)),
+    );
+    if (unsupportedRoots.length > 0) {
+      throw new Error(
+        `Plugin "${plugin.name}" cannot target Copilot because its bundle contains unsupported top-level resources: ${unsupportedRoots.join(", ")}. The Copilot projection supports skills and MCP servers, not resources Copilot would activate natively; remove those resources or exclude "copilot" from this plugin's targets.`,
+      );
+    }
+  }
+  if (selectedTargets.has("copilot")) {
+    const unsupported = isStandardPluginManifest(plugin.manifest)
+      ? []
+      : COPILOT_UNSUPPORTED_LEGACY_FIELDS.filter(
+          (field) => plugin.manifest[field] !== undefined,
+        );
+    if (unsupported.length > 0) {
+      throw new Error(
+        `Plugin "${plugin.name}" cannot target Copilot because its legacy plugin.json declares unsupported components: ${unsupported.join(", ")}. The Copilot projection supports skills and MCP servers, not components Copilot would activate natively; remove those fields or exclude "copilot" from this plugin's targets.`,
+      );
+    }
+  }
   if (isStandardPluginManifest(plugin.manifest)) {
     assertNativeInterfaceNames(plugin.name, interfaces, plugin.pluginDir, selectedTargets);
   }

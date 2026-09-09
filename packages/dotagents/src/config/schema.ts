@@ -119,7 +119,10 @@ export function isWildcardDep(
 }
 
 const symlinksConfigSchema = z.object({
-  targets: z.array(z.string()).default([]),
+  targets: z.array(z.string().refine(
+    isContainedRelativePath,
+    "Symlink targets must be contained within the project root",
+  )).default([]),
 });
 
 export type SymlinksConfig = z.infer<typeof symlinksConfigSchema>;

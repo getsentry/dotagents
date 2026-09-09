@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { AgentsConfig } from "../../../config/schema.js";
 import type { Lockfile } from "../../../lockfile/schema.js";
-import type { ScopeRoot } from "../../../scope.js";
+import { resolveProjectPath, type ScopeRoot } from "../../../scope.js";
 import type { SubagentDeclaration } from "../../../subagents/types.js";
 import {
   InstalledSubagentWriteError,
@@ -57,7 +57,9 @@ export async function writeCanonicalSubagents(
   scope: ScopeRoot,
   subagents: SubagentDeclaration[],
 ): Promise<void> {
-  const subagentsDir = join(scope.agentsDir, "agents");
+  const subagentsDir = scope.scope === "project"
+    ? resolveProjectPath(scope.root, ".agents/agents")
+    : join(scope.agentsDir, "agents");
   try {
     await writeInstalledSubagents(subagentsDir, subagents);
     await pruneInstalledSubagents(subagentsDir, config.subagents);

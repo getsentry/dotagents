@@ -377,6 +377,12 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     });
   }
   for (const issue of pluginIssues) {
+    const alreadyReported = issues.some(
+      (candidate) => candidate.type === "plugins"
+        && candidate.name === issue.name
+        && candidate.message === issue.issue,
+    );
+    if (alreadyReported) {continue;}
     issues.push({
       type: "plugins",
       name: issue.name,
