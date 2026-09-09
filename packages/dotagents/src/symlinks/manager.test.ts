@@ -183,6 +183,22 @@ describe("symlinks", () => {
       expect(stat.isSymbolicLink()).toBe(true);
     });
 
+    it("recreates a missing canonical skills directory before migration", async () => {
+      const targetDir = join(dir, ".copilot");
+      const nativeSkill = join(targetDir, "skills", "native-only");
+      const canonicalSkills = join(agentsDir, "skills");
+      await mkdir(nativeSkill, { recursive: true });
+      await writeFile(join(nativeSkill, "SKILL.md"), "native skill");
+      await rm(canonicalSkills, { recursive: true });
+
+      const result = await ensureSkillsSymlink(agentsDir, targetDir);
+
+      expect(result).toEqual({ created: true, migrated: ["native-only"] });
+      expect(await readFile(join(canonicalSkills, "native-only", "SKILL.md"), "utf-8"))
+        .toBe("native skill");
+      expect((await lstat(join(targetDir, "skills"))).isSymbolicLink()).toBe(true);
+    });
+
     it("fails before moving or deleting skills when migration names conflict", async () => {
       const targetDir = join(dir, ".copilot");
       const nativeSkills = join(targetDir, "skills");

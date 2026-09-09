@@ -106,6 +106,7 @@ async function migrateDirectory(
   from: string,
   to: string,
 ): Promise<string[]> {
+  await mkdir(to, { recursive: true });
   const entries = await readdir(from, { withFileTypes: true });
   const conflicts: string[] = [];
 
