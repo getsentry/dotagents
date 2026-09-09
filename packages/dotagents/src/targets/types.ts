@@ -54,6 +54,10 @@ export interface McpConfigSpec {
   filePath: string;
   /** Existing legacy paths to use before creating the preferred path */
   fallbackFilePaths?: string[];
+  /** Existing project files may use a bare server map instead of the root key. */
+  acceptsBareServerMap?: boolean;
+  /** Existing bare server maps are recognized for migration but rewritten under the root key. */
+  recognizesBareServerMap?: boolean;
   /** Top-level key in the config file under which servers live */
   rootKey: string;
   /** File format */

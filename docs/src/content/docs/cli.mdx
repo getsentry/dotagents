@@ -43,7 +43,7 @@ agents can discover CLI guidance. It then runs `install` best-effort.
 Options:
 
 - `--agents <list>` comma-separated agent targets (`claude`, `cursor`, `codex`,
-  `vscode`, `opencode`, `grok`, `pi`).
+  `copilot`, `vscode`, `opencode`, `grok`, `pi`).
 - `--force` overwrites existing `agents.toml`.
 
 Examples:
@@ -371,9 +371,9 @@ Status output:
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `version` | integer | -- | Schema version. Always `1`. |
-| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `grok`, `vscode`, `opencode`, `pi`. `grok` and `pi` are plugin-only targets. |
+| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `copilot`, `grok`, `vscode`, `opencode`, `pi`. `grok` and `pi` are plugin-only targets. |
 | `subagents` | table[] | `[]` | Custom subagent declarations for Claude, Cursor, Codex, and OpenCode |
-| `plugins` | table[] | `[]` | Plugin declarations for Claude, Cursor, Codex, Grok, OpenCode, and Pi. |
+| `plugins` | table[] | `[]` | Plugin declarations for Claude, Cursor, Codex, Copilot, Grok, OpenCode, and Pi. |
 | `minimum_release_age` | integer | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install. |
 | `minimum_release_age_exclude` | string[] | `[]` | Sources that bypass the minimum release age gate. Supports org names, `org/repo`, and `org/*`. |
 | `defaultRepositorySource` | string | `github` | Host used for shorthand `owner/repo` sources. Valid values: `github` or `gitlab`. |
@@ -398,6 +398,9 @@ Status output:
 | `url` | string | HTTP | Server URL |
 | `headers` | table | No | HTTP headers for URL servers, not needed with OAuth |
 | `env` | string[] | No | Environment variable names to pass through |
+
+Copilot MCP uses `.mcp.json` or an existing `.github/mcp.json` in project scope
+and `$COPILOT_HOME/mcp-config.json` (default `~/.copilot/mcp-config.json`) globally.
 
 ### Hooks
 
@@ -482,16 +485,16 @@ reinterpreting generated adapters as source input.
 | `path` | string | No | Optional explicit plugin path inside the source. |
 | `targets` | string[] | No | Optional subset of configured agents. |
 
-Generated plugin outputs include Claude/Cursor/Codex marketplaces and native
-manifests, Grok plugin directories, OpenCode skill links and portable MCP
-entries, and Pi skill links. OpenCode MCP keys use
+Generated plugin outputs include Claude, Cursor, Codex, and Copilot
+marketplaces, native Claude, Cursor, and Codex manifests, Grok plugin
+directories, OpenCode skill links and portable MCP entries, and Pi skill
+links. Every generated marketplace uses the name `dotagents`. Native plugin
+selectors use `<name>@dotagents`. OpenCode MCP keys use
 `plugin.<plugin>.<server>`; dotagents expands `${PLUGIN_ROOT}` and
 `${PLUGIN_DATA}` and preserves unrelated entries in the shared config.
-Every generated marketplace uses the name `dotagents`. Native plugin selectors
-use `<name>@dotagents`.
 Generalized legacy bundles can also project Markdown agents into OpenCode;
-standard extension agents are preserved but not projected yet. dotagents rejects
-plugin sources that resolve to the same project's
+standard extension agents are preserved but not projected yet. dotagents
+rejects plugin sources that resolve to the same project's
 `.agents/plugins/<name>/` install destination. Global plugins use
 `~/.agents/plugins/<name>/` and global harness projections.
 
@@ -509,11 +512,9 @@ dotagents add getsentry/agent-plugins review-tools
 dotagents install
 ```
 
-Global plugins install into `~/.agents/plugins/`. Claude and Cursor marketplaces
-are generated below `~/.agents/`, Codex uses `~/.agents/plugins/marketplace.json`,
-Grok uses `~/.grok/plugins/`, OpenCode skills use `~/.config/opencode/skills/`
-and plugin MCP entries use `~/.config/opencode/opencode.json`, and Pi skills use
-`~/.agents/skills/`.
+Global plugins install into `~/.agents/plugins/`. Claude and Cursor marketplaces are generated below `~/.agents/`. Copilot uses `~/.agents/.github/plugin/marketplace.json`, and Codex uses `~/.agents/plugins/marketplace.json`. Grok uses `~/.grok/plugins/`. OpenCode skills use `~/.config/opencode/skills/`, and plugin MCP entries use `~/.config/opencode/opencode.json`. Pi skills use `~/.agents/skills/`.
+
+Register the selected scope root with Copilot by running `copilot plugin marketplace add <scope-root>`. Then run `copilot plugin install <name>@dotagents`.
 
 ### Project Scope (`--project`)
 
@@ -533,3 +534,4 @@ dotagents --project install
 | --- | --- |
 | `DOTAGENTS_STATE_DIR` | Override cache location. Default: `~/.local/dotagents`. |
 | `DOTAGENTS_HOME` | Override global-scope location. Default: `~/.agents`. |
+| `COPILOT_HOME` | Override Copilot's global skills and MCP location with a non-empty absolute path. Default when unset: `~/.copilot`. |

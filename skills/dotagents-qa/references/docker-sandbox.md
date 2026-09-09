@@ -13,7 +13,7 @@ docker build --pull \
   skills/dotagents-qa
 ```
 
-The image includes Node, pnpm, Git, jq, ripgrep, Claude Code, Codex, OpenCode, and Pi. Record their versions before client-specific claims.
+The image includes Node, pnpm, Git, jq, ripgrep, Claude Code, GitHub Copilot CLI, Codex, OpenCode, and Pi. Record their versions before client-specific claims.
 
 ## Isolate the checkout and homes
 
@@ -36,11 +36,12 @@ export CI=1
 export HOME=/sandbox/home
 export DOTAGENTS_STATE_DIR=/sandbox/state
 export DOTAGENTS_HOME=/sandbox/user-agents
+export COPILOT_HOME=/sandbox/copilot-home
 export CODEX_HOME=/sandbox/codex-home
 export CLAUDE_CONFIG_DIR=/sandbox/claude-home
 
 mkdir -p "$HOME" "$DOTAGENTS_STATE_DIR" "$DOTAGENTS_HOME" \
-  "$CODEX_HOME" "$CLAUDE_CONFIG_DIR" /sandbox/repo
+  "$COPILOT_HOME" "$CODEX_HOME" "$CLAUDE_CONFIG_DIR" /sandbox/repo
 tar -C /host-repo \
   --exclude=.git \
   --exclude=node_modules \

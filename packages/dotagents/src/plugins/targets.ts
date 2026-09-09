@@ -6,7 +6,7 @@ import { isSerializedObject, type SerializedObject, type SerializedValue } from 
 import { isString } from "../utils/type-guards.js";
 
 const PLUGIN_ONLY_AGENT_IDS = ["grok", "pi"];
-const PLUGIN_AGENT_IDS = ["claude", "cursor", "codex", "grok", "opencode", "pi"];
+const PLUGIN_AGENT_IDS = ["claude", "copilot", "cursor", "codex", "grok", "opencode", "pi"];
 const SUPPORTED_PLUGIN_AGENT_IDS = new Set(allPluginAgentIds());
 const GENERATED_NATIVE_FIELDS = {
   claude: new Set(["$schema", "name", "version", "description", "author", "homepage", "repository", "license", "keywords", "skills"]),

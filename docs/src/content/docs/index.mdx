@@ -18,7 +18,7 @@ hero:
         <strong>agents.toml</strong>
       </div>
       <pre><code>{`version = 1
-agents = ["claude", "cursor", "codex", "vscode", "opencode"]
+agents = ["claude", "cursor", "codex", "copilot", "vscode", "opencode"]
 
 [trust]
 github_orgs = ["getsentry"]
@@ -40,7 +40,7 @@ targets = ["claude", "codex", "opencode"]
 name = "review-tools"
 source = "getsentry/agent-plugins"
 path = "plugins/review-tools"
-targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
+targets = ["claude", "cursor", "codex", "copilot", "opencode"]`}</code></pre>
     </div>
   </section>
 
@@ -105,6 +105,7 @@ targets = ["claude", "cursor", "codex", "opencode"]`}</code></pre>
     | `claude` | `.claude` | `.mcp.json` | `.claude/settings.json` | `.claude/agents/*.md` |
     | `cursor` | `.cursor` | `.cursor/mcp.json` | `.cursor/hooks.json` | `.cursor/agents/*.md` |
     | `codex` | `.codex` | `.codex/config.toml` | None | `.codex/agents/*.toml` |
+    | `copilot` | `.copilot` | `.mcp.json` or `.github/mcp.json` | None | None |
     | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` | None |
     | `opencode` | `.opencode` | `.opencode/opencode.jsonc` | None | `.opencode/agents/*.md` |
 

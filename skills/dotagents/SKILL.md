@@ -4,7 +4,7 @@ description: Manage dotagents dependencies and runtime config. Use when asked to
 spec_hash: 98920b9b8a05
 ---
 
-Manage dependencies declared in `agents.toml`. dotagents resolves skills, subagents, plugins, MCP servers, and hooks so agent tools (Claude Code, Cursor, Codex, Grok, VS Code, OpenCode, Pi) can use shared global or project config.
+Manage dependencies declared in `agents.toml`. dotagents resolves skills, subagents, plugins, MCP servers, and hooks so agent tools (Claude Code, Cursor, Codex, GitHub Copilot, Grok, VS Code, OpenCode, Pi) can use shared global or project config.
 
 ## Running dotagents
 

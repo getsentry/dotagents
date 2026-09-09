@@ -1,5 +1,6 @@
-import { join, resolve } from "node:path";
-import type { ScopeRoot } from "../scope.js";
+import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
+import { resolveProjectPath, type ScopeRoot } from "../scope.js";
 import { getAgent } from "./registry.js";
 
 /** Owns the shared projection of configured agents and legacy entries to absolute symlink targets. */
@@ -23,15 +24,25 @@ export function skillSymlinkTargets(
       seen.add(target);
       targets.push(target);
     }
-    return targets.map((target) => resolve(join(scope.root, target)));
+    return targets.map((target) => resolve(resolveProjectPath(scope.root, target)));
   }
 
   for (const agentId of agentIds) {
     for (const target of getAgent(agentId)?.userSkillsParentDirs ?? []) {
+      if (pathsReferToSameEntry(target, scope.agentsDir)) {continue;}
       if (seen.has(target)) {continue;}
       seen.add(target);
       targets.push(target);
     }
   }
   return targets;
+}
+
+function pathsReferToSameEntry(left: string, right: string): boolean {
+  if (resolve(left) === resolve(right)) {return true;}
+  try {
+    return realpathSync(left) === realpathSync(right);
+  } catch {
+    return false;
+  }
 }

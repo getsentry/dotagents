@@ -4,7 +4,7 @@
 
 ```toml
 version = 1                     # Required, must be 1
-agents = ["claude", "cursor"]   # Optional, agent targets
+agents = ["claude", "cursor", "copilot"] # Optional, agent targets
 defaultRepositorySource = "github" # Optional, github or gitlab
 minimum_release_age = 60        # Optional, minutes
 minimum_release_age_exclude = ["getsentry/*"] # Optional
@@ -24,7 +24,7 @@ minimum_release_age_exclude = ["getsentry/*"] # Optional
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version, must be `1` |
 | `defaultRepositorySource` | string | No | `github` | Host for shorthand `owner/repo` sources. Valid values: `github`, `gitlab` |
-| `agents` | string[] | No | `[]` | Agent targets: `claude`, `cursor`, `codex`, `vscode`, `grok`, `opencode`, `pi` |
+| `agents` | string[] | No | `[]` | Agent targets: `claude`, `cursor`, `codex`, `copilot`, `vscode`, `grok`, `opencode`, `pi` |
 | `minimum_release_age` | integer | No | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install |
 | `minimum_release_age_exclude` | string[] | No | `[]` | Sources that bypass `minimum_release_age` |
 
@@ -175,7 +175,7 @@ name = "review-tools"           # Required, unique plugin identifier
 source = "getsentry/agent-plugins" # Required, source repository or path
 ref = "v1.0.0"                  # Optional, pin to tag/branch/commit
 path = "plugins/review-tools"   # Optional, plugin directory within source
-targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+targets = ["claude", "cursor", "codex", "copilot", "grok", "opencode", "pi"]
 ```
 
 | Field | Type | Required | Description |
@@ -229,3 +229,4 @@ Local path skills, subagents, and plugins have `source` only.
 |----------|---------|
 | `DOTAGENTS_STATE_DIR` | Override cache location (default: `~/.local/dotagents`) |
 | `DOTAGENTS_HOME` | Override global-scope location (default: `~/.agents`) |
+| `COPILOT_HOME` | Override Copilot global skills and MCP location with a non-empty absolute path (default when unset: `~/.copilot`) |

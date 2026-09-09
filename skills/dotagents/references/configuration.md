@@ -104,6 +104,7 @@ MCP configs are written per-agent in the appropriate format:
 - Codex: `.codex/config.toml` (TOML, shared with other Codex config)
 - VS Code: `.vscode/mcp.json` (JSON)
 - OpenCode: `.opencode/opencode.jsonc` by default (JSONC, shared); existing nested or root OpenCode config files are reused.
+- GitHub Copilot: `.mcp.json` or an existing `.github/mcp.json`; global scope uses `$COPILOT_HOME/mcp-config.json` (default `~/.copilot/mcp-config.json`).
 
 ## Hooks
 
@@ -151,25 +152,26 @@ Declare plugin bundles with `[[plugins]]`. dotagents installs canonical bundles 
 name = "review-tools"
 source = "getsentry/agent-plugins"
 path = "plugins/review-tools"
-targets = ["claude", "cursor", "codex", "grok", "opencode", "pi"]
+targets = ["claude", "cursor", "codex", "copilot", "grok", "opencode", "pi"]
 ```
 
 Plugin declarations work in global and project scope. Canonical bundles and runtime projections use the selected scope's paths.
 
 Global bundles live under `~/.agents/plugins/`. Runtime outputs use global
-Claude, Cursor, Codex, Grok (`~/.grok/plugins/`), OpenCode, and Pi locations.
+Claude, Cursor, Codex, Copilot, Grok (`~/.grok/plugins/`), OpenCode, and Pi
+locations.
 
 ## Agents
 
 The `agents` array controls which agent tools get symlinks and configs.
 
 ```toml
-agents = ["claude", "cursor", "codex", "vscode", "grok", "opencode", "pi"]
+agents = ["claude", "cursor", "codex", "copilot", "vscode", "grok", "opencode", "pi"]
 ```
 
 Each agent gets:
 - A `<agent-dir>/skills/` symlink pointing to the selected scope's managed skills directory (Claude, Cursor)
-- Or native discovery from the selected scope's managed skills directory (Codex, VS Code, OpenCode)
+- Or native project discovery from the selected scope's managed skills directory (Codex, GitHub Copilot, VS Code, OpenCode)
 - MCP server configs in the agent's config file
 - Hook configs (where supported)
 - Subagent and plugin runtime outputs (where supported)
@@ -186,7 +188,8 @@ npx @sentry/dotagents add getsentry/agent-plugins review-tools
 npx @sentry/dotagents install
 ```
 
-Global symlinks include `~/.claude/skills/` for Claude and Cursor.
+Global skill links include `~/.claude/skills/` for Claude and Cursor and
+`$COPILOT_HOME/skills/` for Copilot (default `~/.copilot/skills/`).
 
 ### Project Scope (`--project`)
 

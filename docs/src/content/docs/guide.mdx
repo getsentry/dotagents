@@ -146,8 +146,8 @@ version.
 ## Global Paths
 
 Global config, skills, plugins, and the lockfile live under `~/.agents/`. Plugin
-outputs are written to the global Claude, Cursor, Codex, Grok, OpenCode, and Pi
-locations. Override the dotagents root with `DOTAGENTS_HOME`.
+outputs are written to the global Claude, Cursor, Codex, Copilot, Grok,
+OpenCode, and Pi locations. Override the dotagents root with `DOTAGENTS_HOME`.
 
 `--global` selects global scope explicitly. `--user` remains a compatibility
 alias.
@@ -166,7 +166,7 @@ Existing Codex installations keep the old marketplace identity after a dotagents
 
 ```toml
 version = 1
-agents = ["claude", "cursor", "codex", "opencode"]
+agents = ["claude", "cursor", "codex", "copilot", "opencode"]
 minimum_release_age = 60
 minimum_release_age_exclude = ["getsentry/*"]
 
@@ -223,7 +223,7 @@ targets = ["claude", "codex", "opencode"]
 [[plugins]]
 name = "review-tools"
 source = "getsentry/agent-pack"
-targets = ["claude", "cursor", "codex", "opencode"]
+targets = ["claude", "cursor", "codex", "copilot", "opencode"]
 ```
 
 Portable Agent Plugins may coexist with authored Claude, Cursor, or Codex

@@ -1,6 +1,6 @@
 ---
 name: dotagents-qa
-description: QA dotagents changes and published releases in Docker, including CLI lifecycles, user/global scope, real plugins, and Claude, Codex, OpenCode, or Pi projections. Use when behavior, packaging, scopes, or harness integration needs runtime proof.
+description: QA dotagents changes and published releases in Docker, including CLI lifecycles, user/global scope, real plugins, and Claude, Copilot, Codex, OpenCode, or Pi projections. Use when behavior, packaging, scopes, or harness integration needs runtime proof.
 spec_hash: eda48b96deb3
 ---
 
@@ -26,7 +26,7 @@ Read the relevant references before acting:
 - Ordinary install/sync behavior: [references/core-agentic-qa.md](references/core-agentic-qa.md)
 - Real plugins, full lifecycle, native clients, and user/global scope: [references/release-plugin-matrix.md](references/release-plugin-matrix.md)
 - Plugin adapters and automated proof: [references/plugin-runtime.md](references/plugin-runtime.md)
-- Harness details: [Claude](references/claude.md), [Codex](references/codex.md), [OpenCode](references/opencode.md), [Pi](references/pi.md), [Cursor](references/cursor.md), [Grok](references/grok.md)
+- Harness details: [Claude](references/claude.md), [Copilot](references/copilot.md), [Codex](references/codex.md), [OpenCode](references/opencode.md), [Pi](references/pi.md), [Cursor](references/cursor.md), [Grok](references/grok.md)
 
 Planning is part of acting: read the relevant references before proposing a command sequence, not only before executing it.
 
@@ -40,6 +40,7 @@ Run package and runtime work as a non-root user. Keep these inside Docker or dis
 export HOME=/sandbox/home
 export DOTAGENTS_STATE_DIR=/sandbox/state
 export DOTAGENTS_HOME=/sandbox/user-agents
+export COPILOT_HOME=/sandbox/copilot-home
 export CODEX_HOME=/sandbox/codex-home
 export CLAUDE_CONFIG_DIR=/sandbox/claude-home
 ```
@@ -102,6 +103,7 @@ Use a fresh project per source. Record source commits. Do not guess repository n
 Keep per-harness fixtures isolated. In particular, do not enable Pi in the OpenCode proof: OpenCode can read Pi's shared `.agents/skills` links and create a false pass.
 
 - Claude: validate generated plugin and marketplace manifests, then marketplace add, install, list, and details.
+- Copilot: add the generated marketplace, browse it, install the plugin, and list the installed plugin.
 - Codex: add the project or user marketplace root, list available plugins, install, and list enabled plugins.
 - OpenCode: run `opencode debug skill` and `opencode debug config`; assert exact projected skill names and locations plus every portable plugin MCP entry under `plugin.<plugin>.<server>` with expanded paths and environment.
 - Pi: in a separate Pi-only fixture, verify expected skill links, resolved targets, and `.dotagents-managed/<skill>` ownership markers.

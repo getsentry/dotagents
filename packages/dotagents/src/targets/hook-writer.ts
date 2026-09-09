@@ -1,11 +1,12 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { getAgent } from "./registry.js";
 import type { HookDeclaration, HookConfigSpec } from "./types.js";
 import type { HookConfig } from "../config/schema.js";
 import { isSerializedObject, type SerializedObject } from "@sentry/dotagents-lib";
+import { resolveProjectPath } from "../scope.js";
 
 export interface HookResolvedTarget {
   filePath: string;
@@ -43,7 +44,7 @@ export function toHookDeclarations(configs: HookConfig[]): HookDeclaration[] {
 /** Resolve project hook config paths relative to the project root. */
 export function projectHookResolver(projectRoot: string): HookTargetResolver {
   return (_id: string, spec: HookConfigSpec) => ({
-    filePath: join(projectRoot, spec.filePath),
+    filePath: resolveProjectPath(projectRoot, spec.filePath),
     shared: spec.shared,
   });
 }
