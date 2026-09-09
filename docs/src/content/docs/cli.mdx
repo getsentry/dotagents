@@ -373,7 +373,7 @@ Status output:
 | `version` | integer | -- | Schema version. Always `1`. |
 | `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `copilot`, `grok`, `vscode`, `opencode`, `pi`. `grok` and `pi` are plugin-only targets. |
 | `subagents` | table[] | `[]` | Custom subagent declarations for Claude, Cursor, Codex, and OpenCode |
-| `plugins` | table[] | `[]` | Plugin declarations for Claude, Copilot, Cursor, Codex, Grok, OpenCode, and Pi. |
+| `plugins` | table[] | `[]` | Plugin declarations for Claude, Cursor, Codex, Copilot, Grok, OpenCode, and Pi. |
 | `minimum_release_age` | integer | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install. |
 | `minimum_release_age_exclude` | string[] | `[]` | Sources that bypass the minimum release age gate. Supports org names, `org/repo`, and `org/*`. |
 | `defaultRepositorySource` | string | `github` | Host used for shorthand `owner/repo` sources. Valid values: `github` or `gitlab`. |
@@ -399,13 +399,8 @@ Status output:
 | `headers` | table | No | HTTP headers for URL servers, not needed with OAuth |
 | `env` | string[] | No | Environment variable names to pass through |
 
-Copilot project MCP uses `.mcp.json`, falling back to an existing
-`.github/mcp.json`. Both a bare server map and an `mcpServers` document are
-accepted and preserved for Copilot-only projects. Sharing `.mcp.json` with
-Claude, including after Copilot is removed, promotes a recognized bare map
-under `mcpServers` without dropping unmanaged servers. Global Copilot MCP uses
-`$COPILOT_HOME/mcp-config.json`, defaulting to
-`~/.copilot/mcp-config.json`, and is enforced as mode `0600` on POSIX.
+Copilot MCP uses `.mcp.json` or an existing `.github/mcp.json` in project scope
+and `$COPILOT_HOME/mcp-config.json` (default `~/.copilot/mcp-config.json`) globally.
 
 ### Hooks
 
@@ -490,22 +485,7 @@ reinterpreting generated adapters as source input.
 | `path` | string | No | Optional explicit plugin path inside the source. |
 | `targets` | string[] | No | Optional subset of configured agents. |
 
-Generated plugin outputs include Claude, Copilot, Cursor, and Codex marketplaces, native Claude, Cursor, and Codex manifests, Grok plugin directories, OpenCode skill links and portable MCP entries, and Pi skill links. OpenCode MCP keys use `plugin.<plugin>.<server>`; dotagents expands `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` and preserves unrelated entries in the shared config. Generalized legacy bundles can also project Markdown agents into OpenCode; standard extension agents are preserved but not projected yet. dotagents rejects plugin sources that resolve to the same project's `.agents/plugins/<name>/` install destination. Global plugins use `~/.agents/plugins/<name>/` and global harness projections.
-
-Copilot consumes the canonical portable bundle directly. It gives root
-`marketplace.json` and `.plugin/marketplace.json` precedence over the generated
-`.github/plugin/marketplace.json`; dotagents warns and prunes stale managed
-output when either higher-priority file exists. Copilot resolves plugin
-manifests in `.plugin`, root, `.github/plugin`, then `.claude-plugin` order. A
-source containing only `.plugin/plugin.json` or `.github/plugin/plugin.json` is
-canonicalized to root `plugin.json`. Conflicting locators fail preflight when
-dotagents and Copilot would select different manifests. Legacy Copilot
-manifests may declare skills and MCP servers; native agent, command, hook, LSP, and
-executable-extension fields and implicitly discovered paths are rejected.
-Standard manifest extension data is preserved, but a physical
-`com.github.copilot/` extension directory is rejected because Copilot loads
-client-native components from it. Remove unsupported or shadowing fields and
-resources, or exclude `copilot` from that plugin's `targets`.
+Generated plugin outputs include Claude, Cursor, Codex, and Copilot marketplaces, native Claude, Cursor, and Codex manifests, Grok plugin directories, OpenCode skill links and portable MCP entries, and Pi skill links. OpenCode MCP keys use `plugin.<plugin>.<server>`; dotagents expands `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` and preserves unrelated entries in the shared config. Generalized legacy bundles can also project Markdown agents into OpenCode; standard extension agents are preserved but not projected yet. dotagents rejects plugin sources that resolve to the same project's `.agents/plugins/<name>/` install destination. Global plugins use `~/.agents/plugins/<name>/` and global harness projections.
 
 ## Scopes
 
@@ -521,7 +501,7 @@ dotagents add getsentry/agent-plugins review-tools
 dotagents install
 ```
 
-Global plugins install into `~/.agents/plugins/`. Claude and Cursor marketplaces are generated below `~/.agents/`. Copilot uses `~/.agents/.github/plugin/marketplace.json`, and Codex uses `~/.agents/plugins/marketplace.json`. Grok uses `~/.grok/plugins/`. OpenCode skills use `~/.config/opencode/skills/`, and plugin MCP entries use `~/.config/opencode/opencode.json`. Pi skills use `~/.agents/skills/`. Copilot global skills and MCP use `COPILOT_HOME`, defaulting to `~/.copilot/` when it is unset. Use a non-empty absolute override; Copilot CLI interprets an explicitly empty value as a working-directory-relative personal skills path.
+Global plugins install into `~/.agents/plugins/`. Claude and Cursor marketplaces are generated below `~/.agents/`. Copilot uses `~/.agents/.github/plugin/marketplace.json`, and Codex uses `~/.agents/plugins/marketplace.json`. Grok uses `~/.grok/plugins/`. OpenCode skills use `~/.config/opencode/skills/`, and plugin MCP entries use `~/.config/opencode/opencode.json`. Pi skills use `~/.agents/skills/`.
 
 Register the selected scope root with Copilot by running `copilot plugin marketplace add <scope-root>`. Then run `copilot plugin install <name>@dotagents`.
 

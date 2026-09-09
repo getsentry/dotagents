@@ -276,7 +276,7 @@ name = "review-tools"
 source = "getsentry/agent-plugins"
 path = "plugins/review-tools"
 ref = "v1.0.0"
-targets = ["claude", "copilot", "cursor", "codex", "grok", "opencode", "pi"]
+targets = ["claude", "cursor", "codex", "copilot", "grok", "opencode", "pi"]
 ```
 
 | Field | Required | Description |
@@ -427,27 +427,22 @@ Agent Plugin bundle
 | Target | Portable core | Target extension | Generated output |
 |--------|---------------|------------------|------------------|
 | Claude Code | Keep `plugin.json`, `skills/`, and `mcp.json` intact | Read only namespaces registered to the Claude adapter | Generate the project marketplace with `./`-prefixed project-root-relative plugin sources and, only when required by Claude's loader, a managed `.claude-plugin/plugin.json` adapter derived from core metadata plus its registered extension. |
-| GitHub Copilot | Keep portable core intact | Read only namespaces registered to the Copilot adapter | Generate `.github/plugin/marketplace.json` with project-root-relative plugin sources. Copilot reads the canonical Agent Plugins manifest directly. |
 | Cursor | Keep portable core intact | Read only namespaces registered to the Cursor adapter | Generate the project marketplace with the same project-root-relative source contract and, only when required, a managed `.cursor-plugin/plugin.json` adapter derived from core metadata plus its registered extension. |
 | Codex | Keep portable core intact | Read only namespaces registered to the Codex adapter | Generate `.agents/plugins/marketplace.json` with local source paths resolved from the project root, plus a managed `.codex-plugin/plugin.json` adapter only for Codex-only metadata the portable manifest cannot express. |
+| GitHub Copilot | Keep portable core intact | Read only namespaces registered to the Copilot adapter | Generate `.github/plugin/marketplace.json` with project-root-relative plugin sources. Copilot reads the canonical Agent Plugins manifest directly. |
 | Grok Build | Copy the validated bundle without changing portable files | Read only namespaces registered to the Grok adapter | Generate `.grok/plugins/<name>/` as a managed copy until Grok can consume the canonical bundle directly. |
 | OpenCode | Project plugin skills and merge normalized MCP servers into OpenCode config when needed | Read only namespaces registered to the OpenCode adapter | Symlink skills into `.opencode/skills/`; generalized legacy bundles may project Markdown agents, while standard extension resources are preserved but not projected yet; do not generate JavaScript or TypeScript plugin modules. |
 | Pi | Project supported skills | Read only namespaces registered to the Pi adapter | Symlink skills into `.agents/skills/`; ignore unsupported MCP or extension components with warnings. |
 
-Copilot resolves `marketplace.json` and `.plugin/marketplace.json` before the
-generated `.github/plugin/marketplace.json`. If either higher-priority catalog
-exists, dotagents reports the conflict and prunes stale managed Copilot output.
-Copilot resolves plugin manifests in `.plugin`, root, `.github/plugin`, then
-`.claude-plugin` order. A source containing only `.plugin/plugin.json` or
-`.github/plugin/plugin.json` is canonicalized to root `plugin.json` during
-installation. Conflicting locators cannot target Copilot if they would hide the
-canonical source or make dotagents and Copilot select different manifests. For
-legacy manifests targeting Copilot, dotagents rejects native agent, command, hook, LSP, and
-executable-extension fields plus implicitly discovered active paths.
-Standard manifest extension data is preserved, but a physical
-`com.github.copilot/` extension directory is rejected because Copilot loads
-client-native components from it even without a matching manifest entry. These
-are harness constraints, not extensions of the portable plugin format.
+Copilot follows its native precedence for marketplaces (`marketplace.json`,
+`.plugin/marketplace.json`, then `.github/plugin/marketplace.json`) and plugin
+manifests (`.plugin`, root, `.github/plugin`, then `.claude-plugin`). Dotagents
+canonicalizes a lone alternate manifest, but rejects shadowing locators and
+warns while pruning stale managed output behind a higher-priority marketplace.
+Legacy Copilot targets allow skills and MCP only; native agents, commands,
+hooks, LSP, executables, implicit component paths, and a physical
+`com.github.copilot/` extension are rejected. Standard extension metadata is
+preserved. These are harness constraints, not additions to the portable format.
 
 For Claude, Cursor, and Codex, a retained matching native fallback replaces the
 generated-manifest step for that target only. A reproducible authored manifest
@@ -524,7 +519,7 @@ review-tools/
         `-- review.mdc
 ```
 
-With the current adapters, an install for `targets = ["claude", "copilot", "cursor", "codex", "opencode", "pi"]` produces:
+With the current adapters, an install for `targets = ["claude", "cursor", "codex", "copilot", "opencode", "pi"]` produces:
 
 ```text
 .agents/plugins/review-tools/              # portable source files unchanged; managed adapter dirs added
