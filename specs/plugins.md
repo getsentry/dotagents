@@ -167,13 +167,14 @@ interpret them.
 
 ## Skills
 
-Every direct child of `skills/` that contains a valid `SKILL.md` is a plugin
-skill:
+Every directory below `skills/` that contains a valid `SKILL.md` is a plugin
+skill. Category directories may group skills:
 
 ```text
 skills/
-|-- code-review/
-|   `-- SKILL.md
+|-- engineering/
+|   `-- code-review/
+|       `-- SKILL.md
 `-- explain-failure/
     `-- SKILL.md
 ```
