@@ -435,6 +435,8 @@ Agent Plugin bundle
 | OpenCode | Project plugin skills and merge normalized MCP servers into OpenCode config when needed | Read only namespaces registered to the OpenCode adapter | Symlink skills into `.opencode/skills/`; generalized legacy bundles may project Markdown agents, while standard extension resources are preserved but not projected yet; do not generate JavaScript or TypeScript plugin modules. |
 | Pi | Project supported skills | Read only namespaces registered to the Pi adapter | Symlink skills into `.agents/skills/`; ignore unsupported MCP or extension components with warnings. |
 
+Every generated marketplace uses the name `dotagents`. Native plugin selectors use `<name>@dotagents`.
+
 Copilot follows its native precedence for marketplaces (`marketplace.json`,
 `.plugin/marketplace.json`, then `.github/plugin/marketplace.json`) and plugin
 manifests (`.plugin`, root, `.github/plugin`, then `.claude-plugin`). Dotagents

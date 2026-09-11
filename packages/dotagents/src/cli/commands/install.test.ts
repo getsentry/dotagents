@@ -242,7 +242,7 @@ source = "path:plugin-source/review-tools"
       interface: {
         displayName: "Dotagents Plugins",
       },
-      name: "dotagents-local",
+      name: "dotagents",
       owner: {
         name: "dotagents",
       },
@@ -441,7 +441,7 @@ source = "path:plugin-source/portable-tools"
         await expectHarnessFiles(projectRoot, [".agents/plugins/marketplace.json"], {
           ".agents/plugins/marketplace.json": { json: {
             interface: { displayName: "Dotagents Plugins" },
-            name: "dotagents-local",
+            name: "dotagents",
             owner: { name: "dotagents" },
             plugins: [{
               category: "Productivity",
@@ -1485,7 +1485,11 @@ source = "path:plugin-source/review-tools"
       expect(existsSync(join(scope.pluginsDir, "review-tools", "plugin.json"))).toBe(true);
       expect(existsSync(join(scope.root, ".claude-plugin", "marketplace.json"))).toBe(true);
       expect(existsSync(join(scope.root, ".github", "plugin", "marketplace.json"))).toBe(true);
-      expect(existsSync(join(scope.root, ".agents", "plugins", "marketplace.json"))).toBe(true);
+      const codexMarketplace = JSON.parse(await readFile(
+        join(scope.root, ".agents", "plugins", "marketplace.json"),
+        "utf-8",
+      ));
+      expect(codexMarketplace["name"]).toBe("dotagents");
       expect(await readlink(join(scope.skillsDir, "review"))).toBe("../plugins/review-tools/skills/review");
       expect((await lstat(join(userHome, ".claude", "skills"))).isSymbolicLink()).toBe(true);
       expect(await readlink(join(userHome, ".claude", "skills"))).toBe(

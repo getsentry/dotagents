@@ -169,6 +169,8 @@ The canonical portable format is an [Agent Plugins](https://agent-plugins.org/) 
 
 Global plugins install canonical bundles under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated under `~/.agents/`. Copilot uses `~/.agents/.github/plugin/marketplace.json`, and Codex uses `~/.agents/plugins/marketplace.json`. Grok plugins are copied into `~/.grok/plugins/`. OpenCode skills are linked into `~/.config/opencode/skills/`, and portable MCP servers are merged into `~/.config/opencode/opencode.json`. Pi skills are linked into `~/.agents/skills/`. `--user` remains a compatibility alias for `--global`.
 
+All generated marketplaces use the name `dotagents`. Native plugin selectors use `<name>@dotagents`.
+
 Pi plugin targets are global skill projections rather than isolated plugin installs: a Pi-targeted plugin skill is added to `.agents/skills/` and is therefore visible to other clients that consume that shared directory.
 
 [Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively. Normal skills need no Pi-specific configuration; plugin bundles can target `pi` when their `skills/` components should be exposed there.
