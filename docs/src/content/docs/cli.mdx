@@ -485,7 +485,80 @@ reinterpreting generated adapters as source input.
 | `path` | string | No | Optional explicit plugin path inside the source. |
 | `targets` | string[] | No | Optional subset of configured agents. |
 
-Generated plugin outputs include Claude, Cursor, Codex, and Copilot marketplaces, native Claude, Cursor, and Codex manifests, Grok plugin directories, OpenCode skill links and portable MCP entries, and Pi skill links. OpenCode MCP keys use `plugin.<plugin>.<server>`; dotagents expands `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` and preserves unrelated entries in the shared config. Generalized legacy bundles can also project Markdown agents into OpenCode; standard extension agents are preserved but not projected yet. dotagents rejects plugin sources that resolve to the same project's `.agents/plugins/<name>/` install destination. Global plugins use `~/.agents/plugins/<name>/` and global harness projections.
+Generated plugin outputs include marketplaces for Claude, Cursor, Codex, and Copilot. Claude, Cursor, and Codex also receive native manifests when required. Other outputs include Grok plugin directories, OpenCode skill links and portable MCP entries, and Pi skill links. OpenCode MCP keys use `plugin.<plugin>.<server>`; dotagents expands `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` and preserves unrelated entries in the shared config. Generalized legacy bundles can also project Markdown agents into OpenCode; standard extension agents are preserved but not projected yet. dotagents rejects plugin sources that resolve to the same project's `.agents/plugins/<name>/` install destination. Global plugins use `~/.agents/plugins/<name>/` and global harness projections.
+
+## Plugin activation
+
+`dotagents add` and `dotagents install` install canonical plugin bundles and write runtime outputs. These commands do not register marketplaces or install plugins in native client state.
+
+| Agent ID | Dotagents behavior | Required native action |
+| --- | --- | --- |
+| `claude` | Generates a marketplace and a native manifest when required. | Register the active scope root and install `<name>@dotagents`. |
+| `cursor` | Generates a marketplace and a native manifest when required. | Use Customize, a team marketplace, `~/.cursor/plugins/local`, or `cursor-agent --plugin-dir`. |
+| `codex` | Generates `.agents/plugins/marketplace.json` and a native manifest when required. | Register the correct source root and install `<name>@dotagents-local`. |
+| `copilot` | Generates `.github/plugin/marketplace.json`. | Register the active scope root and install `<name>@dotagents`. |
+| `grok` | Copies the plugin into `.grok/plugins/`. | None. |
+| `opencode` | Writes managed skill links and MCP entries. | None. |
+| `pi` | Writes managed skill links under `.agents/skills/`. | None. |
+| `vscode` | Has no plugin adapter. | None. |
+
+Project activation commands must run from the project root:
+
+```shell
+claude plugin marketplace add ./ --scope project
+claude plugin install <name>@dotagents --scope project
+codex plugin marketplace add ./ --json
+codex plugin add <name>@dotagents-local --json
+copilot plugin marketplace add ./
+copilot plugin install <name>@dotagents
+```
+
+Default global activation uses `~/.agents` for Claude and Copilot. Codex uses `$HOME` because its catalog is at `$HOME/.agents/plugins/marketplace.json`:
+
+```shell
+claude plugin marketplace add "$HOME/.agents" --scope user
+claude plugin install <name>@dotagents --scope user
+codex plugin marketplace add "$HOME" --json
+codex plugin add <name>@dotagents-local --json
+copilot plugin marketplace add "$HOME/.agents"
+copilot plugin install <name>@dotagents
+```
+
+With a custom `DOTAGENTS_HOME`, all three clients register that custom root:
+
+```shell
+claude plugin marketplace add "$DOTAGENTS_HOME" --scope user
+claude plugin install <name>@dotagents --scope user
+codex plugin marketplace add "$DOTAGENTS_HOME" --json
+codex plugin add <name>@dotagents-local --json
+copilot plugin marketplace add "$DOTAGENTS_HOME"
+copilot plugin install <name>@dotagents
+```
+
+Claude, Codex, and Copilot cache installed plugins. After Dotagents updates a plugin, refresh Claude, reinstall the Codex plugin, and update the Copilot plugin. Replace `<scope>` with `project` or `user`:
+
+```shell
+claude plugin marketplace update dotagents
+claude plugin update <name>@dotagents --scope <scope>
+codex plugin remove <name>@dotagents-local --json
+codex plugin add <name>@dotagents-local --json
+copilot plugin marketplace update dotagents
+copilot plugin update <name>@dotagents
+```
+
+Native uninstall commands are also separate from `dotagents remove`. Replace `<scope>` with `project` or `user`:
+
+```shell
+claude plugin uninstall <name>@dotagents --scope <scope>
+codex plugin remove <name>@dotagents-local --json
+copilot plugin uninstall <name>@dotagents
+```
+
+Cursor has no marketplace CLI command. Load a canonical project plugin with `cursor-agent --plugin-dir .agents/plugins/<name>`. Use `$HOME/.agents/plugins/<name>` for the default global root or `$DOTAGENTS_HOME/plugins/<name>` for a custom root. Cursor Desktop can load a canonical bundle from `~/.cursor/plugins/local/<name>`. Team marketplaces require a Git repository that contains the generated marketplace and its referenced plugin paths.
+
+Grok, OpenCode, and Pi read Dotagents-managed outputs directly, so Dotagents updates and removes those projections. VS Code receives no plugin output.
+
+`dotagents doctor` checks canonical bundles and generated runtime outputs. It does not check native marketplace registration, installation, enablement, or client caches.
 
 ## Scopes
 
