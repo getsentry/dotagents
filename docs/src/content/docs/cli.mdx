@@ -485,7 +485,18 @@ reinterpreting generated adapters as source input.
 | `path` | string | No | Optional explicit plugin path inside the source. |
 | `targets` | string[] | No | Optional subset of configured agents. |
 
-Generated plugin outputs include Claude, Cursor, Codex, and Copilot marketplaces, native Claude, Cursor, and Codex manifests, Grok plugin directories, OpenCode skill links and portable MCP entries, and Pi skill links. OpenCode MCP keys use `plugin.<plugin>.<server>`; dotagents expands `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` and preserves unrelated entries in the shared config. Generalized legacy bundles can also project Markdown agents into OpenCode; standard extension agents are preserved but not projected yet. dotagents rejects plugin sources that resolve to the same project's `.agents/plugins/<name>/` install destination. Global plugins use `~/.agents/plugins/<name>/` and global harness projections.
+Generated plugin outputs include Claude, Cursor, Codex, and Copilot
+marketplaces, native Claude, Cursor, and Codex manifests, Grok plugin
+directories, OpenCode skill links and portable MCP entries, and Pi skill
+links. Every generated marketplace uses the name `dotagents`. Native plugin
+selectors use `<name>@dotagents`. OpenCode MCP keys use
+`plugin.<plugin>.<server>`; dotagents expands `${PLUGIN_ROOT}` and
+`${PLUGIN_DATA}` and preserves unrelated entries in the shared config.
+Generalized legacy bundles can also project Markdown agents into OpenCode;
+standard extension agents are preserved but not projected yet. dotagents
+rejects plugin sources that resolve to the same project's
+`.agents/plugins/<name>/` install destination. Global plugins use
+`~/.agents/plugins/<name>/` and global harness projections.
 
 ## Scopes
 
