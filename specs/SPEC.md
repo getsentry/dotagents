@@ -874,7 +874,6 @@ For each target in the array, dotagents creates `<target>/skills/ -> .agents/ski
 ```
 dotagents/
   AGENTS.md                  # Agent instructions
-  CLAUDE.md -> AGENTS.md     # Symlink
   agents.toml                # Self-dogfooding
   agents.lock                # Tracks managed skills, subagents, and plugins (gitignored)
   warden.toml                # Warden config for code analysis
