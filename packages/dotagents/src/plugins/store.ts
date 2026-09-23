@@ -905,7 +905,10 @@ async function loadPluginInterfaces(
     throw new Error("Installed plugin bundle is missing plugin.json. Reinstall the plugin.");
   }
 
+  let primary: { manifest: PluginManifest; nativeSource?: NativePluginSource } | undefined;
+  const authoredNativeInterfaces: AuthoredNativePluginInterfaces = {};
   for (const candidate of FALLBACK_MANIFEST_PATHS) {
+    if (primary && !candidate.nativeSource) {continue;}
     const filePath = join(pluginDir, candidate.path);
     if (!existsSync(filePath)) {continue;}
     const value = await readJson(filePath);
@@ -915,7 +918,7 @@ async function loadPluginInterfaces(
     } catch (err) {
       throw pluginManifestError(err, value);
     }
-    const authoredNativeInterfaces: AuthoredNativePluginInterfaces = {};
+    primary ??= { manifest, nativeSource: candidate.nativeSource };
     if (candidate.nativeSource) {
       authoredNativeInterfaces[candidate.nativeSource] = {
         path: candidate.path,
@@ -923,13 +926,13 @@ async function loadPluginInterfaces(
         manifest,
       };
     }
-    return {
-      manifest,
-      authoredNativeInterfaces,
-      nativeSource: candidate.nativeSource,
-    };
   }
-  return null;
+  if (!primary) {return null;}
+  return {
+    manifest: primary.manifest,
+    authoredNativeInterfaces,
+    nativeSource: primary.nativeSource,
+  };
 }
 
 async function loadAuthoredNativeInterfaces(
@@ -1135,10 +1138,7 @@ async function readInstalledPluginProvenance(pluginDir: string): Promise<{
 }> {
   const fallbackSources = await readNativeFallbackSources(pluginDir);
   const nativeSource = await readNativeSourceMarker(pluginDir);
-  if (
-    fallbackSources && nativeSource &&
-    (fallbackSources.size !== 1 || !fallbackSources.has(nativeSource))
-  ) {
+  if (fallbackSources && nativeSource && !fallbackSources.has(nativeSource)) {
     throw new Error("Installed plugin has conflicting native interface provenance. Reinstall the plugin.");
   }
   return { fallbackSources, nativeSource };
