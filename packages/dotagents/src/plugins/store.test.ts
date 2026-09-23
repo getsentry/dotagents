@@ -464,6 +464,54 @@ describe("plugin store", () => {
     }
   });
 
+  it("records every native fallback manifest when no root plugin.json exists", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-dual-native-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      const pluginsDir = join(projectRoot, "installed");
+      await mkdir(join(sourceRoot, ".codex-plugin"), { recursive: true });
+      await mkdir(join(sourceRoot, ".claude-plugin"), { recursive: true });
+      await mkdir(pluginsDir, { recursive: true });
+      await writeFile(
+        join(sourceRoot, ".codex-plugin", "plugin.json"),
+        JSON.stringify({ name: "dual-tools" }),
+      );
+      await writeFile(
+        join(sourceRoot, ".claude-plugin", "plugin.json"),
+        JSON.stringify({ name: "dual-tools" }),
+      );
+
+      const candidates = await discoverPlugins(sourceRoot);
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]!.nativeSource).toBe("codex");
+      expect(candidates[0]!.authoredNativeInterfaces.codex?.fallback).toBe(true);
+      expect(candidates[0]!.authoredNativeInterfaces.claude?.fallback).toBe(true);
+
+      const resolved = await resolvePlugin(
+        { name: "dual-tools", source: "path:source" },
+        { stateDir: join(projectRoot, "state"), projectRoot },
+      );
+      const prepared = preparePluginForTargets(resolved.plugin, ["claude", "codex"]);
+      const installed = await installPluginBundle(pluginsDir, {
+        ...resolved,
+        plugin: prepared,
+      });
+      expect(installed.authoredNativeInterfaces?.claude?.fallback).toBe(true);
+
+      const reloaded = await loadInstalledPlugins(
+        pluginsDir,
+        [{ name: "dual-tools", source: "path:source" }],
+        "dotagents install",
+        ["claude", "codex"],
+      );
+      expect(reloaded.issues).toEqual([]);
+      expect(reloaded.plugins).toHaveLength(1);
+      expect(reloaded.plugins[0]!.authoredNativeInterfaces?.claude?.fallback).toBe(true);
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("rejects a .github Copilot manifest when a native fallback was imported", async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-plugin-copilot-precedence-"));
     try {
