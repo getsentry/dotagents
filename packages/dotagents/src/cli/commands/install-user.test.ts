@@ -519,4 +519,36 @@ source = "path:skill-source/pdf"
     expect(existsSync(join(scope.skillsDir, "synced"))).toBe(false);
     await expect(runInstall({ scope })).resolves.toMatchObject({ skillLinkWarnings: [] });
   });
+
+  it("sync does not call a wildcard skill's lock entry stale when a Claude Code skill has its name", async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "dotagents-user-sync-wildcard-"));
+    const homeDir = join(tmpDir, "home");
+    const dotagentsHome = join(tmpDir, "agents");
+    process.env["HOME"] = homeDir;
+    process.env["DOTAGENTS_HOME"] = dotagentsHome;
+    process.env["DOTAGENTS_STATE_DIR"] = join(tmpDir, "state");
+    vi.resetModules();
+
+    const [{ runSync }, { resolveScope }, { writeLockfile }] = await Promise.all([
+      import("./sync.js"),
+      import("../../scope.js"),
+      import("../../lockfile/writer.js"),
+    ]);
+    const scope = resolveScope("user");
+    const claudeSkills = join(homeDir, ".claude", "skills");
+    await mkdir(join(claudeSkills, "pdf"), { recursive: true });
+    await writeFile(join(claudeSkills, "pdf", "SKILL.md"), SKILL_MD);
+    await mkdir(scope.skillsDir, { recursive: true });
+    await writeFile(scope.configPath, 'version = 1\nagents = ["claude"]\n\n[[skills]]\nname = "*"\nsource = "org/repo"\n');
+    await writeLockfile(scope.lockPath, {
+      version: 1,
+      skills: { pdf: { source: "org/repo", resolved_url: "https://github.com/org/repo.git", resolved_path: "pdf" } },
+    });
+
+    const result = await runSync({ scope });
+
+    const messages = result.issues.map((issue) => issue.message).join("\n");
+    expect(messages).not.toContain("agents.lock still records");
+    expect((await lstat(join(claudeSkills, "pdf"))).isDirectory()).toBe(true);
+  });
 });

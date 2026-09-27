@@ -451,7 +451,8 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   symlinksRepaired += earlyLinkChanges;
   const stillStale = new Set(
     Object.entries(lockfile?.skills ?? {})
-      .filter(([name, locked]) => !config.skills.some((dep) => dep.name === name) && !isInPlaceSkill(locked.source))
+      // declaredNames also holds skills a wildcard source expanded into agents.lock.
+      .filter(([name, locked]) => !declaredNames.has(name) && !isInPlaceSkill(locked.source))
       .map(([name]) => name),
   );
   const managedNames = managedSkillNames(config.skills, lockfile);
