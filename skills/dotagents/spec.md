@@ -37,6 +37,20 @@ The agent SHALL use unqualified default-global commands unless the user requests
 - **WHEN** the user asks to install a skill globally, personally, or for every project
 - **THEN** the agent maps that request to unqualified dotagents global scope
 
+### Behavior: Create new skills in the shared directory
+
+The agent SHALL create a skill the user asks for in the shared skills directory of the selected scope, not in a client-specific directory, so that every configured agent can use it. At global scope the agent SHALL link the new skill into `~/.claude/skills/` for Claude Code.
+
+#### Scenario: Turn a workflow into a global skill
+
+- **WHEN** the user asks to turn a workflow into a skill without repository-local wording
+- **THEN** the agent writes `~/.agents/skills/<name>/SKILL.md` and links `~/.claude/skills/<name>` to it
+
+#### Scenario: Repository skill
+
+- **WHEN** the user asks for a skill for this repository
+- **THEN** the agent writes `.agents/skills/<name>/SKILL.md`
+
 ### Behavior: Initialize dotagents management
 
 The agent SHALL initialize project scope before adding repository-local dependencies when its project root has no `agents.toml`, while allowing supported global commands to bootstrap their configuration automatically.

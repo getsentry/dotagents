@@ -1487,9 +1487,9 @@ source = "path:plugin-source/review-tools"
       expect(existsSync(join(scope.root, ".github", "plugin", "marketplace.json"))).toBe(true);
       expect(existsSync(join(scope.root, ".agents", "plugins", "marketplace.json"))).toBe(true);
       expect(await readlink(join(scope.skillsDir, "review"))).toBe("../plugins/review-tools/skills/review");
-      expect((await lstat(join(userHome, ".claude", "skills"))).isSymbolicLink()).toBe(true);
-      expect(await readlink(join(userHome, ".claude", "skills"))).toBe(
-        relative(join(userHome, ".claude"), scope.skillsDir),
+      expect((await lstat(join(userHome, ".claude", "skills"))).isSymbolicLink()).toBe(false);
+      expect(await readlink(join(userHome, ".claude", "skills", "review"))).toBe(
+        relative(join(userHome, ".claude", "skills"), join(scope.skillsDir, "review")),
       );
       expect(await readlink(join(userHome, ".config", "opencode", "skills", "review"))).toContain(
         join("user-agents", "plugins", "review-tools", "skills", "review"),

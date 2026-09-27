@@ -128,6 +128,12 @@ export interface AgentDefinition {
    * Undefined if the agent reads ~/.agents/skills/ natively (no symlink needed).
    */
   userSkillsParentDirs?: string[];
+  /**
+   * How user-scope skills are linked into `userSkillsParentDirs`. "directory" (default) links the
+   * whole skills/ directory. "per-skill" keeps skills/ a real directory and links each shared skill,
+   * for clients that keep their own entries there (Claude Code's claude.ai-synced skills).
+   */
+  userSkillsLinkMode?: "directory" | "per-skill";
   /** MCP config file specification */
   mcp: McpConfigSpec;
   /** Transforms universal MCP declaration to agent-specific format */

@@ -4,7 +4,7 @@ Shared tooling for coding agents. Declare skills, MCP servers, hooks, subagents,
 
 ## Why dotagents?
 
-**One source of truth.** Skills live in `.agents/skills/` and symlink into `.claude/skills/` or wherever your tools expect them. Cursor shares Claude-compatible skills. No copy-pasting between directories.
+**One source of truth.** Skills live in `.agents/skills/` and symlink into `.claude/skills/` (one link per skill in `~/.claude/skills/` at global scope) or wherever your tools expect them. Cursor shares Claude-compatible skills. No copy-pasting between directories.
 
 **One command to install.** Global dependencies live under `~/.agents/`. Repository-local dependencies can be declared in a committed `agents.toml`; collaborators run `dotagents --project install` to fetch or refresh that project's managed state.
 

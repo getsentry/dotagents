@@ -500,8 +500,8 @@ Check selected-scope health: gitignore setup where applicable, installed skills 
 
 | ID | Tool | Config Dir | Skills Symlink | MCP Config | Hooks | Subagents |
 |----|------|-----------|----------------|------------|-------|-----------|
-| `claude` | Claude Code | `.claude` | `.claude/skills/` -> `.agents/skills/` | `.mcp.json` | `.claude/settings.json` | `.claude/agents/*.md` |
-| `cursor` | Cursor | `.cursor` | `.claude/skills/` -> `.agents/skills/` | `.cursor/mcp.json` | `.cursor/hooks.json` | `.cursor/agents/*.md` |
+| `claude` | Claude Code | `.claude` | `.claude/skills/` -> `.agents/skills/`; global: `~/.claude/skills/<name>` per skill | `.mcp.json` | `.claude/settings.json` | `.claude/agents/*.md` |
+| `cursor` | Cursor | `.cursor` | `.claude/skills/` -> `.agents/skills/`; global: `~/.claude/skills/<name>` per skill | `.cursor/mcp.json` | `.cursor/hooks.json` | `.cursor/agents/*.md` |
 | `codex` | Codex | `.codex` | (reads `.agents/skills/` natively) | `.codex/config.toml` | Not supported | `.codex/agents/*.toml` |
 | `copilot` | GitHub Copilot CLI | `.copilot` | Project: reads `.agents/skills/`; global: `$COPILOT_HOME/skills/` symlink | `.mcp.json` or `.github/mcp.json` | Not supported | Not supported |
 | `vscode` | VS Code Copilot | `.vscode` | (reads `.agents/skills/` natively) | `.vscode/mcp.json` | `.claude/settings.json` | Not supported |
@@ -524,7 +524,7 @@ Operates on `DOTAGENTS_HOME` when set and otherwise `~/.agents/`, regardless of 
 - Override location: `DOTAGENTS_HOME` environment variable
 - Explicit spellings: `--global`, or compatibility alias `--user`
 
-Global-scope symlinks include `~/.claude/skills/` for Claude and Cursor.
+At global scope `~/.claude/skills/` (Claude and Cursor) stays a real directory with one link per shared skill, so Claude Code's claude.ai-synced skills in `~/.claude/skills/synced/` stay out of `~/.agents/skills/`. Skills created in `~/.claude/skills/` are moved into `~/.agents/skills/` and linked back by `sync`.
 
 ### Project Scope (`--project`)
 

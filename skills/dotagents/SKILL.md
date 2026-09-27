@@ -1,7 +1,7 @@
 ---
 name: dotagents
-description: Manage dotagents dependencies and runtime config. Use when asked to "add a skill", "install skills", "remove a skill", "configure plugins", "configure subagents", "dotagents init", "agents.toml", "agents.lock", "sync skills", "list skills", "set up dotagents", "configure trust", "add MCP server", "add hook", "wildcard skills", "global scope", "project scope", "dotagents doctor", or any dotagents-related task.
-spec_hash: 98920b9b8a05
+description: Manage dotagents dependencies and runtime config, and create new skills where every configured agent can use them. Use when asked to "make this a skill", "turn this workflow into a skill", "create a skill", "add a skill", "install skills", "remove a skill", "configure plugins", "configure subagents", "dotagents init", "agents.toml", "agents.lock", "sync skills", "list skills", "set up dotagents", "configure trust", "add MCP server", "add hook", "wildcard skills", "global scope", "project scope", "dotagents doctor", or any dotagents-related task.
+spec_hash: 2c88b86da4a4
 ---
 
 Manage dependencies declared in `agents.toml`. dotagents resolves skills, subagents, plugins, MCP servers, and hooks so agent tools (Claude Code, Cursor, Codex, GitHub Copilot, Grok, VS Code, OpenCode, Pi) can use shared global or project config.
@@ -13,6 +13,17 @@ Always use `npx @sentry/dotagents` to run commands. Unqualified commands are glo
 Apply this literally: “add this skill” with no repository-local wording means `npx @sentry/dotagents add ...`, even inside a repository that has `agents.toml`. “Add this skill to this repository/project” means `npx @sentry/dotagents --project add ...`.
 
 Global `add` bootstraps `~/.agents/agents.toml` when it is missing. Do not run a separate global `init` or `install` before or after `add` unless the user independently requested it.
+
+## Creating a New Skill
+
+When the user asks to turn a workflow into a skill or to create a skill, write it into the shared skills directory so every configured agent (Claude Code, Codex, OpenCode, and the others) can use it:
+
+- Global (default): `~/.agents/skills/<name>/SKILL.md` (`$DOTAGENTS_HOME/skills/` when that is set)
+- This repository only, when the user asks for it: `.agents/skills/<name>/SKILL.md`
+
+Do not create the skill in a client-specific directory such as `~/.claude/skills/`, `~/.codex/skills/`, or `~/.config/opencode/skills/`.
+
+At global scope Claude Code reads `~/.claude/skills/<name>`. If that path already exists, `~/.claude/skills` still links the whole shared directory and Claude Code already sees the skill; the next `npx @sentry/dotagents sync` switches it to per-skill links. Otherwise link the new skill for it: `ln -s "${DOTAGENTS_HOME:-$HOME/.agents}/skills/<name>" ~/.claude/skills/<name>`. Claude Code picks the link up within a few seconds without a restart. Project scope needs no link. Do not run `install` for a skill you created; `sync` records it in `agents.toml` later.
 
 ## References
 

@@ -188,7 +188,8 @@ npx @sentry/dotagents add getsentry/agent-plugins review-tools
 npx @sentry/dotagents install
 ```
 
-Global skill links include `~/.claude/skills/` for Claude and Cursor and
+Global skill links include `~/.claude/skills/<name>` for Claude and Cursor, one link per shared
+skill so Claude Code's claude.ai-synced skills stay in `~/.claude/skills/synced/`, and
 `$COPILOT_HOME/skills/` for Copilot (default `~/.copilot/skills/`).
 
 ### Project Scope (`--project`)

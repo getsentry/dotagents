@@ -7,11 +7,12 @@ import { isWildcardDep } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { wildcardContainsLockedSkill } from "../../lockfile/wildcard.js";
-import { addSkillToConfig } from "../../config/writer.js";
+import { addSkillToConfig, removeSkillFromConfig } from "../../config/writer.js";
 import { filterManagedPluginSkillNames } from "../../gitignore/skills.js";
 import { writeAgentsGitignore, checkRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink, verifySymlinks } from "../../symlinks/manager.js";
-import { skillSymlinkTargets } from "../../targets/skill-symlinks.js";
+import { perSkillLinkTargets, skillSymlinkTargets } from "../../targets/skill-symlinks.js";
+import { declaredSkillNames, ensureSkillLinks, isClientOwnedName, managedSkillNames } from "../../symlinks/per-skill.js";
 import { reconcileMcpConfigs, toMcpDeclarations, projectMcpResolver } from "../../targets/mcp-writer.js";
 import { reconcileHookConfigs, toHookDeclarations, projectHookResolver } from "../../targets/hook-writer.js";
 import { projectSubagentResolver, reconcileSubagentConfigs, userSubagentResolver } from "../../subagents/writer.js";
@@ -38,6 +39,8 @@ export interface SyncOptions {
 export interface SyncResult {
   issues: SyncIssue[];
   adopted: string[];
+  /** Skills moved from a per-skill-linked client directory into the shared directory. */
+  clientSkillsMoved: string[];
   pruned: string[];
   gitignoreUpdated: boolean;
   symlinksRepaired: number;
@@ -92,6 +95,47 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       message: `Plugin "${name}" resolves to .agents/plugins/${name}. Same-project plugins cannot be installed into the same project; use an external source path or a separate repo.`,
     });
   }
+  // Skills a client wrote into its own per-skill-linked directory move into the shared
+  // directory first, so the adoption below declares them in this run.
+  const clientSkillsMoved: string[] = [];
+  const setAsideEarly: { target: string; name: string; path: string }[] = [];
+  let earlyLinkChanges = 0;
+  // A client skill never takes the place of a skill dotagents declares or records: a stale record
+  // is pruned below, and a declared skill is reinstalled over whatever sits in its place.
+  if (perSkillLinkTargets(scope, config.agents).length > 0) {
+    // Earlier versions of sync declared Claude Code's own synced/ as a skill named "synced". Drop
+    // that declaration so the folder can move back to Claude Code.
+    const legacy = config.skills.filter((dep) =>
+      isClientOwnedName(dep.name)
+      && !isWildcardDep(dep)
+      && dep.source === `path:skills/${dep.name}`
+      && !existsSync(join(skillsDir, dep.name, "SKILL.md")));
+    for (const dep of legacy) {
+      await removeSkillFromConfig(configPath, dep.name);
+      if (lockfile) {delete lockfile.skills[dep.name];}
+      declaredNames.delete(dep.name);
+      issues.push({
+        type: "symlink",
+        name: dep.name,
+        message: `Removed "${dep.name}" from agents.toml: an earlier sync declared Claude Code's own ${dep.name}/ folder as a skill.`,
+      });
+    }
+    if (legacy.length > 0) {
+      config = await loadConfig(configPath);
+      if (lockfile) {await writeLockfile(lockPath, lockfile);}
+    }
+  }
+  const managedNamesEarly = managedSkillNames(config.skills, lockfile);
+  for (const target of perSkillLinkTargets(scope, config.agents)) {
+    const links = await ensureSkillLinks(agentsDir, target, {
+      managedNames: managedNamesEarly,
+      declaredNames: declaredSkillNames(config.skills),
+    });
+    clientSkillsMoved.push(...links.adopted);
+    setAsideEarly.push(...links.setAside.map((entry) => ({ target, ...entry })));
+    earlyLinkChanges += links.linked.length + links.pruned.length + (links.convertedDirectoryLink ? 1 : 0);
+  }
+
   // 1. Adopt orphaned skills (installed but not in agents.toml)
   if (existsSync(skillsDir)) {
     const adoptedLockEntries: Record<string, { source: string }> = {};
@@ -263,6 +307,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
     symlinksRepaired++;
   }
 
+
   // 5. Verify and repair MCP configs
   let mcpRepaired = 0;
   const mcpServers = toMcpDeclarations(config.mcp);
@@ -402,9 +447,51 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       message: issue.issue,
     });
   }
+  // 9. Link shared skills for per-skill clients, after plugin skills have been projected
+  symlinksRepaired += earlyLinkChanges;
+  const stillStale = new Set(
+    Object.entries(lockfile?.skills ?? {})
+      .filter(([name, locked]) => !config.skills.some((dep) => dep.name === name) && !isInPlaceSkill(locked.source))
+      .map(([name]) => name),
+  );
+  const managedNames = managedSkillNames(config.skills, lockfile);
+  for (const target of perSkillLinkTargets(scope, config.agents)) {
+    // Client skills were moved and declared before adoption; a name freed by pruning since then
+    // is shared by the next sync, which also declares it.
+    const links = await ensureSkillLinks(agentsDir, target, { managedNames, declaredNames: declaredSkillNames(config.skills), adopt: false });
+    symlinksRepaired += links.linked.length + links.pruned.length + (links.convertedDirectoryLink ? 1 : 0);
+    for (const { name, path } of [...links.setAside, ...setAsideEarly.filter((e) => e.target === target)]) {
+      issues.push({
+        type: "symlink",
+        name,
+        message: `${agentsDir}/skills/${name} was also in ${target}/skills/, so the shared copy moved to ${path}. Delete it once you no longer need it.`,
+      });
+    }
+    for (const path of links.stranded) {
+      issues.push({
+        type: "symlink",
+        name: path,
+        message: `${path} was left by an interrupted conversion to per-skill links. Move anything you still need from it into the skills directory next to it, then delete it.`,
+      });
+    }
+    for (const name of links.conflicts) {
+      issues.push({
+        type: "symlink",
+        name,
+        message: isClientOwnedName(name)
+          ? `${agentsDir}/skills/${name} uses the name "${name}", which Claude Code reserves in ${target}/skills/, so it is not linked there. Rename the skill.`
+          : stillStale.has(name)
+          ? `${target}/skills/${name} was not shared because agents.lock still records a managed skill "${name}". Run '${cmd} install' to clear that record, then run '${cmd} sync'.`
+          : existsSync(join(skillsDir, name))
+            ? `${target}/skills/${name} and the skill "${name}" managed by dotagents both exist. Keep one of them, then run '${cmd} sync'.`
+            : `${target}/skills/${name} has the name of a skill declared in agents.toml that is not installed. Rename one of them, or remove ${target}/skills/${name} and run '${cmd} install'.`,
+      });
+    }
+  }
   return {
     issues,
     adopted,
+    clientSkillsMoved,
     pruned,
     gitignoreUpdated,
     symlinksRepaired,
@@ -427,8 +514,13 @@ export default async function sync(_args: string[], context: CommandContext): Pr
   await ensureUserScopeBootstrapped(scope);
   const result = await runSync({ scope });
 
-  if (result.adopted.length > 0) {
-    console.log(chalk.green(`Adopted ${result.adopted.length} orphan(s): ${result.adopted.join(", ")}`));
+  if (result.clientSkillsMoved.length > 0) {
+    console.log(chalk.green(`Shared ${result.clientSkillsMoved.length} skill(s) created in a client directory: ${result.clientSkillsMoved.join(", ")}`));
+  }
+
+  const orphans = result.adopted.filter((name) => !result.clientSkillsMoved.includes(name));
+  if (orphans.length > 0) {
+    console.log(chalk.green(`Adopted ${orphans.length} orphan(s): ${orphans.join(", ")}`));
   }
 
   if (result.pruned.length > 0) {
@@ -466,6 +558,7 @@ export default async function sync(_args: string[], context: CommandContext): Pr
 
   for (const issue of result.issues) {
     switch (issue.type) {
+      case "symlink":
       case "mcp":
       case "hooks":
       case "subagents":

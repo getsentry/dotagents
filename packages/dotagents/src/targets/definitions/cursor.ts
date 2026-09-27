@@ -27,6 +27,7 @@ const cursor: AgentDefinition = {
   configDir: ".cursor",
   skillsParentDir: ".claude",
   userSkillsParentDirs: [join(homedir(), ".claude")],
+  userSkillsLinkMode: "per-skill",
   mcp: {
     filePath: ".cursor/mcp.json",
     rootKey: "mcpServers",

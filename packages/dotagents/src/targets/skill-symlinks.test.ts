@@ -3,7 +3,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveScope } from "../scope.js";
-import { skillSymlinkTargets } from "./skill-symlinks.js";
+import { perSkillLinkTargets, skillSymlinkTargets } from "./skill-symlinks.js";
 
 describe("skillSymlinkTargets", () => {
   it("returns legacy targets before deduplicated agent targets", () => {
@@ -21,7 +21,7 @@ describe("skillSymlinkTargets", () => {
     ]);
   });
 
-  it("returns deduplicated user targets and skips only global native readers", () => {
+  it("returns deduplicated user targets, skipping native readers and per-skill clients", () => {
     const scope = resolveScope("user");
 
     expect(
@@ -31,9 +31,12 @@ describe("skillSymlinkTargets", () => {
         [".legacy"],
       ),
     ).toEqual([
-      join(homedir(), ".claude"),
       process.env["COPILOT_HOME"] || join(homedir(), ".copilot"),
     ]);
+    expect(perSkillLinkTargets(scope, ["claude", "cursor", "codex", "opencode"])).toEqual([
+      join(homedir(), ".claude"),
+    ]);
+    expect(perSkillLinkTargets(resolveScope("project", "relative/project"), ["claude"])).toEqual([]);
   });
 
   it("rejects absolute project targets", () => {

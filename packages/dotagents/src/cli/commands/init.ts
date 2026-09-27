@@ -6,8 +6,10 @@ import { generateDefaultConfig } from "../../config/writer.js";
 import { writeAgentsGitignore, ensureRootGitignoreEntries } from "../../gitignore/writer.js";
 import { ensureSkillsSymlink } from "../../symlinks/manager.js";
 import { loadConfig } from "../../config/loader.js";
+import { loadLockfile } from "../../lockfile/loader.js";
 import { allAgentIds, allAgents } from "../../targets/registry.js";
-import { skillSymlinkTargets } from "../../targets/skill-symlinks.js";
+import { perSkillLinkTargets, skillSymlinkTargets } from "../../targets/skill-symlinks.js";
+import { declaredSkillNames, ensureSkillLinks, managedSkillNames } from "../../symlinks/per-skill.js";
 import { parseArgs } from "node:util";
 import * as clack from "@clack/prompts";
 import { findGitDir, type ScopeRoot } from "../../scope.js";
@@ -15,6 +17,7 @@ import type { TrustConfig } from "../../config/schema.js";
 import { GitError, TrustError } from "@sentry/dotagents-lib";
 import { formatGitError, formatTrustError } from "../errors.js";
 import { runInstall } from "./install.js";
+import { skillLinkWarnings } from "./install/agent-runtime.js";
 import { allPluginOnlyAgentIds } from "../../plugins/targets.js";
 import { commandPrefix, type CommandContext } from "../context.js";
 import {
@@ -85,7 +88,7 @@ export async function runInit(opts: InitOptions): Promise<void> {
   }
 
   // Symlinks — create per-agent symlinks so each agent discovers skills
-  const symlinkResults: { target: string; created: boolean; migrated: string[] }[] = [];
+  const symlinkResults: { target: string; created: boolean; migrated: string[]; perSkill?: boolean }[] = [];
 
   const symlinkTargets = skillSymlinkTargets(
     scope,
@@ -99,11 +102,23 @@ export async function runInit(opts: InitOptions): Promise<void> {
       : target;
     symlinkResults.push({ target: displayTarget, ...result });
   }
+  const perSkillTargets = perSkillLinkTargets(scope, config.agents);
+  // Declared skills are installed below; a client copy with the same name must stay put.
+  const managedNames = perSkillTargets.length > 0
+    ? managedSkillNames(config.skills, await loadLockfile(scope.lockPath))
+    : new Set<string>();
+  const linkWarnings: { name: string; message: string }[] = [];
+  for (const target of perSkillTargets) {
+    const result = await ensureSkillLinks(agentsDir, target, { managedNames, declaredNames: declaredSkillNames(config.skills) });
+    symlinkResults.push({ target, created: result.linked.length > 0, migrated: result.adopted, perSkill: true });
+    linkWarnings.push(...skillLinkWarnings(result, target, scope));
+  }
 
   // Auto-install declared skills (best-effort — may fail offline)
   if (config.skills.length > 0) {
     try {
-      await (opts.services ?? DEFAULT_INIT_SERVICES).runInstall({ scope });
+      const installed = await (opts.services ?? DEFAULT_INIT_SERVICES).runInstall({ scope });
+      linkWarnings.push(...installed.skillLinkWarnings);
     } catch (err) {
       // Re-throw structured errors — TrustError is a policy violation, GitError
       // carries the auth-required SSH hint. Both deserve a hard fail with the
@@ -113,12 +128,13 @@ export async function runInit(opts: InitOptions): Promise<void> {
     }
   }
 
-  return printSummary(scope, symlinkResults);
+  return printSummary(scope, symlinkResults, linkWarnings);
 }
 
 function printSummary(
   scope: ScopeRoot,
-  symlinks: { target: string; created: boolean; migrated: string[] }[],
+  symlinks: { target: string; created: boolean; migrated: string[]; perSkill?: boolean }[],
+  linkWarnings: { name: string; message: string }[],
 ): void {
   const prefix = scope.scope === "user" ? "~/.agents/" : "";
   console.log(chalk.green(`Created ${prefix}agents.toml`));
@@ -128,6 +144,11 @@ function printSummary(
   }
 
   for (const s of symlinks) {
+    if (s.perSkill) {
+      if (s.created) {console.log(chalk.green(`Linked shared skills into ${s.target}/skills/`));}
+      if (s.migrated.length > 0) {console.log(chalk.yellow(`Moved ${s.migrated.length} skill(s) from ${s.target}/skills/ to ~/.agents/skills/`));}
+      continue;
+    }
     if (s.created) {
       const label = `${s.target}/skills/`;
       const source = scope.scope === "user" ? "~/.agents/skills/" : ".agents/skills/";
@@ -140,6 +161,11 @@ function printSummary(
         ),
       );
     }
+  }
+
+  // The install below the link step reports a conflict it still sees with the same message.
+  for (const message of new Set(linkWarnings.map((w) => w.message))) {
+    console.log(chalk.yellow(`  warn: ${message}`));
   }
 
   const cmd = commandPrefix(scope);

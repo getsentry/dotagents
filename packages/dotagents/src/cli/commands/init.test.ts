@@ -23,6 +23,7 @@ const services = {
     hookWarnings: [],
     subagentWarnings: [],
     pluginWarnings: [],
+    skillLinkWarnings: [],
   })),
 } satisfies InitServices;
 

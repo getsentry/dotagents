@@ -27,6 +27,8 @@ import type { ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 import { commandPrefix, type CommandContext } from "../context.js";
 import { isInPlaceSkill } from "../../utils/fs.js";
+import { pruneSkillLinks, unlinkSkill } from "../../symlinks/per-skill.js";
+import { perSkillLinkTargets } from "../../targets/skill-symlinks.js";
 import {
   isInPlacePluginSource,
   isManagedPluginInstall,
@@ -88,6 +90,9 @@ export async function runRemove(opts: RemoveOptions): Promise<void> {
   if (explicitDep && !isWildcardDep(explicitDep)) {
     await removeSkillFromConfig(configPath, name);
     await rm(skillDir, { recursive: true, force: true });
+    for (const target of perSkillLinkTargets(scope, config.agents)) {
+      await unlinkSkill(scope.agentsDir, target, name);
+    }
 
     if (lockfile) {
       delete lockfile.skills[name];
@@ -187,6 +192,7 @@ export async function runRemoveSource(opts: RemoveSourceOptions): Promise<string
 
   const skillNames = await collectSkillsFromSource(scope, source);
   const lockfile = await loadLockfile(lockPath);
+  const linkTargets = perSkillLinkTargets(scope, (await loadConfig(configPath)).agents);
 
   // Remove all matching [[skills]] blocks from config
   await removeSkillBlocksBySource(configPath, source);
@@ -195,6 +201,9 @@ export async function runRemoveSource(opts: RemoveSourceOptions): Promise<string
   for (const name of skillNames) {
     if (SKILL_NAME_PATTERN.test(name)) {
       await rm(join(skillsDir, name), { recursive: true, force: true });
+      for (const target of linkTargets) {
+        await unlinkSkill(scope.agentsDir, target, name);
+      }
     }
     if (lockfile) {
       delete lockfile.skills[name];
@@ -292,6 +301,9 @@ async function removePluginArtifacts(
     console.log(chalk.yellow(
       `Warning: Plugin runtime cleanup was skipped because these remaining plugins could not be loaded: ${installedPlugins.issues.map((issue) => issue.name).join(", ")}.`,
     ));
+  }
+  for (const target of perSkillLinkTargets(scope, config.agents)) {
+    await pruneSkillLinks(scope.agentsDir, target);
   }
 
   await updateProjectGitignore(scope);
@@ -407,6 +419,9 @@ export default async function remove(args: string[], context: CommandContext): P
 
           const skillDir = join(scope.skillsDir, arg);
           await rm(skillDir, { recursive: true, force: true });
+          for (const target of perSkillLinkTargets(scope, (await loadConfig(scope.configPath)).agents)) {
+            await unlinkSkill(scope.agentsDir, target, arg);
+          }
           const lockfile = await loadLockfile(scope.lockPath);
           if (lockfile) {
             delete lockfile.skills[arg];

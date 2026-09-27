@@ -11,7 +11,9 @@ import { isWildcardDep } from "../../config/schema.js";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { verifySymlinks } from "../../symlinks/manager.js";
-import { skillSymlinkTargets } from "../../targets/skill-symlinks.js";
+import { perSkillLinkTargets, skillSymlinkTargets } from "../../targets/skill-symlinks.js";
+import { declaredSkillNames, ensureSkillLinks, managedSkillNames as getLinkManagedNames, verifySkillLinks } from "../../symlinks/per-skill.js";
+import { skillLinkWarnings } from "./install/agent-runtime.js";
 import { findGitDir, type ScopeRoot } from "../../scope.js";
 import { commandPrefix, type CommandContext } from "../context.js";
 import { inspectPostMergeHook, updateManagedPostMergeHook } from "../post-merge-hook.js";
@@ -318,6 +320,46 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorResult> {
       } else {
         checks.push({ name: "symlinks", status: "ok", message: "All symlinks intact." });
       }
+    }
+  }
+
+  // 12. Per-skill links (user scope clients that keep their own entries in skills/)
+  const managedSkillNames = getLinkManagedNames(config.skills, await loadLockfile(scope.lockPath));
+  for (const target of perSkillLinkTargets(scope, config.agents)) {
+    const linkOptions = { managedNames: managedSkillNames, declaredNames: declaredSkillNames(config.skills) };
+    const issues = await verifySkillLinks(scope.agentsDir, target, linkOptions);
+    const fixable = issues.filter((issue) => issue.kind === "link");
+    const unshared = issues.filter((issue) => issue.kind === "unshared");
+    const conflicts = issues.filter((issue) => issue.kind === "conflict");
+    if (fixable.length > 0) {
+      checks.push({
+        name: "skill links",
+        status: "warn",
+        message: `${fixable.length} issue(s) in ${target}/skills/: ${fixable.map(({ issue }) => issue).join("; ")}. Run '${cmd} sync' to repair.`,
+        fix: async () => {
+          // Only sync declares a skill it shares, so the fix links without moving skills.
+          const links = await ensureSkillLinks(scope.agentsDir, target, { ...linkOptions, adopt: false });
+          for (const { message } of skillLinkWarnings(links, target, scope)) {
+            console.log(chalk.yellow(`  warn: ${message}`));
+          }
+        },
+      });
+    } else {
+      checks.push({ name: "skill links", status: "ok", message: `Shared skills are linked into ${target}/skills/.` });
+    }
+    if (unshared.length > 0) {
+      checks.push({
+        name: "unshared skills",
+        status: "warn",
+        message: `${unshared.length} skill(s) in ${target}/skills/ are not shared yet: ${unshared.map(({ name }) => name).join(", ")}. Run '${cmd} sync' to share and declare them.`,
+      });
+    }
+    if (conflicts.length > 0) {
+      checks.push({
+        name: "skill link conflicts",
+        status: "warn",
+        message: `${conflicts.length} conflict(s) in ${target}/skills/ need a decision: ${conflicts.map(({ issue }) => issue).join("; ")}.`,
+      });
     }
   }
 

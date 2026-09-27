@@ -60,6 +60,7 @@ function mockRunInstall() {
     hookWarnings: [],
     subagentWarnings: [],
     pluginWarnings: [],
+    skillLinkWarnings: [],
   });
 }
 
@@ -408,6 +409,7 @@ describe("runAdd", () => {
       hookWarnings: [],
       subagentWarnings: [],
       pluginWarnings: [],
+      skillLinkWarnings: [],
     });
 
     const result = await runAdd({
@@ -546,6 +548,7 @@ describe("runAdd", () => {
       hookWarnings: [],
       subagentWarnings: [],
       pluginWarnings: [],
+      skillLinkWarnings: [],
     });
 
     const result = await runAdd({
@@ -574,6 +577,7 @@ describe("runAdd", () => {
       hookWarnings: [],
       subagentWarnings: [],
       pluginWarnings: [],
+      skillLinkWarnings: [],
     });
 
     const result = await runAdd({

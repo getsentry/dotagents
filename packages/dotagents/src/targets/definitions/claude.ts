@@ -10,6 +10,7 @@ const claude: AgentDefinition = {
   configDir: ".claude",
   skillsParentDir: ".claude",
   userSkillsParentDirs: [join(homedir(), ".claude")],
+  userSkillsLinkMode: "per-skill",
   mcp: {
     filePath: ".mcp.json",
     recognizesBareServerMap: true,

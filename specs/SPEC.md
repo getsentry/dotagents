@@ -18,7 +18,7 @@ Agent skills, MCP servers, hooks, and subagents are configured differently for e
 - **`.agents/plugins/` is the canonical home** for all plugins (managed and custom)
 - **`agents.toml`** declares what you want; **`agents.lock`** tracks what's managed
 - **Selective gitignore**: managed skills, canonical installed subagents, and managed plugin bundles are gitignored; custom skills and project-authored plugin source directories are tracked
-- **Subdirectory symlinks**: `.claude/skills/ -> .agents/skills/`, not full directory symlinks
+- **Subdirectory symlinks**: `.claude/skills/ -> .agents/skills/` in projects, not full directory symlinks; at global scope `~/.claude/skills/` holds one link per shared skill so Claude Code can keep its own entries there
 - **agentskills.io format**: skills are folders with a `SKILL.md` file containing YAML frontmatter
 
 ---
@@ -866,6 +866,24 @@ For each target in the array, dotagents creates `<target>/skills/ -> .agents/ski
 - If `<target>/skills/` exists as a real directory, contents are migrated into `.agents/skills/` and replaced with a symlink
 - If `<target>/skills/` is already a correct symlink, no action needed
 - `dotagents sync` verifies and repairs broken symlinks
+
+### Global scope for Claude Code and Cursor
+
+Claude Code keeps entries of its own in `~/.claude/skills/`: skills enabled on claude.ai are downloaded to `synced/`, move to `.trash/` when syncing stops, and are staged in `.staging/`. A directory link would put them in `~/.agents/skills/`, where Codex and OpenCode load them as ordinary skills. At global scope `~/.claude/skills/` therefore stays a real directory with one link per shared skill:
+
+```
+~/.claude/skills/<name>  -> ~/.agents/skills/<name>
+~/.claude/skills/synced/    (left to Claude Code)
+```
+
+- `init`, `install`, and `sync` link every skill in `~/.agents/skills/` (including projected plugin skills) and remove links whose entry is gone or no longer has a `SKILL.md`; `remove` unlinks the removed skill right away
+- A directory link from earlier versions is replaced, and `synced/`, `.trash/`, and `.staging/` move back from `~/.agents/skills/`. A link that cannot be resolved is replaced only when it points at `~/.agents/skills/`
+- `sync` and `init` move a skill directory created in `~/.claude/skills/` into `~/.agents/skills/` and replace it with a link; `sync` then declares it like any other local skill, also when an old lock entry has the same name. `install` and `doctor --fix` do not edit `agents.toml`, so they only link and leave such a directory for `sync`
+- When both sides have the same name as real directories, both are left alone and `install` and `sync` warn
+- If `synced/`, `.trash/`, or `.staging/` exists on both sides, the copy in `~/.agents/skills/` moves to `~/.agents/.client-owned-backup/` and `sync` says so
+- A skill created in `~/.claude/skills/` with the name of a skill declared in `agents.toml` or recorded in `agents.lock` stays where it is, and `sync` reports it (asking to run `install` first when only a stale record remains). A declared skill named `synced`, `.trash`, or `.staging` stays in `~/.agents/skills/` and is reported, since Claude Code reserves those names
+- Other entries (hidden directories, links pointing elsewhere) are never touched
+- `doctor` reports missing or stale links and client-owned entries found in `~/.agents/skills/`, which `doctor --fix` repairs, and skills not shared yet, which `sync` shares
 
 ---
 

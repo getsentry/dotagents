@@ -18,6 +18,7 @@ import {
   writeHookRuntime,
   writeMcpRuntime,
   writePluginRuntime,
+  writeSkillLinks,
   writeSkillSymlinks,
   writeSubagentRuntime,
 } from "./install/agent-runtime.js";
@@ -42,6 +43,7 @@ export interface InstallResult {
   hookWarnings: { agent: string; message: string }[];
   subagentWarnings: { agent: string; name: string; message: string }[];
   pluginWarnings: { agent: string; name: string; message: string }[];
+  skillLinkWarnings: { name: string; message: string }[];
 }
 
 export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
@@ -83,6 +85,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     scope,
     plugins.plugins,
   );
+  const skillLinkWarnings = await writeSkillLinks(config, scope);
 
   return {
     installed: skills.installed,
@@ -93,6 +96,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallResult> {
     hookWarnings,
     subagentWarnings,
     pluginWarnings,
+    skillLinkWarnings,
   };
 }
 
@@ -144,6 +148,9 @@ export default async function install(args: string[], context: CommandContext): 
       console.log(chalk.yellow(`  warn: ${w.message}`));
     }
     for (const w of result.pluginWarnings) {
+      console.log(chalk.yellow(`  warn: ${w.message}`));
+    }
+    for (const w of result.skillLinkWarnings) {
       console.log(chalk.yellow(`  warn: ${w.message}`));
     }
   } catch (err) {
