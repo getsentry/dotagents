@@ -777,6 +777,7 @@ Structure:
 Git operations (all non-interactive: `GIT_TERMINAL_PROMPT=0`, SSH `BatchMode=yes`):
 - Initial: `git clone --depth=1`
 - Update: `git fetch --depth=1 origin && git reset --hard FETCH_HEAD`
+- Repository-local variables inherited from the caller, such as the `GIT_DIR` git exports to hooks in a linked worktree, are cleared so these commands act on the cache clone
 
 ### Skill Validation
 

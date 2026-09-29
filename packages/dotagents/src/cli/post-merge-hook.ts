@@ -5,7 +5,10 @@ import { join } from "node:path";
 export const POST_MERGE_MARKER = "# dotagents:post-merge";
 export const POST_MERGE_END_MARKER = "# dotagents:end";
 
+// In a linked worktree, git exports GIT_DIR and related variables to hooks.
+// Clear them so dotagents' git commands act on its cache clones, not this repository.
 const POST_MERGE_BLOCK = `${POST_MERGE_MARKER}
+unset $(git rev-parse --local-env-vars) GIT_REFLOG_ACTION
 if command -v dotagents >/dev/null 2>&1; then
   dotagents --project install
 elif command -v npx >/dev/null 2>&1; then
