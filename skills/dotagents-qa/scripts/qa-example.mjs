@@ -269,10 +269,12 @@ async function runCopilotPluginProof() {
   const realProjectDir = realpathSync(projectDir);
   const pluginRoot = realpathSync(join(projectDir, ".agents", "plugins", "qa-tools"));
   const pluginState = execJson("copilot", ["plugins", "list", "--json"], env);
-  const livePlugin = pluginState.plugins?.find((plugin) => plugin.name === "qa-tools");
+  const plugins = Array.isArray(pluginState) ? pluginState : pluginState.plugins;
+  const livePlugin = plugins?.find((plugin) => plugin.name === "qa-tools");
   if (
     livePlugin?.enabled !== true
-    || livePlugin.source !== "live-marketplace:dotagents"
+    || !["live-marketplace:dotagents", "live"].includes(livePlugin.source)
+    || (livePlugin.source === "live" && livePlugin.marketplace !== "dotagents")
     || !isStringValue(livePlugin.installedFrom)
     || realpathSync(livePlugin.installedFrom) !== realProjectDir
   ) {
