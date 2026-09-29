@@ -905,10 +905,7 @@ async function loadPluginInterfaces(
     throw new Error("Installed plugin bundle is missing plugin.json. Reinstall the plugin.");
   }
 
-  let primary: { manifest: PluginManifest; nativeSource?: NativePluginSource } | undefined;
-  const authoredNativeInterfaces: AuthoredNativePluginInterfaces = {};
   for (const candidate of FALLBACK_MANIFEST_PATHS) {
-    if (primary && !candidate.nativeSource) {continue;}
     const filePath = join(pluginDir, candidate.path);
     if (!existsSync(filePath)) {continue;}
     const value = await readJson(filePath);
@@ -918,28 +915,20 @@ async function loadPluginInterfaces(
     } catch (err) {
       throw pluginManifestError(err, value);
     }
-    primary ??= { manifest, nativeSource: candidate.nativeSource };
-    if (candidate.nativeSource) {
-      authoredNativeInterfaces[candidate.nativeSource] = {
-        path: candidate.path,
-        fallback: true,
-        manifest,
-      };
-    }
+    return {
+      manifest,
+      authoredNativeInterfaces: await loadAuthoredNativeInterfaces(pluginDir),
+      nativeSource: candidate.nativeSource,
+    };
   }
-  if (!primary) {return null;}
-  return {
-    manifest: primary.manifest,
-    authoredNativeInterfaces,
-    nativeSource: primary.nativeSource,
-  };
+  return null;
 }
 
 async function loadAuthoredNativeInterfaces(
   pluginDir: string,
-  fallbackSources: ReadonlySet<NativePluginSource> | null | undefined,
-  installedNativeSource: NativePluginSource | undefined,
-  portableManifest: PluginManifest | undefined,
+  fallbackSources?: ReadonlySet<NativePluginSource> | null,
+  installedNativeSource?: NativePluginSource,
+  portableManifest?: PluginManifest,
 ): Promise<AuthoredNativePluginInterfaces> {
   // undefined classifies source input; null ignores installed adapters; a Set reloads recorded fallbacks.
   const interfaces: AuthoredNativePluginInterfaces = {};
@@ -963,7 +952,7 @@ async function loadAuthoredNativeInterfaces(
     try {
       const value = await readJson(filePath);
       const manifest = parsePluginManifest(value, filePath);
-      if (fallbackSources === undefined) {
+      if (fallbackSources === undefined && portableManifest) {
         const reproducibleFields: SerializedObject = {};
         const mcpPath = await reproducibleNativeMcpPath(
           pluginDir,

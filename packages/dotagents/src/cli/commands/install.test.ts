@@ -504,6 +504,64 @@ source = "path:plugin-source/portable-tools"
     },
   );
 
+  it("preserves multiple native manifests without warnings across install and sync", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "dual-tools");
+    const manifests = {
+      codex: '{ "name": "dual-tools", "description": "Codex configuration" }\n',
+      claude: '{ "name": "dual-tools", "description": "Claude configuration" }\n',
+    };
+    for (const [agent, content] of Object.entries(manifests)) {
+      await mkdir(join(sourceDir, `.${agent}-plugin`), { recursive: true });
+      await writeFile(join(sourceDir, `.${agent}-plugin`, "plugin.json"), content);
+    }
+    await writeFile(join(projectRoot, "agents.toml"), `version = 1
+agents = ["claude", "codex"]
+
+[[plugins]]
+name = "dual-tools"
+source = "path:plugin-source/dual-tools"
+`);
+    const scope = resolveScope("project", projectRoot);
+
+    expect((await runInstall({ scope })).pluginWarnings).toEqual([]);
+    expect((await runInstall({ scope })).pluginWarnings).toEqual([]);
+    expect((await runSync({ scope })).issues).toEqual([]);
+
+    const installedDir = join(scope.pluginsDir, "dual-tools");
+    for (const [agent, content] of Object.entries(manifests)) {
+      expect(await readFile(join(installedDir, `.${agent}-plugin`, "plugin.json"), "utf-8")).toBe(content);
+    }
+    const manifest = parseJsonObject(await readFile(join(installedDir, "plugin.json"), "utf-8"));
+    expect(manifest["description"]).toBe("Codex configuration");
+  });
+
+  it.each(["{broken\n", '{"name": 42}\n'])(
+    "ignores a malformed secondary native manifest until its client is selected: %s",
+    async (malformed) => {
+      const sourceDir = join(projectRoot, "plugin-source", "dual-tools");
+      await mkdir(join(sourceDir, ".codex-plugin"), { recursive: true });
+      await mkdir(join(sourceDir, ".claude-plugin"), { recursive: true });
+      await writeFile(join(sourceDir, ".codex-plugin", "plugin.json"), '{"name": "dual-tools"}');
+      await writeFile(join(sourceDir, ".claude-plugin", "plugin.json"), malformed);
+      const config = `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "dual-tools"
+source = "path:plugin-source/dual-tools"
+`;
+      const scope = resolveScope("project", projectRoot);
+      await writeFile(scope.configPath, config);
+
+      expect((await runInstall({ scope })).installedPlugins).toEqual(["dual-tools"]);
+      expect((await runSync({ scope })).issues).toEqual([]);
+      expect(await readFile(join(scope.pluginsDir, "dual-tools", ".claude-plugin", "plugin.json"), "utf-8")).toBe(malformed);
+
+      await writeFile(scope.configPath, config.replace('["codex"]', '["codex", "claude"]'));
+      await expect(runInstall({ scope })).rejects.toThrow("Invalid Claude native fallback");
+    },
+  );
+
   it.each([undefined, "."] as const)(
     "installs a reported-shape hybrid root with path %s",
     async (pluginPath) => {
