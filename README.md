@@ -175,10 +175,10 @@ Dotagents plugin installation and native client installation are separate stages
 
 | Agent ID | Dotagents output | Native action |
 | --- | --- | --- |
-| `claude` | Generated marketplace and native manifest when required | Register the Dotagents root, then install `<name>@dotagents` with the Claude CLI. |
+| `claude` | Generated marketplace and native manifest when required | Register the project root, then install `<name>@dotagents` with the Claude CLI. |
 | `cursor` | Generated marketplace and native manifest when required | Use Customize, a team marketplace, `~/.cursor/plugins/local`, or `cursor-agent --plugin-dir`. Cursor has no marketplace CLI command. |
 | `codex` | Generated `.agents/plugins/marketplace.json` and native manifest when required | Register the correct source root, then install `<name>@dotagents-local` with the Codex CLI. |
-| `copilot` | Generated `.github/plugin/marketplace.json` | Register the Dotagents root, then install `<name>@dotagents` with the Copilot CLI. |
+| `copilot` | Generated `.github/plugin/marketplace.json` | Register the project root, then install `<name>@dotagents` with the Copilot CLI. |
 | `grok` | Managed copy under `.grok/plugins/` | None. Grok reads the managed copy directly. |
 | `opencode` | Managed skill links and MCP entries | None. OpenCode reads the generated projections directly. |
 | `pi` | Managed skill links under `.agents/skills/` | None. Pi reads this directory directly. |
