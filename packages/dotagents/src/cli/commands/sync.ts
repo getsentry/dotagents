@@ -95,10 +95,10 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
   // 1. Adopt orphaned skills (installed but not in agents.toml)
   if (existsSync(skillsDir)) {
     const adoptedLockEntries: Record<string, { source: string }> = {};
+    let forgotten = false;
     const entries = await readdir(skillsDir, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory()) {continue;}
-      if (entry.name === ".dotagents-managed") {continue;}
       if (declaredNames.has(entry.name)) {continue;}
 
       const locked = lockfile?.skills[entry.name];
@@ -107,6 +107,19 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
         if (removed) {
           delete lockfile!.skills[entry.name];
           pruned.push(entry.name);
+        }
+        continue;
+      }
+
+      // Only adopt skill directories. Ownership markers, hidden directories, and
+      // folders without a SKILL.md (e.g. Claude Code's synced/ and .trash/ after
+      // .claude/skills/ is migrated) are not skills.
+      const skillPath = managedSkillPath(skillsDir, entry.name);
+      if (!skillPath || !existsSync(join(skillPath, "SKILL.md"))) {
+        // Drop a leftover in-place lock entry so .agents/.gitignore does not hide the folder.
+        if (locked) {
+          delete lockfile!.skills[entry.name];
+          forgotten = true;
         }
         continue;
       }
@@ -120,7 +133,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncResult> {
       adopted.push(entry.name);
     }
 
-    if (adopted.length > 0 || pruned.length > 0) {
+    if (adopted.length > 0 || pruned.length > 0 || forgotten) {
       lockfile = {
         version: 1,
         skills: { ...lockfile?.skills, ...adoptedLockEntries },

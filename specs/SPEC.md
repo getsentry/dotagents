@@ -647,7 +647,7 @@ dotagents sync
 ```
 
 **Behavior:**
-1. Adopt orphaned local skills (installed but not in `agents.toml`, and not previously managed) into config
+1. Adopt orphaned local skills (directories with a valid skill name and a `SKILL.md`, installed but not in `agents.toml`, and not previously managed) into config
 2. Prune stale managed skills that were removed from config but still exist on disk locally
 3. In project scope, regenerate `.agents/.gitignore`
 4. In project scope, warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
@@ -874,7 +874,6 @@ For each target in the array, dotagents creates `<target>/skills/ -> .agents/ski
 ```
 dotagents/
   AGENTS.md                  # Agent instructions
-  CLAUDE.md -> AGENTS.md     # Symlink
   agents.toml                # Self-dogfooding
   agents.lock                # Tracks managed skills, subagents, and plugins (gitignored)
   warden.toml                # Warden config for code analysis

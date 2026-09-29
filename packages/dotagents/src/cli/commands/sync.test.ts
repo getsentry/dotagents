@@ -79,6 +79,43 @@ describe("runSync", () => {
     expect(config.skills).toHaveLength(2);
   });
 
+  it("adopts only directories that are valid skills", async () => {
+    await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
+    const skillsDir = join(projectRoot, ".agents", "skills");
+    // Directories another tool keeps under a migrated .claude/skills/
+    await mkdir(join(skillsDir, ".trash", "old"), { recursive: true });
+    await writeFile(join(skillsDir, ".trash", "old", "SKILL.md"), SKILL_MD("old"));
+    await mkdir(join(skillsDir, "synced", "bucket", "pdf"), { recursive: true });
+    await writeFile(join(skillsDir, "synced", "bucket", "pdf", "SKILL.md"), SKILL_MD("pdf"));
+    await mkdir(join(skillsDir, "notes"), { recursive: true });
+    await writeFile(join(skillsDir, "notes", "README.md"), "notes\n");
+    await mkdir(join(skillsDir, "review"), { recursive: true });
+    await writeFile(join(skillsDir, "review", "SKILL.md"), SKILL_MD("review"));
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.adopted).toEqual(["review"]);
+    const config = await loadConfig(join(projectRoot, "agents.toml"));
+    expect(config.skills.map((s) => s.name)).toEqual(["review"]);
+  });
+
+  it("forgets an adopted skill whose directory no longer has a SKILL.md", async () => {
+    await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
+    await mkdir(join(projectRoot, ".agents", "skills", "notes"), { recursive: true });
+    await writeFile(join(projectRoot, ".agents", "skills", "notes", "README.md"), "notes\n");
+    await writeLockfile(join(projectRoot, "agents.lock"), {
+      version: 1,
+      skills: { notes: { source: "path:.agents/skills/notes" } },
+    });
+
+    const result = await runSync({ scope: resolveScope("project", projectRoot) });
+
+    expect(result.adopted).toEqual([]);
+    expect((await loadLockfile(join(projectRoot, "agents.lock")))!.skills).toEqual({});
+    const gitignore = await readFile(join(projectRoot, ".agents", ".gitignore"), "utf-8");
+    expect(gitignore).not.toContain("/skills/notes");
+  });
+
   it("ignores plugin skill ownership markers when adopting orphaned skills", async () => {
     await writeFile(join(projectRoot, "agents.toml"), "version = 1\n");
     const markerDir = join(projectRoot, ".agents", "skills", ".dotagents-managed");
