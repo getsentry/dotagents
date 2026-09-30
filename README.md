@@ -155,7 +155,7 @@ dotagents can also import native runtime subagent files from `.claude/agents/`, 
 
 OpenCode reuses an existing project config from `.opencode/opencode.jsonc`, `.opencode/opencode.json`, `opencode.jsonc`, or `opencode.json`, in that order. New projects use `.opencode/opencode.jsonc`.
 
-Plugins are declared with `[[plugins]]` entries. In project scope, dotagents installs canonical bundles into `.agents/plugins/<name>/` and generates runtime plugin outputs such as `.claude-plugin/marketplace.json`, `.github/plugin/marketplace.json`, `.cursor-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, native Claude, Cursor, and Codex manifests, `.grok/plugins/<name>/`, `.opencode/skills/<skill>/`, OpenCode MCP entries, and Pi skill links under `.agents/skills/<skill>/`. During legacy migration, generalized bundles can also project Markdown agents into `.opencode/agents/`; standard extension agents are preserved but are not projected yet:
+Plugins are declared with `[[plugins]]` entries. In project scope, dotagents installs canonical bundles into `.agents/plugins/<name>/`. It generates marketplaces for Claude, Cursor, Codex, and Copilot. Claude, Cursor, and Codex also receive native manifests when required. Grok receives a managed copy. OpenCode receives skill links and MCP entries. Pi receives skill links under `.agents/skills/<skill>/`. During legacy migration, generalized bundles can also project Markdown agents into `.opencode/agents/`. Standard extension agents are preserved but are not projected yet:
 
 ```toml
 [[plugins]]
@@ -170,6 +170,23 @@ The canonical portable format is an [Agent Plugins](https://agent-plugins.org/) 
 For bundles with native manifests but no root `plugin.json`, Codex, Claude, then Cursor order determines the primary manifest. All native manifests are preserved for their matching clients. The primary manifest must be valid; errors in additional manifests block installation only when their client is selected.
 
 Global plugins install canonical bundles under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated under `~/.agents/`. Copilot uses `~/.agents/.github/plugin/marketplace.json`, and Codex uses `~/.agents/plugins/marketplace.json`. Grok plugins are copied into `~/.grok/plugins/`. OpenCode skills are linked into `~/.config/opencode/skills/`, and portable MCP servers are merged into `~/.config/opencode/opencode.json`. Pi skills are linked into `~/.agents/skills/`. `--user` remains a compatibility alias for `--global`.
+
+### Plugin activation
+
+Dotagents plugin installation and native client installation are separate stages. `dotagents add` and `dotagents install` install the canonical bundle and write each selected runtime output. Marketplace-based clients still require native registration and installation.
+
+| Agent ID | Dotagents output | Native action |
+| --- | --- | --- |
+| `claude` | Generated marketplace and native manifest when required | Register the project root, then install `<name>@dotagents` with the Claude CLI. |
+| `cursor` | Generated marketplace and native manifest when required | Use Customize, a team marketplace, `~/.cursor/plugins/local`, or `cursor-agent --plugin-dir`. Cursor has no marketplace CLI command. |
+| `codex` | Generated `.agents/plugins/marketplace.json` and native manifest when required | Register the correct source root, then install `<name>@dotagents-local` with the Codex CLI. |
+| `copilot` | Generated `.github/plugin/marketplace.json` | Register the project root, then install `<name>@dotagents` with the Copilot CLI. |
+| `grok` | Managed copy under `.grok/plugins/` | None. Grok reads the managed copy directly. |
+| `opencode` | Managed skill links and MCP entries | None. OpenCode reads the generated projections directly. |
+| `pi` | Managed skill links under `.agents/skills/` | None. Pi reads this directory directly. |
+| `vscode` | No plugin adapter | None. VS Code does not receive Dotagents plugin output. |
+
+Native clients can cache registered marketplaces and installed plugins. A later Dotagents update or removal does not update those caches. The guide and CLI reference list project, global, update, and removal commands.
 
 Pi plugin targets are global skill projections rather than isolated plugin installs: a Pi-targeted plugin skill is added to `.agents/skills/` and is therefore visible to other clients that consume that shared directory.
 
