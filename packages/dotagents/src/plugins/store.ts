@@ -915,17 +915,9 @@ async function loadPluginInterfaces(
     } catch (err) {
       throw pluginManifestError(err, value);
     }
-    const authoredNativeInterfaces: AuthoredNativePluginInterfaces = {};
-    if (candidate.nativeSource) {
-      authoredNativeInterfaces[candidate.nativeSource] = {
-        path: candidate.path,
-        fallback: true,
-        manifest,
-      };
-    }
     return {
       manifest,
-      authoredNativeInterfaces,
+      authoredNativeInterfaces: await loadAuthoredNativeInterfaces(pluginDir),
       nativeSource: candidate.nativeSource,
     };
   }
@@ -934,9 +926,9 @@ async function loadPluginInterfaces(
 
 async function loadAuthoredNativeInterfaces(
   pluginDir: string,
-  fallbackSources: ReadonlySet<NativePluginSource> | null | undefined,
-  installedNativeSource: NativePluginSource | undefined,
-  portableManifest: PluginManifest | undefined,
+  fallbackSources?: ReadonlySet<NativePluginSource> | null,
+  installedNativeSource?: NativePluginSource,
+  portableManifest?: PluginManifest,
 ): Promise<AuthoredNativePluginInterfaces> {
   // undefined classifies source input; null ignores installed adapters; a Set reloads recorded fallbacks.
   const interfaces: AuthoredNativePluginInterfaces = {};
@@ -960,7 +952,7 @@ async function loadAuthoredNativeInterfaces(
     try {
       const value = await readJson(filePath);
       const manifest = parsePluginManifest(value, filePath);
-      if (fallbackSources === undefined) {
+      if (fallbackSources === undefined && portableManifest) {
         const reproducibleFields: SerializedObject = {};
         const mcpPath = await reproducibleNativeMcpPath(
           pluginDir,
@@ -1135,10 +1127,7 @@ async function readInstalledPluginProvenance(pluginDir: string): Promise<{
 }> {
   const fallbackSources = await readNativeFallbackSources(pluginDir);
   const nativeSource = await readNativeSourceMarker(pluginDir);
-  if (
-    fallbackSources && nativeSource &&
-    (fallbackSources.size !== 1 || !fallbackSources.has(nativeSource))
-  ) {
+  if (fallbackSources && nativeSource && !fallbackSources.has(nativeSource)) {
     throw new Error("Installed plugin has conflicting native interface provenance. Reinstall the plugin.");
   }
   return { fallbackSources, nativeSource };

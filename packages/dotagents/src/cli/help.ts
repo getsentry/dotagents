@@ -10,6 +10,7 @@ Options:
   install: `Usage: npx @sentry/dotagents [--project|--global|--user] install [options]
 
 Install or refresh dependencies declared in agents.toml.
+Preserve publisher-provided plugin manifests for their matching clients.
 
 Options:
   --frozen        Deprecated compatibility flag; normal install still runs

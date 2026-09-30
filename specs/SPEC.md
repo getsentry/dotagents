@@ -246,6 +246,8 @@ Plugin dependencies. Each entry selects one plugin bundle from a source. dotagen
 
 The preferred canonical plugin input is an [Agent Plugins](https://agent-plugins.org/) bundle under `.agents/plugins/<name>/`: required `plugin.json`, optional `skills/`, optional `mcp.json`, and client-specific extension namespaces. During migration, a valid portable root may coexist with authored Claude, Cursor, or Codex manifests as a hybrid compatibility bundle. The portable root remains the source of truth. Dotagents ignores a native manifest when the target adapter can reproduce it from portable data, and retains it byte-for-byte as a matching-client fallback only when it contains behavior the adapter cannot represent. Generated adapters are managed, disposable output and never become input to later normalization. Source declarations, lock entries, marketplaces, target selection, and generated runtime files remain management concerns outside the portable bundle.
 
+For bundles with native manifests but no root `plugin.json`, Codex, Claude, then Cursor order determines the primary manifest. All native manifests are preserved for their matching clients. The primary manifest must be valid; errors in additional manifests block installation only when their client is selected.
+
 See [Plugin Support Specification](plugins.md) for the Agent Plugins-aligned bundle contract, legacy migration plan, discovery rules, normalized internal model, downstream target transformations, and implementation gaps.
 
 | Field | Required | Description |
