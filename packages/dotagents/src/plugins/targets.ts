@@ -5,7 +5,7 @@ import { isStandardPluginManifest, type PluginMcpConfig } from "./schema.js";
 import { isSerializedObject, type SerializedObject, type SerializedValue } from "@sentry/dotagents-lib";
 import { isString } from "../utils/type-guards.js";
 
-const PLUGIN_ONLY_AGENT_IDS = ["grok", "pi"];
+const PLUGIN_ONLY_AGENT_IDS = ["grok"];
 const PLUGIN_AGENT_IDS = ["claude", "copilot", "cursor", "codex", "grok", "opencode", "pi"];
 const SUPPORTED_PLUGIN_AGENT_IDS = new Set(allPluginAgentIds());
 const GENERATED_NATIVE_FIELDS = {

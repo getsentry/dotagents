@@ -2,7 +2,7 @@
 
 > Shared tooling for coding agents
 
-dotagents manages agent skills, MCP servers, hooks, subagents, and plugins declared in `agents.toml`, and handles symlinks and config generation so tools like Claude Code, Cursor, Codex, GitHub Copilot CLI, Grok, VS Code, and OpenCode are configured from a single source of truth.
+dotagents manages agent skills, MCP servers, hooks, subagents, and plugins declared in `agents.toml`, and handles symlinks and config generation so tools like Claude Code, Cursor, Codex, GitHub Copilot CLI, Grok, VS Code, OpenCode, and Pi are configured from a single source of truth.
 
 Install: `npm install -g @sentry/dotagents`
 Run without installing: `npx @sentry/dotagents <command>`
@@ -158,7 +158,7 @@ targets = ["claude", "cursor", "codex", "copilot", "grok", "opencode", "pi"]
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version. Always `1`. |
 | `defaultRepositorySource` | string | No | `github` | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. |
-| `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `copilot`, `grok`, `vscode`, `opencode`, `pi`. Creates symlinks and config files for each where supported. `grok` and `pi` are plugin-only targets. |
+| `agents` | string[] | No | `[]` | Agent tool IDs: `claude`, `cursor`, `codex`, `copilot`, `grok`, `vscode`, `opencode`, `pi`. Creates symlinks and config files for each where supported. `grok` is a plugin-only target. |
 | `subagents` | table[] | No | `[]` | Custom subagent declarations. Generates runtime-specific files for Claude, Cursor, Codex, and OpenCode. |
 | `plugins` | table[] | No | `[]` | Plugin declarations. Installs canonical bundles into `.agents/plugins/` and generates runtime plugin outputs for Claude, Cursor, Codex, Copilot, Grok, OpenCode, and Pi skill projection where supported. |
 | `minimum_release_age` | integer | No | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install. |
@@ -216,12 +216,15 @@ Use `${VAR}` in header values and `url` to reference secrets from the environmen
 Config files generated per agent:
 - Claude: `.mcp.json` (JSON)
 - Cursor: `.cursor/mcp.json` (JSON)
+- Pi: `.pi/mcp.json` (JSON); requires Pi 0.99 or later
 - Codex: `.codex/config.toml` (TOML, shared with other Codex config)
 - VS Code: `.vscode/mcp.json` (JSON)
 - OpenCode: `.opencode/opencode.jsonc` by default (JSONC, shared). Existing `.opencode/opencode.json`, `opencode.jsonc`, or `opencode.json` files are reused in precedence order.
 - GitHub Copilot: `.mcp.json` by default (JSON). An existing `.github/mcp.json` is reused when `.mcp.json` is absent.
 
 Copilot accepts both bare server maps and `mcpServers` documents. Global MCP uses `$COPILOT_HOME/mcp-config.json` (default `~/.copilot/mcp-config.json`).
+
+Pi 0.99+ supports `[[mcp]]` declarations over stdio and Streamable HTTP. With `pi` in `agents`, dotagents writes `.pi/mcp.json` for project scope and `~/.pi/agent/mcp.json` for global scope, or `$PI_CODING_AGENT_DIR/mcp.json` when overridden (`~` is expanded). Existing unrelated servers and top-level settings are preserved. Pi server names allow only letters, digits, underscores, and hyphens. URLs must be literal; `${VAR}` references work in headers and environment values. Pi only reads project MCP config after the project is trusted; use `pi mcp list --json` to check connections and `pi mcp login <server>` for OAuth. Plugin-bundled MCP is not projected to Pi yet.
 
 ### Hooks
 
@@ -508,10 +511,11 @@ Check selected-scope health: gitignore setup where applicable, installed skills 
 | `copilot` | GitHub Copilot CLI | `.copilot` | Project: reads `.agents/skills/`; global: `$COPILOT_HOME/skills/` symlink | `.mcp.json` or `.github/mcp.json` | Not supported | Not supported |
 | `vscode` | VS Code Copilot | `.vscode` | (reads `.agents/skills/` natively) | `.vscode/mcp.json` | `.claude/settings.json` | Not supported |
 | `opencode` | OpenCode | `.opencode` | (reads `.agents/skills/` natively) | `.opencode/opencode.jsonc` by default | Not supported | `.opencode/agents/*.md` |
+| `pi` | Pi | `.pi` | (reads `.agents/skills/` natively) | `.pi/mcp.json` | Not supported | Not supported |
 
 Claude uses `.claude/skills/`, and Cursor shares the same Claude-compatible skills symlink. Codex, VS Code, and OpenCode read `.agents/skills/` directly.
 
-[Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively. Normal skills need no Pi-specific target or symlink configuration; plugin bundles can target `pi` when their `skills/` components should be exposed there.
+[Pi](https://pi.dev) reads `.agents/skills/` natively. Normal skills need no Pi-specific target or symlink configuration; plugin bundles can target `pi` when their `skills/` components should be exposed there.
 
 ## Scopes
 
@@ -617,6 +621,7 @@ Location: `~/.local/dotagents/` (override: `DOTAGENTS_STATE_DIR`)
 | `DOTAGENTS_STATE_DIR` | Override cache location (default: `~/.local/dotagents`) |
 | `DOTAGENTS_HOME` | Override global-scope location (default: `~/.agents`) |
 | `COPILOT_HOME` | Override Copilot's global skill and MCP location with a non-empty absolute path (default when unset: `~/.copilot`) |
+| `PI_CODING_AGENT_DIR` | Override Pi's global config directory (default `~/.pi/agent`); a leading `~` is expanded |
 
 ## Gitignore
 

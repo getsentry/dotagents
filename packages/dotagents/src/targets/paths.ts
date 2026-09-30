@@ -34,6 +34,14 @@ export function getUserMcpTarget(agentId: string): UserMcpTarget {
       if (process.platform !== "win32") {target.mode = 0o600;}
       return target;
     }
+    case "pi": {
+      const configuredDir = process.env["PI_CODING_AGENT_DIR"] || join(home, ".pi", "agent");
+      const agentDir = configuredDir === "~" ? home
+        : configuredDir.startsWith("~/") || configuredDir.startsWith("~\\")
+          ? join(home, configuredDir.slice(2))
+          : configuredDir;
+      return { filePath: join(agentDir, "mcp.json"), shared: true };
+    }
     default:
       throw new Error(`Unknown agent for user-scope MCP: ${agentId}`);
   }
