@@ -1,5 +1,29 @@
 # Changelog
 
+## 3.2.0
+
+### New Features ✨
+
+- (pi) Add native MCP configuration support by @gricha in [#199](https://github.com/getsentry/dotagents/pull/199)
+
+### Bug Fixes 🐛
+
+- (pi) Discover nested plugin skills by @gricha in [#185](https://github.com/getsentry/dotagents/pull/185)
+- (plugins) Preserve all authored native manifests by @adityaanikam in [#191](https://github.com/getsentry/dotagents/pull/191)
+- (sync) Adopt only directories that contain a SKILL.md by @m-naoki-m in [#194](https://github.com/getsentry/dotagents/pull/194)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump smol-toml from 1.6.1 to 1.7.1 by @dependabot in [#186](https://github.com/getsentry/dotagents/pull/186)
+- Bump astro from 7.2.2 to 7.2.8 in /docs by @dependabot in [#184](https://github.com/getsentry/dotagents/pull/184)
+
+#### Other
+
+- (deps-dev) Bump vitest from 4.1.10 to 4.1.11 by @dependabot in [#183](https://github.com/getsentry/dotagents/pull/183)
+- Remove CLAUDE.md symlink by @JPeer264 in [#189](https://github.com/getsentry/dotagents/pull/189)
+
 ## 3.1.0
 
 ### New Features ✨
