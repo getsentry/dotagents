@@ -371,7 +371,7 @@ Status output:
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `version` | integer | -- | Schema version. Always `1`. |
-| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `copilot`, `grok`, `vscode`, `opencode`, `pi`. `grok` and `pi` are plugin-only targets. |
+| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `copilot`, `grok`, `vscode`, `opencode`, `pi`. `grok` is a plugin-only target. |
 | `subagents` | table[] | `[]` | Custom subagent declarations for Claude, Cursor, Codex, and OpenCode |
 | `plugins` | table[] | `[]` | Plugin declarations for Claude, Cursor, Codex, Copilot, Grok, OpenCode, and Pi. |
 | `minimum_release_age` | integer | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install. |
@@ -401,6 +401,17 @@ Status output:
 
 Copilot MCP uses `.mcp.json` or an existing `.github/mcp.json` in project scope
 and `$COPILOT_HOME/mcp-config.json` (default `~/.copilot/mcp-config.json`) globally.
+
+Pi 0.99+ uses `.pi/mcp.json` in project scope and `~/.pi/agent/mcp.json`
+globally, or `$PI_CODING_AGENT_DIR/mcp.json` when overridden. A leading `~`
+in the override is expanded. Existing unrelated servers and top-level settings
+are preserved. Server names allow letters, digits, underscores, and hyphens;
+URLs must be literal. Environment references such as `${TOKEN}` work in
+headers and environment values.
+
+Pi reads project MCP config only after the project is trusted. Check connections
+with `pi mcp list --json` and sign in with `pi mcp login <server>` for OAuth.
+Plugin-bundled MCP is not projected to Pi yet.
 
 ### Hooks
 
@@ -524,3 +535,4 @@ dotagents --project install
 | `DOTAGENTS_STATE_DIR` | Override cache location. Default: `~/.local/dotagents`. |
 | `DOTAGENTS_HOME` | Override global-scope location. Default: `~/.agents`. |
 | `COPILOT_HOME` | Override Copilot's global skills and MCP location with a non-empty absolute path. Default when unset: `~/.copilot`. |
+| `PI_CODING_AGENT_DIR` | Override Pi's global config directory (default `~/.pi/agent`). A leading `~` is expanded. |

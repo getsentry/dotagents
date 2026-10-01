@@ -10,7 +10,7 @@ Shared tooling for coding agents. Declare skills, MCP servers, hooks, subagents,
 
 **Shareable.** Skills are directories with a `SKILL.md`. Host them in any git repo, discover them automatically, install with one command.
 
-**Multi-agent.** Configure Claude, Cursor, Codex, GitHub Copilot CLI, Grok, VS Code, and OpenCode from a single `agents.toml` -- skills, MCP servers, hooks, subagents, and plugins where supported. Pi reads `.agents/skills/` directly.
+**Multi-agent.** Configure Claude, Cursor, Codex, GitHub Copilot CLI, Grok, VS Code, OpenCode, and Pi from a single `agents.toml` -- skills, MCP servers, hooks, subagents, and plugins where supported. Pi reads `.agents/skills/` directly.
 
 ## Quick Start: Global by Default
 
@@ -128,6 +128,9 @@ agents = ["claude", "cursor", "codex", "copilot", "grok", "opencode", "pi"]
 | `grok` | `.grok` | -- | -- | -- |
 | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` | -- |
 | `opencode` | `.opencode` | `.opencode/opencode.jsonc` | -- | `.opencode/agents/*.md` |
+| `pi` | `.pi` | `.pi/mcp.json` | -- | -- |
+
+Pi 0.99+ supports `[[mcp]]` declarations over stdio and Streamable HTTP. With `pi` in `agents`, dotagents writes `.pi/mcp.json` for project scope and `~/.pi/agent/mcp.json` for global scope, or `$PI_CODING_AGENT_DIR/mcp.json` when overridden (`~` is expanded). Existing unrelated servers and top-level settings are preserved. Pi server names allow only letters, digits, underscores, and hyphens. URLs must be literal; `${VAR}` references work in headers and environment values. Pi only reads project MCP config after the project is trusted; use `pi mcp list --json` to check connections and `pi mcp login <server>` for OAuth. Plugin-bundled MCP is not projected to Pi yet.
 
 Custom subagents are declared with `[[subagents]]` entries. dotagents writes generated runtime-specific files during `install` and repairs them during `sync`:
 
@@ -173,7 +176,7 @@ Global plugins install canonical bundles under `~/.agents/plugins/`. Claude and 
 
 Pi plugin targets are global skill projections rather than isolated plugin installs: a Pi-targeted plugin skill is added to `.agents/skills/` and is therefore visible to other clients that consume that shared directory.
 
-[Pi](https://github.com/badlogic/pi-mono) reads `.agents/skills/` natively. Normal skills need no Pi-specific configuration; plugin bundles can target `pi` when their `skills/` components should be exposed there.
+[Pi](https://pi.dev) reads `.agents/skills/` natively. Normal skills need no Pi-specific configuration; plugin bundles can target `pi` when their `skills/` components should be exposed there.
 
 ## Documentation
 

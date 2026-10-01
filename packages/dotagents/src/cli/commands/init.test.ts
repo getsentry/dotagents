@@ -123,7 +123,7 @@ describe("runInit", () => {
     expect(config.agents).toEqual(["claude", "cursor"]);
   });
 
-  it("accepts plugin-only Pi and Grok targets", async () => {
+  it("accepts Pi and plugin-only Grok targets", async () => {
     await runInit({ scope: resolveScope("project", dir), agents: ["pi", "grok"] });
 
     const config = await loadConfig(join(dir, "agents.toml"));

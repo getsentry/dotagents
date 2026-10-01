@@ -56,6 +56,8 @@ Options:
   mcp: `Usage: npx @sentry/dotagents [--project|--global|--user] mcp <subcommand>
 
 Manage MCP server declarations.
+Pi 0.99+ uses .pi/mcp.json (project) or ~/.pi/agent/mcp.json (global).
+PI_CODING_AGENT_DIR overrides Pi's global config directory.
 
 Subcommands:
   add             Add an MCP server declaration
@@ -66,6 +68,7 @@ Run 'npx @sentry/dotagents mcp <subcommand> --help' for details.`,
   "mcp add": `Usage: npx @sentry/dotagents [--project|--global|--user] mcp add <name> (--command <cmd> | --url <url>) [options]
 
 Add an MCP server declaration to agents.toml.
+Pi server names allow letters, digits, underscores, and hyphens; URLs must be literal.
 
 Options:
   --command <cmd>       Stdio command including arguments

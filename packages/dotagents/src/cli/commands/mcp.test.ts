@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import mcp, { runMcpAdd, runMcpRemove, getMcpList, McpError, validateMcpName, parseHeader } from "./mcp.js";
 import { loadConfig } from "../../config/loader.js";
-import type { ScopeRoot } from "../../scope.js";
+import { resolveScope, type ScopeRoot } from "../../scope.js";
+import { runSync } from "./sync.js";
+import { runInstall } from "./install.js";
 
 describe("mcp", () => {
   let tmpDir: string;
@@ -34,6 +36,7 @@ describe("mcp", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     process.exitCode = undefined;
     delete process.env["DOTAGENTS_STATE_DIR"];
     await rm(tmpDir, { recursive: true });
@@ -71,6 +74,59 @@ describe("mcp", () => {
   });
 
   describe("runMcpAdd", () => {
+    it.each(["project", "user"] as const)("installs and repairs Pi MCP in %s scope while preserving unrelated settings", async (kind) => {
+      const piHome = join(tmpDir, "pi-home");
+      vi.stubEnv("PI_CODING_AGENT_DIR", piHome);
+      vi.stubEnv("DOTAGENTS_HOME", join(tmpDir, "global"));
+      const targetScope = resolveScope(kind, projectRoot);
+      await mkdir(targetScope.root, { recursive: true });
+      await writeFile(targetScope.configPath, 'version = 1\nagents = ["pi"]\n');
+      const targetDir = kind === "project" ? join(projectRoot, ".pi") : piHome;
+      await mkdir(targetDir, { recursive: true });
+      const targetPath = join(targetDir, "mcp.json");
+      const manual = { command: "manual-server", exposure: "direct", enabled: false };
+      await writeFile(targetPath, JSON.stringify({ autoEnableCodemode: false, mcpServers: { manual } }));
+
+      await runMcpAdd({ scope: targetScope, name: "local-tools", command: "node", args: ["server.mjs"], env: ["TOOLS_TOKEN"] });
+      await runMcpAdd({ scope: targetScope, name: "remote_tools", url: "https://example.com/mcp", headers: ["Authorization:Bearer ${API_TOKEN}"] });
+      const expected = {
+        autoEnableCodemode: false,
+        mcpServers: {
+          manual,
+          "local-tools": { command: "node", args: ["server.mjs"], env: { TOOLS_TOKEN: "${TOOLS_TOKEN}" } },
+          remote_tools: { type: "http", url: "https://example.com/mcp", headers: { Authorization: "Bearer ${API_TOKEN}" } },
+        },
+      };
+      expect(JSON.parse(await readFile(targetPath, "utf-8"))).toEqual(expected);
+      const installed = await readFile(targetPath, "utf-8");
+      await runInstall({ scope: targetScope });
+      expect(await readFile(targetPath, "utf-8")).toBe(installed);
+
+      await writeFile(targetPath, JSON.stringify({ autoEnableCodemode: false, mcpServers: { manual } }));
+      expect((await runSync({ scope: targetScope })).mcpRepaired).toBe(1);
+      expect(JSON.parse(await readFile(targetPath, "utf-8"))).toEqual(expected);
+      expect((await runSync({ scope: targetScope })).mcpRepaired).toBe(0);
+
+      await rm(targetPath);
+      expect((await runSync({ scope: targetScope })).mcpRepaired).toBe(1);
+      expect(JSON.parse(await readFile(targetPath, "utf-8"))).toEqual({
+        mcpServers: {
+          "local-tools": expected.mcpServers["local-tools"],
+          remote_tools: expected.mcpServers.remote_tools,
+        },
+      });
+    });
+
+    it.each([
+      { name: "server.v2", url: "https://example.com/mcp", error: "Invalid Pi MCP server name" },
+      { name: "remote", url: "https://${HOST}/mcp", error: "requires a literal URL" },
+    ])("rejects unsupported Pi declarations before saving: $name / $url", async ({ name, url, error }) => {
+      const config = 'version = 1\nagents = ["pi"]\n';
+      await writeFile(scope.configPath, config);
+      await expect(runMcpAdd({ scope, name, url })).rejects.toThrow(error);
+      expect(await readFile(scope.configPath, "utf-8")).toBe(config);
+    });
+
     it("adds a stdio server", async () => {
       await runMcpAdd({
         scope,
