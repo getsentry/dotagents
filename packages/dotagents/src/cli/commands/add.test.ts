@@ -12,6 +12,7 @@ import addCommand, {
   type AddPrompts,
 } from "./add.js";
 import * as installModule from "./install.js";
+import { runSync } from "./sync.js";
 import { TrustError, exec } from "@sentry/dotagents-lib";
 import { resolveScope } from "../../scope.js";
 import type { CommandContext } from "../context.js";
@@ -682,6 +683,49 @@ describe("runAdd (local sources)", () => {
     expect(toml).toContain('path = "."');
     expect(toml).not.toContain("[[skills]]");
     expect(install).toHaveBeenCalledOnce();
+  });
+
+  it("adds, reinstalls, and repairs a plugin defined in its Claude marketplace", async () => {
+    const sourceDir = join(projectRoot, "browser-source");
+    await mkdir(join(sourceDir, ".claude-plugin"), { recursive: true });
+    await mkdir(join(sourceDir, "skills", "agent-browser"), { recursive: true });
+    await mkdir(join(sourceDir, "commands"), { recursive: true });
+    await writeFile(join(sourceDir, "skills", "agent-browser", "SKILL.md"), SKILL_MD("agent-browser"));
+    await writeFile(join(sourceDir, "commands", "browse.md"), "Browse a page");
+    await writeFile(join(sourceDir, ".claude-plugin", "marketplace.json"), JSON.stringify({
+      name: "agent-browser",
+      plugins: [{
+        name: "agent-browser", source: "./", strict: false, category: "development",
+        skills: ["./skills/agent-browser"], commands: "./commands",
+      }],
+    }));
+    await writeFile(join(projectRoot, "agents.toml"), 'version = 1\nagents = ["claude", "codex", "pi", "opencode"]\n');
+    const scope = resolveScope("project", projectRoot);
+    await runAdd({ scope, specifier: "path:browser-source", names: ["agent-browser"] });
+    const config = await readFile(join(projectRoot, "agents.toml"), "utf-8");
+    expect(config).toContain("[[plugins]]");
+    expect(config).toContain('path = "."');
+    expect(config).not.toContain("[[skills]]");
+    expect(existsSync(join(sourceDir, "plugin.json"))).toBe(false);
+    const installed = join(projectRoot, ".agents", "plugins", "agent-browser");
+    const nativeManifest = await readFile(join(installed, ".claude-plugin", "plugin.json"), "utf-8");
+    expect(JSON.parse(nativeManifest)).toEqual({
+      name: "agent-browser", skills: ["./skills/agent-browser"], commands: "./commands",
+    });
+    expect(await readFile(join(installed, ".codex-plugin", "plugin.json"), "utf-8")).not.toContain('"commands"');
+    for (const dir of [".agents", ".opencode"]) {
+      const link = join(projectRoot, dir, "skills", "agent-browser");
+      expect(await readFile(join(link, "SKILL.md"), "utf-8")).toBe(SKILL_MD("agent-browser"));
+      await rm(link);
+    }
+    await runSync({ scope });
+    await installModule.runInstall({ scope });
+    for (const dir of [".agents", ".opencode"]) {
+      expect(await readFile(join(projectRoot, dir, "skills", "agent-browser", "SKILL.md"), "utf-8"))
+        .toBe(SKILL_MD("agent-browser"));
+    }
+    expect(await readFile(join(installed, ".claude-plugin", "plugin.json"), "utf-8")).toBe(nativeManifest);
+    expect(await readFile(join(projectRoot, "agents.toml"), "utf-8")).toBe(config);
   });
 
   it("does not fall back to skills when a plugin manifest is malformed", async () => {

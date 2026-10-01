@@ -24,6 +24,55 @@ async function removeWithBackupFailure(
 }
 
 describe("plugin store", () => {
+  it.each([".", "./", { source: "local", path: "./" }])(
+    "installs a marketplace-only root plugin from %j",
+    async (source) => {
+      const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-marketplace-root-"));
+      try {
+        const sourceRoot = join(projectRoot, "source");
+        await mkdir(join(sourceRoot, "skills", "browser"), { recursive: true });
+        await writeFile(join(sourceRoot, "marketplace.json"), JSON.stringify({
+          name: "browser-tools",
+          plugins: [{ name: "browser", source, strict: false, skills: ["./skills/browser"] }],
+        }));
+        const [candidate] = await discoverPlugins(sourceRoot, ["browser"]);
+        expect(candidate).toMatchObject({ name: "browser", path: "", manifest: { skills: ["./skills/browser"] } });
+        const config = { name: "browser", source: "path:source", path: "." };
+        const resolved = await resolvePlugin(config, { projectRoot, stateDir: join(projectRoot, "state") });
+        const pluginsDir = join(projectRoot, ".agents", "plugins");
+        await installPluginBundle(pluginsDir, resolved);
+        const installed = await loadInstalledPlugins(pluginsDir, [config], "dotagents install", []);
+        expect(installed.issues).toEqual([]);
+        expect(installed.plugins[0]?.manifest).toEqual({ name: "browser", skills: ["./skills/browser"] });
+      } finally {
+        await rm(projectRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("validates marketplace-only manifests and does not move a pinned plugin", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "dotagents-marketplace-root-"));
+    try {
+      const sourceRoot = join(projectRoot, "source");
+      await mkdir(join(sourceRoot, "moved"), { recursive: true });
+      const marketplacePath = join(sourceRoot, "marketplace.json");
+      await writeFile(marketplacePath, JSON.stringify({
+        name: "browser-tools",
+        plugins: [{ name: "browser", source: "./", strict: false, commands: 42 }],
+      }));
+      const config = { name: "browser", source: "path:source", path: "." };
+      const options = { projectRoot, stateDir: join(projectRoot, "state") };
+      await expect(resolvePlugin(config, options)).rejects.toThrow(marketplacePath);
+      await writeFile(marketplacePath, JSON.stringify({
+        name: "browser-tools",
+        plugins: [{ name: "browser", source: "./moved", strict: false }],
+      }));
+      await expect(resolvePlugin(config, options)).rejects.toThrow('Plugin "browser" not found');
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("preserves an empty resolved path for root git plugins", () => {
     const resolved = {
       type: "git",

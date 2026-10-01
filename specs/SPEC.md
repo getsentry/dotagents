@@ -248,6 +248,8 @@ The preferred canonical plugin input is an [Agent Plugins](https://agent-plugins
 
 For bundles with native manifests but no root `plugin.json`, Codex, Claude, then Cursor order determines the primary manifest. All native manifests are preserved for their matching clients. The primary manifest must be valid; errors in additional manifests block installation only when their client is selected.
 
+Local marketplace entries may use `"."` or `"./"` for the source root. An entry with `strict: false` can supply the plugin manifest when the directory has no `plugin.json`; dotagents preserves its declared fields in the installed bundle. Native marketplace definitions retain their owning client, so native settings stay with that client while other targets receive portable skills. Saved plugin paths remain pinned across installs.
+
 See [Plugin Support Specification](plugins.md) for the Agent Plugins-aligned bundle contract, legacy migration plan, discovery rules, normalized internal model, downstream target transformations, and implementation gaps.
 
 | Field | Required | Description |

@@ -18,6 +18,7 @@ Options:
   add: `Usage: npx @sentry/dotagents [--project|--global|--user] add <source> [name...] [options]
 
 Discover plugins first, otherwise skills, then add and install the selected dependencies.
+Local marketplace entries with strict: false may define plugins without a plugin.json.
 Re-adding an identical declaration refreshes its installation successfully.
 
 Options:

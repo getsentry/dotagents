@@ -103,6 +103,9 @@ Options:
 
 Plugin declarations record the exact discovered source path (`.` for a plugin
 at the source root), so later additions to the source cannot change selection.
+Local marketplace entries with `strict: false` can define a plugin without a
+separate `plugin.json`, including entries with `source: "./"` at the repository
+root. Dotagents installs the definition and retains native client ownership.
 If config mutation or installation fails, `add` restores the previous
 `agents.toml` content rather than leaving a failed dependency declared.
 Exact repeats leave `agents.toml` unchanged and refresh installation;

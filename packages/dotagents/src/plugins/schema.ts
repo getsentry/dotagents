@@ -245,6 +245,7 @@ export const marketplaceSourceSchema = z.union([
 export const marketplacePluginEntrySchema = z.object({
   name: z.string(),
   source: marketplaceSourceSchema,
+  strict: z.boolean().optional(),
   description: z.string().optional(),
   version: z.string().optional(),
   category: z.string().optional(),

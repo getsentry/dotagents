@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { lstat, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -489,13 +489,19 @@ async function resolvePluginCandidate(
 ): Promise<PluginCandidate | null> {
   if (config.path) {
     const dir = await resolveInside(sourceDir, config.path, "Plugin path", resolveRealpath);
-    const candidate = await loadPluginCandidate(
+    let candidate = await loadPluginCandidate(
       sourceDir,
       dir,
       { name: config.name },
       "Plugin source",
       "explicit",
     );
+    if (!candidate) {
+      const marketplace = await discoverFromMarketplaces(sourceDir, { name: config.name, dir });
+      const outcome = marketplace.outcomes.get(config.name)?.[0];
+      if (outcome && "error" in outcome) {throw outcome.error;}
+      candidate = outcome?.candidate ?? null;
+    }
     if (candidate) {await assertPluginBundleSymlinksContained(candidate.dir);}
     return candidate;
   }
@@ -639,6 +645,7 @@ async function discoverPluginCatalog(sourceDir: string): Promise<PluginCatalog> 
  */
 async function discoverFromMarketplaces(
   sourceDir: string,
+  selection?: { name: string; dir: string },
 ): Promise<{
   candidates: PluginCandidate[];
   unsupportedSources: Map<string, string[]>;
@@ -679,20 +686,24 @@ async function discoverFromMarketplaces(
       ? marketplace.metadata.pluginRoot
       : ".";
     for (const entry of marketplace.plugins) {
+      if (selection && entry.name !== selection.name) {continue;}
       const path = localMarketplacePath(entry);
-      if (!path) {
+      if (path === null) {
         const sources = unsupportedSources.get(entry.name) ?? [];
         sources.push(marketplaceSourceType(entry));
         unsupportedSources.set(entry.name, sources);
         continue;
       }
       const marketplaceRoot = dirname(filePath);
+      const anchors = [...new Set([sourceDir, marketplaceRoot])].filter(
+        (anchor) => !selection || resolve(anchor, root, path) === selection.dir,
+      );
+      if (anchors.length === 0) {continue;}
       let pluginDir: string | undefined;
       let candidate: PluginCandidate | null;
       try {
         candidate = null;
         const resolutionErrors: Error[] = [];
-        const anchors = [...new Set([sourceDir, marketplaceRoot])];
         for (const anchor of anchors) {
           let resolvedDir: string;
           try {
@@ -712,6 +723,9 @@ async function discoverFromMarketplaces(
             marketplaceManifestOverlay(entry),
             "Marketplace plugin source",
             "marketplace",
+            { entry, filePath, nativeSource: NATIVE_MANIFEST_PATHS.find(
+              (native) => dirname(native.path) === dirname(marketplacePath),
+            )?.source },
           );
           if (!resolvedCandidate) {continue;}
           pluginDir = resolvedDir;
@@ -736,7 +750,7 @@ async function discoverFromMarketplaces(
       }
       if (!candidate) {
         const error = new Error(
-          `Marketplace plugin "${entry.name}" in ${filePath} has no supported plugin manifest at ${path}.`,
+          `Marketplace plugin "${entry.name}" in ${filePath} has no supported plugin manifest at ${path || "."}.`,
         );
         issues.push({
           name: entry.name,
@@ -821,11 +835,25 @@ async function loadPluginCandidate(
   overlay: Partial<LegacyPluginManifest> = {},
   label = "Plugin source",
   origin: PluginCandidateOrigin = "root",
+  marketplace?: { entry: MarketplacePluginEntry; filePath: string; nativeSource?: NativePluginSource },
 ): Promise<PluginCandidate | null> {
   if (!existsSync(pluginDir)) {return null;}
   await assertInsideSourceRoot(sourceRoot, pluginDir, label);
 
-  const loaded = await loadPluginInterfaces(pluginDir, false);
+  let loaded = await loadPluginInterfaces(pluginDir, false);
+  if (!loaded && marketplace?.entry.strict === false && await isDirectory(pluginDir)) {
+    const manifest = parsePluginManifest(Object.fromEntries(
+      Object.entries(marketplace.entry).filter(([key]) => !["source", "strict", "category", "tags", "policy"].includes(key)),
+    ), marketplace.filePath);
+    const nativeSource = marketplace.nativeSource;
+    loaded = {
+      manifest,
+      nativeSource,
+      authoredNativeInterfaces: nativeSource ? {
+        [nativeSource]: { path: `.${nativeSource}-plugin/plugin.json`, fallback: true, manifest },
+      } : {},
+    };
+  }
   if (!loaded) {return null;}
   const manifest = loaded.manifest;
 
@@ -1063,6 +1091,15 @@ async function ensureCanonicalManifest(plugin: PluginDeclaration): Promise<void>
   const filePath = join(plugin.pluginDir, "plugin.json");
   if (existsSync(filePath)) {return;}
   await writeFile(filePath, `${JSON.stringify(plugin.manifest, null, 2)}\n`, "utf-8");
+  // Marketplace-only native definitions become a manifest in the installed bundle.
+  if (plugin.nativeSource) {
+    const nativePath = join(plugin.pluginDir, `.${plugin.nativeSource}-plugin`, "plugin.json");
+    if (!existsSync(nativePath)) {
+      const manifest = plugin.authoredNativeInterfaces?.[plugin.nativeSource]?.manifest ?? plugin.manifest;
+      await mkdir(dirname(nativePath), { recursive: true });
+      await writeFile(nativePath, `${JSON.stringify(manifest, null, 2)}\n`, "utf-8");
+    }
+  }
   // Only .plugin/plugin.json outranks the new canonical root. Copilot's
   // lower-priority .github/plugin/plugin.json locator remains preserved.
   if (!plugin.nativeSource) {
