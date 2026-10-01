@@ -5,7 +5,14 @@ import { dirname, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import install, { runInstall as runInstallCommand, InstallError, type InstallOptions, type InstallResult } from "./install.js";
 import { runSync } from "./sync.js";
-import { exec, isSerializedObject, type SerializedObject, type SerializedValue } from "@sentry/dotagents-lib";
+import {
+  AGENT_PLUGIN_MCP_SCHEMA,
+  AGENT_PLUGIN_SCHEMA,
+  exec,
+  isSerializedObject,
+  type SerializedObject,
+  type SerializedValue,
+} from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import type { Lockfile } from "../../lockfile/schema.js";
@@ -15,7 +22,6 @@ import {
   DOTAGENTS_MANAGED_PLUGIN_MARKER,
   DOTAGENTS_NATIVE_FALLBACKS_MARKER,
 } from "../../plugins/store.js";
-import { AGENT_PLUGIN_MCP_SCHEMA, AGENT_PLUGIN_SCHEMA } from "../../plugins/schema.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}

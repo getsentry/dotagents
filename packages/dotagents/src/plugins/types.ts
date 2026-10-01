@@ -1,22 +1,7 @@
-import type { PluginManifest } from "./schema.js";
+import type { PluginBundle } from "@sentry/dotagents-lib";
 
-export type NativePluginSource = "claude" | "cursor" | "codex";
-
-export type AuthoredNativePluginInterface =
-  | { path: string; fallback: boolean; manifest: PluginManifest; error?: never }
-  | { path: string; fallback: boolean; manifest?: never; error: string };
-
-export type AuthoredNativePluginInterfaces = Partial<
-  Record<NativePluginSource, AuthoredNativePluginInterface>
->;
-
-export interface PluginDeclaration {
-  name: string;
-  source: string;
-  pluginDir: string;
-  manifest: PluginManifest;
-  authoredNativeInterfaces?: AuthoredNativePluginInterfaces;
+/** A resolved or installed plugin plus the dotagents target selection for it. */
+export interface PluginDeclaration extends PluginBundle {
   compatibilityWarnings?: string[];
-  nativeSource?: NativePluginSource;
   targets?: string[];
 }

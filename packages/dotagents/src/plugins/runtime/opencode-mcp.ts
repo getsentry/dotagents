@@ -3,7 +3,7 @@ import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises
 import { join, resolve } from "node:path";
 import { reconcileManagedMcpConfig } from "../../targets/mcp-writer.js";
 import type { McpDeclaration } from "../../targets/types.js";
-import { isStandardPluginManifest, type PluginMcpConfig } from "../schema.js";
+import { isStandardPluginManifest, type PluginMcpConfig } from "@sentry/dotagents-lib";
 import { selectedAgentIds } from "../targets.js";
 import type { PluginDeclaration } from "../types.js";
 import type { LoadedStandardMcp } from "./manifests.js";

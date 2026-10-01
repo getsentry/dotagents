@@ -1,63 +1,37 @@
 import { existsSync } from "node:fs";
-import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
-  applyDefaultRepositorySource,
+  assertPluginBundleSymlinksContained,
   copyDir,
-  ensureCached,
-  isSerializedObject,
-  isSourceExcluded,
-  parseSource,
-  resolveLocalSource,
-  sanitizeCacheKey,
-  validateTrustedSource,
-  type RepositorySource,
-  type TrustPolicy,
-  type CacheReuse,
-  isSerializedValue,
-  type SerializedObject,
-  type SerializedValue,
-} from "@sentry/dotagents-lib";
-import { PLUGIN_NAME_PATTERN, type PluginConfig } from "../config/schema.js";
-import type { LockedPlugin } from "../lockfile/schema.js";
-import {
-  parsePluginManifest,
-  parsePluginMcpBestEffort,
-  parsePluginMarketplace,
+  HYBRID_LEGACY_ROOTS,
   isStandardPluginManifest,
-  type MarketplacePluginEntry,
-  type LegacyPluginManifest,
+  loadInstalledPluginBundle,
+  NATIVE_PLUGIN_MANIFEST_PATHS,
+  NATIVE_PLUGIN_SOURCES,
+  nativePluginDisplayName,
+  parseSource,
+  resolvePlugin as resolvePluginSource,
+  type AuthoredNativePluginInterfaces,
+  type InstalledPluginProvenance,
+  type NativePluginSource,
   type PluginManifest,
-  type PluginMcpParseResult,
-} from "./schema.js";
-import {
-  generatedNativeMcpPath,
-  nativeInterfaceNeedsFallback,
-  selectedAgentIds,
-} from "./targets.js";
-import { codexPluginInterface } from "./runtime/manifest-values.js";
-import type {
-  AuthoredNativePluginInterfaces,
-  NativePluginSource,
-  PluginDeclaration,
-} from "./types.js";
+  type PluginResolveOptions,
+  type ResolvedPlugin as ResolvedPluginSource,
+} from "@sentry/dotagents-lib";
+import type { PluginConfig } from "../config/schema.js";
+import type { LockedPlugin } from "../lockfile/schema.js";
+import { selectedAgentIds } from "./targets.js";
+import type { PluginDeclaration } from "./types.js";
 import { hasErrorCode, isString } from "../utils/type-guards.js";
 
-// Owns plugin source discovery and installation into the canonical project tree.
-// Resolved sources are never allowed to live inside the same project's
-// `.agents/plugins` tree because installs replace managed destination dirs.
-export interface PluginResolveOptions {
-  stateDir: string;
-  projectRoot: string;
-  defaultRepositorySource?: RepositorySource;
-  minimumReleaseAge?: number;
-  minimumReleaseAgeExclude?: string[];
-  trust?: TrustPolicy;
-  /** Exact git checkout acquired earlier in the current operation. */
-  reuse?: CacheReuse;
-  services?: Partial<PluginStoreServices>;
-}
+// Owns installation into the canonical project tree. Source discovery and
+// resolution live in @sentry/dotagents-lib. Resolved sources are never allowed
+// to live inside the same project's `.agents/plugins` tree because installs
+// replace managed destination dirs.
+
+export type ResolvedPlugin = ResolvedPluginSource<PluginDeclaration>;
 
 export interface PluginStoreServices {
   realpath(path: string): Promise<string>;
@@ -67,107 +41,14 @@ export interface PluginStoreServices {
 
 const DEFAULT_PLUGIN_STORE_SERVICES: PluginStoreServices = { realpath, rename, rm };
 
-interface ResolvedLocalPlugin {
-  type: "local";
-  plugin: PluginDeclaration;
-}
-
-interface ResolvedGitPlugin {
-  type: "git";
-  resolvedUrl: string;
-  resolvedPath: string;
-  resolvedRef?: string;
-  commit: string;
-  plugin: PluginDeclaration;
-}
-
-export type ResolvedPlugin = ResolvedLocalPlugin | ResolvedGitPlugin;
-
-type PluginCandidateOrigin = "explicit" | "root" | "marketplace" | "canonical" | "conventional";
-
-export interface PluginCandidate {
-  name: string;
-  dir: string;
-  path: string;
-  manifest: PluginManifest;
-  authoredNativeInterfaces: AuthoredNativePluginInterfaces;
-  legacyRoots: string[];
-  nativeSource?: NativePluginSource;
-  origin: PluginCandidateOrigin;
-}
-
-interface PluginCatalog {
-  candidates: PluginCandidate[];
-  unsupportedMarketplaceSources: Map<string, string[]>;
-  marketplaceOutcomes: Map<string, Array<
-    | { candidate: PluginCandidate }
-    | { error: Error }
-  >>;
-  issues: Array<{
-    name?: string;
-    path?: string;
-    origin: Exclude<PluginCandidateOrigin, "explicit">;
-    error: Error;
-    blocksNamedResolution: boolean;
-  }>;
-}
-
-const MARKETPLACE_PATHS = [
-  ".agents/plugins/marketplace.json",
-  "marketplace.json",
-  ".claude-plugin/marketplace.json",
-  ".cursor-plugin/marketplace.json",
-  ".codex-plugin/marketplace.json",
-  ".plugin/marketplace.json",
-  ".github/plugin/marketplace.json",
-] as const;
-
-const COPILOT_MARKETPLACE_PATH = ".github/plugin/marketplace.json";
-const COPILOT_HIGHER_PRIORITY_MARKETPLACES = [
-  "marketplace.json",
-  ".plugin/marketplace.json",
-] as const;
-
-const FALLBACK_MANIFEST_PATHS: ReadonlyArray<{ path: string; nativeSource?: NativePluginSource }> = [
-  { path: ".codex-plugin/plugin.json", nativeSource: "codex" },
-  { path: ".claude-plugin/plugin.json", nativeSource: "claude" },
-  { path: ".cursor-plugin/plugin.json", nativeSource: "cursor" },
-  { path: ".plugin/plugin.json" },
-  { path: ".github/plugin/plugin.json" },
-] as const;
-
 const COPILOT_GITHUB_MANIFEST_PATH = ".github/plugin/plugin.json";
 
-const NATIVE_MANIFEST_PATHS: ReadonlyArray<{
-  source: NativePluginSource;
-  path: string;
-}> = [
-  { source: "claude", path: ".claude-plugin/plugin.json" },
-  { source: "cursor", path: ".cursor-plugin/plugin.json" },
-  { source: "codex", path: ".codex-plugin/plugin.json" },
-] as const;
-
-export const HYBRID_LEGACY_ROOTS = [
-  ".agents",
-  ".claude",
-  ".cursor",
-  ".codex",
-  ".opencode",
-  "agents",
-  "apps",
-  "bin",
-  "commands",
-  "rules",
-  "hooks",
-  "monitors",
-  ".mcp.json",
-  ".lsp.json",
-  ".app.json",
-] as const;
-
 export const DOTAGENTS_MANAGED_PLUGIN_MARKER = ".dotagents-managed";
+
 export const DOTAGENTS_NATIVE_FALLBACKS_MARKER = ".dotagents-native-fallbacks";
+
 const DOTAGENTS_NATIVE_SOURCE_MARKER = ".dotagents-native-source";
+
 const COPILOT_UNSUPPORTED_LEGACY_FIELDS = [
   "agents",
   "commands",
@@ -175,9 +56,11 @@ const COPILOT_UNSUPPORTED_LEGACY_FIELDS = [
   "lspServers",
   "extensions",
 ] as const;
+
 const COPILOT_UNSUPPORTED_STANDARD_RESOURCE_PATHS = [
   "com.github.copilot",
 ] as const;
+
 const COPILOT_UNSUPPORTED_LEGACY_RESOURCE_PATHS = [
   ...COPILOT_UNSUPPORTED_STANDARD_RESOURCE_PATHS,
   "agents",
@@ -196,62 +79,8 @@ export async function resolvePlugin(
   config: PluginConfig,
   opts: PluginResolveOptions,
 ): Promise<ResolvedPlugin> {
-  const services = { ...DEFAULT_PLUGIN_STORE_SERVICES, ...opts.services };
-  const sourceForResolve = applyDefaultRepositorySource(
-    config.source,
-    opts.defaultRepositorySource,
-  );
-  if (opts.trust) {validateTrustedSource(sourceForResolve, opts.trust);}
-
-  const parsed = parseSource(sourceForResolve);
-
-  if (parsed.type === "local") {
-    const sourceDir = await resolveLocalSource(opts.projectRoot, parsed.path!);
-    const discovered = await resolvePluginCandidate(sourceDir, config, services.realpath);
-    if (!discovered) {
-      throw new Error(`Plugin "${config.name}" not found in ${config.source}.`);
-    }
-    return {
-      type: "local",
-      plugin: toDeclaration(config, discovered),
-    };
-  }
-
-  if (parsed.type === "well-known") {
-    throw new Error(
-      `HTTPS well-known sources are not supported for plugins. Use a git: URL, GitHub/GitLab repository, or path: source for "${config.name}".`,
-    );
-  }
-
-  const url = parsed.url!;
-  const cloneUrl = parsed.cloneUrl ?? url;
-  const ref = config.ref ?? parsed.ref;
-  const cacheKey = parsed.type === "github"
-    ? `${parsed.owner}/${parsed.repo}`
-    : sanitizeCacheKey(url);
-  const excluded = isSourceExcluded(config.source, opts.minimumReleaseAgeExclude);
-  const cached = await ensureCached({
-    stateDir: opts.stateDir,
-    url: cloneUrl,
-    cacheKey,
-    ref,
-    minimumReleaseAge: excluded ? undefined : opts.minimumReleaseAge,
-    reuse: opts.reuse,
-  });
-
-  const discovered = await resolvePluginCandidate(cached.repoDir, config, services.realpath);
-  if (!discovered) {
-    throw new Error(`Plugin "${config.name}" not found in ${config.source}.`);
-  }
-
-  return {
-    type: "git",
-    resolvedUrl: cloneUrl,
-    resolvedPath: discovered.path,
-    resolvedRef: ref,
-    commit: cached.commit,
-    plugin: toDeclaration(config, discovered),
-  };
+  const resolved = await resolvePluginSource(config, opts);
+  return { ...resolved, plugin: toDeclaration(resolved.plugin, config.targets) };
 }
 
 /** Copies a resolved plugin bundle into `.agents/plugins/<name>/` safely. */
@@ -330,21 +159,15 @@ export async function loadInstalledPlugins(
       continue;
     }
     try {
-      await assertInsideSourceRoot(pluginsDir, pluginDir, "Installed plugin");
-      await assertPluginBundleSymlinksContained(pluginDir);
-      const loaded = await loadPluginInterfaces(pluginDir, true);
-      if (!loaded) {
-        throw new Error("Plugin bundle has no plugin.json or supported native manifest");
-      }
-      const manifest = loaded.manifest;
-      assertPluginName(config.name, manifest, pluginDir);
-      plugins.push(preparePluginForTargets({
-        name: config.name,
-        source: config.source,
+      const loaded = await loadInstalledPluginBundle(
+        pluginsDir,
         pluginDir,
-        manifest: normalizeManifest(config.name, manifest),
-        authoredNativeInterfaces: loaded.authoredNativeInterfaces,
-        nativeSource: loaded.nativeSource,
+        config.name,
+        readInstalledPluginProvenance,
+      );
+      plugins.push(preparePluginForTargets({
+        ...loaded,
+        source: config.source,
         targets: config.targets,
       }, agentIds));
     } catch (err) {
@@ -354,39 +177,6 @@ export async function loadInstalledPlugins(
   }
 
   return { plugins, issues };
-}
-
-async function assertPluginBundleSymlinksContained(pluginDir: string): Promise<void> {
-  const rootRealPath = await realpath(pluginDir);
-
-  const visit = async (dirPath: string): Promise<void> => {
-    for (const entry of await readdir(dirPath, { withFileTypes: true })) {
-      const entryPath = join(dirPath, entry.name);
-      if (entry.isSymbolicLink()) {
-        let targetRealPath: string;
-        try {
-          targetRealPath = await realpath(entryPath);
-        } catch (err) {
-          throw new Error(
-            `Plugin bundle contains an invalid symlink: ${relativePath(pluginDir, entryPath)}`,
-            { cause: err },
-          );
-        }
-        const targetRelativePath = relative(rootRealPath, targetRealPath);
-        if (isOutsideRelativePath(targetRelativePath)) {
-          throw new Error(
-            `Plugin bundle symlink resolves outside the plugin directory: ${relativePath(pluginDir, entryPath)}`,
-          );
-        }
-        continue;
-      }
-      if (entry.isDirectory()) {
-        await visit(entryPath);
-      }
-    }
-  };
-
-  await visit(pluginDir);
 }
 
 /** Removes installed plugin bundles by lockfile name using path-safe names only. */
@@ -482,581 +272,6 @@ export function isSameProjectPluginConfig(
   }
 }
 
-async function resolvePluginCandidate(
-  sourceDir: string,
-  config: PluginConfig,
-  resolveRealpath: PluginStoreServices["realpath"] = realpath,
-): Promise<PluginCandidate | null> {
-  if (config.path) {
-    const dir = await resolveInside(sourceDir, config.path, "Plugin path", resolveRealpath);
-    let candidate = await loadPluginCandidate(
-      sourceDir,
-      dir,
-      { name: config.name },
-      "Plugin source",
-      "explicit",
-    );
-    if (!candidate) {
-      const marketplace = await discoverFromMarketplaces(sourceDir, { name: config.name, dir });
-      const outcome = marketplace.outcomes.get(config.name)?.[0];
-      if (outcome && "error" in outcome) {throw outcome.error;}
-      candidate = outcome?.candidate ?? null;
-    }
-    if (candidate) {await assertPluginBundleSymlinksContained(candidate.dir);}
-    return candidate;
-  }
-
-  const catalog = await discoverPluginCatalog(sourceDir);
-  const candidate = resolveNamedPluginCandidate(catalog, config);
-  if (candidate) {await assertPluginBundleSymlinksContained(candidate.dir);}
-  return candidate;
-}
-
-function resolveNamedPluginCandidate(
-  catalog: PluginCatalog,
-  config: Pick<PluginConfig, "name" | "source">,
-): PluginCandidate | null {
-  const { candidates } = catalog;
-  const canonicalPath = posix.join(".agents", "plugins", config.name);
-  const canonical = candidates.find((candidate) => candidate.path === canonicalPath);
-  if (canonical && candidateMatches(config.name, canonical)) {
-    return canonical;
-  }
-
-  const canonicalIssue = catalog.issues.find(
-    (issue) => issue.origin === "canonical" && issue.path === canonicalPath,
-  );
-  if (canonicalIssue) {throw canonicalIssue.error;}
-
-  const namedRootIssue = catalog.issues.find(
-    (issue) => issue.origin === "root" && issue.name === config.name,
-  );
-  if (namedRootIssue) {throw namedRootIssue.error;}
-
-  const marketplaceOutcome = catalog.marketplaceOutcomes.get(config.name)?.[0];
-  if (marketplaceOutcome && "error" in marketplaceOutcome) {
-    throw marketplaceOutcome.error;
-  }
-  if (marketplaceOutcome) {return marketplaceOutcome.candidate;}
-
-  const conventionalIssue = catalog.issues.find(
-    (issue) => issue.origin === "conventional" &&
-      issue.blocksNamedResolution && issue.name === config.name,
-  );
-  if (conventionalIssue) {throw conventionalIssue.error;}
-
-  const unique = rankedCandidates(
-    config.name,
-    candidates.filter((candidate) => candidate.origin !== "marketplace"),
-  );
-  if (unique.length > 1) {
-    throw new Error(
-      `Plugin "${config.name}" is ambiguous in ${config.source}: ${unique.map((m) => m.path).join(", ")}`,
-    );
-  }
-  const unsupportedMarketplaceSources = catalog.unsupportedMarketplaceSources.get(config.name) ?? [];
-  if (unique.length === 0 && unsupportedMarketplaceSources.length > 0) {
-    throw new Error(
-      `Plugin "${config.name}" not found in ${config.source}. Matching marketplace entries use unsupported source types: ${[...new Set(unsupportedMarketplaceSources)].join(", ")}. Only local marketplace sources are supported.`,
-    );
-  }
-  const rootIssue = catalog.issues.find((issue) => issue.origin === "root");
-  if (unique.length === 0 && rootIssue) {throw rootIssue.error;}
-  return unique[0] ?? null;
-}
-
-/** Discovers valid plugins from supported source locations. */
-export async function discoverPlugins(
-  sourceDir: string,
-  requestedNames?: string[],
-): Promise<PluginCandidate[]> {
-  const catalog = await discoverPluginCatalog(sourceDir);
-  let candidates = catalog.candidates;
-  if (requestedNames?.length) {
-    const requested: PluginCandidate[] = [];
-    for (const name of requestedNames) {
-      const candidate = resolveNamedPluginCandidate(catalog, { name, source: sourceDir });
-      if (candidate) {requested.push(candidate);}
-    }
-    if (requested.length > 0) {
-      candidates = await dedupeCandidates(requested);
-    }
-  } else if (catalog.issues[0]) {
-    throw catalog.issues[0].error;
-  }
-  for (const candidate of candidates) {
-    await assertPluginBundleSymlinksContained(candidate.dir);
-  }
-  return candidates;
-}
-
-async function discoverPluginCatalog(sourceDir: string): Promise<PluginCatalog> {
-  const candidates: PluginCandidate[] = [];
-  const issues: PluginCatalog["issues"] = [];
-
-  try {
-    const root = await loadPluginCandidate(sourceDir, sourceDir, {}, "Plugin source", "root");
-    if (root) {candidates.push(root);}
-  } catch (err) {
-    issues.push({
-      name: err instanceof NamedPluginManifestError ? err.pluginName : undefined,
-      path: "",
-      origin: "root",
-      error: err instanceof Error ? err : new Error(String(err)),
-      blocksNamedResolution: false,
-    });
-  }
-
-  const marketplace = await discoverFromMarketplaces(sourceDir);
-  candidates.push(...marketplace.candidates);
-  issues.push(...marketplace.issues);
-  candidates.push(...await scanPluginDirectories(
-    sourceDir,
-    join(sourceDir, ".agents", "plugins"),
-    2,
-    "Canonical plugin source",
-    "canonical",
-    issues,
-    marketplace.referencedDirs,
-  ));
-  candidates.push(...await scanPluginDirectories(
-    sourceDir,
-    join(sourceDir, "plugins"),
-    2,
-    "Plugin source",
-    "conventional",
-    issues,
-    marketplace.referencedDirs,
-  ));
-
-  return {
-    candidates: await dedupeCandidates(candidates),
-    unsupportedMarketplaceSources: marketplace.unsupportedSources,
-    marketplaceOutcomes: marketplace.outcomes,
-    issues,
-  };
-}
-
-/**
- * Reads marketplace selector files and resolves only explicit local sources.
- * Relative paths prefer the repository root used by current Claude
- * marketplaces, then fall back to the marketplace file directory for legacy
- * catalogs. Both forms remain contained by the source root.
- */
-async function discoverFromMarketplaces(
-  sourceDir: string,
-  selection?: { name: string; dir: string },
-): Promise<{
-  candidates: PluginCandidate[];
-  unsupportedSources: Map<string, string[]>;
-  outcomes: PluginCatalog["marketplaceOutcomes"];
-  issues: PluginCatalog["issues"];
-  referencedDirs: Set<string>;
-}> {
-  const candidates: PluginCandidate[] = [];
-  const unsupportedSources = new Map<string, string[]>();
-  const outcomes: PluginCatalog["marketplaceOutcomes"] = new Map();
-  const issues: PluginCatalog["issues"] = [];
-  const referencedDirs = new Set<string>();
-  for (const marketplacePath of MARKETPLACE_PATHS) {
-    // The Copilot-specific .github locator is invisible whenever either
-    // higher-priority native locator exists. Other generic discovery inputs
-    // retain their existing union behavior.
-    if (
-      marketplacePath === COPILOT_MARKETPLACE_PATH &&
-      COPILOT_HIGHER_PRIORITY_MARKETPLACES.some((path) => existsSync(join(sourceDir, path)))
-    ) {
-      continue;
-    }
-    const filePath = join(sourceDir, marketplacePath);
-    if (!existsSync(filePath)) {continue;}
-
-    let marketplace: ReturnType<typeof parsePluginMarketplace>;
-    try {
-      marketplace = parsePluginMarketplace(await readJson(filePath), filePath);
-    } catch (err) {
-      issues.push({
-        origin: "marketplace",
-        error: err instanceof Error ? err : new Error(String(err)),
-        blocksNamedResolution: false,
-      });
-      continue;
-    }
-    const root = isString(marketplace.metadata?.pluginRoot)
-      ? marketplace.metadata.pluginRoot
-      : ".";
-    for (const entry of marketplace.plugins) {
-      if (selection && entry.name !== selection.name) {continue;}
-      const path = localMarketplacePath(entry);
-      if (path === null) {
-        const sources = unsupportedSources.get(entry.name) ?? [];
-        sources.push(marketplaceSourceType(entry));
-        unsupportedSources.set(entry.name, sources);
-        continue;
-      }
-      const marketplaceRoot = dirname(filePath);
-      const anchors = [...new Set([sourceDir, marketplaceRoot])].filter(
-        (anchor) => !selection || resolve(anchor, root, path) === selection.dir,
-      );
-      if (anchors.length === 0) {continue;}
-      let pluginDir: string | undefined;
-      let candidate: PluginCandidate | null;
-      try {
-        candidate = null;
-        const resolutionErrors: Error[] = [];
-        for (const anchor of anchors) {
-          let resolvedDir: string;
-          try {
-            resolvedDir = await resolveMarketplaceSource(
-              sourceDir,
-              anchor,
-              join(root, path),
-              "Marketplace plugin source",
-            );
-          } catch (err) {
-            resolutionErrors.push(err instanceof Error ? err : new Error(String(err)));
-            continue;
-          }
-          const resolvedCandidate = await loadPluginCandidate(
-            sourceDir,
-            resolvedDir,
-            marketplaceManifestOverlay(entry),
-            "Marketplace plugin source",
-            "marketplace",
-            { entry, filePath, nativeSource: NATIVE_MANIFEST_PATHS.find(
-              (native) => dirname(native.path) === dirname(marketplacePath),
-            )?.source },
-          );
-          if (!resolvedCandidate) {continue;}
-          pluginDir = resolvedDir;
-          candidate = resolvedCandidate;
-          break;
-        }
-        if (!candidate && resolutionErrors.length === anchors.length) {
-          throw resolutionErrors[0]!;
-        }
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        issues.push({
-          name: entry.name,
-          origin: "marketplace",
-          error,
-          blocksNamedResolution: true,
-        });
-        const namedOutcomes = outcomes.get(entry.name) ?? [];
-        namedOutcomes.push({ error });
-        outcomes.set(entry.name, namedOutcomes);
-        continue;
-      }
-      if (!candidate) {
-        const error = new Error(
-          `Marketplace plugin "${entry.name}" in ${filePath} has no supported plugin manifest at ${path || "."}.`,
-        );
-        issues.push({
-          name: entry.name,
-          origin: "marketplace",
-          error,
-          blocksNamedResolution: true,
-        });
-        const namedOutcomes = outcomes.get(entry.name) ?? [];
-        namedOutcomes.push({ error });
-        outcomes.set(entry.name, namedOutcomes);
-        continue;
-      }
-      referencedDirs.add(resolve(pluginDir!));
-      candidates.push(candidate);
-      const namedOutcomes = outcomes.get(entry.name) ?? [];
-      namedOutcomes.push({ candidate });
-      outcomes.set(entry.name, namedOutcomes);
-    }
-  }
-  return { candidates, unsupportedSources, outcomes, issues, referencedDirs };
-}
-
-async function scanPluginDirectories(
-  sourceRoot: string,
-  dir: string,
-  depth = 2,
-  label = "Plugin source",
-  origin: PluginCandidateOrigin = "conventional",
-  issues: PluginCatalog["issues"] = [],
-  skippedDirs: ReadonlySet<string> = new Set(),
-): Promise<PluginCandidate[]> {
-  if (depth <= 0 || !await isDirectory(dir)) {return [];}
-
-  const matches: PluginCandidate[] = [];
-  const entries = await readdir(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    if ((!entry.isDirectory() && !entry.isSymbolicLink()) || entry.name.startsWith(".")) {continue;}
-    const childDir = join(dir, entry.name);
-    if (skippedDirs.has(resolve(childDir))) {continue;}
-    let candidate: PluginCandidate | null;
-    try {
-      candidate = await loadPluginCandidate(sourceRoot, childDir, {}, label, origin);
-    } catch (err) {
-      issues.push({
-        name: entry.name,
-        path: relativePath(sourceRoot, childDir),
-        origin: origin === "canonical" ? "canonical" : "conventional",
-        error: err instanceof Error ? err : new Error(String(err)),
-        blocksNamedResolution: true,
-      });
-      candidate = null;
-    }
-    if (candidate) {
-      matches.push(candidate);
-      continue;
-    }
-    matches.push(...await scanPluginDirectories(
-      sourceRoot,
-      childDir,
-      depth - 1,
-      label,
-      origin,
-      issues,
-      skippedDirs,
-    ));
-  }
-  return matches;
-}
-
-async function isDirectory(path: string): Promise<boolean> {
-  try {
-    return (await stat(path)).isDirectory();
-  } catch (err) {
-    if (isNotFoundError(err)) {return false;}
-    throw err;
-  }
-}
-
-async function loadPluginCandidate(
-  sourceRoot: string,
-  pluginDir: string,
-  overlay: Partial<LegacyPluginManifest> = {},
-  label = "Plugin source",
-  origin: PluginCandidateOrigin = "root",
-  marketplace?: { entry: MarketplacePluginEntry; filePath: string; nativeSource?: NativePluginSource },
-): Promise<PluginCandidate | null> {
-  if (!existsSync(pluginDir)) {return null;}
-  await assertInsideSourceRoot(sourceRoot, pluginDir, label);
-
-  let loaded = await loadPluginInterfaces(pluginDir, false);
-  if (!loaded && marketplace?.entry.strict === false && await isDirectory(pluginDir)) {
-    const manifest = parsePluginManifest(Object.fromEntries(
-      Object.entries(marketplace.entry).filter(([key]) => !["source", "strict", "category", "tags", "policy"].includes(key)),
-    ), marketplace.filePath);
-    const nativeSource = marketplace.nativeSource;
-    loaded = {
-      manifest,
-      nativeSource,
-      authoredNativeInterfaces: nativeSource ? {
-        [nativeSource]: { path: `.${nativeSource}-plugin/plugin.json`, fallback: true, manifest },
-      } : {},
-    };
-  }
-  if (!loaded) {return null;}
-  const manifest = loaded.manifest;
-
-  const name = manifest && isString(manifest["name"])
-    ? String(manifest["name"])
-    : isString(overlay["name"])
-      ? String(overlay["name"])
-      : basename(pluginDir);
-  // SAFETY: the merged fallback only combines fields from two legacy manifests.
-  const combined = manifest && isStandardPluginManifest(manifest)
-    ? manifest
-    : normalizeManifest(name, { ...overlay, ...manifest } as LegacyPluginManifest);
-  if (!PLUGIN_NAME_PATTERN.test(name)) {
-    throw new Error(
-      `Invalid plugin name "${name}" in ${relativePath(sourceRoot, pluginDir) || "."}. ` +
-        "Plugin names must be 1-64 lowercase letters, numbers, hyphens, or dots, have alphanumeric ends, and not contain '--' or '..'.",
-    );
-  }
-  return {
-    name,
-    dir: pluginDir,
-    path: relativePath(sourceRoot, pluginDir),
-    manifest: combined,
-    authoredNativeInterfaces: loaded.authoredNativeInterfaces,
-    legacyRoots: isStandardPluginManifest(combined)
-      ? HYBRID_LEGACY_ROOTS.filter((path) => existsSync(join(pluginDir, path)))
-      : [],
-    nativeSource: loaded?.nativeSource,
-    origin,
-  };
-}
-
-function marketplaceManifestOverlay(
-  entry: MarketplacePluginEntry,
-): Partial<LegacyPluginManifest> {
-  const overlay: Partial<LegacyPluginManifest> = { name: entry.name };
-  if (entry.description) {overlay.description = entry.description;}
-  if (entry.version) {overlay.version = entry.version;}
-  if (entry.category) {overlay.category = entry.category;}
-  return overlay;
-}
-
-async function loadPluginInterfaces(
-  pluginDir: string,
-  installed: boolean,
-): Promise<{
-  manifest: PluginManifest;
-  authoredNativeInterfaces: AuthoredNativePluginInterfaces;
-  nativeSource?: NativePluginSource;
-} | null> {
-  const provenance = installed
-    ? await readInstalledPluginProvenance(pluginDir)
-    : undefined;
-  const fallbackSources = provenance?.fallbackSources;
-  const installedNativeSource = provenance?.nativeSource;
-  const rootPath = join(pluginDir, "plugin.json");
-  if (existsSync(rootPath)) {
-    const value = await readJson(rootPath);
-    let manifest: PluginManifest;
-    try {
-      manifest = parsePluginManifest(value, rootPath);
-    } catch (err) {
-      throw pluginManifestError(err, value);
-    }
-    return {
-      manifest,
-      authoredNativeInterfaces: await loadAuthoredNativeInterfaces(
-        pluginDir,
-        fallbackSources,
-        installedNativeSource,
-        manifest,
-      ),
-      nativeSource: installedNativeSource,
-    };
-  }
-  if (installed) {
-    throw new Error("Installed plugin bundle is missing plugin.json. Reinstall the plugin.");
-  }
-
-  for (const candidate of FALLBACK_MANIFEST_PATHS) {
-    const filePath = join(pluginDir, candidate.path);
-    if (!existsSync(filePath)) {continue;}
-    const value = await readJson(filePath);
-    let manifest: PluginManifest;
-    try {
-      manifest = parsePluginManifest(value, filePath);
-    } catch (err) {
-      throw pluginManifestError(err, value);
-    }
-    return {
-      manifest,
-      authoredNativeInterfaces: await loadAuthoredNativeInterfaces(pluginDir),
-      nativeSource: candidate.nativeSource,
-    };
-  }
-  return null;
-}
-
-async function loadAuthoredNativeInterfaces(
-  pluginDir: string,
-  fallbackSources?: ReadonlySet<NativePluginSource> | null,
-  installedNativeSource?: NativePluginSource,
-  portableManifest?: PluginManifest,
-): Promise<AuthoredNativePluginInterfaces> {
-  // undefined classifies source input; null ignores installed adapters; a Set reloads recorded fallbacks.
-  const interfaces: AuthoredNativePluginInterfaces = {};
-  const portableMcp = fallbackSources === undefined && portableManifest &&
-      isStandardPluginManifest(portableManifest)
-    ? await loadPortableMcpForGeneration(pluginDir)
-    : undefined;
-  for (const candidate of NATIVE_MANIFEST_PATHS) {
-    const filePath = join(pluginDir, candidate.path);
-    if (!existsSync(filePath)) {
-      if (fallbackSources?.has(candidate.source)) {
-        throw new Error(
-          `Installed plugin records a ${nativeDisplayName(candidate.source)} native fallback, but ${candidate.path} is missing. Reinstall the plugin.`,
-        );
-      }
-      continue;
-    }
-    if (fallbackSources && !fallbackSources.has(candidate.source)) {continue;}
-    if (fallbackSources === null && installedNativeSource !== candidate.source) {continue;}
-    let fallback = true;
-    try {
-      const value = await readJson(filePath);
-      const manifest = parsePluginManifest(value, filePath);
-      if (fallbackSources === undefined && portableManifest) {
-        const reproducibleFields: SerializedObject = {};
-        const mcpPath = await reproducibleNativeMcpPath(
-          pluginDir,
-          candidate.source,
-          portableMcp,
-        );
-        if (mcpPath) {reproducibleFields["mcpServers"] = mcpPath;}
-        if (candidate.source === "codex" && portableManifest && isString(portableManifest.name)) {
-          reproducibleFields["interface"] = codexPluginInterface(
-            portableManifest.name,
-            portableManifest,
-          );
-        }
-        fallback = nativeInterfaceNeedsFallback(candidate.source, value, reproducibleFields);
-      }
-      interfaces[candidate.source] = {
-        path: candidate.path,
-        fallback,
-        manifest,
-      };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      interfaces[candidate.source] = {
-        path: candidate.path,
-        fallback,
-        error: message.replaceAll(filePath, candidate.path),
-      };
-    }
-  }
-  return interfaces;
-}
-
-async function reproducibleNativeMcpPath(
-  pluginDir: string,
-  source: NativePluginSource,
-  portableMcp: PluginMcpParseResult | undefined,
-): Promise<string | undefined> {
-  const mcpPath = generatedNativeMcpPath(source, portableMcp);
-  if (!mcpPath || mcpPath === "./mcp.json") {return mcpPath;}
-  const adapterPath = join(pluginDir, mcpPath);
-  if (!existsSync(adapterPath)) {return mcpPath;}
-  try {
-    return isDeepStrictEqual(await readJson(adapterPath), portableMcp?.config)
-      ? mcpPath
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function loadPortableMcpForGeneration(
-  pluginDir: string,
-): Promise<PluginMcpParseResult | undefined> {
-  const filePath = join(pluginDir, "mcp.json");
-  if (!existsSync(filePath)) {return undefined;}
-  try {
-    return parsePluginMcpBestEffort(await readJson(filePath), filePath);
-  } catch {
-    return undefined;
-  }
-}
-
-class NamedPluginManifestError extends Error {
-  constructor(message: string, readonly pluginName?: string) {
-    super(message);
-  }
-}
-
-function pluginManifestError<Thrown>(err: Thrown, value: SerializedValue): Error {
-  const message = err instanceof Error ? err.message : String(err);
-  const name = isSerializedObject(value) && isString(value["name"])
-    ? value["name"]
-    : undefined;
-  return new NamedPluginManifestError(message, name);
-}
-
 async function removeSourceOwnershipMarkers(dir: string): Promise<void> {
   // Source-controlled markers never establish dotagents ownership or provenance.
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -1075,7 +290,7 @@ async function removeSourceOwnershipMarkers(dir: string): Promise<void> {
 }
 
 async function removeRedundantNativeInterfaces(plugin: PluginDeclaration): Promise<void> {
-  for (const candidate of NATIVE_MANIFEST_PATHS) {
+  for (const candidate of NATIVE_PLUGIN_MANIFEST_PATHS) {
     const nativeInterface = plugin.authoredNativeInterfaces?.[candidate.source];
     if (!nativeInterface || nativeInterface.fallback) {continue;}
     await rm(join(plugin.pluginDir, candidate.path), { force: true });
@@ -1122,7 +337,7 @@ async function writeNativeSourceMarker(plugin: PluginDeclaration): Promise<void>
 
 async function writeNativeFallbacksMarker(plugin: PluginDeclaration): Promise<void> {
   const filePath = join(plugin.pluginDir, DOTAGENTS_NATIVE_FALLBACKS_MARKER);
-  const sources = nativeSources().filter(
+  const sources = NATIVE_PLUGIN_SOURCES.filter(
     (source) => plugin.authoredNativeInterfaces?.[source]?.fallback,
   );
   if (sources.length === 0) {
@@ -1146,7 +361,7 @@ async function readNativeFallbackSources(
   const values = content.split("\n").filter(Boolean);
   const sources = new Set<NativePluginSource>();
   for (const value of values) {
-    const source = nativeSources().find((candidate) => candidate === value);
+    const source = NATIVE_PLUGIN_SOURCES.find((candidate) => candidate === value);
     if (!source || sources.has(source)) {
       throw new Error(`Invalid native fallback provenance: ${value || "<empty>"}`);
     }
@@ -1158,10 +373,7 @@ async function readNativeFallbackSources(
   return sources;
 }
 
-async function readInstalledPluginProvenance(pluginDir: string): Promise<{
-  fallbackSources: Set<NativePluginSource> | null;
-  nativeSource: NativePluginSource | undefined;
-}> {
+async function readInstalledPluginProvenance(pluginDir: string): Promise<InstalledPluginProvenance> {
   const fallbackSources = await readNativeFallbackSources(pluginDir);
   const nativeSource = await readNativeSourceMarker(pluginDir);
   if (fallbackSources && nativeSource && !fallbackSources.has(nativeSource)) {
@@ -1192,25 +404,19 @@ async function readNativeSourceMarker(pluginDir: string): Promise<NativePluginSo
 }
 
 function toDeclaration(
-  config: PluginConfig,
-  candidate: PluginCandidate,
+  plugin: PluginDeclaration,
+  targets: string[] | undefined,
 ): PluginDeclaration {
-  assertPluginName(config.name, candidate.manifest, candidate.path);
   return {
-    name: config.name,
-    source: config.source,
-    pluginDir: candidate.dir,
-    manifest: normalizeManifest(config.name, candidate.manifest),
-    authoredNativeInterfaces: candidate.authoredNativeInterfaces,
+    ...plugin,
     compatibilityWarnings: compatibilityWarnings(
-      config.name,
-      candidate.manifest,
-      candidate.authoredNativeInterfaces,
-      candidate.legacyRoots,
+      plugin.name,
+      plugin.manifest,
+      plugin.authoredNativeInterfaces ?? {},
+      legacyRootsFor(plugin),
       [],
     ),
-    nativeSource: candidate.nativeSource,
-    targets: config.targets,
+    targets,
   };
 }
 
@@ -1243,7 +449,7 @@ export function preparePluginForTargets(
     plugin.nativeSource !== undefined
   ) {
     throw new Error(
-      `Plugin "${plugin.name}" cannot target Copilot because dotagents selected its ${nativeDisplayName(plugin.nativeSource)} native manifest, but Copilot would load ${COPILOT_GITHUB_MANIFEST_PATH} instead. Remove one manifest or exclude "copilot" from this plugin's targets.`,
+      `Plugin "${plugin.name}" cannot target Copilot because dotagents selected its ${nativePluginDisplayName(plugin.nativeSource)} native manifest, but Copilot would load ${COPILOT_GITHUB_MANIFEST_PATH} instead. Remove one manifest or exclude "copilot" from this plugin's targets.`,
     );
   }
   if (selectedTargets.has("copilot")) {
@@ -1274,26 +480,29 @@ export function preparePluginForTargets(
   if (isStandardPluginManifest(plugin.manifest)) {
     assertNativeInterfaceNames(plugin.name, interfaces, plugin.pluginDir, selectedTargets);
   }
-  for (const source of nativeSources()) {
+  for (const source of NATIVE_PLUGIN_SOURCES) {
     const nativeInterface = interfaces[source];
     if (!nativeInterface?.fallback || !nativeInterface.error || !selectedTargets.has(source)) {continue;}
     throw new Error(
-      `Invalid ${nativeDisplayName(source)} native fallback for "${plugin.name}" at ${nativeInterface.path}: ${nativeInterface.error}`,
+      `Invalid ${nativePluginDisplayName(source)} native fallback for "${plugin.name}" at ${nativeInterface.path}: ${nativeInterface.error}`,
     );
   }
-  const legacyRoots = isStandardPluginManifest(plugin.manifest)
-    ? HYBRID_LEGACY_ROOTS.filter((path) => existsSync(join(plugin.pluginDir, path)))
-    : [];
   return {
     ...plugin,
     compatibilityWarnings: compatibilityWarnings(
       plugin.name,
       plugin.manifest,
       interfaces,
-      legacyRoots,
+      legacyRootsFor(plugin),
       selectedTargets,
     ),
   };
+}
+
+function legacyRootsFor(plugin: Pick<PluginDeclaration, "manifest" | "pluginDir">): string[] {
+  return isStandardPluginManifest(plugin.manifest)
+    ? HYBRID_LEGACY_ROOTS.filter((path) => existsSync(join(plugin.pluginDir, path)))
+    : [];
 }
 
 function assertNativeInterfaceNames(
@@ -1302,7 +511,7 @@ function assertNativeInterfaceNames(
   context: string,
   selectedTargets: ReadonlySet<string>,
 ): void {
-  for (const source of nativeSources()) {
+  for (const source of NATIVE_PLUGIN_SOURCES) {
     const nativeInterface = interfaces[source];
     if (!nativeInterface?.fallback) {continue;}
     const manifest = nativeInterface.manifest;
@@ -1321,9 +530,9 @@ function nativeInterfaceNameIssue(
   const actual = manifest["name"];
   if (actual === expected) {return undefined;}
   if (isString(actual)) {
-    return `${nativeDisplayName(source)} native fallback manifest name "${actual}" does not match portable plugin name "${expected}"`;
+    return `${nativePluginDisplayName(source)} native fallback manifest name "${actual}" does not match portable plugin name "${expected}"`;
   }
-  return `${nativeDisplayName(source)} native fallback manifest is missing the portable plugin name "${expected}"`;
+  return `${nativePluginDisplayName(source)} native fallback manifest is missing the portable plugin name "${expected}"`;
 }
 
 function compatibilityWarnings(
@@ -1335,14 +544,14 @@ function compatibilityWarnings(
 ): string[] {
   if (!isStandardPluginManifest(manifest)) {return [];}
   const warnings: string[] = [];
-  const sources = nativeSources().filter((source) => interfaces[source] !== undefined);
+  const sources = NATIVE_PLUGIN_SOURCES.filter((source) => interfaces[source] !== undefined);
   const fallbackSources = sources.filter((source) => interfaces[source]?.fallback);
   const validFallbackSources = fallbackSources.filter(
     (source) => interfaces[source]?.manifest !== undefined,
   );
   if (fallbackSources.length > 0) {
     warnings.push(
-      `Plugin "${name}" is a hybrid compatibility bundle: the portable core remains authoritative; authored ${validFallbackSources.map(nativeDisplayName).join(", ") || "native"} interfaces are retained only as matching-client fallbacks.`,
+      `Plugin "${name}" is a hybrid compatibility bundle: the portable core remains authoritative; authored ${validFallbackSources.map(nativePluginDisplayName).join(", ") || "native"} interfaces are retained only as matching-client fallbacks.`,
     );
   } else if (sources.length > 0) {
     warnings.push(
@@ -1367,13 +576,13 @@ function compatibilityWarnings(
     const nativeInterface = interfaces[source]!;
     if (!nativeInterface.fallback) {
       warnings.push(
-        `Plugin "${name}" has an authored ${nativeDisplayName(source)} interface that was ignored because the portable core can generate the ${nativeDisplayName(source)} adapter${nativeInterface.error ? `: ${nativeInterface.error}` : "."}`,
+        `Plugin "${name}" has an authored ${nativePluginDisplayName(source)} interface that was ignored because the portable core can generate the ${nativePluginDisplayName(source)} adapter${nativeInterface.error ? `: ${nativeInterface.error}` : "."}`,
       );
       continue;
     }
     if (nativeInterface.error && !selected.has(source)) {
       warnings.push(
-        `Plugin "${name}" has a malformed ${nativeDisplayName(source)} native fallback that was ignored because ${nativeDisplayName(source)} is not selected: ${nativeInterface.error}`,
+        `Plugin "${name}" has a malformed ${nativePluginDisplayName(source)} native fallback that was ignored because ${nativePluginDisplayName(source)} is not selected: ${nativeInterface.error}`,
       );
       continue;
     }
@@ -1382,13 +591,13 @@ function compatibilityWarnings(
       : undefined;
     if (nameIssue && !selected.has(source)) {
       warnings.push(
-        `Plugin "${name}" has an invalid ${nativeDisplayName(source)} native fallback that was ignored because ${nativeDisplayName(source)} is not selected: ${nameIssue}.`,
+        `Plugin "${name}" has an invalid ${nativePluginDisplayName(source)} native fallback that was ignored because ${nativePluginDisplayName(source)} is not selected: ${nameIssue}.`,
       );
       continue;
     }
     if (nativeInterface.manifest && metadataDiffers(manifest, nativeInterface.manifest)) {
       warnings.push(
-        `Plugin "${name}" has differing portable and ${nativeDisplayName(source)} fallback metadata; the portable core remains the source of truth while ${nativeDisplayName(source)} receives the preserved fallback.`,
+        `Plugin "${name}" has differing portable and ${nativePluginDisplayName(source)} fallback metadata; the portable core remains the source of truth while ${nativePluginDisplayName(source)} receives the preserved fallback.`,
       );
     }
   }
@@ -1408,146 +617,6 @@ function metadataDiffers(portable: PluginManifest, native: PluginManifest): bool
   return keys.some((key) => !isDeepStrictEqual(portable[key], native[key]));
 }
 
-function nativeSources(): NativePluginSource[] {
-  return ["claude", "cursor", "codex"];
-}
-
-function nativeDisplayName(source: NativePluginSource): string {
-  return source === "claude" ? "Claude" : source === "cursor" ? "Cursor" : "Codex";
-}
-
-function assertPluginName(
-  expected: string,
-  manifest: PluginManifest,
-  context: string,
-): void {
-  const actual = manifest["name"];
-  if (isString(actual) && actual !== expected) {
-    throw new Error(`Plugin manifest name "${actual}" does not match configured name "${expected}" in ${context}.`);
-  }
-}
-
-function normalizeManifest(
-  name: string,
-  manifest: PluginManifest,
-): PluginManifest {
-  // SAFETY: replacing the required name field preserves every PluginManifest variant.
-  return { ...manifest, name } as PluginManifest;
-}
-
-function candidateMatches(name: string, candidate: PluginCandidate): boolean {
-  return basename(candidate.dir) === name || candidate.name === name;
-}
-
-/** Applies discovery precedence: directory-name matches win before manifest-name fallback. */
-function rankedCandidates(name: string, candidates: PluginCandidate[]): PluginCandidate[] {
-  const directoryMatches = candidates.filter((candidate) => basename(candidate.dir) === name);
-  return directoryMatches.length > 0
-    ? directoryMatches
-    : candidates.filter((candidate) => candidate.name === name);
-}
-
-async function dedupeCandidates(candidates: PluginCandidate[]): Promise<PluginCandidate[]> {
-  const seen = new Set<string>();
-  const result: PluginCandidate[] = [];
-  for (const candidate of candidates) {
-    const key = `${await realpath(candidate.dir)}\0${candidate.name}`;
-    if (seen.has(key)) {continue;}
-    seen.add(key);
-    result.push(candidate);
-  }
-  return result;
-}
-
-/** Returns local marketplace paths; unsupported extension sources are skipped. */
-function localMarketplacePath(entry: MarketplacePluginEntry): string | null {
-  const { source } = entry;
-  if (isString(source)) {return stripDotSlash(source);}
-
-  if (source.source === "local" && isString(source.path)) {
-    return stripDotSlash(source.path);
-  }
-  return null;
-}
-
-function marketplaceSourceType(entry: MarketplacePluginEntry): string {
-  const { source } = entry;
-  if (isString(source)) {return "local";}
-  return source.source ?? "extension";
-}
-
-function stripDotSlash(path: string): string {
-  return path.replace(/^\.\//, "");
-}
-
-/** Resolves a selector path while preserving the source-root containment boundary. */
-async function resolveInside(
-  root: string,
-  childPath: string,
-  label: string,
-  resolveRealpath: PluginStoreServices["realpath"] = realpath,
-): Promise<string> {
-  const rootPath = resolve(root);
-  const filePath = resolve(rootPath, childPath);
-  const relPath = relative(rootPath, filePath);
-  if (isOutsideRelativePath(relPath)) {
-    throw new Error(`${label} resolves outside source: ${childPath}`);
-  }
-  if (existsSync(filePath)) {
-    await assertInsideSourceRoot(rootPath, filePath, label, childPath, resolveRealpath);
-  }
-  return filePath;
-}
-
-async function resolveMarketplaceSource(
-  sourceRoot: string,
-  marketplaceRoot: string,
-  childPath: string,
-  label: string,
-): Promise<string> {
-  const filePath = resolve(marketplaceRoot, childPath);
-  const sourceRootPath = resolve(sourceRoot);
-  const relPath = relative(sourceRootPath, filePath);
-  if (isOutsideRelativePath(relPath)) {
-    throw new Error(`${label} resolves outside source: ${childPath}`);
-  }
-  if (existsSync(filePath)) {
-    await assertInsideSourceRoot(sourceRootPath, filePath, label, childPath);
-  }
-  return filePath;
-}
-
-async function assertInsideSourceRoot(
-  root: string,
-  filePath: string,
-  label: string,
-  displayPath = relativePath(root, filePath),
-  resolveRealpath: PluginStoreServices["realpath"] = realpath,
-): Promise<void> {
-  let rootRealPath: string;
-  try {
-    rootRealPath = await resolveRealpath(root);
-  } catch (err) {
-    if (isNotFoundError(err)) {
-      throw new Error(`${label} source root does not exist: ${displayPath}`, { cause: err });
-    }
-    throw err;
-  }
-  let fileRealPath: string;
-  try {
-    fileRealPath = await resolveRealpath(filePath);
-  } catch (err) {
-    if (isNotFoundError(err)) {
-      throw new Error(`${label} source path does not exist: ${displayPath}`, { cause: err });
-    }
-    throw err;
-  }
-  const realRelPath = relative(rootRealPath, fileRealPath);
-  if (isOutsideRelativePath(realRelPath)) {
-    throw new Error(`${label} resolves outside source: ${displayPath}`);
-  }
-}
-
 function isNotFoundError<ErrorValue>(err: ErrorValue): boolean {
   return hasErrorCode(err, "ENOENT");
 }
@@ -1561,29 +630,10 @@ function managedPluginPath(pluginsDir: string, name: string): string | null {
   return pluginPath;
 }
 
-function relativePath(root: string, filePath: string): string {
-  return relative(root, filePath).split("\\").join("/");
-}
-
 function isOutsideRelativePath(path: string): boolean {
   return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
 }
 
 function isNotDirectoryError<ErrorValue>(err: ErrorValue): boolean {
   return hasErrorCode(err, "ENOTDIR");
-}
-
-async function readJson(filePath: string): Promise<SerializedValue> {
-  const raw = await readFile(filePath, "utf-8");
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Invalid JSON ${filePath}: ${message}`, { cause: err });
-  }
-  if (!isSerializedValue(parsed)) {
-    throw new Error(`Invalid JSON ${filePath}: value is not safely serializable`);
-  }
-  return parsed;
 }

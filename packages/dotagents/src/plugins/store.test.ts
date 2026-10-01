@@ -4,7 +4,11 @@ import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
+  AGENT_PLUGIN_MCP_SCHEMA,
+  AGENT_PLUGIN_SCHEMA,
   discoverPlugins,
+} from "@sentry/dotagents-lib";
+import {
   installPluginBundle,
   isSameProjectPluginConfig,
   loadInstalledPlugins,
@@ -13,7 +17,6 @@ import {
   resolvePlugin,
   type ResolvedPlugin,
 } from "./store.js";
-import { AGENT_PLUGIN_MCP_SCHEMA, AGENT_PLUGIN_SCHEMA } from "./schema.js";
 
 async function removeWithBackupFailure(
   path: Parameters<typeof rm>[0],

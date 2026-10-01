@@ -1,12 +1,18 @@
 import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, rm, rmdir, stat, symlink, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { loadSkillMd, type SerializedObject } from "@sentry/dotagents-lib";
-import { AGENT_PLUGIN_SCHEMA, isStandardPluginManifest, parsePluginMcp, type LegacyPluginManifest } from "../schema.js";
+import {
+  AGENT_PLUGIN_SCHEMA,
+  HYBRID_LEGACY_ROOTS,
+  isStandardPluginManifest,
+  loadSkillMd,
+  parsePluginMcp,
+  type LegacyPluginManifest,
+  type SerializedObject,
+} from "@sentry/dotagents-lib";
 import {
   DOTAGENTS_NATIVE_FALLBACKS_MARKER,
   hasRecordedNativePluginFallback,
-  HYBRID_LEGACY_ROOTS,
   preparePluginForTargets,
 } from "../store.js";
 import type { PluginDeclaration } from "../types.js";
