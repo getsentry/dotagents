@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { chmod, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { exec } from "@sentry/dotagents-lib";
 import {
   inspectPostMergeHook,
   installPostMergeHook,
@@ -62,5 +63,28 @@ describe("managed post-merge hooks", () => {
     await writeFile(hookPath, "#!/bin/sh\n# dotagents:post-merge\necho custom\n");
 
     expect(await inspectPostMergeHook(gitDir)).toBe("unmanaged");
+  });
+
+  it("clears git's repository-local environment before running dotagents", async () => {
+    const binDir = join(root, "bin");
+    await mkdir(binDir);
+    await writeFile(
+      join(binDir, "dotagents"),
+      '#!/bin/sh\necho "$* GIT_DIR=${GIT_DIR-unset} GIT_REFLOG_ACTION=${GIT_REFLOG_ACTION-unset}"\n',
+    );
+    await chmod(join(binDir, "dotagents"), 0o755);
+    await installPostMergeHook(gitDir);
+
+    // A merge in a linked worktree runs the hook with GIT_DIR set.
+    const { stdout } = await exec(hookPath, [], {
+      cwd: root,
+      env: {
+        PATH: `${binDir}:${process.env["PATH"] ?? ""}`,
+        GIT_DIR: gitDir,
+        GIT_REFLOG_ACTION: "merge feature",
+      },
+    });
+
+    expect(stdout.trim()).toBe("--project install GIT_DIR=unset GIT_REFLOG_ACTION=unset");
   });
 });

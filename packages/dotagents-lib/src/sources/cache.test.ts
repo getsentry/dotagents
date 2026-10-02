@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -55,6 +56,7 @@ describe("ensureCached", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -246,5 +248,39 @@ describe("ensureCached", () => {
       cacheKey: "test/repo",
     });
     expect(unpinned.commit).toBe(latestCommit);
+  });
+
+  it("leaves the caller's repository alone when GIT_DIR points at it", async () => {
+    await writeFile(join(repoDir, "README.md"), "first\n");
+    await exec("git", ["add", "README.md"], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
+    await writeFile(join(repoDir, "README.md"), "second\n");
+    await exec("git", ["commit", "-am", "second"], { cwd: repoDir });
+    await exec("git", ["push", "origin", "main"], { cwd: repoDir });
+
+    const cached = await ensureCached({
+      stateDir,
+      url: remoteDir,
+      cacheKey: "test/repo",
+    });
+
+    // A post-merge hook in a linked worktree inherits GIT_DIR for the
+    // repository being merged, here one with an unpushed commit.
+    await writeFile(join(repoDir, "README.md"), "local\n");
+    await exec("git", ["commit", "-am", "local"], { cwd: repoDir });
+    const { stdout } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
+    const callerHead = stdout.trim();
+    vi.stubEnv("GIT_DIR", join(repoDir, ".git"));
+
+    const refreshed = await ensureCached({
+      stateDir,
+      url: remoteDir,
+      cacheKey: "test/repo",
+    });
+
+    const { stdout: headStdout } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
+    expect(headStdout.trim()).toBe(callerHead);
+    expect(existsSync(join(repoDir, ".git", "shallow"))).toBe(false);
+    expect(refreshed.commit).toBe(cached.commit);
   });
 });
