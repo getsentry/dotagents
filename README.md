@@ -172,6 +172,8 @@ The canonical portable format is an [Agent Plugins](https://agent-plugins.org/) 
 
 For bundles with native manifests but no root `plugin.json`, Codex, Claude, then Cursor order determines the primary manifest. All native manifests are preserved for their matching clients. The primary manifest must be valid; errors in additional manifests block installation only when their client is selected.
 
+Local marketplace entries may use `"."` or `"./"` for the source root. An entry with `strict: false` can supply the plugin manifest when the directory has no `plugin.json`; dotagents preserves its declared fields in the installed bundle. Native marketplace definitions retain their owning client, so native settings stay with that client while other targets receive portable skills. Saved plugin paths remain pinned across installs.
+
 Global plugins install canonical bundles under `~/.agents/plugins/`. Claude and Cursor marketplaces are generated under `~/.agents/`. Copilot uses `~/.agents/.github/plugin/marketplace.json`, and Codex uses `~/.agents/plugins/marketplace.json`. Grok plugins are copied into `~/.grok/plugins/`. OpenCode skills are linked into `~/.config/opencode/skills/`, and portable MCP servers are merged into `~/.config/opencode/opencode.json`. Pi skills are linked into `~/.agents/skills/`. `--user` remains a compatibility alias for `--global`.
 
 Pi plugin targets are global skill projections rather than isolated plugin installs: a Pi-targeted plugin skill is added to `.agents/skills/` and is therefore visible to other clients that consume that shared directory.

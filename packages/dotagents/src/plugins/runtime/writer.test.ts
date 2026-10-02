@@ -1082,6 +1082,23 @@ describe("plugin writer", () => {
     await expect(projectedPiSkillNames(["pi"], [alpha])).resolves.toEqual(["code-review"]);
   });
 
+  it("projects an explicitly declared skill directory into Pi and OpenCode", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: { name: "alpha-tools", skills: ["./skills/plugin-qa"] },
+    });
+    await writePluginSkill(alpha.pluginDir, "plugin-qa");
+    const result = await writePluginOutputs(["pi", "opencode"], [alpha], root);
+    expect(result.warnings).toEqual([]);
+    for (const dir of [".agents", ".opencode"]) {
+      await expectSymlinkTarget(
+        join(root, dir, "skills", "plugin-qa"),
+        join(alpha.pluginDir, "skills", "plugin-qa"),
+      );
+    }
+    await expect(projectedPiSkillNames(["pi"], [alpha])).resolves.toEqual(["plugin-qa"]);
+    await expect(verifyPluginOutputs(["pi", "opencode"], [alpha], root)).resolves.toEqual([]);
+  });
+
   it("warns and skips invalid Pi plugin skill names", async () => {
     const alpha = await plugin("alpha-tools");
     await mkdir(join(alpha.pluginDir, "skills", "bad"), { recursive: true });

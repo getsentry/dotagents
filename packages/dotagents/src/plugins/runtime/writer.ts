@@ -708,27 +708,15 @@ async function discoverSkillComponents(
     return [];
   }
 
-  const skills: PluginSkillComponent[] = [];
-  for (const entry of await readdir(skillsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory() && !entry.isSymbolicLink()) {continue;}
-    const sourcePath = join(skillsDir, entry.name);
-    const skillMd = join(sourcePath, "SKILL.md");
-    if (!existsSync(skillMd)) {
-      if (entry.isDirectory()) {
-        skills.push(...await discoverSkillComponents(agent, plugin, sourcePath, warnings));
-      }
-      continue;
-    }
-    if (
-      !await isContainedPluginPath(plugin.pluginDir, sourcePath) ||
-      !await isContainedPluginPath(plugin.pluginDir, skillMd)
-    ) {
+  const skillMd = join(skillsDir, "SKILL.md");
+  if (existsSync(skillMd)) {
+    if (!await isContainedPluginPath(plugin.pluginDir, skillMd)) {
       warnings.push({
         agent,
         name: plugin.name,
-        message: `Plugin skill resolves outside the plugin bundle and was skipped: ${sourcePath}`,
+        message: `Plugin skill resolves outside the plugin bundle and was skipped: ${skillsDir}`,
       });
-      continue;
+      return [];
     }
 
     let skillName: string;
@@ -740,7 +728,7 @@ async function discoverSkillComponents(
         name: plugin.name,
         message: `Plugin skill is invalid for ${displayName(agent)} projection: ${err instanceof Error ? err.message : String(err)}`,
       });
-      continue;
+      return [];
     }
 
     if (agent === "opencode" && !OPENCODE_SKILL_NAME_PATTERN.test(skillName)) {
@@ -749,7 +737,7 @@ async function discoverSkillComponents(
         name: plugin.name,
         message: `Plugin skill "${skillName}" cannot be projected to OpenCode because OpenCode skill names must be lowercase alphanumeric with single hyphen separators.`,
       });
-      continue;
+      return [];
     }
     if (agent === "pi" && !SKILL_NAME_PATTERN.test(skillName)) {
       warnings.push({
@@ -757,13 +745,19 @@ async function discoverSkillComponents(
         name: plugin.name,
         message: `Plugin skill "${skillName}" cannot be projected to Pi because skill names must start with alphanumeric and contain only [a-zA-Z0-9._-].`,
       });
-      continue;
+      return [];
     }
 
-    skills.push({
-      name: skillName,
-      sourcePath,
-    });
+    return [{ name: skillName, sourcePath: skillsDir }];
+  }
+
+  const skills: PluginSkillComponent[] = [];
+  for (const entry of await readdir(skillsDir, { withFileTypes: true })) {
+    const sourcePath = join(skillsDir, entry.name);
+    // Follow a symlink only when it is a skill leaf, avoiding directory cycles.
+    if (entry.isDirectory() || entry.isSymbolicLink() && existsSync(join(sourcePath, "SKILL.md"))) {
+      skills.push(...await discoverSkillComponents(agent, plugin, sourcePath, warnings));
+    }
   }
   return skills;
 }
