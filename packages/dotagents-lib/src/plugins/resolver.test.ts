@@ -27,6 +27,11 @@ describe("plugin resolver library contract", () => {
       JSON.stringify({ $schema: AGENT_PLUGIN_SCHEMA, name: "review-tools", description: "Review helpers" }),
     );
     await writeFile(join(pluginDir, "skills", "review", "SKILL.md"), "---\nname: review\ndescription: Review\n---\n");
+    await mkdir(join(pluginDir, "skills", "category", "nested"), { recursive: true });
+    await writeFile(join(pluginDir, "skills", "category", "nested", "SKILL.md"),
+      "---\nname: nested\ndescription: Not an immediate child\n---\n");
+    await writeFile(join(pluginDir, "skills", "SKILL.md"),
+      "---\nname: root\ndescription: Not an immediate child\n---\n");
 
     const resolved = await resolvePlugin(
       { name: "review-tools", source: "path:source" },
@@ -44,7 +49,8 @@ describe("plugin resolver library contract", () => {
         nativeSource: undefined,
       },
     });
-    const skills = await discoverAllSkills(join(resolved.plugin.pluginDir, "skills"), { scanDirs: ["."] });
+    const skills = (await discoverAllSkills(join(resolved.plugin.pluginDir, "skills"), { scanDirs: [] }))
+      .filter(({ path }) => path !== "." && !path.includes("/"));
     expect(skills.map(({ meta }) => meta.name)).toEqual(["review"]);
   });
 

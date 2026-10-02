@@ -27,7 +27,8 @@ try {
   assert.equal(resolved.plugin.pluginDir, pluginDir);
   assert.equal(resolved.plugin.manifest.name, "review-tools");
   assert.deepEqual(
-    (await discoverAllSkills(join(resolved.plugin.pluginDir, "skills"), { scanDirs: ["."] }))
+    (await discoverAllSkills(join(resolved.plugin.pluginDir, "skills"), { scanDirs: [] }))
+      .filter(({ path }) => path !== "." && !path.includes("/"))
       .map(({ meta }) => meta.name),
     ["review"],
   );

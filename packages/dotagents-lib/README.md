@@ -25,10 +25,15 @@ const resolved = await resolvePlugin(
   { name: "review-tools", source: "path:./plugins/review-tools" },
   { projectRoot: workspaceRoot, stateDir: cacheDir, trust: trustPolicy },
 );
-const skills = await discoverAllSkills(join(resolved.plugin.pluginDir, "skills"), { scanDirs: ["."] });
+const skills = (await discoverAllSkills(join(resolved.plugin.pluginDir, "skills"), { scanDirs: [] }))
+  .filter(({ path }) => path !== "." && !path.includes("/"));
 ```
 
-`resolved.plugin.pluginDir` points to the source. For git sources it is a cache checkout, so the host must copy the selected bundle into its own durable store and record the source and resolved commit. The host decides when to install, update, and expose the skills. Resolution does not configure a client or enable MCP servers.
+Agent Plugins discovers only immediate child directories of `skills/`. The empty
+`scanDirs` keeps the generic skill resolver from recursing, and the path filter
+excludes a `SKILL.md` at the `skills/` root or other discovery formats.
+
+`resolved.plugin.pluginDir` points to the source. For git sources it is a mutable cache checkout, so the host must copy the selected bundle into its own durable store before another resolution of that source can move the checkout. Serialize resolution and copying when multiple plugins share a source. Record the source and resolved commit with that copy. The host decides when to install, update, and expose the skills. Resolution does not configure a client or enable MCP servers.
 
 ## Versioning
 
