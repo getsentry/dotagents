@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readdir, readFile, realpath, stat } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { ensureCached, sanitizeCacheKey, type CacheReuse } from "../sources/cache.js";
@@ -915,16 +915,37 @@ function rankedCandidates(name: string, candidates: PluginCandidate[]): PluginCa
     : candidates.filter((candidate) => candidate.name === name);
 }
 
+/**
+ * Removes candidates that reach the same plugin directory. The first origin
+ * wins. Within one origin, a physical directory wins over a symlink alias, and
+ * then the lower path wins, so the result does not depend on `readdir` order.
+ */
 async function dedupeCandidates(candidates: PluginCandidate[]): Promise<PluginCandidate[]> {
-  const seen = new Set<string>();
-  const result: PluginCandidate[] = [];
+  const indexByKey = new Map<string, number>();
+  const result: Array<{ candidate: PluginCandidate; alias: boolean }> = [];
   for (const candidate of candidates) {
     const key = `${await realpath(candidate.dir)}\0${candidate.name}`;
-    if (seen.has(key)) {continue;}
-    seen.add(key);
-    result.push(candidate);
+    const entry = { candidate, alias: (await lstat(candidate.dir)).isSymbolicLink() };
+    const index = indexByKey.get(key);
+    if (index === undefined) {
+      indexByKey.set(key, result.length);
+      result.push(entry);
+      continue;
+    }
+    const kept = result[index]!;
+    if (kept.candidate.origin === candidate.origin && prefersCandidate(entry, kept)) {
+      result[index] = entry;
+    }
   }
-  return result;
+  return result.map((entry) => entry.candidate);
+}
+
+function prefersCandidate(
+  next: { candidate: PluginCandidate; alias: boolean },
+  kept: { candidate: PluginCandidate; alias: boolean },
+): boolean {
+  if (next.alias !== kept.alias) {return !next.alias;}
+  return next.candidate.path < kept.candidate.path;
 }
 
 /** Returns local marketplace paths; unsupported extension sources are skipped. */

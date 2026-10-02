@@ -93,6 +93,21 @@ describe("plugin resolver library contract", () => {
     expect(await names()).toEqual(["alpha", "beta"]);
   });
 
+  it("keeps the physical directory when a symlink alias reaches the same plugin", async () => {
+    // Use both name orders so the result cannot depend on readdir order.
+    for (const [physical, alias] of [["review-tools", "a-alias"], ["review-tools", "z-alias"]] as const) {
+      const sourceRoot = join(root, alias);
+      const pluginDir = join(sourceRoot, "plugins", physical);
+      await mkdir(pluginDir, { recursive: true });
+      await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ $schema: AGENT_PLUGIN_SCHEMA, name: physical }));
+      await symlink(physical, join(sourceRoot, "plugins", alias));
+
+      const candidates = await discoverPlugins(sourceRoot);
+
+      expect(candidates.map((candidate) => candidate.path)).toEqual([`plugins/${physical}`]);
+    }
+  });
+
   it("checks installed bundle containment before reading host provenance", async () => {
     const pluginsDir = join(root, "installed");
     const outsideDir = join(root, "outside");
