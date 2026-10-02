@@ -69,26 +69,38 @@ try {
   rmSync(inspectDir, { recursive: true, force: true });
 }
 
-// (c) Real install + CLI smoke from the tarballs.
+// (c) Real lib-only consumer and CLI smoke from the tarballs.
 const installDir = mkdtempSync(join(tmpdir(), "dotagents-install-"));
 try {
-  // Use a separate npm registry-like layout: install both tarballs as local files.
+  // Use a separate npm registry-like layout with no workspace packages.
   writeFileSync(
     join(installDir, "package.json"),
     JSON.stringify({ name: "verify-pack-tmp", version: "0.0.0", private: true }, null, 2),
   );
   execFileSync(
     "npm",
-    ["install", "--no-audit", "--no-fund", "--no-package-lock", join(cwd, lib), join(cwd, host)],
+    ["install", "--no-audit", "--no-fund", "--no-package-lock", join(cwd, lib)],
     { cwd: installDir, stdio: "inherit" },
   );
 
+  // Exercise the public lib API before the host package is installed.
+  writeFileSync(
+    join(installDir, "verify-plugin-lib.mjs"),
+    readFileSync(join(cwd, "scripts", "verify-plugin-lib.mjs")),
+  );
+  execFileSync("node", ["verify-plugin-lib.mjs"], { cwd: installDir, stdio: "inherit" });
+
+  execFileSync(
+    "npm",
+    ["install", "--no-audit", "--no-fund", "--no-package-lock", join(cwd, lib), join(cwd, host)],
+    { cwd: installDir, stdio: "inherit" },
+  );
   execFileSync("node", ["node_modules/@sentry/dotagents/dist/cli/index.js", "--help"], {
     cwd: installDir,
     stdio: "inherit",
   });
 
-  console.log("verify-pack: install + CLI smoke OK");
+  console.log("verify-pack: standalone lib consumer + CLI smoke OK");
 } finally {
   rmSync(installDir, { recursive: true, force: true });
 }

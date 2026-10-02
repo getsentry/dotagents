@@ -3,10 +3,9 @@ import { join, relative } from "node:path";
 import type { PluginDeclaration } from "../types.js";
 import { selectedAgentIds } from "../targets.js";
 import { stableJson } from "../managed-files.js";
-import { legacyManifestString, manifestString } from "./manifest-values.js";
+import { legacyManifestString, manifestString, type SerializedObject } from "@sentry/dotagents-lib";
 import type { RuntimeOutput } from "./types.js";
 import { normalizePluginRuntimeLayout, type PluginRuntimeRoot } from "./layout.js";
-import type { SerializedObject } from "@sentry/dotagents-lib";
 
 /** Lists managed plugin marketplace files that may be generated or pruned. */
 export function marketplaceOutputPaths(root: PluginRuntimeRoot): string[] {

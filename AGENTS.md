@@ -24,6 +24,7 @@ packages/
 │       ├── targets/          # Target agent definitions plus MCP/hook config writers
 │       ├── subagents/        # Subagent identity, store, and runtime writer
 │       ├── agents/           # Compatibility re-export barrel for older internal imports
+│       ├── plugins/          # Plugin install, provenance markers, target selection, runtime writers
 │       ├── config/           # agents.toml schema, loader, writer
 │       ├── lockfile/         # agents.lock schema, loader, writer
 │       ├── symlinks/         # Symlink creation/management
@@ -34,6 +35,7 @@ packages/
     └── src/
         ├── index.ts          # Public API of the lib
         ├── skills/           # SKILL.md loader, discovery, resolver (parseSource, etc.)
+        ├── plugins/          # Agent Plugins schemas, discovery, resolution, installed-bundle loading
         ├── sources/          # git.ts, cache.ts (configureCache), local.ts, wellknown.ts, repository-source.ts
         ├── trust/            # Trust validation (validateTrustedSource), TrustPolicy interface
         └── utils/            # exec.ts, fs.ts (copyDir, stripTrailingSlashes)

@@ -671,6 +671,12 @@ describe("runAdd (local sources)", () => {
     await writeFile(join(sourceDir, "standalone", "SKILL.md"), SKILL_MD("standalone"));
     const install = mockRunInstall();
 
+    await expect(runAdd({
+      scope: resolveScope("project", projectRoot),
+      specifier: "path:mixed-source",
+      names: ["bundled"],
+    })).rejects.toThrow('Plugin "bundled" not found');
+
     const result = await runAdd({
       scope: resolveScope("project", projectRoot),
       specifier: "path:mixed-source",

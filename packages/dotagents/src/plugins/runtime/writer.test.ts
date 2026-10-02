@@ -8,9 +8,12 @@ import type { PluginDeclaration } from "../types.js";
 import {
   AGENT_PLUGIN_MCP_SCHEMA,
   AGENT_PLUGIN_SCHEMA,
+  isSerializedObject,
   isStandardPluginManifest,
   type LegacyPluginManifest,
-} from "../schema.js";
+  type SerializedObject,
+  type SerializedValue,
+} from "@sentry/dotagents-lib";
 import {
   prunePluginOutputs,
   projectedPiSkillNames,
@@ -18,7 +21,6 @@ import {
   verifyPluginOutputs,
   writePluginOutputs,
 } from "./writer.js";
-import { isSerializedObject, type SerializedObject, type SerializedValue } from "@sentry/dotagents-lib";
 
 function parseJsonObject(content: string): SerializedObject {
   const parsed = JSON.parse(content);

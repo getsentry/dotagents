@@ -1,7 +1,7 @@
 import { z } from "zod/v4";
 import { validateHeaderName, validateHeaderValue } from "node:http";
 import { isIP } from "node:net";
-import { isSerializedObject, type SerializedObject } from "@sentry/dotagents-lib";
+import { isSerializedObject, type SerializedObject } from "../utils/serialized.js";
 import { isObject, isString } from "../utils/type-guards.js";
 
 export const AGENT_PLUGIN_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";

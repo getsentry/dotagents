@@ -1,7 +1,7 @@
 {
   "name": "@sentry/dotagents-lib",
   "version": "3.3.0",
-  "description": "Reusable core for SKILL.md loading, source resolution, and trust validation — the library powering @sentry/dotagents.",
+  "description": "Reusable core for SKILL.md loading, Agent Plugin resolution, source resolution, and trust validation \u2014 the library powering @sentry/dotagents.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -28,6 +28,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "yaml": "^2.8.3"
+    "yaml": "^2.8.3",
+    "zod": "^4.3.6"
   }
 }

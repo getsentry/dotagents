@@ -6,7 +6,7 @@ dotagents is shared tooling for coding agents. It manages agent skill dependenci
 
 Declare what you need, run `dotagents install` for global state or `dotagents --project install` for repository-local state, and skills appear in the selected scope with integrations for each configured tool. MCP, hook, subagent, and plugin configs are generated per agent.
 
-> **Implementation note.** The skill-loading, source-fetching, and trust-validation primitives that drive the CLI are factored into a separate npm package, [`@sentry/dotagents-lib`](../packages/dotagents-lib/), versioned in lock-step with `@sentry/dotagents`. The `agents.toml` grammar and the `.agents/` convention described below remain entirely the host's responsibility — the lib only knows about source strings, SKILL.md, and the cache.
+> **Implementation note.** The skill and Agent Plugin resolvers, source-fetching, and trust-validation primitives that drive the CLI live in [`@sentry/dotagents-lib`](../packages/dotagents-lib/), versioned in lock-step with `@sentry/dotagents`. The `agents.toml` grammar, installation lifecycle, and `.agents/` convention remain the host's responsibility.
 
 ### Why
 
@@ -937,6 +937,7 @@ dotagents/
       src/
         index.ts             # Library public API
         skills/              # SKILL.md loader, discovery, resolver
+        plugins/             # Plugin manifests, discovery, resolution
         sources/             # git, cache, local, well-known source handling
         trust/               # Trust policy validation
         utils/               # exec and filesystem helpers

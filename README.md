@@ -198,7 +198,7 @@ Requires Node.js 20+ and pnpm.
 This repo is a pnpm workspace with two packages:
 
 - [`packages/dotagents/`](packages/dotagents/) — `@sentry/dotagents`, the CLI and host library. Owns `agents.toml`, the `.agents/` convention, and the per-agent (Claude/Cursor/etc.) integrations.
-- [`packages/dotagents-lib/`](packages/dotagents-lib/) — `@sentry/dotagents-lib`, the reusable core (SKILL.md loading, source resolution, trust validation). Depend on this directly if you want to consume agent skills from your own tooling without `agents.toml`.
+- [`packages/dotagents-lib/`](packages/dotagents-lib/) — `@sentry/dotagents-lib`, the reusable core (SKILL.md and Agent Plugin resolution, source caching, trust validation). Depend on this directly to consume skills or resolve plugins without `agents.toml`.
 
 Both packages are versioned in lock-step — see [`RELEASING.md`](RELEASING.md).
 

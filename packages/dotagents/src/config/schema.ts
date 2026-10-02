@@ -5,6 +5,7 @@ import {
   GITHUB_SSH_URL,
   GITLAB_HTTPS_URL,
   GITLAB_SSH_URL,
+  PLUGIN_NAME_PATTERN,
   type RepositorySource,
 } from "@sentry/dotagents-lib";
 
@@ -193,8 +194,6 @@ const subagentSchema = z.object({
 }).strict();
 
 export type SubagentConfig = z.infer<typeof subagentSchema>;
-
-export const PLUGIN_NAME_PATTERN = /^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$/;
 
 const pluginNameSchema = z
   .string()
