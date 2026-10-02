@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.0
+
+### Bug Fixes 🐛
+
+- (plugins) Import marketplace-only root plugins by @gricha in [#200](https://github.com/getsentry/dotagents/pull/200)
+
 ## 3.2.0
 
 ### New Features ✨
