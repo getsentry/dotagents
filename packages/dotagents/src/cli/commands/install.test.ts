@@ -5,7 +5,14 @@ import { dirname, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import install, { runInstall as runInstallCommand, InstallError, type InstallOptions, type InstallResult } from "./install.js";
 import { runSync } from "./sync.js";
-import { exec, isSerializedObject, type SerializedObject, type SerializedValue } from "@sentry/dotagents-lib";
+import {
+  AGENT_PLUGIN_MCP_SCHEMA,
+  AGENT_PLUGIN_SCHEMA,
+  exec,
+  isSerializedObject,
+  type SerializedObject,
+  type SerializedValue,
+} from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import type { Lockfile } from "../../lockfile/schema.js";
@@ -15,7 +22,6 @@ import {
   DOTAGENTS_MANAGED_PLUGIN_MARKER,
   DOTAGENTS_NATIVE_FALLBACKS_MARKER,
 } from "../../plugins/store.js";
-import { AGENT_PLUGIN_MCP_SCHEMA, AGENT_PLUGIN_SCHEMA } from "../../plugins/schema.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}
@@ -501,6 +507,64 @@ source = "path:plugin-source/portable-tools"
       }
       expect(existsSync(join(sourceDir, "executed"))).toBe(false);
       expect(existsSync(join(installedDir, "executed"))).toBe(false);
+    },
+  );
+
+  it("preserves multiple native manifests without warnings across install and sync", async () => {
+    const sourceDir = join(projectRoot, "plugin-source", "dual-tools");
+    const manifests = {
+      codex: '{ "name": "dual-tools", "description": "Codex configuration" }\n',
+      claude: '{ "name": "dual-tools", "description": "Claude configuration" }\n',
+    };
+    for (const [agent, content] of Object.entries(manifests)) {
+      await mkdir(join(sourceDir, `.${agent}-plugin`), { recursive: true });
+      await writeFile(join(sourceDir, `.${agent}-plugin`, "plugin.json"), content);
+    }
+    await writeFile(join(projectRoot, "agents.toml"), `version = 1
+agents = ["claude", "codex"]
+
+[[plugins]]
+name = "dual-tools"
+source = "path:plugin-source/dual-tools"
+`);
+    const scope = resolveScope("project", projectRoot);
+
+    expect((await runInstall({ scope })).pluginWarnings).toEqual([]);
+    expect((await runInstall({ scope })).pluginWarnings).toEqual([]);
+    expect((await runSync({ scope })).issues).toEqual([]);
+
+    const installedDir = join(scope.pluginsDir, "dual-tools");
+    for (const [agent, content] of Object.entries(manifests)) {
+      expect(await readFile(join(installedDir, `.${agent}-plugin`, "plugin.json"), "utf-8")).toBe(content);
+    }
+    const manifest = parseJsonObject(await readFile(join(installedDir, "plugin.json"), "utf-8"));
+    expect(manifest["description"]).toBe("Codex configuration");
+  });
+
+  it.each(["{broken\n", '{"name": 42}\n'])(
+    "ignores a malformed secondary native manifest until its client is selected: %s",
+    async (malformed) => {
+      const sourceDir = join(projectRoot, "plugin-source", "dual-tools");
+      await mkdir(join(sourceDir, ".codex-plugin"), { recursive: true });
+      await mkdir(join(sourceDir, ".claude-plugin"), { recursive: true });
+      await writeFile(join(sourceDir, ".codex-plugin", "plugin.json"), '{"name": "dual-tools"}');
+      await writeFile(join(sourceDir, ".claude-plugin", "plugin.json"), malformed);
+      const config = `version = 1
+agents = ["codex"]
+
+[[plugins]]
+name = "dual-tools"
+source = "path:plugin-source/dual-tools"
+`;
+      const scope = resolveScope("project", projectRoot);
+      await writeFile(scope.configPath, config);
+
+      expect((await runInstall({ scope })).installedPlugins).toEqual(["dual-tools"]);
+      expect((await runSync({ scope })).issues).toEqual([]);
+      expect(await readFile(join(scope.pluginsDir, "dual-tools", ".claude-plugin", "plugin.json"), "utf-8")).toBe(malformed);
+
+      await writeFile(scope.configPath, config.replace('["codex"]', '["codex", "claude"]'));
+      await expect(runInstall({ scope })).rejects.toThrow("Invalid Claude native fallback");
     },
   );
 

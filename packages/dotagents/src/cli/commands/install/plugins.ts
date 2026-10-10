@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { PLUGIN_NAME_PATTERN, type AgentsConfig } from "../../../config/schema.js";
+import type { AgentsConfig } from "../../../config/schema.js";
 import type { Lockfile } from "../../../lockfile/schema.js";
 import type { ScopeRoot } from "../../../scope.js";
 import {
@@ -15,7 +15,7 @@ import {
   resolvePlugin,
 } from "../../../plugins/store.js";
 import type { PluginDeclaration } from "../../../plugins/types.js";
-import { GitError, TrustError, type CacheReuse } from "@sentry/dotagents-lib";
+import { GitError, PLUGIN_NAME_PATTERN, TrustError, type CacheReuse } from "@sentry/dotagents-lib";
 import { getCacheStateDir } from "../../cache.js";
 import { InstallError } from "./errors.js";
 

@@ -8,6 +8,7 @@ import { runInstall } from "./install.js";
 import type { ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 import { commandPrefix, type CommandContext } from "../context.js";
+import { getAgent } from "../../targets/registry.js";
 
 export class McpError extends Error {
   constructor(message: string) {
@@ -82,6 +83,8 @@ export async function runMcpAdd(opts: McpAddOptions): Promise<void> {
     entry.headers = buildHeaders(opts.headers);
   }
 
+  // Reject target-specific restrictions before persisting the declaration.
+  for (const id of config.agents) {getAgent(id)?.serializeServer(entry);}
   await addMcpToConfig(scope.configPath, entry);
   await runInstall({ scope });
 }

@@ -6,7 +6,7 @@ dotagents is shared tooling for coding agents. It manages agent skill dependenci
 
 Declare what you need, run `dotagents install` for global state or `dotagents --project install` for repository-local state, and skills appear in the selected scope with integrations for each configured tool. MCP, hook, subagent, and plugin configs are generated per agent.
 
-> **Implementation note.** The skill-loading, source-fetching, and trust-validation primitives that drive the CLI are factored into a separate npm package, [`@sentry/dotagents-lib`](../packages/dotagents-lib/), versioned in lock-step with `@sentry/dotagents`. The `agents.toml` grammar and the `.agents/` convention described below remain entirely the host's responsibility — the lib only knows about source strings, SKILL.md, and the cache.
+> **Implementation note.** The skill and Agent Plugin resolvers, source-fetching, and trust-validation primitives that drive the CLI live in [`@sentry/dotagents-lib`](../packages/dotagents-lib/), versioned in lock-step with `@sentry/dotagents`. The `agents.toml` grammar, installation lifecycle, and `.agents/` convention remain the host's responsibility.
 
 ### Why
 
@@ -93,7 +93,7 @@ targets = ["claude", "cursor", "codex", "copilot", "grok", "opencode", "pi"]
 |-------|----------|-------------|
 | `version` | Yes | Schema version. Always `1`. |
 | `defaultRepositorySource` | No | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. Defaults to `github`. |
-| `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `copilot`, `vscode`, `grok`, `opencode`, `pi`. Defaults to `[]`. When set, dotagents creates skills symlinks and runtime config files for each agent where supported. `grok` and `pi` are plugin-only targets. |
+| `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `copilot`, `vscode`, `grok`, `opencode`, `pi`. Defaults to `[]`. When set, dotagents creates skills symlinks and runtime config files for each agent where supported. `grok` is a plugin-only target. |
 | `project` | No | Project metadata. |
 | `symlinks` | No | Symlink configuration (legacy — prefer `agents` for new projects). |
 | `skills` | No | Skill dependencies (array of tables). |
@@ -246,6 +246,10 @@ Plugin dependencies. Each entry selects one plugin bundle from a source. dotagen
 
 The preferred canonical plugin input is an [Agent Plugins](https://agent-plugins.org/) bundle under `.agents/plugins/<name>/`: required `plugin.json`, optional `skills/`, optional `mcp.json`, and client-specific extension namespaces. During migration, a valid portable root may coexist with authored Claude, Cursor, or Codex manifests as a hybrid compatibility bundle. The portable root remains the source of truth. Dotagents ignores a native manifest when the target adapter can reproduce it from portable data, and retains it byte-for-byte as a matching-client fallback only when it contains behavior the adapter cannot represent. Generated adapters are managed, disposable output and never become input to later normalization. Source declarations, lock entries, marketplaces, target selection, and generated runtime files remain management concerns outside the portable bundle.
 
+For bundles with native manifests but no root `plugin.json`, Codex, Claude, then Cursor order determines the primary manifest. All native manifests are preserved for their matching clients. The primary manifest must be valid; errors in additional manifests block installation only when their client is selected.
+
+Local marketplace entries may use `"."` or `"./"` for the source root. An entry with `strict: false` can supply the plugin manifest when the directory has no `plugin.json`; dotagents preserves its declared fields in the installed bundle. Native marketplace definitions retain their owning client, so native settings stay with that client while other targets receive portable skills. Saved plugin paths remain pinned across installs.
+
 See [Plugin Support Specification](plugins.md) for the Agent Plugins-aligned bundle contract, legacy migration plan, discovery rules, normalized internal model, downstream target transformations, and implementation gaps.
 
 | Field | Required | Description |
@@ -284,6 +288,9 @@ Global scope installs canonical plugins into `~/.agents/plugins/<name>/`. It gen
 | `grok` | Grok Build | `.grok` | Not generated | Not generated | Not generated |
 | `vscode` | VS Code Copilot | `.vscode` | `.vscode/mcp.json` | JSON | Not supported |
 | `opencode` | OpenCode | `.opencode` | `.opencode/opencode.jsonc` | JSONC (shared) | `.opencode/agents/*.md` |
+| `pi` | Pi | `.pi` | `.pi/mcp.json` | JSON (shared) | Not supported |
+
+Pi 0.99+ supports `[[mcp]]` declarations over stdio and Streamable HTTP. With `pi` in `agents`, dotagents writes `.pi/mcp.json` for project scope and `~/.pi/agent/mcp.json` for global scope, or `$PI_CODING_AGENT_DIR/mcp.json` when overridden (`~` is expanded). Existing unrelated servers and top-level settings are preserved. Pi server names allow only letters, digits, underscores, and hyphens. URLs must be literal; `${VAR}` references work in headers and environment values. Pi only reads project MCP config after the project is trusted; use `pi mcp list --json` to check connections and `pi mcp login <server>` for OAuth. Plugin-bundled MCP is not projected to Pi yet.
 
 Each agent has its own MCP config format. dotagents translates the universal `[[mcp]]` declarations into the format each tool expects during `install` and `sync`. Grok is currently supported for plugin projections only.
 
@@ -931,6 +938,7 @@ dotagents/
       src/
         index.ts             # Library public API
         skills/              # SKILL.md loader, discovery, resolver
+        plugins/             # Plugin manifests, discovery, resolution
         sources/             # git, cache, local, well-known source handling
         trust/               # Trust policy validation
         utils/               # exec and filesystem helpers
