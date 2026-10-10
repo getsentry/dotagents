@@ -63,6 +63,8 @@ npx @sentry/dotagents --project doctor --fix
 Project commands other than `init` require `agents.toml` and never fall back to global state. Existing project and global files are not copied, merged, or removed when switching scopes.
 Project-managed paths must also resolve inside the repository: traversal paths and symlinks that point outside it are rejected, while aliases to another location inside the repository remain supported.
 
+The optional project `post-merge` hook clears inherited Git repository variables for its install command, keeping cache updates separate from the repository being merged. Run `npx @sentry/dotagents --project init` to refresh an existing managed hook.
+
 ## Commands
 
 | Command | Description |

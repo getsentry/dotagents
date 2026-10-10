@@ -65,7 +65,7 @@ describe("managed post-merge hooks", () => {
     expect(await inspectPostMergeHook(gitDir)).toBe("unmanaged");
   });
 
-  it("clears git's repository-local environment before running dotagents", async () => {
+  it("clears git's environment only for the managed command", async () => {
     const binDir = join(root, "bin");
     await mkdir(binDir);
     await writeFile(
@@ -74,6 +74,11 @@ describe("managed post-merge hooks", () => {
     );
     await chmod(join(binDir, "dotagents"), 0o755);
     await installPostMergeHook(gitDir);
+    const managedHook = await readFile(hookPath, "utf-8");
+    await writeFile(
+      hookPath,
+      `${managedHook}printf 'after GIT_DIR=%s GIT_REFLOG_ACTION=%s\\n' "$GIT_DIR" "$GIT_REFLOG_ACTION"\n`,
+    );
 
     // A merge in a linked worktree runs the hook with GIT_DIR set.
     const { stdout } = await exec(hookPath, [], {
@@ -85,6 +90,8 @@ describe("managed post-merge hooks", () => {
       },
     });
 
-    expect(stdout.trim()).toBe("--project install GIT_DIR=unset GIT_REFLOG_ACTION=unset");
+    expect(stdout.trim()).toBe(
+      `--project install GIT_DIR=unset GIT_REFLOG_ACTION=unset\nafter GIT_DIR=${gitDir} GIT_REFLOG_ACTION=merge feature`,
+    );
   });
 });

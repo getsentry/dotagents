@@ -2,6 +2,7 @@ const COMMAND_HELP = {
   init: `Usage: npx @sentry/dotagents [--project|--global|--user] init [options]
 
 Initialize agents.toml and the selected scope's managed directories.
+Project init also refreshes an existing managed post-merge hook for safe cache updates.
 
 Options:
   --agents <ids>  Comma-separated agent IDs for non-interactive setup

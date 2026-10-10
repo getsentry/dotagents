@@ -37,6 +37,10 @@ Initialize the selected scope's config and managed directories. Interactive
 mode prompts for agent targets and trust policy. Project init also sets up
 gitignore entries.
 
+Re-running `dotagents --project init` refreshes an existing managed post-merge
+hook. The hook clears inherited Git repository variables only for its install
+command, keeping cache updates separate from the repository being merged.
+
 By default, `init` declares the `dotagents` skill from `getsentry/dotagents` so
 agents can discover CLI guidance. It then runs `install` best-effort.
 

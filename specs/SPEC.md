@@ -528,6 +528,8 @@ dotagents init [--force] [--agents claude,cursor]
 
 Outside Git, `dotagents --project init` initializes the current directory and skips Git-only post-merge hook setup. Project init upgrades an existing marker-delimited legacy dotagents post-merge block to the explicit-project command while preserving unrelated hook content and file permissions.
 
+The managed hook clears inherited Git repository variables in a subshell before running install. This isolates cache Git operations from the repository being merged and preserves the environment for unrelated hook commands. Re-running project init refreshes an existing managed block.
+
 **Flags:**
 - `--force`: Overwrite existing `agents.toml`
 - `--agents <list>`: Comma-separated list of agent IDs to include in config (e.g. `claude,cursor`)

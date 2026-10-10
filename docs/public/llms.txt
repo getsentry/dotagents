@@ -362,6 +362,8 @@ npx @sentry/dotagents init [--force] [--agents claude,cursor]
 
 Create the selected scope's `agents.toml` and managed directories. Automatically includes the `dotagents` skill from `getsentry/dotagents` for CLI guidance. Interactive project init inside Git prompts for agent targets, trust policy, and optionally sets up a git `post-merge` hook to auto-run `npx @sentry/dotagents --project install` on pull (defaults to no). Both direct and npx fallback hook commands include `--project`. Project init outside Git uses the current directory and skips Git-only hook setup. Project init upgrades legacy marker-delimited hooks while preserving unrelated content and executable permissions.
 
+The managed hook clears inherited Git repository variables only for its install command, so cache updates cannot target the repository being merged. Re-run `npx @sentry/dotagents --project init` to refresh an existing managed hook.
+
 | Flag | Description |
 |------|-------------|
 | `--agents <list>` | Comma-separated agent targets |
