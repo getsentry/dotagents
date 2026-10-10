@@ -26,11 +26,15 @@
   "pnpm": {
     "overrides": {
       "esbuild": "^0.28.1",
-      "fast-uri": "^3.1.5",
-      "js-yaml": "^4.3.1",
+      "devalue": "^5.9.3",
+      "fast-uri": "^3.1.8",
+      "js-yaml": "^4.3.2",
       "nanoid": "^3.3.18",
       "postcss": "^8.5.26",
-      "sharp": "^0.35.3",
+      "postcss-selector-parser": "^7.1.6",
+      "sharp": "^0.35.5",
+      "smol-toml": "^1.9.1",
+      "source-map-js": "^1.2.2",
       "yaml": "^2.8.3"
     }
   }
