@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm, readFile, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, readFile, symlink, cp } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import * as clack from "@clack/prompts";
 import addCommand, {
   runAdd as runAddCommand,
@@ -13,7 +14,7 @@ import addCommand, {
 } from "./add.js";
 import * as installModule from "./install.js";
 import { runSync } from "./sync.js";
-import { TrustError, exec } from "@sentry/dotagents-lib";
+import { TrustError, discoverSkill, exec } from "@sentry/dotagents-lib";
 import { resolveScope } from "../../scope.js";
 import type { CommandContext } from "../context.js";
 import { z } from "zod/v4";
@@ -131,6 +132,32 @@ describe("runAdd", () => {
     delete process.env["GIT_CONFIG_VALUE_0"];
     delete process.env["GIT_TRACE2_EVENT"];
     await rm(tmpDir, { recursive: true });
+  });
+
+  it("installs this repository's dotagents plugin and still discovers its standalone skill", async () => {
+    const sourceRoot = fileURLToPath(new URL("../../../../../", import.meta.url));
+    const localSource = join(projectRoot, "source");
+    for (const path of [".claude-plugin", "plugins/dotagents", "skills/dotagents"]) {
+      await cp(join(sourceRoot, path), join(localSource, path), {
+        recursive: true,
+        verbatimSymlinks: true,
+      });
+    }
+    await writeFile(join(projectRoot, "agents.toml"), 'version = 1\nagents = ["claude"]\n');
+    const scope = resolveScope("project", projectRoot);
+
+    await expect(runAdd({
+      scope,
+      specifier: "path:source",
+      names: ["dotagents"],
+    })).resolves.toBe("dotagents");
+
+    const installedSkill = await readFile(
+      join(scope.pluginsDir, "dotagents", "skills", "dotagents", "SKILL.md"),
+      "utf-8",
+    );
+    expect(installedSkill).toBe(await readFile(join(sourceRoot, "skills", "dotagents", "SKILL.md"), "utf-8"));
+    expect((await discoverSkill(sourceRoot, "dotagents"))?.meta.name).toBe("dotagents");
   });
 
   it("does not fetch a git source again during the nested install", async () => {
