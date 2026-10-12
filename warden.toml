@@ -17,7 +17,6 @@ actions = ["opened", "synchronize", "reopened"]
 
 [[skills]]
 name = "security-review"
-remote = "getsentry/sentry-skills"
 paths = ["packages/*/src/**/*.ts"]
 ignorePaths = ["packages/*/src/**/*.test.ts"]
 

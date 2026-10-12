@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ensureCached, validateCacheKey, CacheError } from "./cache.js";
@@ -55,6 +56,7 @@ describe("ensureCached", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -246,5 +248,49 @@ describe("ensureCached", () => {
       cacheKey: "test/repo",
     });
     expect(unpinned.commit).toBe(latestCommit);
+  });
+
+  it("preserves the caller's repository, files, and index with inherited git variables", async () => {
+    await writeFile(join(repoDir, "README.md"), "first\n");
+    await exec("git", ["add", "README.md"], { cwd: repoDir });
+    await exec("git", ["commit", "-m", "initial"], { cwd: repoDir });
+    await writeFile(join(repoDir, "README.md"), "second\n");
+    await exec("git", ["commit", "-am", "second"], { cwd: repoDir });
+    await exec("git", ["push", "origin", "main"], { cwd: repoDir });
+
+    const cached = await ensureCached({
+      stateDir,
+      url: remoteDir,
+      cacheKey: "test/repo",
+    });
+
+    // A post-merge hook in a linked worktree inherits GIT_DIR for the
+    // repository being merged, here one with an unpushed commit.
+    await writeFile(join(repoDir, "README.md"), "local\n");
+    await exec("git", ["commit", "-am", "local"], { cwd: repoDir });
+    const { stdout } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
+    const callerHead = stdout.trim();
+    await writeFile(join(repoDir, "staged.txt"), "staged\n");
+    await exec("git", ["add", "staged.txt"], { cwd: repoDir });
+    await writeFile(join(repoDir, "README.md"), "unstaged\n");
+    vi.stubEnv("GIT_DIR", join(repoDir, ".git"));
+    vi.stubEnv("GIT_WORK_TREE", repoDir);
+    vi.stubEnv("GIT_INDEX_FILE", join(repoDir, ".git", "index"));
+
+    const refreshed = await ensureCached({
+      stateDir,
+      url: remoteDir,
+      cacheKey: "test/repo",
+    });
+    vi.unstubAllEnvs();
+
+    const { stdout: headStdout } = await exec("git", ["rev-parse", "HEAD"], { cwd: repoDir });
+    const { stdout: stagedStdout } = await exec("git", ["diff", "--cached", "--name-only"], { cwd: repoDir });
+    expect(headStdout.trim()).toBe(callerHead);
+    expect(existsSync(join(repoDir, ".git", "shallow"))).toBe(false);
+    expect(stagedStdout.trim()).toBe("staged.txt");
+    expect(await readFile(join(repoDir, "README.md"), "utf-8")).toBe("unstaged\n");
+    expect(await readFile(join(refreshed.repoDir, "README.md"), "utf-8")).toBe("second\n");
+    expect(refreshed.commit).toBe(cached.commit);
   });
 });

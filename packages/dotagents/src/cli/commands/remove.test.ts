@@ -12,13 +12,12 @@ import {
   WildcardSkillRemoveError,
 } from "./remove.js";
 import { runInstall as runInstallCommand } from "./install.js";
-import { exec } from "@sentry/dotagents-lib";
+import { AGENT_PLUGIN_SCHEMA, exec } from "@sentry/dotagents-lib";
 import { loadLockfile } from "../../lockfile/loader.js";
 import { writeLockfile } from "../../lockfile/writer.js";
 import { loadConfig } from "../../config/loader.js";
 import { resolveScope } from "../../scope.js";
 import { DOTAGENTS_MANAGED_PLUGIN_MARKER } from "../../plugins/store.js";
-import { AGENT_PLUGIN_SCHEMA } from "../../plugins/schema.js";
 
 const SKILL_MD = (name: string) => `---
 name: ${name}

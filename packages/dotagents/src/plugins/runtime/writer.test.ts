@@ -8,9 +8,12 @@ import type { PluginDeclaration } from "../types.js";
 import {
   AGENT_PLUGIN_MCP_SCHEMA,
   AGENT_PLUGIN_SCHEMA,
+  isSerializedObject,
   isStandardPluginManifest,
   type LegacyPluginManifest,
-} from "../schema.js";
+  type SerializedObject,
+  type SerializedValue,
+} from "@sentry/dotagents-lib";
 import {
   prunePluginOutputs,
   projectedPiSkillNames,
@@ -18,7 +21,6 @@ import {
   verifyPluginOutputs,
   writePluginOutputs,
 } from "./writer.js";
-import { isSerializedObject, type SerializedObject, type SerializedValue } from "@sentry/dotagents-lib";
 
 function parseJsonObject(content: string): SerializedObject {
   const parsed = JSON.parse(content);
@@ -1080,6 +1082,23 @@ describe("plugin writer", () => {
     expect(result.written).toBe(1);
     await expectSymlinkTarget(join(root, ".agents", "skills", "code-review"), skillDir);
     await expect(projectedPiSkillNames(["pi"], [alpha])).resolves.toEqual(["code-review"]);
+  });
+
+  it("projects an explicitly declared skill directory into Pi and OpenCode", async () => {
+    const alpha = await plugin("alpha-tools", {
+      manifest: { name: "alpha-tools", skills: ["./skills/plugin-qa"] },
+    });
+    await writePluginSkill(alpha.pluginDir, "plugin-qa");
+    const result = await writePluginOutputs(["pi", "opencode"], [alpha], root);
+    expect(result.warnings).toEqual([]);
+    for (const dir of [".agents", ".opencode"]) {
+      await expectSymlinkTarget(
+        join(root, dir, "skills", "plugin-qa"),
+        join(alpha.pluginDir, "skills", "plugin-qa"),
+      );
+    }
+    await expect(projectedPiSkillNames(["pi"], [alpha])).resolves.toEqual(["plugin-qa"]);
+    await expect(verifyPluginOutputs(["pi", "opencode"], [alpha], root)).resolves.toEqual([]);
   });
 
   it("warns and skips invalid Pi plugin skill names", async () => {

@@ -10,7 +10,6 @@ import {
   isWildcardDep,
   GITHUB_HTTPS_URL,
   GITLAB_HTTPS_URL,
-  PLUGIN_NAME_PATTERN,
   agentsConfigSchema,
 } from "../../config/schema.js";
 import {
@@ -37,6 +36,9 @@ import {
   TrustError,
   GitError,
   type CacheReuse,
+  discoverPlugins,
+  PLUGIN_NAME_PATTERN,
+  type PluginCandidate,
 } from "@sentry/dotagents-lib";
 import { getCacheStateDir, HOST_SCAN_DIRS } from "../cache.js";
 import { formatGitError, formatTrustError } from "../errors.js";
@@ -44,10 +46,7 @@ import { runInstall } from "./install.js";
 import type { ScopeRoot } from "../../scope.js";
 import { ensureUserScopeBootstrapped } from "../ensure-user-scope.js";
 import { commandPrefix, type CommandContext } from "../context.js";
-import {
-  discoverPlugins,
-  type PluginCandidate,
-} from "../../plugins/store.js";
+
 import { isNumber, isString } from "../../utils/type-guards.js";
 
 /** Parent paths that are standard/expected — no need to show them in the picker */
@@ -693,6 +692,10 @@ async function executeAdd(opts: AddOptions): Promise<DetailedAddResult> {
     progress?.message(`Inspecting ${specifier}`);
     if (acquired.pluginEligible) {
       plugins = await discoverPlugins(acquired.rootDir, namesOverride);
+      if (plugins.length === 0 && namesOverride?.length) {
+        // A missing plugin name must not turn a plugin source into a skill source.
+        plugins = await discoverPlugins(acquired.rootDir);
+      }
     }
     progress?.stop("Source ready");
   } catch (err) {

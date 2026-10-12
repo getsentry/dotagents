@@ -342,6 +342,17 @@ When no root `plugin.json` exists, discovery may load a native
 copies the native bundle unchanged, records its owning client in an internal
 marker, and creates the existing canonical compatibility manifest when needed.
 
+Local marketplace paths `"."` and `"./"` select the source root. When a
+marketplace entry sets `strict: false` and no supported manifest file exists,
+the entry supplies the compatibility manifest. Native marketplace entries also
+produce a manifest for their owning client inside the installed bundle; source
+files are not modified. Marketplace fields `source` and `strict` are not plugin
+manifest fields. An existing manifest retains precedence, and malformed
+manifests still fail. Without `strict: false`, a manifest file remains required.
+
+Explicit configured paths can resolve these entries, but only for the saved
+name and directory. A later marketplace edit cannot move a pinned dependency.
+
 The owning client's native manifest remains authoritative and is never
 overwritten by a generated adapter. Other selected clients receive only core
 metadata and convention-based Agent Skills. Native commands, agents, rules,

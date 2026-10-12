@@ -1,21 +1,25 @@
 import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { isStandardPluginManifest, parsePluginMcpBestEffort, type LegacyPluginManifest, type PluginManifest, type PluginMcpConfig } from "../schema.js";
+import {
+  codexPluginInterface,
+  generatedNativeMcpPath,
+  isStandardPluginManifest,
+  parsePluginMcpBestEffort,
+  type LegacyPluginManifest,
+  type PluginManifest,
+  type PluginMcpConfig,
+  type SerializedObject,
+} from "@sentry/dotagents-lib";
 import type { PluginDeclaration } from "../types.js";
 import {
-  generatedNativeMcpPath,
   hasAuthoredNativeInterface,
   usesLegacyPluginComponents,
 } from "../targets.js";
 import { isManagedJsonFile, removeManagedJsonFile, stableJson, writeManagedJsonIfChanged } from "../managed-files.js";
-import {
-  codexPluginInterface,
-  runtimePath,
-} from "./manifest-values.js";
+import { runtimePath } from "./manifest-values.js";
 import type { PluginWriteWarning } from "./types.js";
 import { isSafeComponentPath } from "./component-paths.js";
-import type { SerializedObject } from "@sentry/dotagents-lib";
 import { isString, isStringArray } from "../../utils/type-guards.js";
 
 type ComponentManifestKey =
