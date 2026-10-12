@@ -190,7 +190,6 @@ async function runInteractiveInit(
       options: [
         ...allAgents().map((a) => ({ label: a.displayName, value: a.id })),
         { label: "Grok Build (plugins)", value: "grok" },
-        { label: "Pi (plugin skills)", value: "pi" },
       ],
       required: true,
     }),

@@ -5,8 +5,9 @@ import codex from "./definitions/codex.js";
 import vscode from "./definitions/vscode.js";
 import opencode from "./definitions/opencode.js";
 import copilot from "./definitions/copilot.js";
+import pi from "./definitions/pi.js";
 
-const ALL_AGENTS: AgentDefinition[] = [claude, cursor, codex, vscode, opencode, copilot];
+const ALL_AGENTS: AgentDefinition[] = [claude, cursor, codex, vscode, opencode, copilot, pi];
 
 const AGENT_REGISTRY = new Map<string, AgentDefinition>(
   ALL_AGENTS.map((a) => [a.id, a]),

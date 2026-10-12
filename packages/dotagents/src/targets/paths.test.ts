@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { getUserMcpTarget } from "./paths.js";
@@ -89,6 +89,21 @@ describe("getUserMcpTarget", () => {
 
   it("throws for unknown agent", () => {
     expect(() => getUserMcpTarget("emacs")).toThrow("Unknown agent");
+  });
+
+  it.each([
+    [undefined, join(home, ".pi", "agent")],
+    ["", join(home, ".pi", "agent")],
+    [join(home, "custom-pi"), join(home, "custom-pi")],
+    ["~/custom-pi", join(home, "custom-pi")],
+    ["~", home],
+  ] as const)("resolves Pi's global directory override %s", (override, expected) => {
+    vi.stubEnv("PI_CODING_AGENT_DIR", override);
+    try {
+      expect(getUserMcpTarget("pi")).toEqual({ filePath: join(expected, "mcp.json"), shared: true });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

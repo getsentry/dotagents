@@ -69,6 +69,60 @@ export type { CacheResult, CacheReuse } from "./sources/cache.js";
 export { ensureWellKnownCached } from "./sources/wellknown.js";
 export { resolveLocalSource, LocalSourceError } from "./sources/local.js";
 
+// Agent Plugins: manifest schemas, discovery, and resolution
+export {
+  AGENT_PLUGIN_SCHEMA,
+  AGENT_PLUGIN_MCP_SCHEMA,
+  isStandardPluginManifest,
+  parsePluginManifest,
+  parsePluginMcp,
+  parsePluginMcpBestEffort,
+  parsePluginMarketplace,
+} from "./plugins/schema.js";
+export type {
+  StandardPluginManifest,
+  LegacyPluginManifest,
+  PluginManifest,
+  PluginMcpConfig,
+  PluginMcpParseResult,
+  MarketplacePluginEntry,
+  PluginMarketplace,
+} from "./plugins/schema.js";
+export {
+  PLUGIN_NAME_PATTERN,
+  HYBRID_LEGACY_ROOTS,
+  resolvePlugin,
+  discoverPlugins,
+  loadInstalledPluginBundle,
+  assertPluginBundleSymlinksContained,
+} from "./plugins/resolver.js";
+export type {
+  PluginDependencyInput,
+  PluginResolveOptions,
+  PluginResolverServices,
+  PluginCandidate,
+  ResolvedPlugin,
+  ResolvedLocalPlugin,
+  ResolvedGitPlugin,
+  InstalledPluginProvenance,
+} from "./plugins/resolver.js";
+export {
+  NATIVE_PLUGIN_SOURCES,
+  NATIVE_PLUGIN_MANIFEST_PATHS,
+  nativePluginDisplayName,
+  nativeInterfaceNeedsFallback,
+  generatedNativeMcpPath,
+  manifestString,
+  legacyManifestString,
+  codexPluginInterface,
+} from "./plugins/native-interfaces.js";
+export type {
+  NativePluginSource,
+  AuthoredNativePluginInterface,
+  AuthoredNativePluginInterfaces,
+  PluginBundle,
+} from "./plugins/types.js";
+
 // Source-host primitives
 export {
   GITHUB_HTTPS_URL,

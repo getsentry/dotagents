@@ -2,6 +2,7 @@ const COMMAND_HELP = {
   init: `Usage: npx @sentry/dotagents [--project|--global|--user] init [options]
 
 Initialize agents.toml and the selected scope's managed directories.
+Project init also refreshes an existing managed post-merge hook for safe cache updates.
 
 Options:
   --agents <ids>  Comma-separated agent IDs for non-interactive setup
@@ -10,6 +11,7 @@ Options:
   install: `Usage: npx @sentry/dotagents [--project|--global|--user] install [options]
 
 Install or refresh dependencies declared in agents.toml.
+Preserve publisher-provided plugin manifests for their matching clients.
 
 Options:
   --frozen        Deprecated compatibility flag; normal install still runs
@@ -17,6 +19,7 @@ Options:
   add: `Usage: npx @sentry/dotagents [--project|--global|--user] add <source> [name...] [options]
 
 Discover plugins first, otherwise skills, then add and install the selected dependencies.
+Local marketplace entries with strict: false may define plugins without a plugin.json.
 Re-adding an identical declaration refreshes its installation successfully.
 
 Options:
@@ -55,6 +58,8 @@ Options:
   mcp: `Usage: npx @sentry/dotagents [--project|--global|--user] mcp <subcommand>
 
 Manage MCP server declarations.
+Pi 0.99+ uses .pi/mcp.json (project) or ~/.pi/agent/mcp.json (global).
+PI_CODING_AGENT_DIR overrides Pi's global config directory.
 
 Subcommands:
   add             Add an MCP server declaration
@@ -65,6 +70,7 @@ Run 'npx @sentry/dotagents mcp <subcommand> --help' for details.`,
   "mcp add": `Usage: npx @sentry/dotagents [--project|--global|--user] mcp add <name> (--command <cmd> | --url <url>) [options]
 
 Add an MCP server declaration to agents.toml.
+Pi server names allow letters, digits, underscores, and hyphens; URLs must be literal.
 
 Options:
   --command <cmd>       Stdio command including arguments

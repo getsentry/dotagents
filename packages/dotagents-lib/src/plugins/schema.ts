@@ -1,7 +1,7 @@
 import { z } from "zod/v4";
 import { validateHeaderName, validateHeaderValue } from "node:http";
 import { isIP } from "node:net";
-import { isSerializedObject, type SerializedObject } from "@sentry/dotagents-lib";
+import { isSerializedObject, type SerializedObject } from "../utils/serialized.js";
 import { isObject, isString } from "../utils/type-guards.js";
 
 export const AGENT_PLUGIN_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
@@ -245,6 +245,7 @@ export const marketplaceSourceSchema = z.union([
 export const marketplacePluginEntrySchema = z.object({
   name: z.string(),
   source: marketplaceSourceSchema,
+  strict: z.boolean().optional(),
   description: z.string().optional(),
   version: z.string().optional(),
   category: z.string().optional(),
