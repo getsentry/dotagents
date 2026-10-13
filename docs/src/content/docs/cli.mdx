@@ -161,6 +161,9 @@ Remove a skill or plugin from `agents.toml`, delete managed installed files, and
 update the lockfile. You can also pass a source to remove all skills and plugins
 from that source. When removing a skill provided by a wildcard source, dotagents
 can add that skill to the wildcard `exclude` list.
+This supports inline and multiline arrays and preserves comments. The exclusion
+is saved before deleting the skill or its lock entry; if the config cannot be
+updated, removal fails and keeps both.
 If a skill and plugin share the same name, name-based removal is rejected. When
 their sources differ, pass the dependency's source to disambiguate.
 

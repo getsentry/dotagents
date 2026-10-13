@@ -81,6 +81,8 @@ The optional project `post-merge` hook clears inherited Git repository variables
 
 All commands default to global scope (`~/.agents/`). `--global` selects it explicitly, and legacy `--user` remains a compatibility alias. `--project` selects repository-local state. Combining `--project` with either global alias is an error.
 
+Removing a wildcard-provided skill adds it to the source's `exclude` array, including hand-edited multiline arrays. The exclusion is saved before deleting the installed skill and its lock entry; if the config cannot be updated, removal fails and keeps both.
+
 ## Source Formats
 
 Skills can come from GitHub, GitLab, any git server, well-known HTTPS skill sources, or local directories. Git and local sources are checked for plugins first. If any plugin is found, `add` treats the entire source as plugin-only; standalone and bundled skills in that source are not offered. Malformed plugin-shaped content is an error rather than a fallback to skills. Local plugin sources that overlap the project's managed `.agents/plugins` directory are rejected before configuration changes. Well-known HTTPS sources remain skill-only:

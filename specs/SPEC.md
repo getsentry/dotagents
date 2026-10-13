@@ -635,6 +635,8 @@ If an explicit skill and plugin share the requested name, fail without changing 
 4. Prune generated plugin runtime outputs when removing a plugin
 5. In project scope, regenerate `.agents/.gitignore`
 
+For a wildcard-provided skill, confirm adding it to the wildcard's `exclude` array (or skip confirmation with `--yes`). Preserve comments in inline and multiline arrays, validate the updated config, and save it before deleting the skill or its lock entry. If the exclusion cannot be saved, fail without deleting either.
+
 **Behavior (source removal):**
 When the argument matches a source specifier (e.g. `owner/repo`, a URL) rather than a dependency name, removes all skills and plugins from that source:
 1. Find all skills and plugins from the source (explicit entries from config + wildcard-expanded skill entries from lockfile)

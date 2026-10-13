@@ -1,10 +1,12 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { parse as parseTOML, stringify } from "smol-toml";
-import type {
-  WildcardSkillDependency,
-  TrustConfig,
-  McpConfig,
-  PluginConfig,
+import {
+  agentsConfigSchema,
+  isWildcardDep,
+  type WildcardSkillDependency,
+  type TrustConfig,
+  type McpConfig,
+  type PluginConfig,
 } from "./schema.js";
 import {
   isSerializedObject,
@@ -149,7 +151,7 @@ export async function addWildcardToConfig(
 
 /**
  * Add a skill name to the exclude list of a wildcard entry matching the given source.
- * If the exclude line already exists, appends to it. Otherwise adds a new line.
+ * Preserves comments and supports inline and multiline exclude arrays.
  */
 export async function addExcludeToWildcard(
   filePath: string,
@@ -157,6 +159,15 @@ export async function addExcludeToWildcard(
   skillName: string,
 ): Promise<void> {
   const content = await readFile(filePath, "utf-8");
+  const config = agentsConfigSchema.parse(parseTOML(content));
+  const wildcard = config.skills.find(
+    (dep) => isWildcardDep(dep) && sourcesMatch(dep.source, source),
+  );
+  if (!wildcard || !isWildcardDep(wildcard)) {
+    throw new Error(`Wildcard source "${source}" not found in ${filePath}.`);
+  }
+  if (wildcard.exclude.includes(skillName)) {return;}
+
   const lines = content.split("\n");
   const span = findArrayTables(lines, "[[skills]]").find((candidate) => {
     const name = getStringField(lines, candidate, "name");
@@ -164,21 +175,50 @@ export async function addExcludeToWildcard(
     return name === "*" && candidateSource !== undefined && sourcesMatch(candidateSource, source);
   });
 
-  if (span) {
-    const excludeIdx = findFieldLine(lines, span, "exclude");
-    if (excludeIdx === undefined) {
-      lines.splice(span.end, 0, `exclude = ${tomlValue([skillName])}`);
+  if (!span) {
+    throw new Error(`Cannot locate wildcard source "${source}" in ${filePath}.`);
+  }
+
+  const excludeIdx = findFieldLine(lines, span, "exclude");
+  if (excludeIdx === undefined) {
+    lines.splice(span.end, 0, `exclude = ${tomlValue([skillName])}`);
+  } else {
+    // Validated skill names cannot contain # or ], so these delimit TOML syntax.
+    let end = excludeIdx;
+    while (end < span.fieldsEnd && !excludeArrayCode(lines[end]!).includes("]")) {end++;}
+    if (end === span.fieldsEnd) {
+      throw new Error(`Cannot locate exclude array in ${filePath}.`);
+    }
+
+    let closing = excludeArrayCode(lines[end]!).indexOf("]");
+    let last = end;
+    let lastCode = excludeArrayCode(lines[end]!.slice(0, closing));
+    while (!lastCode.trim() && last > excludeIdx) {
+      lastCode = excludeArrayCode(lines[--last]!);
+    }
+    if (wildcard.exclude.length > 0 && !lastCode.endsWith(",")) {
+      lines[last] = `${lines[last]!.slice(0, lastCode.length)},${lines[last]!.slice(lastCode.length)}`;
+      if (last === end) {closing++;}
+    }
+
+    if (lines[end]!.slice(0, closing).trim() === "") {
+      const indent = lines[excludeIdx]!.match(/^\s*/)?.[0] ?? "";
+      lines.splice(end, 0, `${indent}  ${tomlValue(skillName)},`);
     } else {
-      const match = lines[excludeIdx]!.match(/^(\s*exclude\s*=\s*)\[([^\]]*)\](.*)$/);
-      if (match) {
-        const existing = match[2]!.trim();
-        const values = existing ? `${existing}, ${tomlValue(skillName)}` : tomlValue(skillName);
-        lines[excludeIdx] = `${match[1]}[${values}]${match[3]}`;
-      }
+      const separator = wildcard.exclude.length > 0 ? " " : "";
+      lines[end] = `${lines[end]!.slice(0, closing)}${separator}${tomlValue(skillName)}${lines[end]!.slice(closing)}`;
     }
   }
 
-  await writeFile(filePath, lines.join("\n"), "utf-8");
+  const updated = lines.join("\n");
+  const result = agentsConfigSchema.parse(parseTOML(updated));
+  const excluded = result.skills.some(
+    (dep) => isWildcardDep(dep) && sourcesMatch(dep.source, source) && dep.exclude.includes(skillName),
+  );
+  if (!excluded) {
+    throw new Error(`Could not exclude skill "${skillName}" from wildcard source "${source}".`);
+  }
+  await writeFile(filePath, updated, "utf-8");
 }
 
 /**
@@ -335,6 +375,10 @@ function removeBlockByHeader(
 
 function tomlValue<Value>(value: Value): string {
   return stringify({ v: value }).replace("v = ", "").trimEnd();
+}
+
+function excludeArrayCode(line: string): string {
+  return line.split("#", 1)[0]!.trimEnd();
 }
 
 /**
