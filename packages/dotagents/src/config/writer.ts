@@ -161,9 +161,9 @@ export async function addExcludeToWildcard(
   const content = await readFile(filePath, "utf-8");
   const config = agentsConfigSchema.parse(parseTOML(content));
   const wildcard = config.skills.find(
-    (dep) => isWildcardDep(dep) && sourcesMatch(dep.source, source),
+    (dep): dep is WildcardSkillDependency => isWildcardDep(dep) && sourcesMatch(dep.source, source),
   );
-  if (!wildcard || !isWildcardDep(wildcard)) {
+  if (!wildcard) {
     throw new Error(`Wildcard source "${source}" not found in ${filePath}.`);
   }
   if (wildcard.exclude.includes(skillName)) {return;}
@@ -193,7 +193,7 @@ export async function addExcludeToWildcard(
     let closing = excludeArrayCode(lines[end]!).indexOf("]");
     let last = end;
     let lastCode = excludeArrayCode(lines[end]!.slice(0, closing));
-    while (!lastCode.trim() && last > excludeIdx) {
+    while (!lastCode && last > excludeIdx) {
       lastCode = excludeArrayCode(lines[--last]!);
     }
     if (wildcard.exclude.length > 0 && !lastCode.endsWith(",")) {

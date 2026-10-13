@@ -283,7 +283,10 @@ describe("writer", () => {
       expect(isWildcardDep(wildcard) && wildcard.exclude).toEqual(["old", "new"]);
     });
 
-    it.each([",", ""])("updates multiline excludes with a %j trailing comma", async (comma) => {
+    it.each([
+      { label: "with", comma: "," },
+      { label: "without", comma: "" },
+    ])("updates multiline excludes $label a trailing comma", async ({ comma }) => {
       const input = `version = 1
 
 [[skills]]

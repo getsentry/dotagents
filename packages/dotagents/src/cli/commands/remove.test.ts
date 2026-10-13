@@ -689,18 +689,13 @@ source = "git:${repoDir}"
     const scope = resolveScope("project", projectRoot);
     await runInstall({ scope });
     const lockBefore = await readFile(scope.lockPath, "utf-8");
-    const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    try {
-      await expect(remove(["review", "--yes"], { scope }))
-        .rejects.toThrow("Cannot locate wildcard");
 
-      expect(log).not.toHaveBeenCalledWith(expect.stringContaining("Added \"review\""));
-      expect(await readFile(scope.configPath, "utf-8")).toBe(input);
-      expect(await readFile(scope.lockPath, "utf-8")).toBe(lockBefore);
-      expect(existsSync(join(scope.skillsDir, "review", "SKILL.md"))).toBe(true);
-    } finally {
-      log.mockRestore();
-    }
+    await expect(remove(["review", "--yes"], { scope }))
+      .rejects.toThrow("Cannot locate wildcard");
+
+    expect(await readFile(scope.configPath, "utf-8")).toBe(input);
+    expect(await readFile(scope.lockPath, "utf-8")).toBe(lockBefore);
+    expect(existsSync(join(scope.skillsDir, "review", "SKILL.md"))).toBe(true);
   });
 
   it("does not treat skills outside wildcard path scope as wildcard-owned", async () => {

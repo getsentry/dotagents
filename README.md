@@ -81,7 +81,7 @@ The optional project `post-merge` hook clears inherited Git repository variables
 
 All commands default to global scope (`~/.agents/`). `--global` selects it explicitly, and legacy `--user` remains a compatibility alias. `--project` selects repository-local state. Combining `--project` with either global alias is an error.
 
-Removing a wildcard-provided skill adds it to the source's `exclude` array, including hand-edited multiline arrays. The exclusion is saved before deleting the installed skill and its lock entry; if the config cannot be updated, removal fails and keeps both.
+Removing a wildcard-provided skill updates the source's `exclude` array, including multiline arrays, and preserves comments. If saving the exclusion fails, the skill and lock entry stay intact.
 
 ## Source Formats
 
