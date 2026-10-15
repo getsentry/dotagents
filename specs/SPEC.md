@@ -664,7 +664,7 @@ dotagents sync
 4. In project scope, warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
 5. Check for missing skills (in `agents.toml` but not installed)
 6. Create/verify/repair symlinks
-7. Verify and repair MCP config files for declared agents
+7. Verify and repair MCP config files for declared agents; matching entries, including Codex configs, must not report drift or repairs
 8. Verify and repair hook config files for declared agents
 9. Verify and repair generated subagent files for declared agents
 10. Verify and repair generated plugin runtime projections for declared agents

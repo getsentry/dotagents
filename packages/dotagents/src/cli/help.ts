@@ -39,6 +39,7 @@ Options:
   sync: `Usage: npx @sentry/dotagents [--project|--global|--user] sync [options]
 
 Reconcile local state without fetching dependency updates.
+Matching MCP server settings are left unchanged.
 
 Options:
   --help, -h      Show this help message`,

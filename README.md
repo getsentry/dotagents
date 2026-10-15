@@ -83,6 +83,8 @@ All commands default to global scope (`~/.agents/`). `--global` selects it expli
 
 Removing a wildcard-provided skill updates the source's `exclude` array, including multiline arrays, and preserves comments. If saving the exclusion fails, the skill and lock entry stay intact.
 
+`sync` repairs changed MCP server settings; matching entries, including Codex configs, stay unchanged.
+
 ## Source Formats
 
 Skills can come from GitHub, GitLab, any git server, well-known HTTPS skill sources, or local directories. Git and local sources are checked for plugins first. If any plugin is found, `add` treats the entire source as plugin-only; standalone and bundled skills in that source are not offered. Malformed plugin-shaped content is an error rather than a fallback to skills. Local plugin sources that overlap the project's managed `.agents/plugins` directory are rejected before configuration changes. Well-known HTTPS sources remain skill-only:

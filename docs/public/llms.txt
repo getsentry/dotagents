@@ -421,6 +421,8 @@ npx @sentry/dotagents sync
 
 Reconcile the selected scope without network access: adopt truly local orphaned skills, prune stale managed skills/subagents/plugins removed from config, regenerate managed ignore state, check for missing skills and plugins, repair symlinks, and verify/repair MCP, hook, subagent, and plugin configs. Reports issues as warnings or errors.
 
+Matching MCP entries, including Codex configs, are left unchanged and are not reported as repairs.
+
 ### mcp add
 
 ```
