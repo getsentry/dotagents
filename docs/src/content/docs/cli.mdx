@@ -290,7 +290,12 @@ dotagents trust remove <source>
 ```
 
 Remove a trusted source from `[trust]` in `agents.toml`. Matching is
-case-insensitive.
+case-insensitive. Removing the last source keeps an empty allow-list so sources
+remain untrusted.
+
+Trust add and remove support inline and multiline arrays with either quote style
+and preserve comments. If the edit cannot be applied safely, the command fails
+without changing the file.
 
 Example:
 

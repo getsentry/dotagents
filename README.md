@@ -83,6 +83,8 @@ All commands default to global scope (`~/.agents/`). `--global` selects it expli
 
 Removing a wildcard-provided skill updates the source's `exclude` array, including multiline arrays, and preserves comments. If saving the exclusion fails, the skill and lock entry stay intact.
 
+`trust add` and `trust remove` support inline and multiline arrays and preserve comments. Removing the last trusted source keeps an empty allow-list. If an edit cannot be applied safely, the config stays unchanged and the command fails.
+
 `sync` repairs changed MCP server settings; matching entries, including Codex configs, stay unchanged.
 
 ## Source Formats
