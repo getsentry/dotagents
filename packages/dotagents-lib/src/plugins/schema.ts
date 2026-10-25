@@ -83,7 +83,11 @@ export const pluginManifestSchema = z.object({
   commands: pluginPathOrPathsSchema.optional(),
   rules: pluginPathOrPathsSchema.optional(),
   hooks: pluginPathSchema.optional(),
-  mcpServers: pluginPathSchema.optional(),
+  mcpServers: z.union([
+    pluginPathSchema,
+    z.record(z.string(), z.unknown()),
+    z.array(z.union([pluginPathSchema, z.record(z.string(), z.unknown())])),
+  ]).optional(),
   lspServers: pluginPathSchema.optional(),
   apps: pluginPathSchema.optional(),
   monitors: pluginPathSchema.optional(),
