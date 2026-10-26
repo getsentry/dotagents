@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, writeFile, mkdir, readlink, rm, symlink } from "node:fs/promises";
-import { join } from "node:path";
+import { join, posix, win32 } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
-import { copyDir } from "./fs.js";
+import { copyDir, isOutsideRoot } from "./fs.js";
 
 describe("copyDir", () => {
   let srcDir: string;
@@ -42,5 +42,24 @@ describe("copyDir", () => {
 
     expect(await readlink(join(destDir, "alias"))).toBe("linked");
     expect(existsSync(join(destDir, "alias", "file.txt"))).toBe(true);
+  });
+});
+
+describe("isOutsideRoot", () => {
+  it("accepts Windows paths inside the root", () => {
+    expect(isOutsideRoot("C:\\project", "C:\\project\\.agents\\skills\\review", win32)).toBe(false);
+    expect(isOutsideRoot("C:\\project", "C:\\project", win32)).toBe(false);
+  });
+
+  it("rejects Windows paths outside the root", () => {
+    expect(isOutsideRoot("C:\\project", "C:\\other", win32)).toBe(true);
+    expect(isOutsideRoot("C:\\project", "C:\\project-evil", win32)).toBe(true);
+    expect(isOutsideRoot("C:\\project", "D:\\project\\skills", win32)).toBe(true);
+  });
+
+  it("handles POSIX paths", () => {
+    expect(isOutsideRoot("/project", "/project/.agents/skills/review", posix)).toBe(false);
+    expect(isOutsideRoot("/project", "/project-evil", posix)).toBe(true);
+    expect(isOutsideRoot("/project", "/", posix)).toBe(true);
   });
 });
