@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { stat } from "node:fs/promises";
+import { isOutsideRoot } from "../utils/fs.js";
 
 export class LocalSourceError extends Error {
   constructor(message: string) {
@@ -20,7 +21,7 @@ export async function resolveLocalSource(
   const absPath = resolve(projectRoot, relativePath);
 
   // Prevent path traversal outside the project root
-  if (!absPath.startsWith(`${absRoot}/`) && absPath !== absRoot) {
+  if (isOutsideRoot(absRoot, absPath)) {
     throw new LocalSourceError(
       `Local source "${relativePath}" resolves outside project root`,
     );
