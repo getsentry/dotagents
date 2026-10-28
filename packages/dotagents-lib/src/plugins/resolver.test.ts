@@ -77,6 +77,26 @@ describe("plugin resolver library contract", () => {
     });
   });
 
+  it("resolves a cursor-only plugin with inline mcpServers", async () => {
+    const sourceDir = join(root, "source");
+    await mkdir(join(sourceDir, ".cursor-plugin"), { recursive: true });
+    await writeFile(join(sourceDir, ".cursor-plugin", "plugin.json"), JSON.stringify({
+      name: "shadcn",
+      mcpServers: { shadcn: { command: "npx", args: ["shadcn@latest", "mcp"] } },
+    }));
+
+    const resolved = await resolvePlugin(
+      { name: "shadcn", source: "path:source" },
+      { stateDir: join(root, "state"), projectRoot: root },
+    );
+
+    expect(resolved.plugin.nativeSource).toBe("cursor");
+    expect(resolved.plugin.manifest).toMatchObject({
+      name: "shadcn",
+      mcpServers: { shadcn: { command: "npx", args: ["shadcn@latest", "mcp"] } },
+    });
+  });
+
   it("filters requested names without returning unrelated plugins", async () => {
     for (const name of ["alpha", "beta"]) {
       const pluginDir = join(root, "plugins", name);
