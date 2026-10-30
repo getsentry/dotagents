@@ -667,10 +667,50 @@ describe("verifyMcpConfigs", () => {
     await rm(dir, { recursive: true });
   });
 
-  it("returns no issues when configs match", async () => {
-    await writeMcpConfigs(["claude"], [STDIO_SERVER], projectMcpResolver(dir));
-    const issues = await verifyMcpConfigs(["claude"], [STDIO_SERVER], projectMcpResolver(dir));
+  it.each(["claude", "codex"])("returns no issues when %s configs match", async (agent) => {
+    const servers = [
+      { ...STDIO_SERVER, envValues: { PLUGIN_ROOT: "/plugins/github" } },
+      HTTP_SERVER,
+    ];
+    await writeMcpConfigs([agent], servers, projectMcpResolver(dir));
+    const issues = await verifyMcpConfigs([agent], servers, projectMcpResolver(dir));
     expect(issues).toEqual([]);
+  });
+
+  it("repairs Codex drift once while preserving unrelated TOML values", async () => {
+    const filePath = join(dir, ".codex", "config.toml");
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, `model = "custom"
+anniversary = 1979-05-27
+temperature = inf
+
+[mcp_servers.manual]
+command = "manual"
+
+[mcp_servers.github]
+command = "old"
+args = ["old"]
+env_vars = ["GITHUB_TOKEN"]
+
+[mcp_servers.github.env]
+PLUGIN_ROOT = "/old"
+`);
+    const servers = [{ ...STDIO_SERVER, envValues: { PLUGIN_ROOT: "/plugins/github" } }];
+    const resolver = projectMcpResolver(dir);
+
+    const inspected = await verifyMcpConfigs(["codex"], servers, resolver);
+    expect(inspected).toEqual([{ agent: "codex", issue: `MCP server "github" drifted in ${filePath}` }]);
+
+    const repaired = await reconcileMcpConfigs(["codex"], servers, resolver, "apply");
+    expect(repaired.written).toEqual([filePath]);
+    expect(await verifyMcpConfigs(["codex"], servers, resolver)).toEqual([]);
+    expect((await reconcileMcpConfigs(["codex"], servers, resolver, "apply")).written).toEqual([]);
+
+    const content = await readFile(filePath, "utf-8");
+    expect(content).toContain('model = "custom"');
+    expect(content).toContain("anniversary = 1979-05-27\n");
+    expect(content).toContain("temperature = inf");
+    expect(parseTOML(content)).toMatchObject({ mcp_servers: { manual: { command: "manual" } } });
   });
 
   it("reports missing config file", async () => {

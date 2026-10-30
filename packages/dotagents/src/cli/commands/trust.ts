@@ -187,7 +187,10 @@ function printTrustUsage(scope: ScopeRoot): void {
 Subcommands:
   add      Add a trusted source (org, owner/repo, or domain)
   remove   Remove a trusted source
-  list     Show trusted sources`);
+  list     Show trusted sources
+
+Add and remove support inline and multiline arrays and preserve comments.
+Removing the last source keeps an empty allow-list; it does not trust all sources.`);
 }
 
 export default async function trust(args: string[], context: CommandContext): Promise<void> {

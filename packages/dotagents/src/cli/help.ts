@@ -31,6 +31,7 @@ Options:
   remove: `Usage: npx @sentry/dotagents [--project|--global|--user] remove <name|source> [options]
 
 Remove a skill or plugin, or remove every dependency from a source.
+Wildcard skills are excluded in agents.toml before their files and lock entries are removed.
 
 Options:
   -y, --yes       Skip confirmation when excluding or removing by source
@@ -38,6 +39,7 @@ Options:
   sync: `Usage: npx @sentry/dotagents [--project|--global|--user] sync [options]
 
 Reconcile local state without fetching dependency updates.
+Matching MCP server settings are left unchanged.
 
 Options:
   --help, -h      Show this help message`,

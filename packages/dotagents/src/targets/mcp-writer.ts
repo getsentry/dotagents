@@ -461,7 +461,8 @@ function desiredIssues(
     if (!(name in existing)) {
       return [{ agent, issue: `MCP server "${name}" missing from ${filePath}` }];
     }
-    if (!isDeepStrictEqual(existing[name], value)) {
+    // Normalize nested TOML table prototypes only for comparison.
+    if (!isDeepStrictEqual(structuredClone(existing[name]), value)) {
       return [{ agent, issue: `MCP server "${name}" drifted in ${filePath}` }];
     }
     return [];

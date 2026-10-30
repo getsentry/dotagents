@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from "node:fs/promis
 import { existsSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
-import {
+import remove, {
   collectSkillsFromSource,
   RemoveError,
   runRemove,
@@ -643,6 +643,59 @@ source = "path:plugins/review-tools"
       throw new Error("expected wildcard removal to reject");
     }
     expect(error.source).toBe(`git:${repoDir}`);
+  });
+
+  it("persists a multiline exclusion so install does not restore the removed skill", async () => {
+    await writeFile(join(projectRoot, "agents.toml"), `version = 1
+
+[trust]
+allow_all = true
+
+[[skills]]
+name = "*"
+source = "git:${repoDir}"
+exclude = [
+  "already-excluded", # preserve this
+]
+`);
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+
+    await remove(["review", "--yes"], { scope });
+
+    const wildcard = (await loadConfig(scope.configPath)).skills[0]!;
+    expect(wildcard).toMatchObject({ exclude: ["already-excluded", "review"] });
+    expect(existsSync(join(scope.skillsDir, "review"))).toBe(false);
+    expect((await loadLockfile(scope.lockPath))!.skills["review"]).toBeUndefined();
+
+    await runInstall({ scope });
+
+    expect(existsSync(join(scope.skillsDir, "review"))).toBe(false);
+    expect((await loadLockfile(scope.lockPath))!.skills["review"]).toBeUndefined();
+    expect(existsSync(join(scope.skillsDir, "pdf", "SKILL.md"))).toBe(true);
+  });
+
+  it("keeps the skill and lock entry when its wildcard cannot be edited safely", async () => {
+    const input = `version = 1
+
+[trust]
+allow_all = true
+
+[[skills]] # hand-edited header
+name = "*"
+source = "git:${repoDir}"
+`;
+    await writeFile(join(projectRoot, "agents.toml"), input);
+    const scope = resolveScope("project", projectRoot);
+    await runInstall({ scope });
+    const lockBefore = await readFile(scope.lockPath, "utf-8");
+
+    await expect(remove(["review", "--yes"], { scope }))
+      .rejects.toThrow("Cannot locate wildcard");
+
+    expect(await readFile(scope.configPath, "utf-8")).toBe(input);
+    expect(await readFile(scope.lockPath, "utf-8")).toBe(lockBefore);
+    expect(existsSync(join(scope.skillsDir, "review", "SKILL.md"))).toBe(true);
   });
 
   it("does not treat skills outside wildcard path scope as wildcard-owned", async () => {

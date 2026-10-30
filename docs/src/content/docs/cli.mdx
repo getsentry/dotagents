@@ -161,6 +161,8 @@ Remove a skill or plugin from `agents.toml`, delete managed installed files, and
 update the lockfile. You can also pass a source to remove all skills and plugins
 from that source. When removing a skill provided by a wildcard source, dotagents
 can add that skill to the wildcard `exclude` list.
+This supports inline and multiline arrays and preserves comments. If saving the
+exclusion fails, the skill and lock entry stay intact.
 If a skill and plugin share the same name, name-based removal is rejected. When
 their sources differ, pass the dependency's source to disambiguate.
 
@@ -188,6 +190,8 @@ Reconcile the selected scope without network access. Adopts local orphaned
 skills, prunes stale managed skills, subagents, and plugins removed from config,
 and repairs symlinks plus MCP, hook, subagent, and plugin configs. Project scope
 also regenerates managed gitignore state. Reports issues as warnings or errors.
+Matching MCP entries, including Codex configs, are left unchanged and are not
+reported as repairs.
 
 <a id="mcp-add"></a>
 
@@ -286,7 +290,12 @@ dotagents trust remove <source>
 ```
 
 Remove a trusted source from `[trust]` in `agents.toml`. Matching is
-case-insensitive.
+case-insensitive. Removing the last source keeps an empty allow-list so sources
+remain untrusted.
+
+Trust add and remove support inline and multiline arrays with either quote style
+and preserve comments. If the edit cannot be applied safely, the command fails
+without changing the file.
 
 Example:
 

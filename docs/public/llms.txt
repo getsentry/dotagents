@@ -480,6 +480,8 @@ npx @sentry/dotagents remove <name|source> [-y]
 
 Remove a skill or plugin from `agents.toml`, delete files from the selected scope's managed directories, update the lockfile, and prune generated plugin outputs when needed. In project scope, also regenerate `.agents/.gitignore`. For skills sourced from a wildcard entry, prompts to add the skill to the `exclude` list instead of removing the entire wildcard.
 
+Wildcard exclusions support inline and multiline arrays and preserve comments. If saving the exclusion fails, the skill and lock entry stay intact.
+
 If a skill and plugin share the same name, name-based removal is rejected. When their sources differ, pass the dependency's source to disambiguate.
 
 When the argument is a source specifier (e.g. `owner/repo`, a URL) instead of a dependency name, removes all skills and plugins from that source. Confirms before removing unless `-y` is passed.
@@ -491,6 +493,8 @@ npx @sentry/dotagents sync
 ```
 
 Reconcile the selected scope without network access: adopt truly local orphaned skills, prune stale managed skills/subagents/plugins removed from config, regenerate managed ignore state, check for missing skills and plugins, repair symlinks, and verify/repair MCP, hook, subagent, and plugin configs. Reports issues as warnings or errors.
+
+Matching MCP entries, including Codex configs, are left unchanged and are not reported as repairs.
 
 ### mcp add
 
@@ -540,7 +544,9 @@ Add a trusted source to `[trust]` in `agents.toml`. The source type is inferred 
 npx @sentry/dotagents trust remove <source>
 ```
 
-Remove a trusted source from `[trust]` in `agents.toml`. Matching is case-insensitive. Removes the field line if the array becomes empty.
+Remove a trusted source from `[trust]` in `agents.toml`. Matching is case-insensitive. Keeps empty arrays and the `[trust]` section so removing the last source does not enable unrestricted trust.
+
+Trust add and remove support inline and multiline arrays with either quote style and preserve comments. The edited config is validated before writing; if the edit cannot be applied, the command fails without changing the file.
 
 ### trust list
 

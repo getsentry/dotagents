@@ -1,5 +1,5 @@
 import { cp, rm } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, isAbsolute, relative, sep } from "node:path";
 
 /**
  * Copy a directory recursively, excluding .git/.
@@ -26,4 +26,21 @@ export function stripTrailingSlashes(s: string): string {
   let end = s.length;
   while (end > 0 && s[end - 1] === "/") {end--;}
   return end === s.length ? s : s.slice(0, end);
+}
+
+/**
+ * Whether `target` resolves outside `root`. Uses relative() rather than a string prefix so
+ * Windows separators and drive letters are handled. `paths` defaults to the host platform.
+ */
+export function isOutsideRoot(
+  root: string,
+  target: string,
+  paths: {
+    isAbsolute(path: string): boolean;
+    relative(from: string, to: string): string;
+    sep: string;
+  } = { isAbsolute, relative, sep },
+): boolean {
+  const path = paths.relative(root, target);
+  return path === ".." || path.startsWith(`..${paths.sep}`) || paths.isAbsolute(path);
 }

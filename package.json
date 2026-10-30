@@ -1,6 +1,6 @@
 {
   "name": "dotagents-monorepo",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "description": "Shared tooling for coding agents (workspace root)",
   "private": true,
   "type": "module",
@@ -32,7 +32,7 @@
     "@ast-grep/cli": "^0.44.1",
     "@oxlint/plugins": "1.79.0",
     "@types/node": "^25.2.1",
-    "lint-staged": "^16.2.7",
+    "lint-staged": "^16.4.0",
     "oxlint": "1.79.0",
     "simple-git-hooks": "^2.13.1",
     "tsx": "^4.21.0",
@@ -43,7 +43,8 @@
   "pnpm": {
     "overrides": {
       "esbuild": "^0.28.1",
-      "rollup": ">=4.59.0"
+      "rollup": ">=4.59.0",
+      "source-map-js": "^1.2.2"
     }
   }
 }
