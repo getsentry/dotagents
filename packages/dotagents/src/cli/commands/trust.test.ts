@@ -12,6 +12,7 @@ import {
 } from "./trust.js";
 import { loadConfig } from "../../config/loader.js";
 import type { ScopeRoot } from "../../scope.js";
+import { validateTrustedSource } from "@sentry/dotagents-lib";
 
 describe("trust", () => {
   let tmpDir: string;
@@ -219,19 +220,20 @@ describe("trust", () => {
       expect(config.trust?.github_orgs).toEqual(["anthropics"]);
     });
 
-    it("removes line when array becomes empty", async () => {
+    it("preserves other trust fields when an array becomes empty", async () => {
       await writeFile(
         scope.configPath,
-        `version = 1\n\n[trust]\ngithub_orgs = ["getsentry"]\n`,
+        `version = 1\n\n[trust]\ngithub_orgs = ["getsentry"]\ngit_domains = ['example.com']\n`,
       );
 
       await runTrustRemove({ scope, source: "getsentry" });
 
-      const raw = await readFile(scope.configPath, "utf-8");
-      expect(raw).not.toContain("github_orgs");
+      const config = await loadConfig(scope.configPath);
+      expect(config.trust?.github_orgs).toEqual([]);
+      expect(config.trust?.git_domains).toEqual(["example.com"]);
     });
 
-    it("removes [trust] section header when last field is removed", async () => {
+    it("keeps an empty allow-list when the last source is removed", async () => {
       await writeFile(
         scope.configPath,
         `version = 1\n\n[trust]\ngithub_orgs = ["getsentry"]\n`,
@@ -239,11 +241,10 @@ describe("trust", () => {
 
       await runTrustRemove({ scope, source: "getsentry" });
 
-      const raw = await readFile(scope.configPath, "utf-8");
-      expect(raw).not.toContain("[trust]");
-      // Trust should now be undefined (not an empty allowlist that blocks everything)
       const config = await loadConfig(scope.configPath);
-      expect(config.trust).toBeUndefined();
+      expect(config.trust?.github_orgs).toEqual([]);
+      expect(() => validateTrustedSource("getsentry/skills", config.trust)).toThrow(/not trusted/);
+      expect(() => validateTrustedSource("other/skills", config.trust)).toThrow(/not trusted/);
     });
 
     it("throws for non-existent source", async () => {
@@ -271,6 +272,86 @@ describe("trust", () => {
       const config = await loadConfig(scope.configPath);
       expect(config.trust?.github_orgs ?? []).toEqual([]);
     });
+
+    it("removes single-quoted entries", async () => {
+      await writeFile(
+        scope.configPath,
+        `version = 1\n\n[trust]\ngithub_orgs = ['getsentry', 'anthropics']\n`,
+      );
+
+      await runTrustRemove({ scope, source: "getsentry" });
+
+      const config = await loadConfig(scope.configPath);
+      expect(config.trust?.github_orgs).toEqual(["anthropics"]);
+    });
+  });
+
+  it("edits multiline trust arrays and preserves comments", async () => {
+    await writeFile(
+      scope.configPath,
+      [
+        "version = 1",
+        "",
+        "[trust]",
+        "github_orgs = [",
+        '  "getsentry", # internal',
+        '  "anthropics" # vendor',
+        "]",
+        "",
+      ].join("\n"),
+    );
+
+    await runTrustAdd({ scope, source: "vercel" });
+    await runTrustRemove({ scope, source: "getsentry" });
+
+    const config = await loadConfig(scope.configPath);
+    expect(config.trust?.github_orgs).toEqual(["anthropics", "vercel"]);
+    const raw = await readFile(scope.configPath, "utf-8");
+    expect(raw).toContain("# vendor");
+    expect(raw).toContain("# internal");
+
+    await runTrustRemove({ scope, source: "anthropics" });
+    await runTrustRemove({ scope, source: "vercel" });
+
+    expect((await loadConfig(scope.configPath)).trust?.github_orgs).toEqual([]);
+  });
+
+  it.each([
+    { name: "trailing comma", array: `['getsentry', 'anthropics',]`, kept: "anthropics" },
+    { name: "escaped source", array: `["get\\u0073entry", "anthropics"]`, kept: "anthropics" },
+    { name: "syntax inside strings", array: `['getsentry', 'org#]']`, kept: "org#]" },
+    { name: "escaped quotes", array: String.raw`["getsentry", "org\"#]"]`, kept: 'org"#]' },
+    { name: "multiline strings", array: `["""getsentry""", '''anthropics''']`, kept: "anthropics" },
+    { name: "CRLF line endings", array: `[\r\n  'getsentry',\r\n  'anthropics'\r\n]`, kept: "anthropics" },
+  ])("edits arrays with $name without changing other values", async ({ array, kept }) => {
+    const newline = array.includes("\r\n") ? "\r\n" : "\n";
+    const prefix = "version = 1\n# retain\n[trust] # allow-list\n".replaceAll("\n", newline);
+    const suffix = "\n\n[custom]\ndate = 2026-10-20\nvalue = 'untouched' # retain\n".replaceAll("\n", newline);
+    await writeFile(scope.configPath, `${prefix}\t'github_orgs'\t=\t${array}${suffix}`);
+
+    await runTrustAdd({ scope, source: "vercel" });
+    expect((await loadConfig(scope.configPath)).trust?.github_orgs).toEqual(["getsentry", kept, "vercel"]);
+    await runTrustRemove({ scope, source: "GETSENTRY" });
+    expect((await loadConfig(scope.configPath)).trust?.github_orgs).toEqual([kept, "vercel"]);
+    const raw = await readFile(scope.configPath, "utf-8");
+    expect(raw.startsWith(prefix)).toBe(true);
+    expect(raw.endsWith(suffix)).toBe(true);
+  });
+
+  it.each([runTrustAdd, runTrustRemove])("rejects edits it cannot locate without writing the file", async (mutate) => {
+    const input = `version = 1\ntrust = { github_orgs = ['getsentry'] }\n`;
+    await writeFile(scope.configPath, input);
+
+    await expect(mutate({ scope, source: mutate === runTrustAdd ? "vercel" : "getsentry" })).rejects.toThrow(/Cannot locate/);
+    expect(await readFile(scope.configPath, "utf-8")).toBe(input);
+  });
+
+  it("rejects an edit to a matching header inside a string without writing the file", async () => {
+    const input = `version = 1\nnotes = '''\n[trust]\ngithub_orgs = ['getsentry']\n'''\n[trust]\ngithub_orgs = ['getsentry']\n`;
+    await writeFile(scope.configPath, input);
+
+    await expect(runTrustRemove({ scope, source: "getsentry" })).rejects.toThrow(/Could not remove/);
+    expect(await readFile(scope.configPath, "utf-8")).toBe(input);
   });
 
   describe("getTrustList", () => {

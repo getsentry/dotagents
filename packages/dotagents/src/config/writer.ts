@@ -1,10 +1,13 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { parse as parseTOML, stringify } from "smol-toml";
-import type {
-  WildcardSkillDependency,
-  TrustConfig,
-  McpConfig,
-  PluginConfig,
+import { isDeepStrictEqual } from "node:util";
+import { parse as parseTOML, stringify, type TomlTable } from "smol-toml";
+import {
+  agentsConfigSchema,
+  isWildcardDep,
+  type WildcardSkillDependency,
+  type TrustConfig,
+  type McpConfig,
+  type PluginConfig,
 } from "./schema.js";
 import {
   isSerializedObject,
@@ -149,7 +152,7 @@ export async function addWildcardToConfig(
 
 /**
  * Add a skill name to the exclude list of a wildcard entry matching the given source.
- * If the exclude line already exists, appends to it. Otherwise adds a new line.
+ * Preserves comments and supports inline and multiline exclude arrays.
  */
 export async function addExcludeToWildcard(
   filePath: string,
@@ -157,6 +160,15 @@ export async function addExcludeToWildcard(
   skillName: string,
 ): Promise<void> {
   const content = await readFile(filePath, "utf-8");
+  const config = agentsConfigSchema.parse(parseTOML(content));
+  const wildcard = config.skills.find(
+    (dep): dep is WildcardSkillDependency => isWildcardDep(dep) && sourcesMatch(dep.source, source),
+  );
+  if (!wildcard) {
+    throw new Error(`Wildcard source "${source}" not found in ${filePath}.`);
+  }
+  if (wildcard.exclude.includes(skillName)) {return;}
+
   const lines = content.split("\n");
   const span = findArrayTables(lines, "[[skills]]").find((candidate) => {
     const name = getStringField(lines, candidate, "name");
@@ -164,21 +176,50 @@ export async function addExcludeToWildcard(
     return name === "*" && candidateSource !== undefined && sourcesMatch(candidateSource, source);
   });
 
-  if (span) {
-    const excludeIdx = findFieldLine(lines, span, "exclude");
-    if (excludeIdx === undefined) {
-      lines.splice(span.end, 0, `exclude = ${tomlValue([skillName])}`);
+  if (!span) {
+    throw new Error(`Cannot locate wildcard source "${source}" in ${filePath}.`);
+  }
+
+  const excludeIdx = findFieldLine(lines, span, "exclude");
+  if (excludeIdx === undefined) {
+    lines.splice(span.end, 0, `exclude = ${tomlValue([skillName])}`);
+  } else {
+    // Validated skill names cannot contain # or ], so these delimit TOML syntax.
+    let end = excludeIdx;
+    while (end < span.fieldsEnd && !excludeArrayCode(lines[end]!).includes("]")) {end++;}
+    if (end === span.fieldsEnd) {
+      throw new Error(`Cannot locate exclude array in ${filePath}.`);
+    }
+
+    let closing = excludeArrayCode(lines[end]!).indexOf("]");
+    let last = end;
+    let lastCode = excludeArrayCode(lines[end]!.slice(0, closing));
+    while (!lastCode && last > excludeIdx) {
+      lastCode = excludeArrayCode(lines[--last]!);
+    }
+    if (wildcard.exclude.length > 0 && !lastCode.endsWith(",")) {
+      lines[last] = `${lines[last]!.slice(0, lastCode.length)},${lines[last]!.slice(lastCode.length)}`;
+      if (last === end) {closing++;}
+    }
+
+    if (lines[end]!.slice(0, closing).trim() === "") {
+      const indent = lines[excludeIdx]!.match(/^\s*/)?.[0] ?? "";
+      lines.splice(end, 0, `${indent}  ${tomlValue(skillName)},`);
     } else {
-      const match = lines[excludeIdx]!.match(/^(\s*exclude\s*=\s*)\[([^\]]*)\](.*)$/);
-      if (match) {
-        const existing = match[2]!.trim();
-        const values = existing ? `${existing}, ${tomlValue(skillName)}` : tomlValue(skillName);
-        lines[excludeIdx] = `${match[1]}[${values}]${match[3]}`;
-      }
+      const separator = wildcard.exclude.length > 0 ? " " : "";
+      lines[end] = `${lines[end]!.slice(0, closing)}${separator}${tomlValue(skillName)}${lines[end]!.slice(closing)}`;
     }
   }
 
-  await writeFile(filePath, lines.join("\n"), "utf-8");
+  const updated = lines.join("\n");
+  const result = agentsConfigSchema.parse(parseTOML(updated));
+  const excluded = result.skills.some(
+    (dep) => isWildcardDep(dep) && sourcesMatch(dep.source, source) && dep.exclude.includes(skillName),
+  );
+  if (!excluded) {
+    throw new Error(`Could not exclude skill "${skillName}" from wildcard source "${source}".`);
+  }
+  await writeFile(filePath, updated, "utf-8");
 }
 
 /**
@@ -337,154 +378,140 @@ function tomlValue<Value>(value: Value): string {
   return stringify({ v: value }).replace("v = ", "").trimEnd();
 }
 
-/**
- * Add a value to a trust field array in agents.toml.
- * Creates the [trust] section and field line if they don't exist.
- */
+function excludeArrayCode(line: string): string {
+  return line.split("#", 1)[0]!.trimEnd();
+}
+
+type TrustField = "github_orgs" | "github_repos" | "git_domains";
+
+/** Add a trust source, creating the section and field if absent. */
 export async function addTrustSource(
   filePath: string,
-  field: "github_orgs" | "github_repos" | "git_domains",
+  field: TrustField,
   value: string,
 ): Promise<void> {
-  const content = await readFile(filePath, "utf-8");
-  const lines = content.split("\n");
-  let trustSectionIdx = -1;
-  let fieldLineIdx = -1;
-
-  // First pass: find [trust] section and target field
-  for (let j = 0; j < lines.length; j++) {
-    if (lines[j]!.trim() === "[trust]") {
-      trustSectionIdx = j;
-    } else if (trustSectionIdx >= 0 && fieldLineIdx < 0) {
-      const trimmed = lines[j]!.trim();
-      if (trimmed.startsWith("[")) {break;}
-      if (trimmed.startsWith(`${field} `) || trimmed.startsWith(`${field}=`)) {
-        fieldLineIdx = j;
-      }
-    }
-  }
-
-  if (trustSectionIdx >= 0 && fieldLineIdx >= 0) {
-    // Field exists — parse and append
-    const line = lines[fieldLineIdx]!;
-    const indent = line.match(/^(\s*)/)?.[1] ?? "";
-    const trimmedLine = line.trim();
-    const match = trimmedLine.match(new RegExp(`^(${field}\\s*=\\s*)\\[([^\\]]*)\\]`));
-    if (match) {
-      const existing = match[2]!.trim();
-      const newVal = tomlValue(value);
-      const updated = existing
-        ? `${match[1]}[${existing}, ${newVal}]`
-        : `${match[1]}[${newVal}]`;
-      lines[fieldLineIdx] = indent + updated;
-    }
-    await writeFile(filePath, lines.join("\n"), "utf-8");
-    return;
-  }
-
-  if (trustSectionIdx >= 0) {
-    // [trust] exists but field doesn't — insert at end of trust section
-    let insertIdx = trustSectionIdx + 1;
-    while (insertIdx < lines.length) {
-      const trimmed = lines[insertIdx]!.trim();
-      if (trimmed.startsWith("[")) {break;}
-      if (trimmed === "" && insertIdx + 1 < lines.length && lines[insertIdx + 1]!.trim().startsWith("[")) {break;}
-      insertIdx++;
-    }
-    lines.splice(insertIdx, 0, `${field} = ${tomlValue([value])}`);
-    await writeFile(filePath, lines.join("\n"), "utf-8");
-    return;
-  }
-
-  // No [trust] section — create one before [[skills]]/[[mcp]]/[[hooks]], or at end
-  const arrayTableIdx = lines.findIndex((l) => {
-    const t = l.trim();
-    return t === "[[skills]]" || t === "[[mcp]]" || t === "[[hooks]]";
-  });
-
-  if (arrayTableIdx >= 0) {
-    lines.splice(arrayTableIdx, 0, `[trust]`, `${field} = ${tomlValue([value])}`, "");
-    await writeFile(filePath, lines.join("\n"), "utf-8");
-    return;
-  }
-
-  const newContent = `${content.trimEnd()}\n\n[trust]\n${field} = ${tomlValue([value])}\n`;
-  await writeFile(filePath, newContent, "utf-8");
+  await editTrustSource(filePath, field, value, true);
 }
 
-/**
- * Remove a value from a trust field array in agents.toml.
- * If the array becomes empty, removes the field line.
- */
+/** Remove a trust source without disabling an empty allow-list. */
 export async function removeTrustSource(
   filePath: string,
-  field: "github_orgs" | "github_repos" | "git_domains",
+  field: TrustField,
   value: string,
 ): Promise<void> {
+  await editTrustSource(filePath, field, value, false);
+}
+
+interface ConfigEdit {
+  start: number;
+  end: number;
+  text: string;
+}
+
+async function editTrustSource(
+  filePath: string,
+  field: TrustField,
+  value: string,
+  add: boolean,
+): Promise<void> {
   const content = await readFile(filePath, "utf-8");
+  const parsed = parseTOML(content);
+  const existing = agentsConfigSchema.parse(parsed).trust?.[field] ?? [];
+  const values = add
+    ? [...existing, value]
+    : existing.filter((item) => item.toLowerCase() !== value.toLowerCase());
   const lines = content.split("\n");
-  let trustSectionIdx = -1;
-
-  for (let j = 0; j < lines.length; j++) {
-    if (lines[j]!.trim() === "[trust]") {
-      trustSectionIdx = j;
-    } else if (trustSectionIdx >= 0) {
-      const trimmed = lines[j]!.trim();
-      if (trimmed.startsWith("[")) {break;}
-
-      if (trimmed.startsWith(`${field} `) || trimmed.startsWith(`${field}=`)) {
-        const match = trimmed.match(new RegExp(`^${field}\\s*=\\s*\\[([^\\]]*)\\]`));
-        if (!match) {break;}
-
-        const items = match[1]!
-          .split(",")
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0);
-        const filtered = items.filter(
-          (s) => s.replaceAll(/^"|"$/g, "").toLowerCase() !== value.toLowerCase(),
-        );
-
-        if (filtered.length === 0) {
-          lines.splice(j, 1);
-          // If [trust] section is now empty, remove the header too
-          if (isTrustSectionEmpty(lines, trustSectionIdx)) {
-            removeTrustHeader(lines, trustSectionIdx);
-          }
-        } else {
-          const indent = lines[j]!.match(/^(\s*)/)?.[1] ?? "";
-          lines[j] = `${indent}${field} = [${filtered.join(", ")}]`;
-        }
-
-        await writeFile(filePath, lines.join("\n"), "utf-8");
-        return;
+  const header = lines.findIndex((line) => /^\[\s*(?:trust|"trust"|'trust')\s*\]\s*(?:#.*)?$/.test(line.trim()));
+  const assignment = new RegExp(`^([ \\t]*(?:${field}|"${field}"|'${field}')[ \\t]*=[ \\t]*)\\[`);
+  let fieldLine = -1;
+  if (header >= 0) {
+    for (let i = header + 1; i < lines.length; i++) {
+      if (classifyTableHeader(lines[i]!.trim())) {break;}
+      if (assignment.test(lines[i]!)) {
+        fieldLine = i;
+        break;
       }
     }
   }
-}
 
-/** Check if a [trust] section has no remaining field lines. */
-function isTrustSectionEmpty(lines: string[], headerIdx: number): boolean {
-  for (let i = headerIdx + 1; i < lines.length; i++) {
-    const trimmed = lines[i]!.trim();
-    if (trimmed.startsWith("[")) {return true;}
-    if (trimmed !== "") {return false;}
-  }
-  return true;
-}
+  let updated: string;
+  if (fieldLine >= 0) {
+    const line = lines[fieldLine]!;
+    const open = lines.slice(0, fieldLine).join("\n").length + 1 + line.indexOf("[");
+    // Match complete TOML strings so their #, ], escapes, and newlines stay intact.
+    const tokenPattern = /#[^\r\n]*|"""(?:[^"\\]|\\[\s\S]|"(?!""))*"{3,5}|'''(?:[^']|'(?!''))*'{3,5}|"(?:[^"\\\r\n]|\\[^\r\n])*"|'[^'\r\n]*'|,|\]/g;
+    const tokens = [];
+    let closing = -1;
+    for (const match of content.slice(open + 1).matchAll(tokenPattern)) {
+      if (match[0].startsWith("#")) {continue;}
+      const start = open + 1 + match.index;
+      if (match[0] === "]") {
+        closing = start;
+        break;
+      }
+      tokens.push({ start, end: start + match[0].length, text: match[0] });
+    }
+    if (closing < 0) {throw new Error(`Cannot locate ${field} array in ${filePath}.`);}
 
-/** Remove the [trust] header and any trailing blank lines. */
-function removeTrustHeader(lines: string[], headerIdx: number): void {
-  let removeCount = 1;
-  // Also remove trailing blank lines after the header
-  while (headerIdx + removeCount < lines.length && lines[headerIdx + removeCount]!.trim() === "") {
-    removeCount++;
-  }
-  // Also remove leading blank line before the header if present
-  if (headerIdx > 0 && lines[headerIdx - 1]!.trim() === "") {
-    lines.splice(headerIdx - 1, removeCount + 1);
+    const edits: ConfigEdit[] = [];
+    if (add) {
+      const lineStart = content.lastIndexOf("\n", closing - 1) + 1;
+      const ownLine = content.slice(lineStart, closing).trim() === "";
+      const indent = line.match(/^\s*/)?.[0] ?? "";
+      const newline = content.includes("\r\n") ? "\r\n" : "\n";
+      const position = ownLine ? lineStart : closing;
+      edits.push({
+        start: position,
+        end: position,
+        text: ownLine
+          ? `${indent}  ${tomlValue(value)},${newline}`
+          : `${existing.length > 0 ? " " : ""}${tomlValue(value)}`,
+      });
+      const last = tokens.at(-1);
+      if (last && last.text !== ",") {
+        edits.push({ start: last.end, end: last.end, text: "," });
+      }
+    } else {
+      let itemIndex = 0;
+      for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i]!;
+        if (token.text === ",") {continue;}
+        const item = existing[itemIndex++];
+        if (item?.toLowerCase() !== value.toLowerCase()) {continue;}
+        edits.push({ start: token.start, end: token.end, text: "" });
+        const comma = tokens[i + 1];
+        if (comma?.text === ",") {
+          edits.push({ start: comma.start, end: comma.end, text: "" });
+        }
+      }
+    }
+    updated = edits.toSorted((a, b) => b.start - a.start).reduce(
+      (text, edit) => text.slice(0, edit.start) + edit.text + text.slice(edit.end),
+      content,
+    );
+  } else if (add && header >= 0) {
+    lines.splice(header + 1, 0, `${field} = ${tomlValue(values)}`);
+    updated = lines.join("\n");
+  } else if (add && parsed["trust"] === undefined) {
+    const firstArrayTable = lines.findIndex((line) => line.trimStart().startsWith("[["));
+    if (firstArrayTable >= 0) {
+      lines.splice(firstArrayTable, 0, "[trust]", `${field} = ${tomlValue(values)}`, "");
+      updated = lines.join("\n");
+    } else {
+      updated = `${content.trimEnd()}\n\n[trust]\n${field} = ${tomlValue(values)}\n`;
+    }
   } else {
-    lines.splice(headerIdx, removeCount);
+    throw new Error(`Cannot locate ${field} in [trust] of ${filePath}.`);
   }
+
+  // Verify the entire parsed document: only the requested trust list may change.
+  // SAFETY: the schema validates existing trust tables; the parser creates missing ones.
+  const trust = (parsed["trust"] ??= parseTOML("[trust]")["trust"]!) as TomlTable;
+  trust[field] = values;
+  if (!isDeepStrictEqual(parseTOML(updated), parsed)) {
+    throw new Error(`Could not ${add ? "add" : "remove"} "${value}" in ${field} of ${filePath}.`);
+  }
+  await writeFile(filePath, updated, "utf-8");
 }
 
 /**

@@ -282,6 +282,61 @@ describe("writer", () => {
       const wildcard = config.skills[0]!;
       expect(isWildcardDep(wildcard) && wildcard.exclude).toEqual(["old", "new"]);
     });
+
+    it.each([
+      { label: "with", comma: "," },
+      { label: "without", comma: "" },
+    ])("updates multiline excludes $label a trailing comma", async ({ comma }) => {
+      const input = `version = 1
+
+[[skills]]
+name = "*"
+source = "getsentry/skills"
+exclude = [ # keep opening comment ]
+  'old'${comma} # keep entry comment ]
+  # keep standalone comment
+] # keep closing comment ]
+
+[misc]
+value = 'unchanged'
+`;
+      await writeFile(configPath, input);
+
+      await addExcludeToWildcard(configPath, "getsentry/skills", "new");
+
+      const wildcard = (await loadConfig(configPath)).skills[0]!;
+      expect(isWildcardDep(wildcard) && wildcard.exclude).toEqual(["old", "new"]);
+      expect(await readFile(configPath, "utf-8")).toBe(
+        input.replace(`'old'${comma}`, "'old',").replace(
+          "] # keep closing comment ]",
+          '  "new",\n] # keep closing comment ]',
+        ),
+      );
+    });
+
+    it.each(["[]", "['old',]", "[\n  # no exclusions yet\n]"])(
+      "updates empty or trailing-comma exclude arrays: %s",
+      async (array) => {
+        await writeFile(configPath, `version = 1\n\n[[skills]]\nname = "*"\nsource = "getsentry/skills"\nexclude = ${array}\n`);
+
+        await addExcludeToWildcard(configPath, "getsentry/skills", "new");
+
+        const wildcard = (await loadConfig(configPath)).skills[0]!;
+        expect(isWildcardDep(wildcard) && wildcard.exclude).toEqual(
+          array.includes("old") ? ["old", "new"] : ["new"],
+        );
+      },
+    );
+
+    it("leaves the config unchanged when the edited TOML fails validation", async () => {
+      await addWildcardToConfig(configPath, "getsentry/skills");
+      const before = await readFile(configPath, "utf-8");
+
+      await expect(addExcludeToWildcard(configPath, "getsentry/skills", "invalid/name"))
+        .rejects.toThrow();
+
+      expect(await readFile(configPath, "utf-8")).toBe(before);
+    });
   });
 
   describe("addMcpToConfig", () => {

@@ -1,4 +1,4 @@
-import { isAbsolute, join, posix, relative, resolve, sep, win32 } from "node:path";
+import { join, posix, relative, resolve, sep, win32 } from "node:path";
 import { realpath, stat } from "node:fs/promises";
 import {
   GITHUB_HTTPS_URL,
@@ -12,7 +12,7 @@ import { ensureWellKnownCached } from "../sources/wellknown.js";
 import { resolveLocalSource } from "../sources/local.js";
 import { discoverSkill, discoverAllSkills, type DiscoveredSkill } from "./discovery.js";
 import { loadSkillMd } from "./loader.js";
-import { stripTrailingSlashes } from "../utils/fs.js";
+import { isOutsideRoot, stripTrailingSlashes } from "../utils/fs.js";
 import { validateTrustedSource } from "../trust/validator.js";
 import type { TrustPolicy } from "../trust/policy.js";
 
@@ -484,11 +484,6 @@ export interface NamedResolvedSkill {
 
 interface ScopedDiscoveredSkill extends DiscoveredSkill {
   skillDir: string;
-}
-
-function isOutsideRoot(root: string, target: string): boolean {
-  const path = relative(root, target);
-  return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
 }
 
 function escapesSourceRoot(path: string): boolean {

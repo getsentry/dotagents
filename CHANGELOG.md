@@ -16,6 +16,25 @@ Existing Codex installations keep the old marketplace and plugin identities. Com
 
 Dotagents does not change native Codex marketplace registration or installed plugin state.
 
+## 3.4.0
+
+### New Features ✨
+
+- (lib) Expose Agent Plugin resolution to other hosts by @sentry-junior in [#201](https://github.com/getsentry/dotagents/pull/201)
+
+### Bug Fixes 🐛
+
+- (config) Persist multiline wildcard exclusions by @gricha in [#206](https://github.com/getsentry/dotagents/pull/206)
+- (deps) Patch CLI and docs vulnerabilities by @gricha in [#204](https://github.com/getsentry/dotagents/pull/204)
+- (git) Keep cache git commands out of the caller's repository by @jfi in [#197](https://github.com/getsentry/dotagents/pull/197)
+- (mcp) Compare Codex server settings by value by @gricha in [#208](https://github.com/getsentry/dotagents/pull/208)
+- (plugin) Contain the bundled dotagents skill by @gricha in [#202](https://github.com/getsentry/dotagents/pull/202)
+- (trust) Edit arrays without widening trust by @RaphaelFakhri in [#210](https://github.com/getsentry/dotagents/pull/210)
+
+### Internal Changes 🔧
+
+- (warden) Use the built-in security review by @gricha in [#203](https://github.com/getsentry/dotagents/pull/203)
+
 ## 3.3.0
 
 ### Bug Fixes 🐛

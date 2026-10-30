@@ -637,6 +637,8 @@ If an explicit skill and plugin share the requested name, fail without changing 
 4. Prune generated plugin runtime outputs when removing a plugin
 5. In project scope, regenerate `.agents/.gitignore`
 
+For a wildcard-provided skill, confirm adding it to the wildcard's `exclude` array (or skip confirmation with `--yes`). Preserve comments in inline and multiline arrays, validate the updated config, and save it before deleting the skill or its lock entry. If the exclusion cannot be saved, fail without deleting either.
+
 **Behavior (source removal):**
 When the argument matches a source specifier (e.g. `owner/repo`, a URL) rather than a dependency name, removes all skills and plugins from that source:
 1. Find all skills and plugins from the source (explicit entries from config + wildcard-expanded skill entries from lockfile)
@@ -664,7 +666,7 @@ dotagents sync
 4. In project scope, warn if `agents.lock` and `.agents/.gitignore` are not in the root `.gitignore`
 5. Check for missing skills (in `agents.toml` but not installed)
 6. Create/verify/repair symlinks
-7. Verify and repair MCP config files for declared agents
+7. Verify and repair MCP config files for declared agents; matching entries, including Codex configs, must not report drift or repairs
 8. Verify and repair hook config files for declared agents
 9. Verify and repair generated subagent files for declared agents
 10. Verify and repair generated plugin runtime projections for declared agents
@@ -704,7 +706,8 @@ When `defaultRepositorySource = "gitlab"`, shorthand sources (without dots) are 
 
 **Behavior:**
 - `add`: Classify the source, check for duplicates (case-insensitive), and append it to the appropriate field in `[trust]`. Creates the section if absent.
-- `remove`: Remove the source from the appropriate field (case-insensitive). Removes the field line if the array becomes empty.
+- `remove`: Remove the source from the appropriate field (case-insensitive). Keeps empty arrays and the `[trust]` section so removing the last source does not enable unrestricted trust.
+- `add` and `remove` edit inline and multiline arrays with either quote style and preserve comments. The updated config is validated before it is saved; if the edit cannot be applied, the command fails and leaves `agents.toml` unchanged.
 - `list`: Show trusted sources with their type. Use `--json` for machine-readable output.
 
 ### `dotagents doctor`
