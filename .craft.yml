@@ -1,4 +1,4 @@
-minVersion: "2.21.2"
+minVersion: "3.9.0"
 changelog:
   policy: auto
 preReleaseCommand: node scripts/bump-version.mjs
