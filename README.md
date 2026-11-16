@@ -65,6 +65,10 @@ Project-managed paths must also resolve inside the repository: traversal paths a
 
 The optional project `post-merge` hook clears inherited Git repository variables for its install command, keeping cache updates separate from the repository being merged. Run `npx @sentry/dotagents --project init` to refresh an existing managed hook.
 
+## Update Checks
+
+DotAgents checks npm for a newer version and caches the result in `~/.dotagents/update-check.json`. Set `DOTAGENTS_NO_UPDATE_CHECK=1` to disable the check and cache access.
+
 ## Commands
 
 | Command | Description |

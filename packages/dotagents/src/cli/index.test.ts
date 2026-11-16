@@ -70,6 +70,14 @@ describe("CLI help dispatch", () => {
     log.mockRestore();
   });
 
+  it("documents the update-check opt-out in global help", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runMain(["--help"]);
+
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("DOTAGENTS_NO_UPDATE_CHECK=1"));
+    log.mockRestore();
+  });
+
   it("defaults to global scope", async () => {
     await runMain(["sync"]);
 

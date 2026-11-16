@@ -649,6 +649,10 @@ Custom skills created directly in `.agents/skills/` and project-authored plugin 
 
 Run `npx @sentry/dotagents --project install` after cloning or pulling project changes. Use unqualified `npx @sentry/dotagents install` to refresh global dependencies. Install fetches or refreshes managed skills, subagents, and plugins unless a ref is pinned. There is no separate update command.
 
+## Update Checks
+
+DotAgents checks npm for a newer version and caches the result in `~/.dotagents/update-check.json`. Set `DOTAGENTS_NO_UPDATE_CHECK=1` to disable the check and cache access.
+
 ## Links
 
 - Source: https://github.com/getsentry/dotagents
