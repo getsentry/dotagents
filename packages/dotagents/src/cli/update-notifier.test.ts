@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { compareSemver, formatUpdateMessage, checkForUpdate } from "./update-notifier.js";
@@ -39,7 +39,25 @@ describe("checkForUpdate", () => {
 
   afterEach(async () => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     await rm(cacheDir, { recursive: true });
+  });
+
+  it("skips the npm check and cache updates when opted out", async () => {
+    vi.stubEnv("DOTAGENTS_NO_UPDATE_CHECK", "1");
+    const cachePath = join(cacheDir, "update-check.json");
+    const cacheContents = JSON.stringify({
+      lastCheck: Date.now() - 25 * 60 * 60 * 1000,
+      latestVersion: "0.8.0",
+    });
+    await writeFile(cachePath, cacheContents);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ version: "0.9.0" })));
+
+    const result = await checkForUpdate("0.7.0", { cacheDir });
+
+    expect(result).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await readFile(cachePath, "utf-8")).toBe(cacheContents);
   });
 
   it("returns null when fetch fails", async () => {

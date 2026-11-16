@@ -902,7 +902,7 @@ dotagents/
         scope.ts             # Project/user scope resolution
         cli/
           index.ts           # CLI entry point, command routing
-          update-notifier.ts # npm update check
+          update-notifier.ts # optional npm update check (disabled by DOTAGENTS_NO_UPDATE_CHECK=1)
           commands/
             init.ts
             install.ts

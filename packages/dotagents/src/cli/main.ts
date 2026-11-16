@@ -94,7 +94,10 @@ Options:
   --global    Explicitly operate on global scope (~/.agents/, the default)
   --user      Compatibility alias for --global
   --help, -h  Show this help message
-  --version   Show version`);
+  --version   Show version
+
+Environment:
+  DOTAGENTS_NO_UPDATE_CHECK=1  Disable npm update checks and cache access`);
 }
 
 export async function main(
