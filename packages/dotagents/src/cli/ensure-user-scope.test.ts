@@ -4,7 +4,7 @@ import { readFile, rm, mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ensureUserScopeBootstrapped } from "./ensure-user-scope.js";
-import { allAgentIds } from "../targets/registry.js";
+import { allAgents } from "../targets/registry.js";
 import type { ScopeRoot } from "../scope.js";
 
 function userScope(home: string): ScopeRoot {
@@ -42,10 +42,11 @@ describe("ensureUserScopeBootstrapped", () => {
     const content = await readFile(scope.configPath, "utf-8");
     expect(content).toContain("version = 1");
 
-    // Should include all known agents
-    for (const id of allAgentIds()) {
-      expect(content).toContain(`"${id}"`);
+    // Should include every agent except opt-in targets
+    for (const agent of allAgents()) {
+      expect(content.includes(`"${agent.id}"`)).toBe(!agent.optIn);
     }
+    expect(content).not.toContain('"antigravity"');
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("Initialized"),
     );

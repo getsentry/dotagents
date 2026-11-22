@@ -154,4 +154,48 @@ source = "path:skill-source/pdf"
     const lockfile = await loadLockfile(scope.lockPath);
     expect(lockfile!.skills["pdf"]).toEqual({ source: "path:skill-source/pdf" });
   });
+
+  it("links Antigravity global skills and merges its global MCP config", async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "dotagents-user-install-"));
+    const homeDir = join(tmpDir, "home");
+    const geminiConfig = join(homeDir, ".gemini", "config");
+    process.env["HOME"] = homeDir;
+    process.env["DOTAGENTS_HOME"] = join(tmpDir, "agents");
+    process.env["DOTAGENTS_STATE_DIR"] = join(tmpDir, "state");
+    vi.resetModules();
+
+    const [{ runInstall }, { resolveScope }] = await Promise.all([
+      import("./install.js"),
+      import("../../scope.js"),
+    ]);
+
+    await mkdir(geminiConfig, { recursive: true });
+    const manual = { command: "manual-server" };
+    await writeFile(join(geminiConfig, "mcp_config.json"), JSON.stringify({ mcpServers: { manual } }));
+    const scope = resolveScope("user");
+    await mkdir(scope.root, { recursive: true });
+    await writeFile(
+      scope.configPath,
+      `version = 1
+agents = ["antigravity"]
+
+[[mcp]]
+name = "fixture"
+command = "node"
+args = ["server.js"]
+`,
+    );
+
+    await runInstall({ scope });
+
+    const skillsLink = join(geminiConfig, "skills");
+    expect((await lstat(skillsLink)).isSymbolicLink()).toBe(true);
+    expect(await readlink(skillsLink)).toBe(relative(geminiConfig, scope.skillsDir));
+    expect(JSON.parse(await readFile(join(geminiConfig, "mcp_config.json"), "utf-8"))).toEqual({
+      mcpServers: {
+        manual,
+        fixture: { command: "node", args: ["server.js"] },
+      },
+    });
+  });
 });
