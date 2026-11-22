@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.5.0
+
+### New Features ✨
+
+- (antigravity) Add skills and MCP support by @gricha with @sentry-junior in [#221](https://github.com/getsentry/dotagents/pull/221)
+
+### Bug Fixes 🐛
+
+- (sources) Accept local skill paths on Windows by @AssadAnabosi in [#213](https://github.com/getsentry/dotagents/pull/213)
+
+### Internal Changes 🔧
+
+- (node) Bump CI Node version to 22 by @geoffg-sentry with @sentry-junior in [#214](https://github.com/getsentry/dotagents/pull/214)
+
 ## 3.4.0
 
 ### New Features ✨
