@@ -68,6 +68,8 @@ export interface McpConfigSpec {
    * undeclared MCP servers are preserved for every target.
    */
   shared: boolean;
+  /** Per-server settings the client edits itself; existing values survive sync. */
+  clientFields?: string[];
 }
 
 /**
@@ -138,4 +140,6 @@ export interface AgentDefinition {
   serializeHooks: HookSerializer;
   /** Subagent config specification (undefined if agent doesn't support custom subagents) */
   subagents?: SubagentConfigSpec;
+  /** Left out of the default global agent list because it restricts shared declarations. */
+  optIn?: boolean;
 }

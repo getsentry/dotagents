@@ -242,7 +242,8 @@ export async function reconcileMcpConfigs(
       continue;
     }
 
-    const targetIssues = desiredIssues(id, filePath, existingRoot.servers, expectedServers);
+    const fileServers = keepClientFields(expectedServers, existingRoot.servers, mcp.clientFields);
+    const targetIssues = desiredIssues(id, filePath, existingRoot.servers, fileServers);
     issues.push(...targetIssues);
     const envelopeIssue = existingRoot.bare && pathFormat.requiresRoot
       ? {
@@ -257,11 +258,11 @@ export async function reconcileMcpConfigs(
         existing,
         mcp.rootKey,
         existingRoot,
-        expectedServers,
+        fileServers,
         !pathFormat.requiresRoot,
       );
       if (contentChanged) {
-        await writeReconciledDocument(filePath, mcp, next, expectedServers, target.mode);
+        await writeReconciledDocument(filePath, mcp, next, fileServers, target.mode);
       }
       await enforceMode(filePath, mcp, next, modeCheck, target.mode);
       written.push(filePath);
@@ -449,6 +450,30 @@ function renderServers(
   servers: NormalizedMcpDeclaration[],
 ): SerializedObject {
   return Object.fromEntries(servers.map(serializeServer));
+}
+
+/**
+ * Carry client-owned settings from existing entries into the rendered servers.
+ * Settings such as OAuth belong to one endpoint, so a changed command or URL drops them.
+ */
+function keepClientFields(
+  expected: SerializedObject,
+  existing: SerializedObject,
+  fields: string[] | undefined,
+): SerializedObject {
+  if (!fields) {return expected;}
+  return Object.fromEntries(Object.entries(expected).map(([name, server]) => {
+    const current = existing[name];
+    if (!isSerializedObject(current) || !isSerializedObject(server)) {return [name, server];}
+    const sameEndpoint = current["command"] === server["command"] &&
+      (current["url"] ?? current["serverUrl"]) === server["url"];
+    if (!sameEndpoint) {return [name, server];}
+    const merged: SerializedObject = Object.assign({}, server);
+    for (const field of fields) {
+      if (field in current) {merged[field] = current[field]!;}
+    }
+    return [name, merged];
+  }));
 }
 
 function desiredIssues(

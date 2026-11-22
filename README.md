@@ -10,7 +10,7 @@ Shared tooling for coding agents. Declare skills, MCP servers, hooks, subagents,
 
 **Shareable.** Skills are directories with a `SKILL.md`. Host them in any git repo, discover them automatically, install with one command.
 
-**Multi-agent.** Configure Claude, Cursor, Codex, GitHub Copilot CLI, Grok, VS Code, OpenCode, and Pi from a single `agents.toml` -- skills, MCP servers, hooks, subagents, and plugins where supported. Pi reads `.agents/skills/` directly.
+**Multi-agent.** Configure Claude, Cursor, Codex, GitHub Copilot CLI, Grok, VS Code, OpenCode, Pi, and Google Antigravity from a single `agents.toml` -- skills, MCP servers, hooks, subagents, and plugins where supported. Pi reads `.agents/skills/` directly.
 
 ## Quick Start: Global by Default
 
@@ -137,8 +137,11 @@ agents = ["claude", "cursor", "codex", "copilot", "grok", "opencode", "pi"]
 | `vscode` | `.vscode` | `.vscode/mcp.json` | `.claude/settings.json` | -- |
 | `opencode` | `.opencode` | `.opencode/opencode.jsonc` | -- | `.opencode/agents/*.md` |
 | `pi` | `.pi` | `.pi/mcp.json` | -- | -- |
+| `antigravity` | `.agents` | `.agents/mcp_config.json` | -- | -- |
 
 Pi 0.99+ supports `[[mcp]]` declarations over stdio and Streamable HTTP. With `pi` in `agents`, dotagents writes `.pi/mcp.json` for project scope and `~/.pi/agent/mcp.json` for global scope, or `$PI_CODING_AGENT_DIR/mcp.json` when overridden (`~` is expanded). Existing unrelated servers and top-level settings are preserved. Pi server names allow only letters, digits, underscores, and hyphens. URLs must be literal; `${VAR}` references work in headers and environment values. Pi only reads project MCP config after the project is trusted; use `pi mcp list --json` to check connections and `pi mcp login <server>` for OAuth. Plugin-bundled MCP is not projected to Pi yet.
+
+Google Antigravity reads `.agents/skills/` natively in project scope; for global scope dotagents links `~/.gemini/config/skills` to `~/.agents/skills`. With `antigravity` in `agents`, dotagents writes MCP servers to `.agents/mcp_config.json` for project scope and `~/.gemini/config/mcp_config.json` for global scope over stdio and Streamable HTTP. Existing unrelated servers, comments, and settings are preserved, including per-server settings Antigravity manages such as `disabled`, `enabledTools`, `disabledTools`, `tools`, `timeoutSeconds`, and `oauth`. Server names allow only letters, digits, underscores, and hyphens. Antigravity does not expand `${VAR}` references, so URLs and header values must be literal; stdio servers inherit Antigravity's environment, so `env` names are not written and those variables must be set where Antigravity runs. A fresh global setup does not select `antigravity`; add it to `agents` explicitly. Hooks, subagents, and plugins are not generated for Antigravity yet.
 
 Custom subagents are declared with `[[subagents]]` entries. dotagents writes generated runtime-specific files during `install` and repairs them during `sync`:
 

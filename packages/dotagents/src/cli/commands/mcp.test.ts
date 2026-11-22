@@ -7,6 +7,7 @@ import { loadConfig } from "../../config/loader.js";
 import { resolveScope, type ScopeRoot } from "../../scope.js";
 import { runSync } from "./sync.js";
 import { runInstall } from "./install.js";
+import { parse as parseJsonc } from "jsonc-parser";
 
 describe("mcp", () => {
   let tmpDir: string;
@@ -124,6 +125,54 @@ describe("mcp", () => {
       const config = 'version = 1\nagents = ["pi"]\n';
       await writeFile(scope.configPath, config);
       await expect(runMcpAdd({ scope, name, url })).rejects.toThrow(error);
+      expect(await readFile(scope.configPath, "utf-8")).toBe(config);
+    });
+
+    it("installs and repairs Antigravity MCP in .agents/mcp_config.json while preserving unrelated settings", async () => {
+      await writeFile(scope.configPath, 'version = 1\nagents = ["antigravity"]\n');
+      const targetPath = join(projectRoot, ".agents", "mcp_config.json");
+      const manual = { command: "manual-server", disabled: true, timeoutSeconds: 30 };
+      await writeFile(targetPath, `{\n  // Added by hand\n  "mcpServers": { "manual": ${JSON.stringify(manual)}, },\n}\n`);
+
+      await runMcpAdd({ scope, name: "local-tools", command: "node", args: ["server.mjs"], env: ["TOOLS_TOKEN"] });
+      await runMcpAdd({ scope, name: "remote_tools", url: "https://example.com/mcp", headers: ["X-Team:docs"] });
+      const expected = {
+        mcpServers: {
+          manual,
+          "local-tools": { command: "node", args: ["server.mjs"] },
+          remote_tools: { url: "https://example.com/mcp", headers: { "X-Team": "docs" } },
+        },
+      };
+      const written = await readFile(targetPath, "utf-8");
+      expect(written).toContain("// Added by hand");
+      expect(parseJsonc(written)).toEqual(expected);
+
+      // Settings changed in Antigravity survive sync without counting as drift.
+      const disabled = { ...expected.mcpServers["local-tools"], disabled: true, disabledTools: ["write"] };
+      await writeFile(targetPath, JSON.stringify({ mcpServers: { ...expected.mcpServers, "local-tools": disabled } }));
+      expect((await runSync({ scope })).mcpRepaired).toBe(0);
+
+      await writeFile(targetPath, JSON.stringify({ mcpServers: { manual, "local-tools": { ...disabled, args: ["old.mjs"] } } }));
+      expect((await runSync({ scope })).mcpRepaired).toBe(1);
+      expect(JSON.parse(await readFile(targetPath, "utf-8"))).toEqual({
+        mcpServers: { ...expected.mcpServers, "local-tools": disabled },
+      });
+
+      // Credentials for an old endpoint must not follow the server to a new URL.
+      const oldRemote = { serverUrl: "https://old.example/mcp", oauth: { clientId: "old" }, disabled: true };
+      await writeFile(targetPath, JSON.stringify({ mcpServers: { ...expected.mcpServers, remote_tools: oldRemote } }));
+      expect((await runSync({ scope })).mcpRepaired).toBe(1);
+      expect(JSON.parse(await readFile(targetPath, "utf-8")).mcpServers.remote_tools).toEqual(expected.mcpServers.remote_tools);
+    });
+
+    it.each([
+      { name: "server.v2", url: "https://example.com/mcp", headers: undefined, error: "Invalid Antigravity MCP server name" },
+      { name: "remote", url: "https://${HOST}/mcp", headers: undefined, error: "does not expand" },
+      { name: "remote", url: "https://example.com/mcp", headers: ["Authorization:Bearer ${API_TOKEN}"], error: "does not expand" },
+    ])("rejects unsupported Antigravity declarations before saving: $name / $url", async ({ name, url, headers, error }) => {
+      const config = 'version = 1\nagents = ["antigravity"]\n';
+      await writeFile(scope.configPath, config);
+      await expect(runMcpAdd({ scope, name, url, headers })).rejects.toThrow(error);
       expect(await readFile(scope.configPath, "utf-8")).toBe(config);
     });
 

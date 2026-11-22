@@ -105,6 +105,7 @@ MCP configs are written per-agent in the appropriate format:
 - VS Code: `.vscode/mcp.json` (JSON)
 - OpenCode: `.opencode/opencode.jsonc` by default (JSONC, shared); existing nested or root OpenCode config files are reused.
 - GitHub Copilot: `.mcp.json` or an existing `.github/mcp.json`; global scope uses `$COPILOT_HOME/mcp-config.json` (default `~/.copilot/mcp-config.json`).
+- Google Antigravity: `.agents/mcp_config.json`; global scope uses `~/.gemini/config/mcp_config.json`. URLs and headers must be literal. Stdio servers inherit the environment that launches Antigravity, so `env` names are not written; set those variables there.
 
 ## Hooks
 
