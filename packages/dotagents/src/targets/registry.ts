@@ -6,8 +6,9 @@ import vscode from "./definitions/vscode.js";
 import opencode from "./definitions/opencode.js";
 import copilot from "./definitions/copilot.js";
 import pi from "./definitions/pi.js";
+import antigravity from "./definitions/antigravity.js";
 
-const ALL_AGENTS: AgentDefinition[] = [claude, cursor, codex, vscode, opencode, copilot, pi];
+const ALL_AGENTS: AgentDefinition[] = [claude, cursor, codex, vscode, opencode, copilot, pi, antigravity];
 
 const AGENT_REGISTRY = new Map<string, AgentDefinition>(
   ALL_AGENTS.map((a) => [a.id, a]),

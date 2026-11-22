@@ -87,6 +87,13 @@ describe("getUserMcpTarget", () => {
     }
   });
 
+  it("antigravity uses the shared global config directory", () => {
+    expect(getUserMcpTarget("antigravity")).toEqual({
+      filePath: join(home, ".gemini", "config", "mcp_config.json"),
+      shared: true,
+    });
+  });
+
   it("throws for unknown agent", () => {
     expect(() => getUserMcpTarget("emacs")).toThrow("Unknown agent");
   });
@@ -121,6 +128,12 @@ describe("skill discovery paths", () => {
     const agent = getAgent("cursor")!;
     expect(agent.skillsParentDir).toBe(".claude");
     expect(agent.userSkillsParentDirs).toEqual([join(home, ".claude")]);
+  });
+
+  it("antigravity reads project skills natively and needs a global symlink", () => {
+    const agent = getAgent("antigravity")!;
+    expect(agent.skillsParentDir).toBeUndefined();
+    expect(agent.userSkillsParentDirs).toEqual([join(home, ".gemini", "config")]);
   });
 
   // Agents that DO read .agents/skills/ natively need no symlinks

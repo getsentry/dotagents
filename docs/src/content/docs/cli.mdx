@@ -387,7 +387,7 @@ Status output:
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `version` | integer | -- | Schema version. Always `1`. |
-| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `copilot`, `grok`, `vscode`, `opencode`, `pi`. `grok` is a plugin-only target. |
+| `agents` | string[] | `[]` | Agent targets: `claude`, `cursor`, `codex`, `copilot`, `grok`, `vscode`, `opencode`, `pi`, `antigravity`. `grok` is a plugin-only target. |
 | `subagents` | table[] | `[]` | Custom subagent declarations for Claude, Cursor, Codex, and OpenCode |
 | `plugins` | table[] | `[]` | Plugin declarations for Claude, Cursor, Codex, Copilot, Grok, OpenCode, and Pi. |
 | `minimum_release_age` | integer | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install. |
@@ -428,6 +428,12 @@ headers and environment values.
 Pi reads project MCP config only after the project is trusted. Check connections
 with `pi mcp list --json` and sign in with `pi mcp login <server>` for OAuth.
 Plugin-bundled MCP is not projected to Pi yet.
+
+Google Antigravity uses `.agents/mcp_config.json` in project scope and
+`~/.gemini/config/mcp_config.json` globally. Antigravity does not expand
+`${VAR}` references, so URLs and header values must be literal. Stdio servers
+inherit Antigravity's environment, so `env` names are not written. A fresh
+global setup does not include `antigravity`; add it to `agents` explicitly.
 
 ### Hooks
 

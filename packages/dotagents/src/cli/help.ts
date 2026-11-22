@@ -62,6 +62,7 @@ Options:
 Manage MCP server declarations.
 Pi 0.99+ uses .pi/mcp.json (project) or ~/.pi/agent/mcp.json (global).
 PI_CODING_AGENT_DIR overrides Pi's global config directory.
+Antigravity uses .agents/mcp_config.json (project) or ~/.gemini/config/mcp_config.json (global).
 
 Subcommands:
   add             Add an MCP server declaration
@@ -73,6 +74,7 @@ Run 'npx @sentry/dotagents mcp <subcommand> --help' for details.`,
 
 Add an MCP server declaration to agents.toml.
 Pi server names allow letters, digits, underscores, and hyphens; URLs must be literal.
+Antigravity URLs and header values must be literal; --env names are not written.
 
 Options:
   --command <cmd>       Stdio command including arguments

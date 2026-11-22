@@ -24,7 +24,7 @@ minimum_release_age_exclude = ["getsentry/*"] # Optional
 |-------|------|----------|---------|-------------|
 | `version` | integer | Yes | -- | Schema version, must be `1` |
 | `defaultRepositorySource` | string | No | `github` | Host for shorthand `owner/repo` sources. Valid values: `github`, `gitlab` |
-| `agents` | string[] | No | `[]` | Agent targets: `claude`, `cursor`, `codex`, `copilot`, `vscode`, `grok`, `opencode`, `pi` |
+| `agents` | string[] | No | `[]` | Agent targets: `claude`, `cursor`, `codex`, `copilot`, `vscode`, `grok`, `opencode`, `pi`, `antigravity` |
 | `minimum_release_age` | integer | No | -- | Minimum commit age, in minutes, before a git skill, subagent, or plugin can install |
 | `minimum_release_age_exclude` | string[] | No | `[]` | Sources that bypass `minimum_release_age` |
 
