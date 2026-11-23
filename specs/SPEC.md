@@ -93,7 +93,7 @@ targets = ["claude", "cursor", "codex", "copilot", "grok", "opencode", "pi"]
 |-------|----------|-------------|
 | `version` | Yes | Schema version. Always `1`. |
 | `defaultRepositorySource` | No | Host used for shorthand `owner/repo` skill sources. Valid values: `github`, `gitlab`. Defaults to `github`. |
-| `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `copilot`, `vscode`, `grok`, `opencode`, `pi`. Defaults to `[]`. When set, dotagents creates skills symlinks and runtime config files for each agent where supported. `grok` is a plugin-only target. |
+| `agents` | No | Array of agent tool IDs. Valid: `claude`, `cursor`, `codex`, `copilot`, `vscode`, `grok`, `opencode`, `pi`, `antigravity`. Defaults to `[]`. When set, dotagents creates skills symlinks and runtime config files for each agent where supported. `grok` is a plugin-only target. |
 | `project` | No | Project metadata. |
 | `symlinks` | No | Symlink configuration (legacy — prefer `agents` for new projects). |
 | `skills` | No | Skill dependencies (array of tables). |
@@ -291,8 +291,11 @@ Global scope installs canonical plugins into `~/.agents/plugins/<name>/`. It gen
 | `vscode` | VS Code Copilot | `.vscode` | `.vscode/mcp.json` | JSON | Not supported |
 | `opencode` | OpenCode | `.opencode` | `.opencode/opencode.jsonc` | JSONC (shared) | `.opencode/agents/*.md` |
 | `pi` | Pi | `.pi` | `.pi/mcp.json` | JSON (shared) | Not supported |
+| `antigravity` | Google Antigravity | `.agents` | `.agents/mcp_config.json` | JSON (shared) | Not supported |
 
 Pi 0.99+ supports `[[mcp]]` declarations over stdio and Streamable HTTP. With `pi` in `agents`, dotagents writes `.pi/mcp.json` for project scope and `~/.pi/agent/mcp.json` for global scope, or `$PI_CODING_AGENT_DIR/mcp.json` when overridden (`~` is expanded). Existing unrelated servers and top-level settings are preserved. Pi server names allow only letters, digits, underscores, and hyphens. URLs must be literal; `${VAR}` references work in headers and environment values. Pi only reads project MCP config after the project is trusted; use `pi mcp list --json` to check connections and `pi mcp login <server>` for OAuth. Plugin-bundled MCP is not projected to Pi yet.
+
+Google Antigravity reads project skills from `.agents/skills/` and links global skills into `~/.gemini/config/skills/`. With `antigravity` in `agents`, dotagents writes MCP servers to `.agents/mcp_config.json` for project scope and `~/.gemini/config/mcp_config.json` for global scope. Existing unrelated servers and top-level settings are preserved. Antigravity does not expand `${VAR}` references, so URLs and header values must be literal. Stdio servers inherit Antigravity's environment, so `env` names are not written. A fresh `~/.agents/agents.toml` does not include `antigravity`; add it to `agents` explicitly.
 
 Each agent has its own MCP config format. dotagents translates the universal `[[mcp]]` declarations into the format each tool expects during `install` and `sync`. Grok is currently supported for plugin projections only.
 

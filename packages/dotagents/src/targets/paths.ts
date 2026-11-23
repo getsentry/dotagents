@@ -42,6 +42,8 @@ export function getUserMcpTarget(agentId: string): UserMcpTarget {
           : configuredDir;
       return { filePath: join(agentDir, "mcp.json"), shared: true };
     }
+    case "antigravity":
+      return { filePath: join(home, ".gemini", "config", "mcp_config.json"), shared: true };
     default:
       throw new Error(`Unknown agent for user-scope MCP: ${agentId}`);
   }
