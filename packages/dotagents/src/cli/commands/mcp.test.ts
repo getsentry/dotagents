@@ -127,6 +127,34 @@ describe("mcp", () => {
       expect(await readFile(scope.configPath, "utf-8")).toBe(config);
     });
 
+    it("writes Antigravity MCP to .agents/mcp_config.json and keeps unrelated servers", async () => {
+      await writeFile(scope.configPath, 'version = 1\nagents = ["antigravity"]\n');
+      const targetPath = join(projectRoot, ".agents", "mcp_config.json");
+      const manual = { command: "manual-server", disabled: true };
+      await writeFile(targetPath, JSON.stringify({ mcpServers: { manual } }));
+
+      await runMcpAdd({ scope, name: "local-tools", command: "node", args: ["server.mjs"], env: ["TOOLS_TOKEN"] });
+      await runMcpAdd({ scope, name: "remote-tools", url: "https://example.com/mcp", headers: ["X-Team:docs"] });
+
+      expect(JSON.parse(await readFile(targetPath, "utf-8"))).toEqual({
+        mcpServers: {
+          manual,
+          "local-tools": { command: "node", args: ["server.mjs"] },
+          "remote-tools": { serverUrl: "https://example.com/mcp", headers: { "X-Team": "docs" } },
+        },
+      });
+    });
+
+    it.each([
+      { url: "https://${HOST}/mcp", headers: undefined },
+      { url: "https://example.com/mcp", headers: ["Authorization:Bearer ${API_TOKEN}"] },
+    ])("rejects Antigravity env references before saving: $url", async ({ url, headers }) => {
+      const config = 'version = 1\nagents = ["antigravity"]\n';
+      await writeFile(scope.configPath, config);
+      await expect(runMcpAdd({ scope, name: "remote", url, headers })).rejects.toThrow("does not expand");
+      expect(await readFile(scope.configPath, "utf-8")).toBe(config);
+    });
+
     it("adds a stdio server", async () => {
       await runMcpAdd({
         scope,

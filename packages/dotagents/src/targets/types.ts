@@ -138,4 +138,6 @@ export interface AgentDefinition {
   serializeHooks: HookSerializer;
   /** Subagent config specification (undefined if agent doesn't support custom subagents) */
   subagents?: SubagentConfigSpec;
+  /** Excluded from the agents in a fresh ~/.agents/agents.toml. */
+  optIn?: boolean;
 }

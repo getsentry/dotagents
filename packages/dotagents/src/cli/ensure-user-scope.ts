@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import chalk from "chalk";
 import { generateDefaultConfig } from "../config/writer.js";
-import { allAgentIds } from "../targets/registry.js";
+import { allAgents } from "../targets/registry.js";
 import type { ScopeRoot } from "../scope.js";
 
 /**
@@ -19,7 +19,7 @@ export async function ensureUserScopeBootstrapped(scope: ScopeRoot): Promise<voi
   await mkdir(scope.skillsDir, { recursive: true });
   await writeFile(
     scope.configPath,
-    generateDefaultConfig({ agents: allAgentIds() }),
+    generateDefaultConfig({ agents: allAgents().filter((agent) => !agent.optIn).map((agent) => agent.id) }),
     "utf-8",
   );
   console.error(chalk.dim("Initialized ~/.agents/agents.toml"));
