@@ -81,6 +81,10 @@ export async function checkForUpdate(
   currentVersion: string,
   options?: { cacheDir?: string },
 ): Promise<string | null> {
+  if (process.env["DOTAGENTS_NO_UPDATE_CHECK"] === "1") {
+    return null;
+  }
+
   try {
     const cacheDir = options?.cacheDir ?? DEFAULT_CACHE_DIR;
     const cache = await readCache(join(cacheDir, "update-check.json"));
