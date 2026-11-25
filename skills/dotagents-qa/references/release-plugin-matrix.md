@@ -53,8 +53,8 @@ Validation and component inventory are no-auth proof, not model invocation.
 export CODEX_HOME=/sandbox/codex-home
 mkdir -p "$CODEX_HOME"
 codex plugin marketplace add ./ --json
-codex plugin list --marketplace dotagents-local --available --json
-codex plugin add <name>@dotagents-local --json
+codex plugin list --marketplace dotagents --available --json
+codex plugin add <name>@dotagents --json
 codex plugin list --json
 ```
 
@@ -135,7 +135,7 @@ copilot plugin install <name>@dotagents
 
 cd "$HOME"
 codex plugin marketplace add ./ --json
-codex plugin add <name>@dotagents-local --json
+codex plugin add <name>@dotagents --json
 
 cd /sandbox/neutral-project
 opencode debug skill

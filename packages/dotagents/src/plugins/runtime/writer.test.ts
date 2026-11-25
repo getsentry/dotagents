@@ -126,7 +126,7 @@ describe("plugin writer", () => {
       interface: {
         displayName: "Dotagents Plugins",
       },
-      name: "dotagents-local",
+      name: "dotagents",
       owner: {
         name: "dotagents",
       },
