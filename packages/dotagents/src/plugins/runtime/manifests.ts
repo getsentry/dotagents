@@ -10,6 +10,7 @@ import {
   type PluginManifest,
   type PluginMcpConfig,
   type SerializedObject,
+  type SerializedValue,
 } from "@sentry/dotagents-lib";
 import type { PluginDeclaration } from "../types.js";
 import {
@@ -20,7 +21,7 @@ import { isManagedJsonFile, removeManagedJsonFile, stableJson, writeManagedJsonI
 import { runtimePath } from "./manifest-values.js";
 import type { PluginWriteWarning } from "./types.js";
 import { isSafeComponentPath } from "./component-paths.js";
-import { isString, isStringArray } from "../../utils/type-guards.js";
+import { isObject, isString, isStringArray } from "../../utils/type-guards.js";
 
 type ComponentManifestKey =
   | "skills"
@@ -300,6 +301,28 @@ function copyRuntimeComponentField(
 ): boolean {
   // SAFETY: this function is called only when legacy component fields are enabled.
   const value = (plugin.manifest as LegacyPluginManifest)[key];
+  if (key === "mcpServers" && isObject(value) && !Array.isArray(value) && !isString(value)) {
+    // SAFETY: value is a non-null, non-array object from a parsed legacy manifest.
+    dest[key] = value as SerializedObject;
+    return true;
+  }
+  if (key === "mcpServers" && Array.isArray(value)) {
+    const items: SerializedValue[] = [];
+    for (const item of value) {
+      if (isString(item)) {
+        if (isSafeComponentPath(item)) {
+          items.push(runtimePath(item));
+        } else {
+          warnUnsafeComponentPath(plugin, key, item, warnings);
+        }
+      } else if (isObject(item) && !Array.isArray(item)) {
+        // SAFETY: item is a non-null, non-array object from a parsed legacy manifest.
+        items.push(item as SerializedValue);
+      }
+    }
+    if (items.length > 0) {dest[key] = items;}
+    return true;
+  }
   if (isString(value)) {
     if (isSafeComponentPath(value)) {
       dest[key] = runtimePath(value);

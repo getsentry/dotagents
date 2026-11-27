@@ -181,6 +181,21 @@ describe("plugin manifest schema", () => {
     expect(pluginManifestSchema.safeParse({ commands: ["../commands"] }).success).toBe(false);
     expect(pluginManifestSchema.safeParse({ skills: "https://example.com/skills" }).success).toBe(false);
   });
+
+  it("accepts inline and mixed mcpServers declarations", () => {
+    expect(pluginManifestSchema.safeParse({
+      mcpServers: { shadcn: { command: "npx", args: ["shadcn@latest", "mcp"] } },
+    }).success).toBe(true);
+    expect(pluginManifestSchema.safeParse({
+      mcpServers: ["./mcp.json", { shadcn: { command: "npx" } }],
+    }).success).toBe(true);
+    expect(pluginManifestSchema.safeParse({ mcpServers: "./mcp.json" }).success).toBe(true);
+  });
+
+  it("rejects unsafe mcpServers path entries", () => {
+    expect(pluginManifestSchema.safeParse({ mcpServers: "../mcp.json" }).success).toBe(false);
+    expect(pluginManifestSchema.safeParse({ mcpServers: ["../mcp.json"] }).success).toBe(false);
+  });
 });
 
 describe("plugin MCP schema", () => {
